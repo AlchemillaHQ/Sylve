@@ -8,6 +8,9 @@ import (
 
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	containerServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/container"
+
+	_ "github.com/alchemillahq/sylve/internal"
+
 	"github.com/gin-gonic/gin"
 )
 

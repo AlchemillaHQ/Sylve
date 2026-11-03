@@ -127,6 +127,45 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_container_Network:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Network'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_container_RegistryCredential
+  : properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.RegistryCredential'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_container_Stats:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Stats'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosKeytab
   : properties:
       data:
@@ -470,6 +509,58 @@ definitions:
       data:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeResources'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_CatalogApp
+  : properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogApp'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_Image
+  : properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.Image'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_ListItem
+  : properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.ListItem'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_UsedPort
+  : properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.UsedPort'
         type: array
       error:
         type: string
@@ -868,6 +959,17 @@ definitions:
       status:
         type: string
     type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_StatsBootstrap-github_com_alchemillahq_sylve_internal_db_models_container_Stats
+  : properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db.StatsBootstrap-github_com_alchemillahq_sylve_internal_db_models_container_Stats'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_StatsBootstrap-github_com_alchemillahq_sylve_internal_db_models_jail_JailStats
   : properties:
       data:
@@ -927,6 +1029,28 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ReplicationEvent'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_container_Network:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Network'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_container_RegistryCredential:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.RegistryCredential'
       error:
         type: string
       message:
@@ -1213,6 +1337,50 @@ definitions:
   : properties:
       data:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_cluster.ClusterDetails'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_container_CatalogPlan
+  : properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogPlan'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_container_CatalogTemplate
+  : properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogTemplate'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_container_Detail:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.Detail'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_container_ImageInfo
+  : properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.ImageInfo'
       error:
         type: string
       message:
@@ -1990,6 +2158,28 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_container_StackResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers_container.StackResponse'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_container_TaskResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers_container.TaskResponse'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_events_CreateSSETokenResponse:
     properties:
       data:
@@ -2287,6 +2477,17 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-string:
+    properties:
+      data:
+        type: string
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-uint:
     properties:
       data:
@@ -2314,6 +2515,19 @@ definitions:
     - GFSStepWeekly
     - GFSStepMonthly
     - GFSStepYearly
+  github_com_alchemillahq_sylve_internal_db.StatsBootstrap-github_com_alchemillahq_sylve_internal_db_models_container_Stats:
+    properties:
+      historyState:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db.StatsHistoryState'
+      lastSampleAt:
+        type: string
+      points:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Stats'
+        type: array
+      resolvedStep:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db.GFSStep'
+    type: object
   github_com_alchemillahq_sylve_internal_db.StatsBootstrap-github_com_alchemillahq_sylve_internal_db_models_jail_JailStats:
     properties:
       historyState:
@@ -2360,7 +2574,9 @@ definitions:
     - firewall
     - wireguard
     - iscsi
+    - nfs
     - mdns
+    - containers
     type: string
     x-enum-varnames:
     - DHCPServer
@@ -2371,7 +2587,9 @@ definitions:
     - Firewall
     - WireGuard
     - ISCSI
+    - NFS
     - Mdns
+    - Containers
   github_com_alchemillahq_sylve_internal_db_models.BasicSettings:
     properties:
       id:
@@ -2678,6 +2896,8 @@ definitions:
     properties:
       content:
         type: string
+      contentHtml:
+        type: string
       createdAt:
         type: string
       id:
@@ -2866,6 +3086,102 @@ definitions:
       weight:
         type: integer
     type: object
+  github_com_alchemillahq_sylve_internal_db_models_container.EnvVar:
+    properties:
+      name:
+        type: string
+      value:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_container.Mount:
+    properties:
+      guid:
+        type: string
+      mode:
+        type: string
+      owner:
+        type: string
+      readOnly:
+        type: boolean
+      source:
+        type: string
+      target:
+        type: string
+      type:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.MountType'
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_container.MountType:
+    enum:
+    - volume
+    - dataset
+    - path
+    type: string
+    x-enum-varnames:
+    - MountVolume
+    - MountDataset
+    - MountPath
+  github_com_alchemillahq_sylve_internal_db_models_container.Network:
+    properties:
+      bridge:
+        type: string
+      createdAt:
+        type: string
+      gateway:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      rangeEnd:
+        type: string
+      rangeStart:
+        type: string
+      subnet:
+        type: string
+      switchId:
+        type: integer
+      switchType:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_container.Port:
+    properties:
+      containerPort:
+        type: integer
+      hostIp:
+        type: string
+      hostPort:
+        type: integer
+      protocol:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_container.RegistryCredential:
+    properties:
+      createdAt:
+        type: string
+      id:
+        type: integer
+      registry:
+        type: string
+      updatedAt:
+        type: string
+      username:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_container.Stats:
+    properties:
+      containerId:
+        type: integer
+      cpuUsage:
+        type: number
+      createdAt:
+        type: string
+      id:
+        type: integer
+      memoryUsage:
+        type: number
+    type: object
   github_com_alchemillahq_sylve_internal_db_models_directoryservices.ActiveDirectory:
     properties:
       allowTrustedDomains:
@@ -3031,6 +3347,8 @@ definitions:
   github_com_alchemillahq_sylve_internal_db_models_info.Note:
     properties:
       content:
+        type: string
+      contentHtml:
         type: string
       createdAt:
         type: string
@@ -5000,6 +5318,10 @@ definitions:
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeResources:
     properties:
+      containers:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.ListItem'
+        type: array
       hostname:
         type: string
       jailTemplates:
@@ -5085,6 +5407,603 @@ definitions:
         type: integer
     required:
     - nodeId
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogApp:
+    properties:
+      category:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      os:
+        type: string
+      source:
+        type: string
+      stack:
+        type: boolean
+      variants:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogVariant'
+        type: array
+      version:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogChoice:
+    properties:
+      default:
+        type: string
+      doc:
+        type: string
+      id:
+        type: string
+      label:
+        type: string
+      options:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogChoiceOption'
+        type: array
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogChoiceOption:
+    properties:
+      adds:
+        items:
+          type: string
+        type: array
+      ask:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogVariable'
+        type: array
+      doc:
+        type: string
+      drops:
+        items:
+          type: string
+        type: array
+      id:
+        type: string
+      label:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogPlan:
+    properties:
+      containers:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CreateRequest'
+        type: array
+      stack:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogRenderRequest:
+    properties:
+      choices:
+        additionalProperties:
+          type: string
+        type: object
+      values:
+        additionalProperties:
+          type: string
+        type: object
+      variant:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogTemplate:
+    properties:
+      app:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogApp'
+      choices:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogChoice'
+        type: array
+      containers:
+        items:
+          type: string
+        type: array
+      variables:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogVariable'
+        type: array
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogVariable:
+    properties:
+      advanced:
+        type: boolean
+      default:
+        type: string
+      hint:
+        type: string
+      label:
+        type: string
+      name:
+        type: string
+      optional:
+        type: boolean
+      owner:
+        type: string
+      protocol:
+        type: string
+      target:
+        type: string
+      type:
+        type: string
+      values:
+        additionalProperties:
+          type: string
+        type: object
+      volume:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogVariant:
+    properties:
+      default:
+        type: boolean
+      id:
+        type: string
+      image:
+        type: string
+      label:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.CreateRequest:
+    properties:
+      annotations:
+        additionalProperties:
+          type: string
+        type: object
+      catalogApp:
+        type: string
+      command:
+        items:
+          type: string
+        type: array
+      cores:
+        type: integer
+      description:
+        type: string
+      entrypoint:
+        items:
+          type: string
+        type: array
+      env:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.EnvVar'
+        type: array
+      extraHosts:
+        items:
+          type: string
+        type: array
+      hostname:
+        type: string
+      image:
+        type: string
+      ip:
+        type: string
+      memory:
+        type: integer
+      mounts:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Mount'
+        type: array
+      name:
+        type: string
+      network:
+        type: string
+      ocId:
+        type: integer
+      os:
+        type: string
+      pool:
+        type: string
+      ports:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Port'
+        type: array
+      pullImage:
+        type: boolean
+      restart:
+        type: string
+      restartRetries:
+        type: integer
+      shmSize:
+        type: string
+      stack:
+        type: string
+      startAfterCreate:
+        type: boolean
+      startAtBoot:
+        type: boolean
+      startOrder:
+        type: integer
+      stopTimeout:
+        type: integer
+      user:
+        type: string
+      webHttps:
+        type: boolean
+      webPort:
+        type: integer
+      workDir:
+        type: string
+    required:
+    - name
+    - ocId
+    - pool
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.Detail:
+    properties:
+      annotations:
+        additionalProperties:
+          type: string
+        type: object
+      catalogApp:
+        type: string
+      command:
+        items:
+          type: string
+        type: array
+      cores:
+        type: integer
+      cpuUsage:
+        type: number
+      createdAt:
+        type: string
+      creationPending:
+        type: boolean
+      description:
+        type: string
+      entrypoint:
+        items:
+          type: string
+        type: array
+      env:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.EnvVar'
+        type: array
+      extraHosts:
+        items:
+          type: string
+        type: array
+      hostname:
+        type: string
+      id:
+        type: integer
+      image:
+        type: string
+      ip:
+        type: string
+      memory:
+        type: integer
+      memoryUsage:
+        type: number
+      mounts:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Mount'
+        type: array
+      name:
+        type: string
+      network:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Network'
+      networkId:
+        type: integer
+      ocId:
+        type: integer
+      os:
+        type: string
+      pool:
+        type: string
+      ports:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Port'
+        type: array
+      restart:
+        type: string
+      restartRetries:
+        type: integer
+      runtime:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.State'
+      runtimeId:
+        type: string
+      shmSize:
+        type: string
+      stack:
+        type: string
+      startAtBoot:
+        type: boolean
+      startOrder:
+        type: integer
+      stopTimeout:
+        type: integer
+      updatedAt:
+        type: string
+      user:
+        type: string
+      webHttps:
+        type: boolean
+      webPort:
+        type: integer
+      workDir:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.Image:
+    properties:
+      created:
+        type: string
+      id:
+        type: string
+      names:
+        items:
+          type: string
+        type: array
+      size:
+        type: integer
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.ImageInfo:
+    properties:
+      description:
+        type: string
+      digest:
+        type: string
+      exposedPorts:
+        items:
+          type: string
+        type: array
+      id:
+        type: string
+      size:
+        type: integer
+      title:
+        type: string
+      url:
+        type: string
+      version:
+        type: string
+      volumes:
+        items:
+          type: string
+        type: array
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.ListItem:
+    properties:
+      annotations:
+        additionalProperties:
+          type: string
+        type: object
+      catalogApp:
+        type: string
+      command:
+        items:
+          type: string
+        type: array
+      cores:
+        type: integer
+      createdAt:
+        type: string
+      creationPending:
+        type: boolean
+      description:
+        type: string
+      entrypoint:
+        items:
+          type: string
+        type: array
+      env:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.EnvVar'
+        type: array
+      extraHosts:
+        items:
+          type: string
+        type: array
+      hostname:
+        type: string
+      id:
+        type: integer
+      image:
+        type: string
+      ip:
+        type: string
+      memory:
+        type: integer
+      mounts:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Mount'
+        type: array
+      name:
+        type: string
+      network:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Network'
+      networkId:
+        type: integer
+      ocId:
+        type: integer
+      os:
+        type: string
+      pool:
+        type: string
+      ports:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Port'
+        type: array
+      restart:
+        type: string
+      restartRetries:
+        type: integer
+      runtimeId:
+        type: string
+      shmSize:
+        type: string
+      stack:
+        type: string
+      startAtBoot:
+        type: boolean
+      startOrder:
+        type: integer
+      state:
+        type: string
+      stopTimeout:
+        type: integer
+      updatedAt:
+        type: string
+      user:
+        type: string
+      webHttps:
+        type: boolean
+      webPort:
+        type: integer
+      workDir:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.NetworkRequest:
+    properties:
+      gateway:
+        type: string
+      name:
+        type: string
+      rangeEnd:
+        type: string
+      rangeStart:
+        type: string
+      subnet:
+        type: string
+      switch:
+        type: string
+    required:
+    - name
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.OptionsRequest:
+    properties:
+      cores:
+        type: integer
+      description:
+        type: string
+      memory:
+        type: integer
+      name:
+        type: string
+      startAtBoot:
+        type: boolean
+      startOrder:
+        type: integer
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.RegistryCredentialRequest:
+    properties:
+      password:
+        type: string
+      registry:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - registry
+    - username
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.Spec:
+    properties:
+      annotations:
+        additionalProperties:
+          type: string
+        type: object
+      command:
+        items:
+          type: string
+        type: array
+      entrypoint:
+        items:
+          type: string
+        type: array
+      env:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.EnvVar'
+        type: array
+      extraHosts:
+        items:
+          type: string
+        type: array
+      hostname:
+        type: string
+      image:
+        type: string
+      ip:
+        type: string
+      mounts:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Mount'
+        type: array
+      network:
+        type: string
+      os:
+        type: string
+      ports:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Port'
+        type: array
+      pullImage:
+        type: boolean
+      restart:
+        type: string
+      restartRetries:
+        type: integer
+      shmSize:
+        type: string
+      stopTimeout:
+        type: integer
+      user:
+        type: string
+      workDir:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.StackRequest:
+    properties:
+      containers:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CreateRequest'
+        type: array
+      ocId:
+        type: integer
+      pool:
+        type: string
+      stack:
+        type: string
+      startAtBoot:
+        type: boolean
+    required:
+    - containers
+    - ocId
+    - pool
+    - stack
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.State:
+    properties:
+      exitCode:
+        type: integer
+      finishedAt:
+        type: string
+      ips:
+        items:
+          type: string
+        type: array
+      macs:
+        items:
+          type: string
+        type: array
+      startedAt:
+        type: string
+      state:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.UsedPort:
+    properties:
+      address:
+        type: string
+      by:
+        type: string
+      port:
+        type: integer
+      protocol:
+        type: string
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_disk.Disk:
     properties:
@@ -9773,6 +10692,8 @@ definitions:
     properties:
       createdAt:
         type: string
+      externallyManaged:
+        type: boolean
       id:
         type: integer
       name:
@@ -9788,6 +10709,8 @@ definitions:
     type: object
   internal_handlers_auth.PublicGroupSummary:
     properties:
+      externallyManaged:
+        type: boolean
       id:
         type: integer
       name:
@@ -9809,6 +10732,8 @@ definitions:
         type: boolean
       email:
         type: string
+      externallyManaged:
+        type: boolean
       fullName:
         type: string
       groups:
@@ -9978,6 +10903,48 @@ definitions:
         type: string
       snapshot:
         type: string
+    type: object
+  internal_handlers_container.PullImageRequest:
+    properties:
+      image:
+        type: string
+      os:
+        type: string
+    required:
+    - image
+    type: object
+  internal_handlers_container.StackMember:
+    properties:
+      name:
+        type: string
+      ocId:
+        type: integer
+    type: object
+  internal_handlers_container.StackResponse:
+    properties:
+      action:
+        type: string
+      containers:
+        items:
+          $ref: '#/definitions/internal_handlers_container.StackMember'
+        type: array
+      ocId:
+        type: integer
+      outcome:
+        type: string
+      taskId:
+        type: integer
+    type: object
+  internal_handlers_container.TaskResponse:
+    properties:
+      action:
+        type: string
+      ocId:
+        type: integer
+      outcome:
+        type: string
+      taskId:
+        type: integer
     type: object
   internal_handlers_directoryservices.EnabledInput:
     properties:
@@ -10848,6 +11815,8 @@ definitions:
     type: object
   internal_handlers_system.ServiceStateResponse:
     properties:
+      applied:
+        type: boolean
       changed:
         type: boolean
       enabled:
@@ -11190,6 +12159,8 @@ definitions:
     properties:
       destroyMoreRecent:
         type: boolean
+      name:
+        type: string
     type: object
   libvirt.DomainState:
     enum:
@@ -11258,7 +12229,8 @@ info:
 paths:
   /auth/groups:
     get:
-      description: List all managed groups and their public user records
+      description: List registered groups and their public user records, including
+        read-only externally managed groups
       produces:
       - application/json
       responses:
@@ -11286,7 +12258,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a managed Unix group with PAM-backed members
+      description: Create a managed Unix group with locally managed PAM-backed members;
+        externally managed users cannot be added
       parameters:
       - description: Group creation request
         in: body
@@ -11340,7 +12313,8 @@ paths:
       - Groups
   /auth/groups/{groupId}:
     delete:
-      description: Delete a managed group that is not protected or referenced
+      description: Delete a managed group that is not protected or referenced and
+        has no externally managed members; directory groups are read-only
       parameters:
       - description: Positive Group ID
         in: path
@@ -11391,8 +12365,9 @@ paths:
     put:
       consumes:
       - application/json
-      description: Replace all editable members of a managed group; an empty list
-        removes all supplementary members
+      description: Replace all editable members of a managed group; externally managed
+        memberships and required primary members must remain unchanged; directory
+        groups are read-only
       parameters:
       - description: Positive Group ID
         in: path
@@ -11864,9 +12839,10 @@ paths:
       - Users
   /auth/users/{userId}:
     delete:
-      description: Delete a user by its positive database ID; PAM-backed users also
-        lose their managed Unix account and associated integrations, but retain their
-        home unless removal is explicitly requested
+      description: Delete a user by its positive database ID; managed PAM users also
+        lose their Unix account and integrations, retaining their home unless removal
+        is requested; externally managed PAM users are only unregistered from Sylve
+        and cannot request home removal
       parameters:
       - description: User ID
         in: path
@@ -11922,8 +12898,10 @@ paths:
       consumes:
       - application/json
       description: Replace the editable representation of a user identified by its
-        positive database ID; new passwords are limited to 72 UTF-8 bytes; a PAM password
-        change synchronizes Unix and Sylve credentials and Samba intent is explicit
+        positive database ID; new passwords are limited to 72 UTF-8 bytes; managed
+        PAM password changes synchronize Unix and Sylve credentials; externally managed
+        PAM identities require unchanged Unix fields and only update Sylve settings
+        and credentials
       parameters:
       - description: User ID
         in: path
@@ -12106,9 +13084,10 @@ paths:
     post:
       consumes:
       - application/json
-      description: Adopt an existing Unix account as a managed PAM-backed Sylve user
-        without changing its Unix password or group membership; the optional Sylve
-        password is limited to 72 UTF-8 bytes
+      description: Register an existing NSS-resolvable Unix identity without changing
+        its password or groups; directory identities remain externally managed, while
+        local accounts are adopted as managed PAM users; the optional Sylve password
+        is limited to 72 UTF-8 bytes; lookup by name does not require enumeration
       parameters:
       - description: Import user settings
         in: body
@@ -12162,7 +13141,9 @@ paths:
       - Users
   /auth/users/importable:
     get:
-      description: List eligible Unix accounts that do not yet have a Sylve user record
+      description: List eligible enumerated Unix accounts that do not yet have a Sylve
+        user record; directory users may be importable by name even when enumeration
+        is disabled
       produces:
       - application/json
       responses:
@@ -14254,7 +15235,7 @@ paths:
       consumes:
       - application/json
       description: Join an existing cluster. A returning node uses the same endpoint,
-        and all of its current VM and jail IDs must be free in the cluster.
+        and all of its current VM, jail and container IDs must be free in the cluster.
       parameters:
       - description: Join Cluster Request
         in: body
@@ -15408,6 +16389,662 @@ paths:
       summary: Resync Cluster State
       tags:
       - Cluster
+  /container:
+    get:
+      description: List containers with their live state
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_ListItem'
+      security:
+      - BearerAuth: []
+      summary: List containers
+      tags:
+      - Container
+    post:
+      consumes:
+      - application/json
+      description: Queue the creation of a container; the image is pulled if missing
+      parameters:
+      - description: Container
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CreateRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_container_TaskResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a container
+      tags:
+      - Container
+  /container/{ocid}:
+    delete:
+      description: Queue deletion of a container; volumes are kept unless deleteVolumes
+        is true
+      parameters:
+      - description: Container ID
+        in: path
+        name: ocid
+        required: true
+        type: integer
+      - description: Destroy the container's volumes
+        in: query
+        name: deleteVolumes
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_container_TaskResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a container
+      tags:
+      - Container
+    get:
+      description: Get a container's configuration and live Podman state
+      parameters:
+      - description: Container ID
+        in: path
+        name: ocid
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_container_Detail'
+      security:
+      - BearerAuth: []
+      summary: Get a container
+      tags:
+      - Container
+    put:
+      consumes:
+      - application/json
+      description: Queue recreation of a container from an edited spec, keeping its
+        volumes
+      parameters:
+      - description: Container ID
+        in: path
+        name: ocid
+        required: true
+        type: integer
+      - description: Spec
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.Spec'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_container_TaskResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a container
+      tags:
+      - Container
+  /container/{ocid}/actions/{action}:
+    post:
+      description: Queue a start, stop, restart, or kill action for a container
+      parameters:
+      - description: Container ID
+        in: path
+        name: ocid
+        required: true
+        type: integer
+      - description: Lifecycle action
+        enum:
+        - start
+        - stop
+        - restart
+        - kill
+        in: path
+        name: action
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_container_TaskResponse'
+      security:
+      - BearerAuth: []
+      summary: Queue a container lifecycle action
+      tags:
+      - Container
+  /container/{ocid}/console:
+    get:
+      description: Open an interactive shell in a running container
+      parameters:
+      - description: Container ID
+        in: path
+        name: ocid
+        required: true
+        type: integer
+      - default: /bin/sh
+        description: Shell to run
+        in: query
+        name: shell
+        type: string
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Open a container console WebSocket
+      tags:
+      - Container
+  /container/{ocid}/image:
+    get:
+      description: Get details of the image a container was created from
+      parameters:
+      - description: Container ID
+        in: path
+        name: ocid
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_container_ImageInfo'
+      security:
+      - BearerAuth: []
+      summary: Get a container's image
+      tags:
+      - Container
+  /container/{ocid}/logs:
+    get:
+      description: Get the last lines of a container's output
+      parameters:
+      - description: Container ID
+        in: path
+        name: ocid
+        required: true
+        type: integer
+      - default: 500
+        description: Number of lines
+        in: query
+        name: tail
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-string'
+      security:
+      - BearerAuth: []
+      summary: Get container logs
+      tags:
+      - Container
+  /container/{ocid}/options:
+    patch:
+      consumes:
+      - application/json
+      description: Change a container's name, description, or boot options without
+        recreating it
+      parameters:
+      - description: Container ID
+        in: path
+        name: ocid
+        required: true
+        type: integer
+      - description: Options
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.OptionsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Update container options
+      tags:
+      - Container
+  /container/{ocid}/stats:
+    get:
+      description: Get the finest available CPU and memory usage window for a container
+      parameters:
+      - description: Container ID
+        in: path
+        name: ocid
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_StatsBootstrap-github_com_alchemillahq_sylve_internal_db_models_container_Stats'
+      security:
+      - BearerAuth: []
+      summary: Get initial container statistics
+      tags:
+      - Container
+  /container/{ocid}/stats/{step}:
+    get:
+      description: Get CPU and memory usage for a container over a window
+      parameters:
+      - description: Container ID
+        in: path
+        name: ocid
+        required: true
+        type: integer
+      - description: Window step
+        in: path
+        name: step
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_container_Stats'
+      security:
+      - BearerAuth: []
+      summary: Get container statistics
+      tags:
+      - Container
+  /container/catalog:
+    get:
+      description: List the apps in the daemonless catalogs that run on this host
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_CatalogApp'
+      security:
+      - BearerAuth: []
+      summary: List catalog apps
+      tags:
+      - Container
+  /container/catalog/{source}/{id}:
+    get:
+      parameters:
+      - description: Catalog
+        in: path
+        name: source
+        required: true
+        type: string
+      - description: App ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_container_CatalogTemplate'
+      security:
+      - BearerAuth: []
+      summary: Get a catalog app's settings
+      tags:
+      - Container
+  /container/catalog/{source}/{id}/icon:
+    get:
+      parameters:
+      - description: Catalog
+        in: path
+        name: source
+        required: true
+        type: string
+      - description: App ID; without it, the catalog's logo
+        in: path
+        name: id
+        type: string
+      produces:
+      - image/svg+xml
+      - image/png
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Get a catalog app's icon, or the catalog's logo
+      tags:
+      - Container
+  /container/catalog/{source}/{id}/render:
+    post:
+      consumes:
+      - application/json
+      description: 'Turn a catalog app and its settings into the containers to create:
+        one, or a stack'
+      parameters:
+      - description: Catalog
+        in: path
+        name: source
+        required: true
+        type: string
+      - description: App ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Settings
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogRenderRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_container_CatalogPlan'
+      security:
+      - BearerAuth: []
+      summary: Render a catalog app
+      tags:
+      - Container
+  /container/catalog/{source}/icon:
+    get:
+      parameters:
+      - description: Catalog
+        in: path
+        name: source
+        required: true
+        type: string
+      produces:
+      - image/svg+xml
+      - image/png
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Get a catalog app's icon, or the catalog's logo
+      tags:
+      - Container
+  /container/images/{pool}:
+    get:
+      parameters:
+      - description: Pool
+        in: path
+        name: pool
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_Image'
+      security:
+      - BearerAuth: []
+      summary: List images on a pool
+      tags:
+      - Container
+  /container/images/{pool}/{id}:
+    delete:
+      parameters:
+      - description: Pool
+        in: path
+        name: pool
+        required: true
+        type: string
+      - description: Image ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Remove an image from a pool
+      tags:
+      - Container
+  /container/images/{pool}/prune:
+    post:
+      parameters:
+      - description: Pool
+        in: path
+        name: pool
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Remove unused images from a pool
+      tags:
+      - Container
+  /container/images/{pool}/pull:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Pool
+        in: path
+        name: pool
+        required: true
+        type: string
+      - description: Image
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_container.PullImageRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Pull an image to a pool
+      tags:
+      - Container
+  /container/networks:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_container_Network'
+      security:
+      - BearerAuth: []
+      summary: List container networks
+      tags:
+      - Container
+    post:
+      consumes:
+      - application/json
+      description: Create a NAT bridge network, or with a switch, a network attached
+        to that switch
+      parameters:
+      - description: Network
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.NetworkRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_container_Network'
+      security:
+      - BearerAuth: []
+      summary: Create a container network
+      tags:
+      - Container
+  /container/networks/{id}:
+    delete:
+      parameters:
+      - description: Network ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete a container network
+      tags:
+      - Container
+  /container/ports:
+    get:
+      description: List the host ports something listens on or another container publishes
+      parameters:
+      - description: Leave out this container's own ports
+        in: query
+        name: ocid
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_UsedPort'
+      security:
+      - BearerAuth: []
+      summary: List used host ports
+      tags:
+      - Container
+  /container/registry-credentials:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_container_RegistryCredential'
+      security:
+      - BearerAuth: []
+      summary: List registry credentials
+      tags:
+      - Container
+    put:
+      consumes:
+      - application/json
+      description: Add or replace the login used to pull from a registry
+      parameters:
+      - description: Credential
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.RegistryCredentialRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_container_RegistryCredential'
+      security:
+      - BearerAuth: []
+      summary: Save a registry credential
+      tags:
+      - Container
+  /container/registry-credentials/{id}:
+    delete:
+      parameters:
+      - description: Credential ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete a registry credential
+      tags:
+      - Container
+  /container/stack:
+    post:
+      consumes:
+      - application/json
+      description: Queue the creation of the containers of a catalog app that runs
+        as several, on a network of their own, with the free container IDs from ocId
+        on. The task belongs to the first container; when a container cannot be created
+        or started, none are kept.
+      parameters:
+      - description: Stack
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.StackRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_container_StackResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a catalog app's stack
+      tags:
+      - Container
   /directory-services/active-directory:
     get:
       produces:
@@ -25487,6 +27124,7 @@ paths:
         enum:
         - vm
         - jail
+        - container
         - jail-template
         - vm-template
         in: query
@@ -25534,6 +27172,7 @@ paths:
         enum:
         - vm
         - jail
+        - container
         - jail-template
         - vm-template
         in: path
@@ -25583,6 +27222,7 @@ paths:
         enum:
         - vm
         - jail
+        - container
         - jail-template
         - vm-template
         in: query
@@ -29819,6 +31459,10 @@ paths:
         in: path
         name: guid
         required: true
+        type: string
+      - description: Full snapshot name; required when the GUID has multiple copies
+        in: query
+        name: name
         type: string
       - default: false
         description: Recursively delete descendant snapshots

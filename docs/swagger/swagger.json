@@ -25,7 +25,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "List all managed groups and their public user records",
+                "description": "List registered groups and their public user records, including read-only externally managed groups",
                 "produces": [
                     "application/json"
                 ],
@@ -66,7 +66,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a managed Unix group with PAM-backed members",
+                "description": "Create a managed Unix group with locally managed PAM-backed members; externally managed users cannot be added",
                 "consumes": [
                     "application/json"
                 ],
@@ -153,7 +153,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Delete a managed group that is not protected or referenced",
+                "description": "Delete a managed group that is not protected or referenced and has no externally managed members; directory groups are read-only",
                 "produces": [
                     "application/json"
                 ],
@@ -229,7 +229,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replace all editable members of a managed group; an empty list removes all supplementary members",
+                "description": "Replace all editable members of a managed group; externally managed memberships and required primary members must remain unchanged; directory groups are read-only",
                 "consumes": [
                     "application/json"
                 ],
@@ -995,7 +995,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Adopt an existing Unix account as a managed PAM-backed Sylve user without changing its Unix password or group membership; the optional Sylve password is limited to 72 UTF-8 bytes",
+                "description": "Register an existing NSS-resolvable Unix identity without changing its password or groups; directory identities remain externally managed, while local accounts are adopted as managed PAM users; the optional Sylve password is limited to 72 UTF-8 bytes; lookup by name does not require enumeration",
                 "consumes": [
                     "application/json"
                 ],
@@ -1082,7 +1082,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "List eligible Unix accounts that do not yet have a Sylve user record",
+                "description": "List eligible enumerated Unix accounts that do not yet have a Sylve user record; directory users may be importable by name even when enumeration is disabled",
                 "produces": [
                     "application/json"
                 ],
@@ -1261,7 +1261,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replace the editable representation of a user identified by its positive database ID; new passwords are limited to 72 UTF-8 bytes; a PAM password change synchronizes Unix and Sylve credentials and Samba intent is explicit",
+                "description": "Replace the editable representation of a user identified by its positive database ID; new passwords are limited to 72 UTF-8 bytes; managed PAM password changes synchronize Unix and Sylve credentials; externally managed PAM identities require unchanged Unix fields and only update Sylve settings and credentials",
                 "consumes": [
                     "application/json"
                 ],
@@ -1353,7 +1353,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Delete a user by its positive database ID; PAM-backed users also lose their managed Unix account and associated integrations, but retain their home unless removal is explicitly requested",
+                "description": "Delete a user by its positive database ID; managed PAM users also lose their Unix account and integrations, retaining their home unless removal is requested; externally managed PAM users are only unregistered from Sylve and cannot request home removal",
                 "produces": [
                     "application/json"
                 ],
@@ -4618,7 +4618,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Join an existing cluster. A returning node uses the same endpoint, and all of its current VM and jail IDs must be free in the cluster.",
+                "description": "Join an existing cluster. A returning node uses the same endpoint, and all of its current VM, jail and container IDs must be free in the cluster.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6381,6 +6381,1047 @@
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/container": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List containers with their live state",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "List containers",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_ListItem"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Queue the creation of a container; the image is pulled if missing",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Create a container",
+                "parameters": [
+                    {
+                        "description": "Container",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CreateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_container_TaskResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/catalog": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List the apps in the daemonless catalogs that run on this host",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "List catalog apps",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_CatalogApp"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/catalog/{source}/icon": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "image/svg+xml",
+                    "image/png"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Get a catalog app's icon, or the catalog's logo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Catalog",
+                        "name": "source",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/container/catalog/{source}/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Get a catalog app's settings",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Catalog",
+                        "name": "source",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_container_CatalogTemplate"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/catalog/{source}/{id}/icon": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "image/svg+xml",
+                    "image/png"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Get a catalog app's icon, or the catalog's logo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Catalog",
+                        "name": "source",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App ID; without it, the catalog's logo",
+                        "name": "id",
+                        "in": "path"
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/container/catalog/{source}/{id}/render": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Turn a catalog app and its settings into the containers to create: one, or a stack",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Render a catalog app",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Catalog",
+                        "name": "source",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Settings",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogRenderRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_container_CatalogPlan"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/images/{pool}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "List images on a pool",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Pool",
+                        "name": "pool",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_Image"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/images/{pool}/prune": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Remove unused images from a pool",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Pool",
+                        "name": "pool",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/images/{pool}/pull": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Pull an image to a pool",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Pool",
+                        "name": "pool",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Image",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_container.PullImageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/images/{pool}/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Remove an image from a pool",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Pool",
+                        "name": "pool",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Image ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/networks": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "List container networks",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_container_Network"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a NAT bridge network, or with a switch, a network attached to that switch",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Create a container network",
+                "parameters": [
+                    {
+                        "description": "Network",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.NetworkRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_container_Network"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/networks/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Delete a container network",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Network ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/ports": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List the host ports something listens on or another container publishes",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "List used host ports",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Leave out this container's own ports",
+                        "name": "ocid",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_UsedPort"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/registry-credentials": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "List registry credentials",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_container_RegistryCredential"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Add or replace the login used to pull from a registry",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Save a registry credential",
+                "parameters": [
+                    {
+                        "description": "Credential",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.RegistryCredentialRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_container_RegistryCredential"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/registry-credentials/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Delete a registry credential",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Credential ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/stack": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Queue the creation of the containers of a catalog app that runs as several, on a network of their own, with the free container IDs from ocId on. The task belongs to the first container; when a container cannot be created or started, none are kept.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Create a catalog app's stack",
+                "parameters": [
+                    {
+                        "description": "Stack",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.StackRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_container_StackResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/{ocid}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get a container's configuration and live Podman state",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Get a container",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Container ID",
+                        "name": "ocid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_container_Detail"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Queue recreation of a container from an edited spec, keeping its volumes",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Update a container",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Container ID",
+                        "name": "ocid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Spec",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.Spec"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_container_TaskResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Queue deletion of a container; volumes are kept unless deleteVolumes is true",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Delete a container",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Container ID",
+                        "name": "ocid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Destroy the container's volumes",
+                        "name": "deleteVolumes",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_container_TaskResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/{ocid}/actions/{action}": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Queue a start, stop, restart, or kill action for a container",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Queue a container lifecycle action",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Container ID",
+                        "name": "ocid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "start",
+                            "stop",
+                            "restart",
+                            "kill"
+                        ],
+                        "type": "string",
+                        "description": "Lifecycle action",
+                        "name": "action",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_container_TaskResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/{ocid}/console": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Open an interactive shell in a running container",
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Open a container console WebSocket",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Container ID",
+                        "name": "ocid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "/bin/sh",
+                        "description": "Shell to run",
+                        "name": "shell",
+                        "in": "query"
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/container/{ocid}/image": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get details of the image a container was created from",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Get a container's image",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Container ID",
+                        "name": "ocid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_container_ImageInfo"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/{ocid}/logs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get the last lines of a container's output",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Get container logs",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Container ID",
+                        "name": "ocid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "default": 500,
+                        "description": "Number of lines",
+                        "name": "tail",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-string"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/{ocid}/options": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Change a container's name, description, or boot options without recreating it",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Update container options",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Container ID",
+                        "name": "ocid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Options",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.OptionsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/{ocid}/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get the finest available CPU and memory usage window for a container",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Get initial container statistics",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Container ID",
+                        "name": "ocid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_StatsBootstrap-github_com_alchemillahq_sylve_internal_db_models_container_Stats"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/{ocid}/stats/{step}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get CPU and memory usage for a container over a window",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Get container statistics",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Container ID",
+                        "name": "ocid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Window step",
+                        "name": "step",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_container_Stats"
                         }
                     }
                 }
@@ -21810,6 +22851,7 @@
                         "enum": [
                             "vm",
                             "jail",
+                            "container",
                             "jail-template",
                             "vm-template"
                         ],
@@ -21880,6 +22922,7 @@
                         "enum": [
                             "vm",
                             "jail",
+                            "container",
                             "jail-template",
                             "vm-template"
                         ],
@@ -21952,6 +22995,7 @@
                         "enum": [
                             "vm",
                             "jail",
+                            "container",
                             "jail-template",
                             "vm-template"
                         ],
@@ -28652,6 +29696,12 @@
                         "required": true
                     },
                     {
+                        "type": "string",
+                        "description": "Full snapshot name; required when the GUID has multiple copies",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
                         "type": "boolean",
                         "default": false,
                         "description": "Recursively delete descendant snapshots",
@@ -29974,6 +31024,66 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_container_Network": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Network"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_container_RegistryCredential": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.RegistryCredential"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_container_Stats": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Stats"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosKeytab": {
             "type": "object",
             "properties": {
@@ -30501,6 +31611,86 @@
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeResources"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_CatalogApp": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogApp"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_Image": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.Image"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_ListItem": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.ListItem"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_UsedPort": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.UsedPort"
                     }
                 },
                 "error": {
@@ -31114,6 +32304,23 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_StatsBootstrap-github_com_alchemillahq_sylve_internal_db_models_container_Stats": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db.StatsBootstrap-github_com_alchemillahq_sylve_internal_db_models_container_Stats"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_StatsBootstrap-github_com_alchemillahq_sylve_internal_db_models_jail_JailStats": {
             "type": "object",
             "properties": {
@@ -31204,6 +32411,40 @@
             "properties": {
                 "data": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ReplicationEvent"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_container_Network": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Network"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_container_RegistryCredential": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.RegistryCredential"
                 },
                 "error": {
                     "type": "string"
@@ -31646,6 +32887,74 @@
             "properties": {
                 "data": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_cluster.ClusterDetails"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_container_CatalogPlan": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogPlan"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_container_CatalogTemplate": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogTemplate"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_container_Detail": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.Detail"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_container_ImageInfo": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.ImageInfo"
                 },
                 "error": {
                     "type": "string"
@@ -32848,6 +34157,40 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_container_StackResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers_container.StackResponse"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_container_TaskResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers_container.TaskResponse"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_events_CreateSSETokenResponse": {
             "type": "object",
             "properties": {
@@ -33307,6 +34650,23 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-string": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-uint": {
             "type": "object",
             "properties": {
@@ -33342,6 +34702,26 @@
                 "GFSStepMonthly",
                 "GFSStepYearly"
             ]
+        },
+        "github_com_alchemillahq_sylve_internal_db.StatsBootstrap-github_com_alchemillahq_sylve_internal_db_models_container_Stats": {
+            "type": "object",
+            "properties": {
+                "historyState": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db.StatsHistoryState"
+                },
+                "lastSampleAt": {
+                    "type": "string"
+                },
+                "points": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Stats"
+                    }
+                },
+                "resolvedStep": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db.GFSStep"
+                }
+            }
         },
         "github_com_alchemillahq_sylve_internal_db.StatsBootstrap-github_com_alchemillahq_sylve_internal_db_models_jail_JailStats": {
             "type": "object",
@@ -33407,7 +34787,9 @@
                 "firewall",
                 "wireguard",
                 "iscsi",
-                "mdns"
+                "nfs",
+                "mdns",
+                "containers"
             ],
             "x-enum-varnames": [
                 "DHCPServer",
@@ -33418,7 +34800,9 @@
                 "Firewall",
                 "WireGuard",
                 "ISCSI",
-                "Mdns"
+                "NFS",
+                "Mdns",
+                "Containers"
             ]
         },
         "github_com_alchemillahq_sylve_internal_db_models.BasicSettings": {
@@ -33872,6 +35256,9 @@
                 "content": {
                     "type": "string"
                 },
+                "contentHtml": {
+                    "type": "string"
+                },
                 "createdAt": {
                     "type": "string"
                 },
@@ -34156,6 +35543,151 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_db_models_container.EnvVar": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_container.Mount": {
+            "type": "object",
+            "properties": {
+                "guid": {
+                    "type": "string"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "owner": {
+                    "type": "string"
+                },
+                "readOnly": {
+                    "type": "boolean"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "target": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.MountType"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_container.MountType": {
+            "type": "string",
+            "enum": [
+                "volume",
+                "dataset",
+                "path"
+            ],
+            "x-enum-varnames": [
+                "MountVolume",
+                "MountDataset",
+                "MountPath"
+            ]
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_container.Network": {
+            "type": "object",
+            "properties": {
+                "bridge": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "gateway": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "rangeEnd": {
+                    "type": "string"
+                },
+                "rangeStart": {
+                    "type": "string"
+                },
+                "subnet": {
+                    "type": "string"
+                },
+                "switchId": {
+                    "type": "integer"
+                },
+                "switchType": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_container.Port": {
+            "type": "object",
+            "properties": {
+                "containerPort": {
+                    "type": "integer"
+                },
+                "hostIp": {
+                    "type": "string"
+                },
+                "hostPort": {
+                    "type": "integer"
+                },
+                "protocol": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_container.RegistryCredential": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "registry": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_container.Stats": {
+            "type": "object",
+            "properties": {
+                "containerId": {
+                    "type": "integer"
+                },
+                "cpuUsage": {
+                    "type": "number"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "memoryUsage": {
+                    "type": "number"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_db_models_directoryservices.ActiveDirectory": {
             "type": "object",
             "properties": {
@@ -34407,6 +35939,9 @@
             "type": "object",
             "properties": {
                 "content": {
+                    "type": "string"
+                },
+                "contentHtml": {
                     "type": "string"
                 },
                 "createdAt": {
@@ -37337,6 +38872,12 @@
         "github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeResources": {
             "type": "object",
             "properties": {
+                "containers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.ListItem"
+                    }
+                },
                 "hostname": {
                     "type": "string"
                 },
@@ -37463,6 +39004,908 @@
                 },
                 "weight": {
                     "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogApp": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "os": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "stack": {
+                    "type": "boolean"
+                },
+                "variants": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogVariant"
+                    }
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogChoice": {
+            "type": "object",
+            "properties": {
+                "default": {
+                    "type": "string"
+                },
+                "doc": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogChoiceOption"
+                    }
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogChoiceOption": {
+            "type": "object",
+            "properties": {
+                "adds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "ask": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogVariable"
+                    }
+                },
+                "doc": {
+                    "type": "string"
+                },
+                "drops": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogPlan": {
+            "type": "object",
+            "properties": {
+                "containers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CreateRequest"
+                    }
+                },
+                "stack": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogRenderRequest": {
+            "type": "object",
+            "properties": {
+                "choices": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "values": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "variant": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogTemplate": {
+            "type": "object",
+            "properties": {
+                "app": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogApp"
+                },
+                "choices": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogChoice"
+                    }
+                },
+                "containers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "variables": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogVariable"
+                    }
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogVariable": {
+            "type": "object",
+            "properties": {
+                "advanced": {
+                    "type": "boolean"
+                },
+                "default": {
+                    "type": "string"
+                },
+                "hint": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "optional": {
+                    "type": "boolean"
+                },
+                "owner": {
+                    "type": "string"
+                },
+                "protocol": {
+                    "type": "string"
+                },
+                "target": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "values": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "volume": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogVariant": {
+            "type": "object",
+            "properties": {
+                "default": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "image": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.CreateRequest": {
+            "type": "object",
+            "required": [
+                "name",
+                "ocId",
+                "pool"
+            ],
+            "properties": {
+                "annotations": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "catalogApp": {
+                    "type": "string"
+                },
+                "command": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "cores": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "entrypoint": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "env": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.EnvVar"
+                    }
+                },
+                "extraHosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "hostname": {
+                    "type": "string"
+                },
+                "image": {
+                    "type": "string"
+                },
+                "ip": {
+                    "type": "string"
+                },
+                "memory": {
+                    "type": "integer"
+                },
+                "mounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Mount"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "network": {
+                    "type": "string"
+                },
+                "ocId": {
+                    "type": "integer"
+                },
+                "os": {
+                    "type": "string"
+                },
+                "pool": {
+                    "type": "string"
+                },
+                "ports": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Port"
+                    }
+                },
+                "pullImage": {
+                    "type": "boolean"
+                },
+                "restart": {
+                    "type": "string"
+                },
+                "restartRetries": {
+                    "type": "integer"
+                },
+                "shmSize": {
+                    "type": "string"
+                },
+                "stack": {
+                    "type": "string"
+                },
+                "startAfterCreate": {
+                    "type": "boolean"
+                },
+                "startAtBoot": {
+                    "type": "boolean"
+                },
+                "startOrder": {
+                    "type": "integer"
+                },
+                "stopTimeout": {
+                    "type": "integer"
+                },
+                "user": {
+                    "type": "string"
+                },
+                "webHttps": {
+                    "type": "boolean"
+                },
+                "webPort": {
+                    "type": "integer"
+                },
+                "workDir": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.Detail": {
+            "type": "object",
+            "properties": {
+                "annotations": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "catalogApp": {
+                    "type": "string"
+                },
+                "command": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "cores": {
+                    "type": "integer"
+                },
+                "cpuUsage": {
+                    "type": "number"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "creationPending": {
+                    "type": "boolean"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "entrypoint": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "env": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.EnvVar"
+                    }
+                },
+                "extraHosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "hostname": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "image": {
+                    "type": "string"
+                },
+                "ip": {
+                    "type": "string"
+                },
+                "memory": {
+                    "type": "integer"
+                },
+                "memoryUsage": {
+                    "type": "number"
+                },
+                "mounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Mount"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "network": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Network"
+                },
+                "networkId": {
+                    "type": "integer"
+                },
+                "ocId": {
+                    "type": "integer"
+                },
+                "os": {
+                    "type": "string"
+                },
+                "pool": {
+                    "type": "string"
+                },
+                "ports": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Port"
+                    }
+                },
+                "restart": {
+                    "type": "string"
+                },
+                "restartRetries": {
+                    "type": "integer"
+                },
+                "runtime": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.State"
+                },
+                "runtimeId": {
+                    "type": "string"
+                },
+                "shmSize": {
+                    "type": "string"
+                },
+                "stack": {
+                    "type": "string"
+                },
+                "startAtBoot": {
+                    "type": "boolean"
+                },
+                "startOrder": {
+                    "type": "integer"
+                },
+                "stopTimeout": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "user": {
+                    "type": "string"
+                },
+                "webHttps": {
+                    "type": "boolean"
+                },
+                "webPort": {
+                    "type": "integer"
+                },
+                "workDir": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.Image": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "names": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "size": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.ImageInfo": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "digest": {
+                    "type": "string"
+                },
+                "exposedPorts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                },
+                "volumes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.ListItem": {
+            "type": "object",
+            "properties": {
+                "annotations": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "catalogApp": {
+                    "type": "string"
+                },
+                "command": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "cores": {
+                    "type": "integer"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "creationPending": {
+                    "type": "boolean"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "entrypoint": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "env": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.EnvVar"
+                    }
+                },
+                "extraHosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "hostname": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "image": {
+                    "type": "string"
+                },
+                "ip": {
+                    "type": "string"
+                },
+                "memory": {
+                    "type": "integer"
+                },
+                "mounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Mount"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "network": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Network"
+                },
+                "networkId": {
+                    "type": "integer"
+                },
+                "ocId": {
+                    "type": "integer"
+                },
+                "os": {
+                    "type": "string"
+                },
+                "pool": {
+                    "type": "string"
+                },
+                "ports": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Port"
+                    }
+                },
+                "restart": {
+                    "type": "string"
+                },
+                "restartRetries": {
+                    "type": "integer"
+                },
+                "runtimeId": {
+                    "type": "string"
+                },
+                "shmSize": {
+                    "type": "string"
+                },
+                "stack": {
+                    "type": "string"
+                },
+                "startAtBoot": {
+                    "type": "boolean"
+                },
+                "startOrder": {
+                    "type": "integer"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "stopTimeout": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "user": {
+                    "type": "string"
+                },
+                "webHttps": {
+                    "type": "boolean"
+                },
+                "webPort": {
+                    "type": "integer"
+                },
+                "workDir": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.NetworkRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "gateway": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "rangeEnd": {
+                    "type": "string"
+                },
+                "rangeStart": {
+                    "type": "string"
+                },
+                "subnet": {
+                    "type": "string"
+                },
+                "switch": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.OptionsRequest": {
+            "type": "object",
+            "properties": {
+                "cores": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "memory": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "startAtBoot": {
+                    "type": "boolean"
+                },
+                "startOrder": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.RegistryCredentialRequest": {
+            "type": "object",
+            "required": [
+                "password",
+                "registry",
+                "username"
+            ],
+            "properties": {
+                "password": {
+                    "type": "string"
+                },
+                "registry": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.Spec": {
+            "type": "object",
+            "properties": {
+                "annotations": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "command": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "entrypoint": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "env": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.EnvVar"
+                    }
+                },
+                "extraHosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "hostname": {
+                    "type": "string"
+                },
+                "image": {
+                    "type": "string"
+                },
+                "ip": {
+                    "type": "string"
+                },
+                "mounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Mount"
+                    }
+                },
+                "network": {
+                    "type": "string"
+                },
+                "os": {
+                    "type": "string"
+                },
+                "ports": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Port"
+                    }
+                },
+                "pullImage": {
+                    "type": "boolean"
+                },
+                "restart": {
+                    "type": "string"
+                },
+                "restartRetries": {
+                    "type": "integer"
+                },
+                "shmSize": {
+                    "type": "string"
+                },
+                "stopTimeout": {
+                    "type": "integer"
+                },
+                "user": {
+                    "type": "string"
+                },
+                "workDir": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.StackRequest": {
+            "type": "object",
+            "required": [
+                "containers",
+                "ocId",
+                "pool",
+                "stack"
+            ],
+            "properties": {
+                "containers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CreateRequest"
+                    }
+                },
+                "ocId": {
+                    "type": "integer"
+                },
+                "pool": {
+                    "type": "string"
+                },
+                "stack": {
+                    "type": "string"
+                },
+                "startAtBoot": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.State": {
+            "type": "object",
+            "properties": {
+                "exitCode": {
+                    "type": "integer"
+                },
+                "finishedAt": {
+                    "type": "string"
+                },
+                "ips": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "macs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.UsedPort": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "by": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "protocol": {
+                    "type": "string"
                 }
             }
         },
@@ -44471,6 +46914,9 @@
                 "createdAt": {
                     "type": "string"
                 },
+                "externallyManaged": {
+                    "type": "boolean"
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -44494,6 +46940,9 @@
         "internal_handlers_auth.PublicGroupSummary": {
             "type": "object",
             "properties": {
+                "externallyManaged": {
+                    "type": "boolean"
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -44525,6 +46974,9 @@
                 },
                 "email": {
                     "type": "string"
+                },
+                "externallyManaged": {
+                    "type": "boolean"
                 },
                 "fullName": {
                     "type": "string"
@@ -44783,6 +47235,71 @@
                 },
                 "snapshot": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handlers_container.PullImageRequest": {
+            "type": "object",
+            "required": [
+                "image"
+            ],
+            "properties": {
+                "image": {
+                    "type": "string"
+                },
+                "os": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handlers_container.StackMember": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "ocId": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_handlers_container.StackResponse": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "containers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handlers_container.StackMember"
+                    }
+                },
+                "ocId": {
+                    "type": "integer"
+                },
+                "outcome": {
+                    "type": "string"
+                },
+                "taskId": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_handlers_container.TaskResponse": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "ocId": {
+                    "type": "integer"
+                },
+                "outcome": {
+                    "type": "string"
+                },
+                "taskId": {
+                    "type": "integer"
                 }
             }
         },
@@ -46100,6 +48617,9 @@
         "internal_handlers_system.ServiceStateResponse": {
             "type": "object",
             "properties": {
+                "applied": {
+                    "type": "boolean"
+                },
                 "changed": {
                     "type": "boolean"
                 },
@@ -46626,6 +49146,9 @@
             "properties": {
                 "destroyMoreRecent": {
                     "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
                 }
             }
         },

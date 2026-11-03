@@ -21,6 +21,9 @@ import (
 	containerServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/container"
 	"github.com/alchemillahq/sylve/internal/services/container"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
+
+	_ "github.com/alchemillahq/sylve/internal/db/models/container"
+
 	"github.com/gin-gonic/gin"
 )
 

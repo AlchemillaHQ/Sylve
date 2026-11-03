@@ -7,6 +7,10 @@ import (
 	"strconv"
 
 	containerServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/container"
+
+	_ "github.com/alchemillahq/sylve/internal"
+	_ "github.com/alchemillahq/sylve/internal/db/models/container"
+
 	"github.com/gin-gonic/gin"
 )
 
