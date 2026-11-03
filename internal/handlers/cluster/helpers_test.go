@@ -111,6 +111,11 @@ func setupSingleRaftForTest(t *testing.T, id string) *raft.Raft {
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
 		if r.State() == raft.Leader {
+			// A new leader applies its startup entries asynchronously; wait so
+			// tests never see AppliedIndex advance on its own.
+			if err := r.Barrier(2 * time.Second).Error(); err != nil {
+				t.Fatalf("raft barrier: %v", err)
+			}
 			return r
 		}
 		time.Sleep(50 * time.Millisecond)
