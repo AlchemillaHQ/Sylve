@@ -852,139 +852,6 @@ func TestCloudnsUpsertSkipsInactiveRecordsInMixedSet(t *testing.T) {
 	}
 }
 
-func TestCloudnsUpsertRejectsInactiveOnlySet(t *testing.T) {
-	log := &cloudnsCallLog{}
-	recordsBody := cloudnsPage(t, map[string]map[string]any{
-		"1": cloudnsEntry("1", "A", "home", "203.0.113.1", "300", 0),
-	})
-
-	provider := cloudnsUpsertProvider(t, log, recordsBody, func(writer http.ResponseWriter, request *http.Request, _ url.Values) {
-		cloudnsUnexpected(t, writer, request)
-	})
-
-	err := provider.Upsert(context.Background(), "api-password", cloudnsSettings("example.com", "home"), "home.example.com", "A", netip.MustParseAddr("203.0.113.9"))
-	requireCloudnsProviderError(t, err, providerErrorPermanent)
-	if got := log.count(cloudnsModRecordPath) + log.count(cloudnsAddRecordPath) + log.count(cloudnsAvailableTTLPath); got != 0 {
-		t.Fatalf("expected no writes, got %d", got)
-	}
-}
-
-func TestCloudnsUpsertRejectsUnknownRecordStatus(t *testing.T) {
-	cases := []struct {
-		name  string
-		entry map[string]any
-	}{
-		{
-			name:  "missing status",
-			entry: map[string]any{"id": "1", "type": "A", "host": "home", "record": "203.0.113.1", "ttl": "300"},
-		},
-		{
-			name:  "unknown status value",
-			entry: cloudnsEntry("1", "A", "home", "203.0.113.1", "300", 2),
-		},
-	}
-
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			log := &cloudnsCallLog{}
-			recordsBody := cloudnsPage(t, map[string]map[string]any{"1": testCase.entry})
-			provider := cloudnsUpsertProvider(t, log, recordsBody, func(writer http.ResponseWriter, request *http.Request, _ url.Values) {
-				cloudnsUnexpected(t, writer, request)
-			})
-
-			err := provider.Upsert(context.Background(), "api-password", cloudnsSettings("example.com", "home"), "home.example.com", "A", netip.MustParseAddr("203.0.113.9"))
-			requireCloudnsProviderError(t, err, providerErrorTransient)
-			if got := log.count(cloudnsModRecordPath) + log.count(cloudnsAddRecordPath); got != 0 {
-				t.Fatalf("expected no writes, got %d", got)
-			}
-		})
-	}
-}
-
-func TestCloudnsUpsertRejectsGeoDNSRecord(t *testing.T) {
-	log := &cloudnsCallLog{}
-	entry := cloudnsEntry("1", "A", "home", "203.0.113.1", "300", 1)
-	entry["geodns-location-code"] = "eu-west"
-	recordsBody := cloudnsPage(t, map[string]map[string]any{"1": entry})
-
-	provider := cloudnsUpsertProvider(t, log, recordsBody, func(writer http.ResponseWriter, request *http.Request, _ url.Values) {
-		cloudnsUnexpected(t, writer, request)
-	})
-
-	err := provider.Upsert(context.Background(), "api-password", cloudnsSettings("example.com", "home"), "home.example.com", "A", netip.MustParseAddr("203.0.113.9"))
-	requireCloudnsProviderError(t, err, providerErrorPermanent)
-	if got := log.count(cloudnsModRecordPath) + log.count(cloudnsAddRecordPath); got != 0 {
-		t.Fatalf("expected no writes, got %d", got)
-	}
-}
-
-func TestCloudnsUpsertRejectsIncompleteRecordIdentity(t *testing.T) {
-	matching := cloudnsEntry("2", "A", "home", "203.0.113.1", "300", 1)
-	cases := []struct {
-		name    string
-		host    string
-		entries map[string]map[string]any
-	}{
-		{
-			name: "missing host on the apex",
-			host: cloudnsApexHost,
-			entries: map[string]map[string]any{
-				"1": {"id": "1", "type": "A", "record": "203.0.113.1", "ttl": "300", "status": 1},
-			},
-		},
-		{
-			name: "null host",
-			host: "home",
-			entries: map[string]map[string]any{
-				"1": {"id": "1", "type": "A", "host": nil, "record": "203.0.113.1", "ttl": "300", "status": 1},
-			},
-		},
-		{
-			name: "missing host beside a matching record",
-			host: "home",
-			entries: map[string]map[string]any{
-				"1": {"id": "1", "type": "A", "record": "198.51.100.1", "ttl": "300", "status": 1},
-				"2": matching,
-			},
-		},
-		{
-			name: "missing type beside a matching record",
-			host: "home",
-			entries: map[string]map[string]any{
-				"1": {"id": "1", "host": "home", "record": "198.51.100.1", "ttl": "300", "status": 1},
-				"2": matching,
-			},
-		},
-		{
-			name: "empty type",
-			host: "home",
-			entries: map[string]map[string]any{
-				"1": {"id": "1", "type": "", "host": "home", "record": "198.51.100.1", "ttl": "300", "status": 1},
-			},
-		},
-	}
-
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			log := &cloudnsCallLog{}
-			recordsBody := cloudnsPage(t, testCase.entries)
-			provider := cloudnsUpsertProvider(t, log, recordsBody, func(writer http.ResponseWriter, request *http.Request, _ url.Values) {
-				cloudnsUnexpected(t, writer, request)
-			})
-
-			hostname := "home.example.com"
-			if testCase.host == cloudnsApexHost {
-				hostname = "example.com"
-			}
-			err := provider.Upsert(context.Background(), "api-password", cloudnsSettings("example.com", testCase.host), hostname, "A", netip.MustParseAddr("203.0.113.9"))
-			requireCloudnsProviderError(t, err, providerErrorTransient)
-			if got := log.count(cloudnsModRecordPath) + log.count(cloudnsAddRecordPath); got != 0 {
-				t.Fatalf("expected no writes, got %d", got)
-			}
-		})
-	}
-}
-
 func TestCloudnsUpsertTreatsPresentEmptyHostAsApex(t *testing.T) {
 	log := &cloudnsCallLog{}
 	recordsBody := cloudnsPage(t, map[string]map[string]any{
@@ -1049,139 +916,6 @@ func TestCloudnsUpsertNormalizesRecordTypeCase(t *testing.T) {
 	}
 }
 
-func TestCloudnsUpsertRejectsMalformedRecordValues(t *testing.T) {
-	cases := []struct {
-		name  string
-		entry map[string]any
-	}{
-		{
-			name: "object record without geodns metadata",
-			entry: func() map[string]any {
-				entry := cloudnsEntry("1", "A", "home", "203.0.113.1", "300", 1)
-				entry["record"] = map[string]any{}
-				return entry
-			}(),
-		},
-		{
-			name: "numeric record",
-			entry: func() map[string]any {
-				entry := cloudnsEntry("1", "A", "home", "203.0.113.1", "300", 1)
-				entry["record"] = 123
-				return entry
-			}(),
-		},
-		{
-			name:  "invalid address",
-			entry: cloudnsEntry("1", "A", "home", "not-an-address", "300", 1),
-		},
-		{
-			name:  "wrong family",
-			entry: cloudnsEntry("1", "A", "home", "2001:db8::1", "300", 1),
-		},
-	}
-
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			log := &cloudnsCallLog{}
-			recordsBody := cloudnsPage(t, map[string]map[string]any{"1": testCase.entry})
-			provider := cloudnsUpsertProvider(t, log, recordsBody, func(writer http.ResponseWriter, request *http.Request, _ url.Values) {
-				cloudnsUnexpected(t, writer, request)
-			})
-
-			err := provider.Upsert(context.Background(), "api-password", cloudnsSettings("example.com", "home"), "home.example.com", "A", netip.MustParseAddr("203.0.113.9"))
-			requireCloudnsProviderError(t, err, providerErrorTransient)
-		})
-	}
-}
-
-func TestCloudnsUpsertRejectsMalformedRecordIdentity(t *testing.T) {
-	cases := []struct {
-		name  string
-		key   string
-		entry map[string]any
-	}{
-		{
-			name:  "non numeric key",
-			key:   "abc",
-			entry: cloudnsEntry("abc", "A", "home", "203.0.113.1", "300", 1),
-		},
-		{
-			name:  "mismatched id field",
-			key:   "5",
-			entry: cloudnsEntry("6", "A", "home", "203.0.113.1", "300", 1),
-		},
-	}
-
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			log := &cloudnsCallLog{}
-			recordsBody := cloudnsPage(t, map[string]map[string]any{testCase.key: testCase.entry})
-			provider := cloudnsUpsertProvider(t, log, recordsBody, func(writer http.ResponseWriter, request *http.Request, _ url.Values) {
-				cloudnsUnexpected(t, writer, request)
-			})
-
-			err := provider.Upsert(context.Background(), "api-password", cloudnsSettings("example.com", "home"), "home.example.com", "A", netip.MustParseAddr("203.0.113.9"))
-			requireCloudnsProviderError(t, err, providerErrorTransient)
-		})
-	}
-}
-
-func TestCloudnsUpsertRejectsMalformedTTL(t *testing.T) {
-	cases := []struct {
-		name  string
-		entry map[string]any
-	}{
-		{
-			name: "non numeric ttl",
-			entry: func() map[string]any {
-				entry := cloudnsEntry("1", "A", "home", "203.0.113.1", "300", 1)
-				entry["ttl"] = "abc"
-				return entry
-			}(),
-		},
-		{
-			name: "numeric ttl does not match the evidenced encoding",
-			entry: func() map[string]any {
-				entry := cloudnsEntry("1", "A", "home", "203.0.113.1", "300", 1)
-				entry["ttl"] = 300
-				return entry
-			}(),
-		},
-	}
-
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			log := &cloudnsCallLog{}
-			recordsBody := cloudnsPage(t, map[string]map[string]any{"1": testCase.entry})
-			provider := cloudnsUpsertProvider(t, log, recordsBody, func(writer http.ResponseWriter, request *http.Request, _ url.Values) {
-				cloudnsUnexpected(t, writer, request)
-			})
-
-			err := provider.Upsert(context.Background(), "api-password", cloudnsSettings("example.com", "home"), "home.example.com", "A", netip.MustParseAddr("203.0.113.9"))
-			requireCloudnsProviderError(t, err, providerErrorTransient)
-		})
-	}
-}
-
-func TestCloudnsUpsertRejectsUnsupportedEmptyForms(t *testing.T) {
-	cases := []string{"{}", "null"}
-
-	for _, body := range cases {
-		t.Run(body, func(t *testing.T) {
-			log := &cloudnsCallLog{}
-			provider := cloudnsUpsertProvider(t, log, body, func(writer http.ResponseWriter, request *http.Request, _ url.Values) {
-				cloudnsUnexpected(t, writer, request)
-			})
-
-			err := provider.Upsert(context.Background(), "api-password", cloudnsSettings("example.com", "home"), "home.example.com", "A", netip.MustParseAddr("203.0.113.9"))
-			requireCloudnsProviderError(t, err, providerErrorTransient)
-			if got := log.count(cloudnsAddRecordPath); got != 0 {
-				t.Fatalf("expected no add-record calls, got %d", got)
-			}
-		})
-	}
-}
-
 func TestCloudnsUpsertAcceptsWhitespaceEmptyArray(t *testing.T) {
 	cases := []string{"[ ]", "[\n]", "[\n ]"}
 
@@ -1209,16 +943,76 @@ func TestCloudnsUpsertAcceptsWhitespaceEmptyArray(t *testing.T) {
 	}
 }
 
-func TestCloudnsUpsertRejectsNonEmptyArrays(t *testing.T) {
-	log := &cloudnsCallLog{}
-	provider := cloudnsUpsertProvider(t, log, `[{"id":"1"}]`, func(writer http.ResponseWriter, request *http.Request, _ url.Values) {
-		cloudnsUnexpected(t, writer, request)
-	})
+// TestCloudnsUpsertRejectsUnsafeRecordSets covers record listings Upsert must refuse to act on;
+// cloudnsUpsertProvider fails the test on any write, so each case also proves nothing was written.
+func TestCloudnsUpsertRejectsUnsafeRecordSets(t *testing.T) {
+	entry := func(id string, changes map[string]any) map[string]any {
+		out := cloudnsEntry(id, "A", "home", "203.0.113.1", "300", 1)
+		for key, value := range changes {
+			out[key] = value
+		}
+		return out
+	}
+	matching := cloudnsEntry("2", "A", "home", "203.0.113.1", "300", 1)
+	tests := []struct {
+		name    string
+		host    string // settings host; empty means "home"
+		entries map[string]map[string]any
+		body    string // raw listing body instead of entries
+		want    providerErrorKind
+	}{
+		{name: "inactive only set", entries: map[string]map[string]any{"1": entry("1", map[string]any{"status": 0})}, want: providerErrorPermanent},
+		{name: "geodns record", entries: map[string]map[string]any{"1": entry("1", map[string]any{"geodns-location-code": "eu-west"})}, want: providerErrorPermanent},
+		{name: "missing status", entries: map[string]map[string]any{"1": {"id": "1", "type": "A", "host": "home", "record": "203.0.113.1", "ttl": "300"}}, want: providerErrorTransient},
+		{name: "unknown status value", entries: map[string]map[string]any{"1": entry("1", map[string]any{"status": 2})}, want: providerErrorTransient},
+		{
+			name: "missing host on the apex", host: cloudnsApexHost, want: providerErrorTransient,
+			entries: map[string]map[string]any{"1": {"id": "1", "type": "A", "record": "203.0.113.1", "ttl": "300", "status": 1}},
+		},
+		{
+			name: "null host", want: providerErrorTransient,
+			entries: map[string]map[string]any{"1": {"id": "1", "type": "A", "host": nil, "record": "203.0.113.1", "ttl": "300", "status": 1}},
+		},
+		{
+			name: "missing host beside a matching record", want: providerErrorTransient,
+			entries: map[string]map[string]any{"1": {"id": "1", "type": "A", "record": "198.51.100.1", "ttl": "300", "status": 1}, "2": matching},
+		},
+		{
+			name: "missing type beside a matching record", want: providerErrorTransient,
+			entries: map[string]map[string]any{"1": {"id": "1", "host": "home", "record": "198.51.100.1", "ttl": "300", "status": 1}, "2": matching},
+		},
+		{
+			name: "empty type", want: providerErrorTransient,
+			entries: map[string]map[string]any{"1": {"id": "1", "type": "", "host": "home", "record": "198.51.100.1", "ttl": "300", "status": 1}},
+		},
+		{name: "object record without geodns metadata", entries: map[string]map[string]any{"1": entry("1", map[string]any{"record": map[string]any{}})}, want: providerErrorTransient},
+		{name: "numeric record", entries: map[string]map[string]any{"1": entry("1", map[string]any{"record": 123})}, want: providerErrorTransient},
+		{name: "invalid address", entries: map[string]map[string]any{"1": entry("1", map[string]any{"record": "not-an-address"})}, want: providerErrorTransient},
+		{name: "wrong family", entries: map[string]map[string]any{"1": entry("1", map[string]any{"record": "2001:db8::1"})}, want: providerErrorTransient},
+		{name: "non numeric key", entries: map[string]map[string]any{"abc": entry("abc", nil)}, want: providerErrorTransient},
+		{name: "mismatched id field", entries: map[string]map[string]any{"5": entry("6", nil)}, want: providerErrorTransient},
+		{name: "non numeric ttl", entries: map[string]map[string]any{"1": entry("1", map[string]any{"ttl": "abc"})}, want: providerErrorTransient},
+		{name: "numeric ttl does not match the evidenced encoding", entries: map[string]map[string]any{"1": entry("1", map[string]any{"ttl": 300})}, want: providerErrorTransient},
+		{name: "empty object body", body: "{}", want: providerErrorTransient},
+		{name: "null body", body: "null", want: providerErrorTransient},
+		{name: "non-empty array body", body: `[{"id":"1"}]`, want: providerErrorTransient},
+	}
 
-	err := provider.Upsert(context.Background(), "api-password", cloudnsSettings("example.com", "home"), "home.example.com", "A", netip.MustParseAddr("203.0.113.9"))
-	requireCloudnsProviderError(t, err, providerErrorTransient)
-	if got := log.count(cloudnsAddRecordPath); got != 0 {
-		t.Fatalf("expected no add-record calls, got %d", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			host, hostname := "home", "home.example.com"
+			if tt.host == cloudnsApexHost {
+				host, hostname = cloudnsApexHost, "example.com"
+			}
+			body := tt.body
+			if body == "" {
+				body = cloudnsPage(t, tt.entries)
+			}
+			provider := cloudnsUpsertProvider(t, &cloudnsCallLog{}, body, nil)
+
+			err := provider.Upsert(context.Background(), "api-password", cloudnsSettings("example.com", host), hostname, "A", netip.MustParseAddr("203.0.113.9"))
+			requireCloudnsProviderError(t, err, tt.want)
+		})
 	}
 }
 

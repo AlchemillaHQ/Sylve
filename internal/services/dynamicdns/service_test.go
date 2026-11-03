@@ -23,6 +23,7 @@ import (
 	dynamicDNSModels "github.com/alchemillahq/sylve/internal/db/models/dynamicdns"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"gorm.io/gorm"
 )
 
 type testProvider struct {
@@ -119,15 +120,7 @@ func (p *blockingSyncProvider) unblock() {
 func TestManagedCertificateProtectsDynamicDNSEntryIdentity(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{}, &models.Certificate{})
 	provider := &testProvider{id: dynamicDNSModels.ProviderSylve}
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{dynamicDNSModels.ProviderSylve: provider},
-		sources: map[string]IPSourceResolver{
-			dynamicDNSModels.SourceTypeManual: ManualResolver{},
-		},
-		now:         time.Now,
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{dynamicDNSModels.ProviderSylve: provider})
 	entry := dynamicDNSModels.Entry{
 		Enabled:         true,
 		Provider:        dynamicDNSModels.ProviderSylve,
@@ -194,21 +187,24 @@ func (r testResolver) Resolve(context.Context, map[string]string) (AddressSet, e
 	return r.addresses, r.err
 }
 
-func newTargetConflictTestService(t *testing.T) *Service {
-	t.Helper()
-
+// newDynamicDNSTestService returns a Service with a manual IP source, the real clock and a 1s sync
+// timeout; tests override sources, now or syncTimeout when they need something else.
+func newDynamicDNSTestService(db *gorm.DB, providers map[string]DNSProvider) *Service {
 	return &Service{
-		DB: testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{}),
-		providers: map[string]DNSProvider{
-			"first":  &testProvider{id: "first"},
-			"second": &testProvider{id: "second"},
-		},
-		sources: map[string]IPSourceResolver{
-			dynamicDNSModels.SourceTypeManual: ManualResolver{},
-		},
+		DB:          db,
+		providers:   providers,
+		sources:     map[string]IPSourceResolver{dynamicDNSModels.SourceTypeManual: ManualResolver{}},
 		now:         time.Now,
 		syncTimeout: time.Second,
 	}
+}
+
+func newTargetConflictTestService(t *testing.T) *Service {
+	t.Helper()
+	return newDynamicDNSTestService(testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{}), map[string]DNSProvider{
+		"first":  &testProvider{id: "first"},
+		"second": &testProvider{id: "second"},
+	})
 }
 
 func targetConflictInput(provider, hostname, recordType string, enabled bool) EntryInput {
@@ -232,15 +228,8 @@ func newEntryLockTestService(t *testing.T) (*Service, *blockingSyncProvider, dyn
 
 	database := testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{})
 	provider := newBlockingSyncProvider("slow.example.com")
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{provider.ID(): provider},
-		sources: map[string]IPSourceResolver{
-			dynamicDNSModels.SourceTypeManual: ManualResolver{},
-		},
-		now:         time.Now,
-		syncTimeout: 5 * time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{provider.ID(): provider})
+	service.syncTimeout = 5 * time.Second
 
 	slow := dynamicDNSModels.Entry{
 		Enabled:         true,
@@ -423,15 +412,7 @@ func TestSyncEntrySerializesUpdateForSameEntry(t *testing.T) {
 func TestConcurrentCreateEntryPreservesTargetUniqueness(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{})
 	provider := newBlockingSyncProvider("")
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{provider.ID(): provider},
-		sources: map[string]IPSourceResolver{
-			dynamicDNSModels.SourceTypeManual: ManualResolver{},
-		},
-		now:         time.Now,
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{provider.ID(): provider})
 
 	start := make(chan struct{})
 	results := make(chan error, 2)
@@ -504,15 +485,7 @@ func TestCreateEntryClassifiesProviderValidationFailures(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			provider := &testProvider{id: "test", validateErr: test.err}
-			service := &Service{
-				DB:        testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{}),
-				providers: map[string]DNSProvider{"test": provider},
-				sources: map[string]IPSourceResolver{
-					dynamicDNSModels.SourceTypeManual: ManualResolver{},
-				},
-				now:         time.Now,
-				syncTimeout: time.Second,
-			}
+			service := newDynamicDNSTestService(testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{}), map[string]DNSProvider{"test": provider})
 
 			_, err := service.CreateEntry(
 				context.Background(),
@@ -734,15 +707,9 @@ func TestSyncEntryRecordsPartialFamilyResult(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{})
 	provider := &testProvider{}
 	now := time.Date(2026, time.July, 20, 12, 0, 0, 0, time.UTC)
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{"test": provider},
-		sources: map[string]IPSourceResolver{
-			"test": testResolver{addresses: AddressSet{IPv4: netip.MustParseAddr("203.0.113.9")}},
-		},
-		now:         func() time.Time { return now },
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{"test": provider})
+	service.sources = map[string]IPSourceResolver{"test": testResolver{addresses: AddressSet{IPv4: netip.MustParseAddr("203.0.113.9")}}}
+	service.now = func() time.Time { return now }
 
 	entry := dynamicDNSModels.Entry{
 		Enabled:         true,
@@ -786,15 +753,7 @@ func TestSyncEntryRecordsPartialFamilyResult(t *testing.T) {
 func TestCreateEntryRequiresMatchingManualAddress(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{})
 	provider := &testProvider{}
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{"test": provider},
-		sources: map[string]IPSourceResolver{
-			dynamicDNSModels.SourceTypeManual: ManualResolver{},
-		},
-		now:         time.Now,
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{"test": provider})
 
 	_, err := service.CreateEntry(context.Background(), EntryInput{
 		Enabled:    true,
@@ -818,15 +777,7 @@ func TestCreateEntryRequiresMatchingManualAddress(t *testing.T) {
 func TestUpdateEntryPreservesConfiguredCredential(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{})
 	provider := &testProvider{}
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{"test": provider},
-		sources: map[string]IPSourceResolver{
-			dynamicDNSModels.SourceTypeManual: ManualResolver{},
-		},
-		now:         time.Now,
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{"test": provider})
 
 	existing := dynamicDNSModels.Entry{
 		Enabled:          true,
@@ -871,18 +822,7 @@ func TestUpdateEntryPreservesConfiguredCredential(t *testing.T) {
 
 func TestUpdateEntryRequiresCredentialWhenProviderChanges(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{})
-	service := &Service{
-		DB: database,
-		providers: map[string]DNSProvider{
-			"first":  &testProvider{id: "first"},
-			"second": &testProvider{id: "second"},
-		},
-		sources: map[string]IPSourceResolver{
-			dynamicDNSModels.SourceTypeManual: ManualResolver{},
-		},
-		now:         time.Now,
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{"first": &testProvider{id: "first"}, "second": &testProvider{id: "second"}})
 
 	existing := dynamicDNSModels.Entry{
 		Enabled:          true,
@@ -915,15 +855,7 @@ func TestUpdateEntryRequiresCredentialWhenProviderChanges(t *testing.T) {
 
 func TestCreateEntryAcceptsOneMinuteInterval(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{})
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{"test": &testProvider{}},
-		sources: map[string]IPSourceResolver{
-			dynamicDNSModels.SourceTypeManual: ManualResolver{},
-		},
-		now:         time.Now,
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{"test": &testProvider{}})
 
 	entry, err := service.CreateEntry(context.Background(), EntryInput{
 		Enabled:         true,
@@ -948,15 +880,7 @@ func TestCreateEntryAcceptsOneMinuteInterval(t *testing.T) {
 func TestUpdateEntryRevalidatesRecordType(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{})
 	provider := &testProvider{}
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{"test": provider},
-		sources: map[string]IPSourceResolver{
-			dynamicDNSModels.SourceTypeManual: ManualResolver{},
-		},
-		now:         time.Now,
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{"test": provider})
 
 	existing := dynamicDNSModels.Entry{
 		Enabled:         true,
@@ -992,15 +916,7 @@ func TestUpdateEntryRevalidatesRecordType(t *testing.T) {
 func TestUpdateEntryRevalidatesWhenReenabled(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{})
 	provider := &testProvider{}
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{"test": provider},
-		sources: map[string]IPSourceResolver{
-			dynamicDNSModels.SourceTypeManual: ManualResolver{},
-		},
-		now:         time.Now,
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{"test": provider})
 
 	existing := dynamicDNSModels.Entry{
 		Enabled:         false,
@@ -1041,15 +957,8 @@ func TestUpdateEntryPreservesRetryStateForSameProviderIdentity(t *testing.T) {
 	provider := &testProvider{}
 	now := time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
 	nextRetry := now.Add(10 * time.Minute)
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{"test": provider},
-		sources: map[string]IPSourceResolver{
-			dynamicDNSModels.SourceTypeManual: ManualResolver{},
-		},
-		now:         func() time.Time { return now },
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{"test": provider})
+	service.now = func() time.Time { return now }
 
 	existing := dynamicDNSModels.Entry{
 		Enabled:             true,
@@ -1098,15 +1007,7 @@ func TestUpdateEntryPreservesRetryStateForSameProviderIdentity(t *testing.T) {
 func TestUpdateEntryRejectsIdentityChangeWhilePending(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{})
 	provider := &testProvider{}
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{"test": provider},
-		sources: map[string]IPSourceResolver{
-			dynamicDNSModels.SourceTypeManual: ManualResolver{},
-		},
-		now:         time.Now,
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{"test": provider})
 
 	existing := dynamicDNSModels.Entry{
 		Enabled:         true,
@@ -1143,15 +1044,9 @@ func TestSyncEntrySkipsPublishedAddressForStatusProvider(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{})
 	provider := &testStatusProvider{}
 	now := time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{"test": provider},
-		sources: map[string]IPSourceResolver{
-			"test": testResolver{addresses: AddressSet{IPv4: netip.MustParseAddr("203.0.113.9")}},
-		},
-		now:         func() time.Time { return now },
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{"test": provider})
+	service.sources = map[string]IPSourceResolver{"test": testResolver{addresses: AddressSet{IPv4: netip.MustParseAddr("203.0.113.9")}}}
+	service.now = func() time.Time { return now }
 
 	entry := dynamicDNSModels.Entry{
 		Enabled:           true,
@@ -1181,15 +1076,9 @@ func TestSyncEntryPersistsTransientRetrySchedule(t *testing.T) {
 	provider := &testStatusProvider{}
 	provider.upsertErr = newProviderError(providerErrorTransient, 10*time.Second, errors.New("temporarily unavailable"))
 	now := time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{"test": provider},
-		sources: map[string]IPSourceResolver{
-			"test": testResolver{addresses: AddressSet{IPv4: netip.MustParseAddr("203.0.113.9")}},
-		},
-		now:         func() time.Time { return now },
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{"test": provider})
+	service.sources = map[string]IPSourceResolver{"test": testResolver{addresses: AddressSet{IPv4: netip.MustParseAddr("203.0.113.9")}}}
+	service.now = func() time.Time { return now }
 
 	entry := dynamicDNSModels.Entry{
 		Enabled:         true,
@@ -1238,18 +1127,9 @@ func TestSyncEntryAutoDisablesPermanentProviderFailure(t *testing.T) {
 	provider := &testStatusProvider{}
 	provider.upsertErr = newProviderError(providerErrorPermanent, 0, errors.New("revoked provider-secret"))
 	now := time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{"test": provider},
-		sources: map[string]IPSourceResolver{
-			"test": testResolver{addresses: AddressSet{
-				IPv4: netip.MustParseAddr("203.0.113.9"),
-				IPv6: netip.MustParseAddr("2001:db8::9"),
-			}},
-		},
-		now:         func() time.Time { return now },
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{"test": provider})
+	service.sources = map[string]IPSourceResolver{"test": testResolver{addresses: AddressSet{IPv4: netip.MustParseAddr("203.0.113.9"), IPv6: netip.MustParseAddr("2001:db8::9")}}}
+	service.now = func() time.Time { return now }
 
 	entry := dynamicDNSModels.Entry{
 		Enabled:         true,
@@ -1284,15 +1164,9 @@ func TestSyncEntryConfirmsPendingWriteWithoutResubmitting(t *testing.T) {
 	provider := &testStatusProvider{}
 	provider.upsertErr = newProviderError(providerErrorPending, 0, errors.New("publication delayed"))
 	now := time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{"test": provider},
-		sources: map[string]IPSourceResolver{
-			"test": testResolver{addresses: AddressSet{IPv4: netip.MustParseAddr("203.0.113.9")}},
-		},
-		now:         func() time.Time { return now },
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{"test": provider})
+	service.sources = map[string]IPSourceResolver{"test": testResolver{addresses: AddressSet{IPv4: netip.MustParseAddr("203.0.113.9")}}}
+	service.now = func() time.Time { return now }
 
 	entry := dynamicDNSModels.Entry{
 		Enabled:         true,
@@ -1357,18 +1231,9 @@ func TestSyncEntryPreservesPendingDeferredFamily(t *testing.T) {
 	provider := &testStatusProvider{}
 	provider.upsertErr = newProviderError(providerErrorTransient, 0, errors.New("temporarily unavailable"))
 	now := time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{"test": provider},
-		sources: map[string]IPSourceResolver{
-			"test": testResolver{addresses: AddressSet{
-				IPv4: netip.MustParseAddr("203.0.113.10"),
-				IPv6: netip.MustParseAddr("2001:db8::10"),
-			}},
-		},
-		now:         func() time.Time { return now },
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{"test": provider})
+	service.sources = map[string]IPSourceResolver{"test": testResolver{addresses: AddressSet{IPv4: netip.MustParseAddr("203.0.113.10"), IPv6: netip.MustParseAddr("2001:db8::10")}}}
+	service.now = func() time.Time { return now }
 
 	entry := dynamicDNSModels.Entry{
 		Enabled:         true,
@@ -1401,15 +1266,8 @@ func TestSyncEntryPreservesPendingDeferredFamily(t *testing.T) {
 func TestScheduledSyncSkipsEntryDisabledAfterSelection(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{})
 	provider := &testProvider{}
-	service := &Service{
-		DB:        database,
-		providers: map[string]DNSProvider{"test": provider},
-		sources: map[string]IPSourceResolver{
-			"test": testResolver{addresses: AddressSet{IPv4: netip.MustParseAddr("203.0.113.9")}},
-		},
-		now:         time.Now,
-		syncTimeout: time.Second,
-	}
+	service := newDynamicDNSTestService(database, map[string]DNSProvider{"test": provider})
+	service.sources = map[string]IPSourceResolver{"test": testResolver{addresses: AddressSet{IPv4: netip.MustParseAddr("203.0.113.9")}}}
 
 	entry := dynamicDNSModels.Entry{
 		Enabled:         true,
