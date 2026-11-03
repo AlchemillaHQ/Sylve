@@ -154,7 +154,7 @@ test-integration: test-external-preflight csmwrap-assets
 	if [ "$$zfs_leak_rc" -ne 0 ]; then exit "$$zfs_leak_rc"; fi; \
 	exit "$$iscsi_leak_rc"
 	@set +e; \
-	go test -tags=nosqlite $(GO_TEST_FLAGS) -count=1 -p=3 \
+	go test -tags=nosqlite $(GO_TEST_FLAGS) -count=1 -p=2 \
 		-timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
 		-run '^TestIntegration' $(INTEGRATION_PACKAGES); \
 	test_rc="$$?"; \

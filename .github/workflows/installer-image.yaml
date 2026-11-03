@@ -110,6 +110,14 @@ jobs:
           cp "$record" installer/out/payload/sylve-version.json
           printf '%s  sylve-amd64\n' "$digest" > installer/out/payload/SHA256SUMS
 
+      # The VM disk and the ISO it copies back fill most of the runner's disk,
+      # so drop preinstalled SDKs the build doesn't use.
+      - name: Free runner disk
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
+          df -h /
+
       # No cache-after-prepare: two ~4.3GB prepared images can't share the 10GB
       # repo cache with CI's, and evicting CI's VM image slows every test lane.
       - name: Assemble installer
