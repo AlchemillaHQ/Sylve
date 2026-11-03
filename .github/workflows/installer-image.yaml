@@ -1,6 +1,7 @@
 name: Installer Image
 
-# Builds the installer ISOs for tip and release around the Sylve binary they built.
+# Builds the installer ISOs around the Sylve binary built earlier in the same run:
+# by CI for tip, and by release for itself.
 on:
   workflow_call:
     inputs:
@@ -19,12 +20,29 @@ permissions:
   contents: read
 
 jobs:
-  prepare:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+  image:
+    name: ${{ matrix.release }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    continue-on-error: ${{ inputs.release_tag == 'tip' && matrix.release == '16-CURRENT' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - release: 15-STABLE
+            major: 15
+            branch: stable/15
+          - release: 16-CURRENT
+            major: 16
+            branch: main
     env:
       SOURCE_SHA: ${{ inputs.source_sha }}
       RELEASE_TAG: ${{ inputs.release_tag }}
+      FBSD_MAJOR: ${{ matrix.major }}
+      FBSD_BRANCH: ${{ matrix.branch }}
+      FBSD_ABI: FreeBSD:${{ matrix.major }}:amd64
+      STAGE_DIR: /opt/sylve-installer-stage
+      SYLVE_PAYLOAD_DIR: ${{ github.workspace }}/installer/out/payload
     steps:
       - uses: actions/checkout@v7
         with:
@@ -91,49 +109,6 @@ jobs:
           cp "$binary" installer/out/payload/sylve-amd64
           cp "$record" installer/out/payload/sylve-version.json
           printf '%s  sylve-amd64\n' "$digest" > installer/out/payload/SHA256SUMS
-
-      - name: Pass prepared inputs to the image builder
-        uses: actions/upload-artifact@v7
-        with:
-          name: installer-build-inputs
-          path: |
-            installer/out/sylve-installerd
-            installer/out/payload/
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 1
-
-  image:
-    needs: prepare
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    continue-on-error: ${{ inputs.release_tag == 'tip' && matrix.release == '16-CURRENT' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - release: 15-STABLE
-            major: 15
-            branch: stable/15
-          - release: 16-CURRENT
-            major: 16
-            branch: main
-    env:
-      FBSD_MAJOR: ${{ matrix.major }}
-      FBSD_BRANCH: ${{ matrix.branch }}
-      FBSD_ABI: FreeBSD:${{ matrix.major }}:amd64
-      STAGE_DIR: /opt/sylve-installer-stage
-      SYLVE_PAYLOAD_DIR: ${{ github.workspace }}/installer/out/payload
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.source_sha }}
-          persist-credentials: false
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: installer-build-inputs
-          path: installer/out
 
       # No cache-after-prepare: two ~4.3GB prepared images can't share the 10GB
       # repo cache with CI's, and evicting CI's VM image slows every test lane.

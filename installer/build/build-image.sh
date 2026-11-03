@@ -15,7 +15,7 @@ stable/*) channel=STABLE ;;
 esac
 release="$FBSD_MAJOR-$channel"
 label="SYLVE_${FBSD_MAJOR}_$channel"
-ISO_NAME=${ISO_NAME:-freebsd-${release}-sylve-installer-amd64.iso}
+ISO_NAME=${ISO_NAME:-FreeBSD+Sylve-${release}-Installer-amd64.iso}
 
 if [ "$(id -u)" -ne 0 ]; then
 	echo "must run as root: sudo sh $0" >&2

@@ -77,62 +77,9 @@ jobs:
 
             core.info(`Trusted CI run: ${matches[0].html_url}`);
 
-  select-runner:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      linux_runner: ${{ steps.pick.outputs.linux_runner }}
-    steps:
-      - name: Pick self-hosted runner when available
-        id: pick
-        uses: actions/github-script@v9
-        with:
-          github-token: ${{ secrets.RUNNER_DISCOVERY_TOKEN || github.token }}
-          script: |
-            const selfHosted = ["self-hosted", "linux", "x64"];
-            let selected = ["ubuntu-latest"];
-
-            try {
-              const { owner, repo } = context.repo;
-              const runners = await github.paginate(
-                github.rest.actions.listSelfHostedRunnersForRepo,
-                { owner, repo, per_page: 100 },
-              );
-
-              const available = runners.some((runner) => {
-                if (runner.status !== "online" || runner.busy) {
-                  return false;
-                }
-                const labels = runner.labels.map((label) => label.name);
-                return selfHosted.every((required) => labels.includes(required));
-              });
-
-              if (available) {
-                selected = selfHosted;
-              }
-            } catch (error) {
-              const message = `${error?.message || ""}`;
-              const accessDenied =
-                error?.status === 403 ||
-                /resource not accessible by integration/i.test(message);
-
-              if (accessDenied) {
-                core.info(
-                  "No permission to list self-hosted runners with current token; falling back to ubuntu-latest.",
-                );
-              } else {
-                core.warning(`Falling back to ubuntu-latest: ${message}`);
-              }
-            }
-
-            core.info(`Selected runner labels: ${selected.join(", ")}`);
-            core.setOutput("linux_runner", JSON.stringify(selected));
-
   prepare-release:
-    needs:
-      - verify-ci
-      - select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
+    needs: verify-ci
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
       tag_name: ${{ steps.vars.outputs.tag_name }}
@@ -212,9 +159,8 @@ jobs:
 
   build-web:
     needs:
-      - select-runner
       - prepare-release
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -268,11 +214,10 @@ jobs:
 
   build-freebsd:
     needs:
-      - select-runner
       - prepare-release
       - build-web
       - build-csmwrap
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       FREEBSD_VERSION: "15"
@@ -411,8 +356,8 @@ jobs:
       binary_artifact: release-installer-sylve
 
   checksums:
-    needs: [select-runner, prepare-release, build-web, build-csmwrap, build-freebsd, build-installer]
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
+    needs: [prepare-release, build-web, build-csmwrap, build-freebsd, build-installer]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -440,13 +385,13 @@ jobs:
         run: |
           set -euo pipefail
           test "$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')" = true
-          test -s installer-assets/freebsd-15-STABLE-sylve-installer-amd64.iso
-          test -s installer-assets/freebsd-16-CURRENT-sylve-installer-amd64.iso
+          test -s installer-assets/FreeBSD+Sylve-15-STABLE-Installer-amd64.iso
+          test -s installer-assets/FreeBSD+Sylve-16-CURRENT-Installer-amd64.iso
           (cd installer-assets && sha256sum -c ./*.sha256)
           ASSET_NAMES="$(gh release view "$TAG_NAME" --json assets --jq '.assets[].name')"
           printf '%s\n' "$ASSET_NAMES" | while IFS= read -r NAME; do
             case "$NAME" in
-              SHA256SUMS|*.sha256|freebsd-*-sylve-installer-*.img|freebsd-*-sylve-installer-*.img.gz) gh release delete-asset "$TAG_NAME" "$NAME" --yes ;;
+              SHA256SUMS|*.sha256|freebsd-*-sylve-installer-*) gh release delete-asset "$TAG_NAME" "$NAME" --yes ;;
             esac
           done
           gh release upload "$TAG_NAME" --clobber installer-assets/*.iso

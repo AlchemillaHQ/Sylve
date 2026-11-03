@@ -19,68 +19,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  select-runner:
+  prepare-release:
     if: >
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      linux_runner: ${{ steps.pick.outputs.linux_runner }}
-    steps:
-      - name: Pick self-hosted runner when available
-        id: pick
-        uses: actions/github-script@v9
-        with:
-          github-token: ${{ secrets.RUNNER_DISCOVERY_TOKEN || github.token }}
-          script: |
-            const selfHosted = ["self-hosted", "linux", "x64"];
-            let selected = ["ubuntu-latest"];
-
-            try {
-              const { owner, repo } = context.repo;
-              const runners = await github.paginate(
-                github.rest.actions.listSelfHostedRunnersForRepo,
-                { owner, repo, per_page: 100 },
-              );
-
-              const available = runners.some((runner) => {
-                if (runner.status !== "online" || runner.busy) {
-                  return false;
-                }
-                const labels = runner.labels.map((label) => label.name);
-                return selfHosted.every((required) => labels.includes(required));
-              });
-
-              if (available) {
-                selected = selfHosted;
-              }
-            } catch (error) {
-              const message = `${error?.message || ""}`;
-              const accessDenied =
-                error?.status === 403 ||
-                /resource not accessible by integration/i.test(message);
-
-              if (accessDenied) {
-                core.info(
-                  "No permission to list self-hosted runners with current token; falling back to ubuntu-latest.",
-                );
-              } else {
-                core.warning(`Falling back to ubuntu-latest: ${message}`);
-              }
-            }
-
-            core.info(`Selected runner labels: ${selected.join(", ")}`);
-            core.setOutput("linux_runner", JSON.stringify(selected));
-
-  prepare-release:
-    needs: select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
     timeout-minutes: 10
     outputs:
       head_sha: ${{ steps.vars.outputs.head_sha }}
       should_publish: ${{ steps.vars.outputs.should_publish }}
-      built_at: ${{ steps.vars.outputs.built_at }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -103,197 +50,12 @@ jobs:
           fi
 
           echo "should_publish=true" >> "$GITHUB_OUTPUT"
-          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
-  build-csmwrap:
+  # Tip publishes the builds from the CI run that triggered it.
+  publish-release:
     needs: prepare-release
     if: needs.prepare-release.outputs.should_publish == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare-release.outputs.head_sha }}
-          submodules: recursive
-      - uses: ./.github/actions/csmwrap
-        with:
-          artifact-name: tip-csmwrap-assets
-
-  build-web:
-    needs:
-      - select-runner
-      - prepare-release
-    if: needs.prepare-release.outputs.should_publish == 'true'
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare-release.outputs.head_sha }}
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Check and Build Web Assets
-        run: |
-          make frontend
-
-      - name: Build Demo Web Assets
-        run: |
-          npm run build:demo --prefix web
-
-      - name: Upload Web Assets
-        uses: actions/upload-artifact@v7
-        with:
-          name: tip-web-assets
-          path: internal/assets/web-files/
-          retention-days: 1
-
-      - name: Package Web Assets
-        run: |
-          set -euo pipefail
-          tar -czf sylve-web-assets.tar.gz -C internal/assets web-files
-          tar -czf sylve-web-demo-assets.tar.gz -C web/build .
-
-      - name: Stage web release assets
-        uses: actions/upload-artifact@v7
-        with:
-          name: tip-web-packages
-          path: |
-            sylve-web-assets.tar.gz
-            sylve-web-demo-assets.tar.gz
-          if-no-files-found: error
-          retention-days: 1
-
-  build-freebsd:
-    needs:
-      - select-runner
-      - prepare-release
-      - build-web
-      - build-csmwrap
-    if: needs.prepare-release.outputs.should_publish == 'true'
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
-    timeout-minutes: 30
-    env:
-      FREEBSD_VERSION: "15"
-      ARCH: ${{ matrix.arch }}
-      SOURCE_SHA: ${{ needs.prepare-release.outputs.head_sha }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-          - arch: arm64
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare-release.outputs.head_sha }}
-          submodules: recursive
-
-      - name: Setup Go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-
-      - name: Install cross-build toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang lld xz-utils tar file
-
-      - name: Download Web Assets
-        uses: actions/download-artifact@v8
-        with:
-          name: tip-web-assets
-          path: internal/assets/web-files
-
-      - name: Resolve FreeBSD release
-        id: freebsd
-        env:
-          ARCH: ${{ matrix.arch }}
-        run: |
-          echo "version=$(./scripts/resolve-freebsd-release.sh)" >> "$GITHUB_OUTPUT"
-
-      - name: Download source-built CSMWrap
-        if: matrix.arch == 'amd64'
-        uses: actions/download-artifact@v8
-        with:
-          name: tip-csmwrap-assets
-          path: .cache/csmwrap
-
-      - name: Verify and stage CSMWrap embeds
-        if: matrix.arch == 'amd64'
-        run: ./scripts/build-csmwrap.sh --verify --stage
-
-      - name: Cache FreeBSD sysroot
-        uses: actions/cache@v6
-        with:
-          path: .cache/freebsd/${{ matrix.arch }}-${{ steps.freebsd.outputs.version }}
-          key: freebsd-sysroot-v2-${{ runner.os }}-${{ matrix.arch }}-${{ steps.freebsd.outputs.version }}-${{ hashFiles('scripts/setup-freebsd-sysroot.sh', 'scripts/resolve-freebsd-release.sh') }}
-
-      - name: Build FreeBSD binary on Linux (${{ matrix.arch }})
-        env:
-          FREEBSD_VERSION: ${{ steps.freebsd.outputs.version }}
-          BUILD_TIMESTAMP: ${{ needs.prepare-release.outputs.built_at }}
-        run: |
-          make "cross-build-${ARCH}" GIT_COMMIT="${SOURCE_SHA}" BUILD_TIMESTAMP="${BUILD_TIMESTAMP}"
-
-      - name: Verify binary format
-        run: |
-          set -euo pipefail
-          file bin/sylve | tee /tmp/sylve-file.txt
-          grep -q "FreeBSD" /tmp/sylve-file.txt
-
-          if [ "${{ matrix.arch }}" = "amd64" ]; then
-            grep -Eq "x86-64|amd64" /tmp/sylve-file.txt
-          else
-            grep -Eq "aarch64|arm64|ARM aarch64" /tmp/sylve-file.txt
-          fi
-
-      - name: Record binary build metadata
-        env:
-          FREEBSD_RELEASE: ${{ steps.freebsd.outputs.version }}
-        run: |
-          set -euo pipefail
-          mkdir -p tip-assets
-          cp bin/sylve "tip-assets/sylve-${ARCH}"
-          go run ./cmd/tipmetadata record \
-            -binary "tip-assets/sylve-${ARCH}" -arch "${ARCH}" \
-            -freebsd "${FREEBSD_RELEASE}" -commit "${SOURCE_SHA}"
-
-      - name: Stage binary and build metadata
-        uses: actions/upload-artifact@v7
-        with:
-          name: tip-build-${{ matrix.arch }}
-          path: tip-assets/
-          if-no-files-found: error
-          retention-days: 1
-
-  build-installer:
-    needs: [prepare-release, build-freebsd]
-    if: needs.prepare-release.outputs.should_publish == 'true'
-    permissions:
-      actions: read
-      contents: read
-    uses: ./.github/workflows/installer-image.yaml
-    with:
-      source_sha: ${{ needs.prepare-release.outputs.head_sha }}
-      release_tag: tip
-      binary_artifact: tip-build-amd64
-
-  publish-release:
-    needs:
-      - select-runner
-      - prepare-release
-      - build-web
-      - build-freebsd
-      - build-csmwrap
-      - build-installer
-    if: needs.prepare-release.outputs.should_publish == 'true'
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -309,21 +71,41 @@ jobs:
       - name: Download binary builds
         uses: actions/download-artifact@v8
         with:
-          pattern: tip-build-*
+          pattern: build-*
           merge-multiple: true
           path: tip-assets
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
 
-      - name: Download web release assets
+      - name: Download web assets
         uses: actions/download-artifact@v8
         with:
-          name: tip-web-packages
-          path: tip-assets
+          name: web-assets
+          path: internal/assets/web-files
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Download demo web assets
+        uses: actions/download-artifact@v8
+        with:
+          name: web-demo-assets
+          path: web/build
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Package web assets
+        run: |
+          set -euo pipefail
+          tar -czf tip-assets/sylve-web-assets.tar.gz -C internal/assets web-files
+          tar -czf tip-assets/sylve-web-demo-assets.tar.gz -C web/build .
 
       - name: Download source-built helper bundle
         uses: actions/download-artifact@v8
         with:
-          name: tip-csmwrap-assets
+          name: csmwrap-assets
           path: .cache/csmwrap
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
 
       - name: Verify and stage helper release assets
         run: |
@@ -332,39 +114,27 @@ jobs:
           cp .cache/csmwrap/CSMWrap.iso .cache/csmwrap/CSMWrap.iso.gz \
             .cache/csmwrap/CSMWrap-build-manifest.json tip-assets/
 
-      - name: Download required 15-STABLE installer
+      - name: Download installers
         uses: actions/download-artifact@v8
         with:
-          name: installer-release-assets-15
+          pattern: installer-release-assets-*
+          merge-multiple: true
           path: installer-assets
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
 
-      - name: Verify required 15-STABLE installer
+      - name: Verify installers
         run: |
           set -euo pipefail
           cd installer-assets
-          test -s freebsd-15-STABLE-sylve-installer-amd64.iso
-          sha256sum -c freebsd-15-STABLE-sylve-installer-amd64.iso.sha256
-
-      - name: Download best-effort 16-CURRENT installer
-        id: current-installer
-        continue-on-error: true
-        uses: actions/download-artifact@v8
-        with:
-          name: installer-release-assets-16
-          path: installer-current
-
-      - name: Include 16-CURRENT only when verified
-        env:
-          CURRENT_DOWNLOAD: ${{ steps.current-installer.outcome }}
-        run: |
-          set -euo pipefail
-          image=freebsd-16-CURRENT-sylve-installer-amd64.iso
-          if [ "$CURRENT_DOWNLOAD" = success ] &&
-              [ -s "installer-current/$image" ] &&
-              (cd installer-current && sha256sum -c "$image.sha256"); then
-            cp "installer-current/$image" "installer-current/$image.sha256" installer-assets/
+          test -s FreeBSD+Sylve-15-STABLE-Installer-amd64.iso
+          sha256sum -c FreeBSD+Sylve-15-STABLE-Installer-amd64.iso.sha256
+          # 16-CURRENT is best-effort; CI succeeds without it.
+          image=FreeBSD+Sylve-16-CURRENT-Installer-amd64.iso
+          if [ -s "$image" ] && sha256sum -c "$image.sha256"; then
             echo '16-CURRENT installer: built and verified.' >> "$GITHUB_STEP_SUMMARY"
           else
+            rm -f "$image" "$image.sha256"
             echo '::warning::16-CURRENT installer unavailable; publishing tip with the required 15-STABLE installer.'
             echo '16-CURRENT installer: unavailable for this tip build. 15-STABLE is included.' >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -393,7 +163,7 @@ jobs:
           # Save counts before any assets are replaced; asset IDs make retries safe.
           gh api "repos/${GITHUB_REPOSITORY}/releases/tags/tip" > tip-release.json
           go run ./cmd/tipmetadata downloads -release tip-release.json -out tip-notes.md
-          if [ ! -s installer-assets/freebsd-16-CURRENT-sylve-installer-amd64.iso ]; then
+          if [ ! -s installer-assets/FreeBSD+Sylve-16-CURRENT-Installer-amd64.iso ]; then
             printf '\n16-CURRENT installer unavailable for this tip build; the 15-STABLE installer is included.\n' >> tip-notes.md
           fi
           gh release edit tip --notes-file tip-notes.md
@@ -401,8 +171,8 @@ jobs:
           ASSET_NAMES="$(jq -r '.assets[].name' tip-release.json)"
           printf '%s\n' "${ASSET_NAMES}" | while IFS= read -r NAME; do
             case "$NAME" in
-              SHA256SUMS|*.sha256|sylve-version.json|freebsd-*-sylve-installer-*.img|freebsd-*-sylve-installer-*.img.gz) gh release delete-asset tip "$NAME" --yes ;;
-              freebsd-16-CURRENT-sylve-installer-amd64.iso)
+              SHA256SUMS|*.sha256|sylve-version.json|freebsd-*-sylve-installer-*) gh release delete-asset tip "$NAME" --yes ;;
+              FreeBSD+Sylve-16-CURRENT-Installer-amd64.iso)
                 if [ ! -s "installer-assets/$NAME" ]; then gh release delete-asset tip "$NAME" --yes; fi
                 ;;
             esac

@@ -37,10 +37,10 @@ sudo env STAGE_DIR=/path/to/stage sh installer/build/stage-live.sh
 sudo sh installer/build/build-image.sh /path/to/stage /path/to/output
 ```
 
-The default output is `freebsd-15-STABLE-sylve-installer-amd64.iso`, with a local
+The default output is `FreeBSD+Sylve-15-STABLE-Installer-amd64.iso`, with a local
 SHA-256 sidecar. For 16-CURRENT, use separate stage/output directories and pass
 `FBSD_MAJOR=16 FBSD_BRANCH=main FBSD_ABI=FreeBSD:16:amd64` through `sudo env` to
-both scripts. Its output is `freebsd-16-CURRENT-sylve-installer-amd64.iso`.
+both scripts. Its output is `FreeBSD+Sylve-16-CURRENT-Installer-amd64.iso`.
 The target branch and repositories are configured in
 [`build/pkgbase.conf`](build/pkgbase.conf), with environment overrides for
 `FBSD_MAJOR`, `FBSD_BRANCH`, `FBSD_ABI`, `PKGBASE_REPO`, `PORTS_REPO` and

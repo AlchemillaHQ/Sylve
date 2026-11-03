@@ -121,9 +121,16 @@ jobs:
       - name: Run quality checks
         run: make quality
 
-      # Only checks that the website demo builds; tip and release publish it.
+      # Tip publishes this build for the website; release builds its own.
       - name: Build demo web assets
         run: npm run build:demo --prefix web
+
+      - name: Upload demo web assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-demo-assets
+          path: web/build/
+          retention-days: 1
 
   # Tests and builds don't wait for quality; CI Success still requires it.
   test:
@@ -382,8 +389,15 @@ jobs:
     name: Build Web
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      # Tip metadata requires both architectures to embed the same build time.
+      built_at: ${{ steps.built_at.outputs.value }}
     steps:
       - uses: actions/checkout@v7
+
+      - name: Stamp build time
+        id: built_at
+        run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -462,7 +476,8 @@ jobs:
       - name: Build FreeBSD binary on Linux (${{ matrix.arch }})
         env:
           FREEBSD_VERSION: ${{ steps.freebsd.outputs.version }}
-        run: make cross-build-${{ matrix.arch }}
+          BUILD_TIMESTAMP: ${{ needs.build-web.outputs.built_at }}
+        run: make cross-build-${{ matrix.arch }} GIT_COMMIT="$GITHUB_SHA" BUILD_TIMESTAMP="$BUILD_TIMESTAMP"
 
       - name: Verify binary format
         run: |
@@ -476,12 +491,40 @@ jobs:
             grep -Eq "aarch64|arm64|ARM aarch64" /tmp/sylve-file.txt
           fi
 
-      - name: Upload Binary
+      - name: Record binary build metadata
+        env:
+          ARCH: ${{ matrix.arch }}
+          FREEBSD_RELEASE: ${{ steps.freebsd.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p build-assets
+          cp bin/sylve "build-assets/sylve-${ARCH}"
+          go run ./cmd/tipmetadata record \
+            -binary "build-assets/sylve-${ARCH}" -arch "${ARCH}" \
+            -freebsd "${FREEBSD_RELEASE}" -commit "${GITHUB_SHA}"
+
+      - name: Upload binary and build metadata
         uses: actions/upload-artifact@v7
         with:
-          name: sylve-${{ matrix.arch }}
-          path: bin/sylve
+          name: build-${{ matrix.arch }}
+          path: build-assets/
+          if-no-files-found: error
           retention-days: 7
+
+  # Built here so they overlap the tests. Tip only publishes after the whole run
+  # succeeds, so CI Success doesn't wait for them.
+  build-installer:
+    name: Build Installer
+    needs: build-freebsd
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/installer-image.yaml
+    with:
+      source_sha: ${{ github.sha }}
+      release_tag: tip
+      binary_artifact: build-amd64
 
   ci-success:
     name: CI Success
