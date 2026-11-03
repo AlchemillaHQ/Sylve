@@ -83,7 +83,7 @@ jobs:
               const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
                 owner, repo, run_id: run.id, filter: "latest", per_page: 100,
               });
-              const testJobs = jobs.filter((job) => job.name.startsWith("Test ("));
+              const testJobs = jobs.filter((job) => job.name === "Test" || job.name.startsWith("Test ("));
               if (testJobs.length && testJobs.every((job) => job.conclusion === "skipped") && run.conclusion === "success") continue;
               const names = ["Test (Unit)", "Test (Integration)", "Test (Acceptance)"];
               const results = names.map((name) => testJobs.find((job) => job.name === name)?.conclusion);
@@ -134,7 +134,7 @@ jobs:
 
   # Tests and builds don't wait for quality; CI Success still requires it.
   test:
-    name: Test (${{ matrix.label }})
+    name: Test
     needs:
       - changes
       - build-csmwrap
@@ -144,21 +144,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - lane: unit
-            label: Unit
-            target: test
-          - lane: integration
-            label: Integration
-            target: test-integration
-          - lane: acceptance
-            label: Acceptance
-            target: test-acceptance-all
+        lane: [Unit, Integration, Acceptance]
     env:
       GOCACHE: ${{ github.workspace }}/.cache/freebsd-go/build
       GOMODCACHE: ${{ github.workspace }}/.cache/freebsd-go/mod
-      TEST_LANE: ${{ matrix.lane }}
-      TEST_TARGET: ${{ matrix.target }}
+      # GitHub names each job after its matrix value; the steps use lowercase lanes.
+      TEST_LANE: ${{ fromJSON('{"Unit":"unit","Integration":"integration","Acceptance":"acceptance"}')[matrix.lane] }}
+      TEST_TARGET: ${{ fromJSON('{"Unit":"test","Integration":"test-integration","Acceptance":"test-acceptance-all"}')[matrix.lane] }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -315,7 +307,7 @@ jobs:
           exit "$(cat test-results/setup.rc)"
 
       - name: Save FreeBSD Go files
-        if: always() && matrix.lane == 'unit' && steps.setup_result.outcome == 'success' && steps.freebsd_go_cache.outputs.cache-hit != 'true'
+        if: always() && env.TEST_LANE == 'unit' && steps.setup_result.outcome == 'success' && steps.freebsd_go_cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: |
@@ -324,7 +316,7 @@ jobs:
           key: ${{ steps.freebsd_go_cache.outputs.cache-primary-key }}
 
       - name: Upload vet report
-        if: always() && matrix.lane == 'unit' && steps.setup_result.outcome == 'success'
+        if: always() && env.TEST_LANE == 'unit' && steps.setup_result.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
           name: vet-report
@@ -336,7 +328,7 @@ jobs:
 
       - name: Check vet result
         id: vet_result
-        if: always() && matrix.lane == 'unit' && steps.setup_result.outcome == 'success'
+        if: always() && env.TEST_LANE == 'unit' && steps.setup_result.outcome == 'success'
         run: |
           if [ ! -f test-results/vet.rc ]; then
             echo "Vet result was not produced"
@@ -345,27 +337,27 @@ jobs:
           exit "$(cat test-results/vet.rc)"
 
       - name: Publish test summary
-        if: always() && steps.setup_result.outcome == 'success' && (matrix.lane != 'unit' || steps.vet_result.outcome == 'success')
+        if: always() && steps.setup_result.outcome == 'success' && (env.TEST_LANE != 'unit' || steps.vet_result.outcome == 'success')
         run: |
           if [ -f "test-results/$TEST_LANE-summary.md" ]; then
             cat "test-results/$TEST_LANE-summary.md" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload test report
-        if: always() && steps.setup_result.outcome == 'success' && (matrix.lane != 'unit' || steps.vet_result.outcome == 'success')
+        if: always() && steps.setup_result.outcome == 'success' && (env.TEST_LANE != 'unit' || steps.vet_result.outcome == 'success')
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.lane }}-test-report
+          name: ${{ env.TEST_LANE }}-test-report
           path: |
-            test-results/${{ matrix.lane }}.json
-            test-results/${{ matrix.lane }}.log
-            test-results/${{ matrix.lane }}-summary.md
-            test-results/${{ matrix.lane }}.rc
+            test-results/${{ env.TEST_LANE }}.json
+            test-results/${{ env.TEST_LANE }}.log
+            test-results/${{ env.TEST_LANE }}-summary.md
+            test-results/${{ env.TEST_LANE }}.rc
           if-no-files-found: warn
           retention-days: 7
 
       - name: Check test result
-        if: always() && steps.setup_result.outcome == 'success' && (matrix.lane != 'unit' || steps.vet_result.outcome == 'success')
+        if: always() && steps.setup_result.outcome == 'success' && (env.TEST_LANE != 'unit' || steps.vet_result.outcome == 'success')
         run: |
           if [ ! -f "test-results/$TEST_LANE.rc" ]; then
             echo "$TEST_LANE test result was not produced"
@@ -417,18 +409,18 @@ jobs:
           retention-days: 1
 
   build-freebsd:
-    name: Build FreeBSD (${{ matrix.arch }})
+    name: Build Daemon
     needs: [build-web, build-csmwrap]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       FREEBSD_VERSION: "15"
+      # GitHub names each job after its matrix value; the steps use Go's lowercase arch.
+      ARCH: ${{ matrix.arch == 'AMD64' && 'amd64' || 'arm64' }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - arch: amd64
-          - arch: arm64
+        arch: [AMD64, ARM64]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -452,32 +444,30 @@ jobs:
 
       - name: Resolve FreeBSD release
         id: freebsd
-        env:
-          ARCH: ${{ matrix.arch }}
         run: echo "version=$(./scripts/resolve-freebsd-release.sh)" >> "$GITHUB_OUTPUT"
 
       - name: Download source-built CSMWrap
-        if: matrix.arch == 'amd64'
+        if: env.ARCH == 'amd64'
         uses: actions/download-artifact@v8
         with:
           name: csmwrap-assets
           path: .cache/csmwrap
 
       - name: Verify and stage CSMWrap embeds
-        if: matrix.arch == 'amd64'
+        if: env.ARCH == 'amd64'
         run: ./scripts/build-csmwrap.sh --verify --stage
 
       - name: Cache FreeBSD sysroot
         uses: actions/cache@v6
         with:
-          path: .cache/freebsd/${{ matrix.arch }}-${{ steps.freebsd.outputs.version }}
-          key: freebsd-sysroot-v2-${{ runner.os }}-${{ matrix.arch }}-${{ steps.freebsd.outputs.version }}-${{ hashFiles('scripts/setup-freebsd-sysroot.sh', 'scripts/resolve-freebsd-release.sh') }}
+          path: .cache/freebsd/${{ env.ARCH }}-${{ steps.freebsd.outputs.version }}
+          key: freebsd-sysroot-v2-${{ runner.os }}-${{ env.ARCH }}-${{ steps.freebsd.outputs.version }}-${{ hashFiles('scripts/setup-freebsd-sysroot.sh', 'scripts/resolve-freebsd-release.sh') }}
 
       - name: Build FreeBSD binary on Linux (${{ matrix.arch }})
         env:
           FREEBSD_VERSION: ${{ steps.freebsd.outputs.version }}
           BUILD_TIMESTAMP: ${{ needs.build-web.outputs.built_at }}
-        run: make cross-build-${{ matrix.arch }} GIT_COMMIT="$GITHUB_SHA" BUILD_TIMESTAMP="$BUILD_TIMESTAMP"
+        run: make "cross-build-$ARCH" GIT_COMMIT="$GITHUB_SHA" BUILD_TIMESTAMP="$BUILD_TIMESTAMP"
 
       - name: Verify binary format
         run: |
@@ -485,7 +475,7 @@ jobs:
           file bin/sylve | tee /tmp/sylve-file.txt
           grep -q "FreeBSD" /tmp/sylve-file.txt
 
-          if [ "${{ matrix.arch }}" = "amd64" ]; then
+          if [ "$ARCH" = amd64 ]; then
             grep -Eq "x86-64|amd64" /tmp/sylve-file.txt
           else
             grep -Eq "aarch64|arm64|ARM aarch64" /tmp/sylve-file.txt
@@ -493,7 +483,6 @@ jobs:
 
       - name: Record binary build metadata
         env:
-          ARCH: ${{ matrix.arch }}
           FREEBSD_RELEASE: ${{ steps.freebsd.outputs.version }}
         run: |
           set -euo pipefail
@@ -506,7 +495,7 @@ jobs:
       - name: Upload binary and build metadata
         uses: actions/upload-artifact@v7
         with:
-          name: build-${{ matrix.arch }}
+          name: build-${{ env.ARCH }}
           path: build-assets/
           if-no-files-found: error
           retention-days: 7
