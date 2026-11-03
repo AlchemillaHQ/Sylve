@@ -23,6 +23,7 @@ under sponsorship from the FreeBSD Foundation.
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import {
+		SLIRP_SWITCH_NAME,
 		isSwitchRuntimeAvailable,
 		isSwitchVMCompatible,
 		type SwitchList
@@ -59,6 +60,7 @@ under sponsorship from the FreeBSD Foundation.
 	);
 	let selectedSwitchName = $derived.by(() => {
 		if (!selectedNetwork) return '';
+		if (selectedNetwork.switchType === 'slirp') return SLIRP_SWITCH_NAME;
 		if (selectedNetwork.switchType === 'standard') {
 			return (
 				switches.standard.find((networkSwitch) => networkSwitch.id === selectedNetwork.switchId)
@@ -74,6 +76,10 @@ under sponsorship from the FreeBSD Foundation.
 		return '';
 	});
 	let selectedMacId = $derived(selectedNetwork?.macId ?? null);
+	const slirpOption = {
+		value: SLIRP_SWITCH_NAME,
+		label: 'SLIRP (internet only, not reachable from outside)'
+	};
 	let usable = $derived([
 		...switches.standard.map((networkSwitch) => ({
 			...networkSwitch,
@@ -145,6 +151,7 @@ under sponsorship from the FreeBSD Foundation.
 	}
 
 	function switchSupportsVM(name: string): boolean {
+		if (name === SLIRP_SWITCH_NAME) return true;
 		const networkSwitch = usable.find((candidate) => candidate.name === name);
 		return Boolean(networkSwitch && isSwitchVMCompatible(networkSwitch));
 	}
@@ -297,11 +304,14 @@ under sponsorship from the FreeBSD Foundation.
 			<SimpleSelect
 				label="Switch"
 				placeholder="Select Switch"
-				options={usable.map((networkSwitch) => ({
-					value: networkSwitch.name,
-					label: switchOptionLabel(networkSwitch),
-					disabled: !isSwitchVMCompatible(networkSwitch)
-				}))}
+				options={[
+					slirpOption,
+					...usable.map((networkSwitch) => ({
+						value: networkSwitch.name,
+						label: switchOptionLabel(networkSwitch),
+						disabled: !isSwitchVMCompatible(networkSwitch)
+					}))
+				]}
 				bind:value={properties.switchId}
 				onChange={(value) => (properties.switchId = value)}
 				disabled={loading}
@@ -348,11 +358,14 @@ under sponsorship from the FreeBSD Foundation.
 			<SimpleSelect
 				label="Switch"
 				placeholder="Select Switch"
-				options={usable.map((networkSwitch) => ({
-					value: networkSwitch.name,
-					label: switchOptionLabel(networkSwitch),
-					disabled: editProperties.enable && !isSwitchVMCompatible(networkSwitch)
-				}))}
+				options={[
+					slirpOption,
+					...usable.map((networkSwitch) => ({
+						value: networkSwitch.name,
+						label: switchOptionLabel(networkSwitch),
+						disabled: editProperties.enable && !isSwitchVMCompatible(networkSwitch)
+					}))
+				]}
 				bind:value={editProperties.switchId}
 				onChange={(value) => (editProperties.switchId = value)}
 				disabled={loading}

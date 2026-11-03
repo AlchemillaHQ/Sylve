@@ -4475,3 +4475,10 @@ func TestEditStandardSwitchRemovesHostLayer3AfterConfirmation(t *testing.T) {
 		t.Fatalf("confirmed edit did not remove persisted host settings: %#v", persisted)
 	}
 }
+
+func TestNormalizeStandardSwitchNameReservesSlirp(t *testing.T) {
+	_, err := normalizeStandardSwitchName(" Slirp ")
+	if !errors.Is(err, ErrInvalidStandardSwitch) || StandardSwitchErrorCode(err) != "reserved_standard_switch_name" {
+		t.Fatalf("error=%v code=%q, want reserved_standard_switch_name", err, StandardSwitchErrorCode(err))
+	}
+}

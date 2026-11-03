@@ -226,6 +226,7 @@ func TestCreateManualSwitchValidatesAndNormalizesInput(t *testing.T) {
 	}{
 		{name: "bad name", bridge: "bridge11", errorCode: "invalid_manual_switch_name"},
 		{name: strings.Repeat("a", MaxManualSwitchNameBytes+1), bridge: "bridge11", errorCode: "invalid_manual_switch_name"},
+		{name: "slirp", bridge: "bridge11", errorCode: "reserved_manual_switch_name"},
 		{name: "valid", bridge: "", errorCode: "invalid_manual_switch_bridge"},
 		{name: "valid", bridge: strings.Repeat("b", MaxManualSwitchBridgeBytes+1), errorCode: "invalid_manual_switch_bridge"},
 	} {

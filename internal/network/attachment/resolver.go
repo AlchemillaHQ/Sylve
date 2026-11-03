@@ -41,6 +41,10 @@ type ResolvedSwitch struct {
 	Manual            *networkModels.ManualSwitch
 }
 
+func slirpSwitch() ResolvedSwitch {
+	return ResolvedSwitch{Name: SlirpSwitchName, Type: SwitchTypeSlirp}
+}
+
 func NewResolver(db *gorm.DB) Resolver {
 	return Resolver{
 		DB:                     db,
@@ -73,6 +77,9 @@ func (r Resolver) ResolveIdentityByID(switchType string, switchID uint) (Resolve
 	if err != nil {
 		return ResolvedSwitch{}, err
 	}
+	if switchType == SwitchTypeSlirp {
+		return slirpSwitch(), nil
+	}
 	if switchID == 0 {
 		return ResolvedSwitch{}, fmt.Errorf("%w: switch_not_found: %s:%d", ErrSwitchNotFound, switchType, switchID)
 	}
@@ -93,6 +100,12 @@ func (r Resolver) ResolveIdentityByName(switchType, switchName string) (Resolved
 	if switchName == "" {
 		return ResolvedSwitch{}, fmt.Errorf("invalid_switch_name")
 	}
+	if switchType == SwitchTypeSlirp {
+		if !IsSlirpSwitchName(switchName) {
+			return ResolvedSwitch{}, fmt.Errorf("%w: switch_not_found: slirp", ErrSwitchNotFound)
+		}
+		return slirpSwitch(), nil
+	}
 	return r.resolve(switchType, func(destination any) error {
 		return r.DB.Where("name = ?", switchName).First(destination).Error
 	})
@@ -100,6 +113,9 @@ func (r Resolver) ResolveIdentityByName(switchType, switchName string) (Resolved
 
 func (r Resolver) ResolveIdentityByNameAny(switchName string) (ResolvedSwitch, error) {
 	switchName = strings.TrimSpace(switchName)
+	if IsSlirpSwitchName(switchName) {
+		return slirpSwitch(), nil
+	}
 	standard, err := r.ResolveIdentityByName("standard", switchName)
 	if err == nil {
 		return standard, nil

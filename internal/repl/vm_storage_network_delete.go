@@ -17,6 +17,7 @@ import (
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	libvirtService "github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/dustin/go-humanize"
 )
@@ -611,6 +612,9 @@ func vmNetworkSwitchName(network vmModels.Network) string {
 	}
 	if network.SwitchType == "manual" && network.ManualSwitch != nil {
 		return network.ManualSwitch.Name
+	}
+	if network.SwitchType == networkAttachment.SwitchTypeSlirp {
+		return networkAttachment.SlirpSwitchName
 	}
 	return strconv.FormatUint(uint64(network.SwitchID), 10)
 }

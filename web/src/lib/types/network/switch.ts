@@ -126,6 +126,9 @@ export type ManualSwitch = z.infer<typeof ManualSwitchSchema>;
 export type NetworkSwitch = StandardSwitch | ManualSwitch;
 export type SwitchList = z.infer<typeof SwitchListSchema>;
 
+// Built-in VM-only switch backed by bhyve's user-mode (SLIRP) network stack.
+export const SLIRP_SWITCH_NAME = 'SLIRP';
+
 export function isSwitchRuntimeAvailable(networkSwitch: NetworkSwitch): boolean {
 	return !('vlanStateAvailable' in networkSwitch) || networkSwitch.vlanStateAvailable;
 }

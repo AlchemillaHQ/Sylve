@@ -213,6 +213,40 @@ func TestResolverByIDDistinguishesInvalidTypeFromMissingSwitch(t *testing.T) {
 	}
 }
 
+func TestResolverProvidesBuiltInSlirpSwitch(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t,
+		&networkModels.StandardSwitch{},
+		&networkModels.ManualSwitch{},
+	)
+	resolver := Resolver{DB: db}
+
+	for name, resolve := range map[string]func() (ResolvedSwitch, error){
+		"by id":       func() (ResolvedSwitch, error) { return resolver.ResolveDesiredByID(SwitchTypeSlirp, 0) },
+		"by name":     func() (ResolvedSwitch, error) { return resolver.ResolveIdentityByName(SwitchTypeSlirp, "slirp") },
+		"by any name": func() (ResolvedSwitch, error) { return resolver.ResolveDesiredByNameAny(" SLIRP ") },
+	} {
+		sw, err := resolve()
+		if err != nil {
+			t.Fatalf("%s: resolve slirp: %v", name, err)
+		}
+		if sw.Type != SwitchTypeSlirp || sw.Name != SlirpSwitchName || sw.Bridge != "" {
+			t.Fatalf("%s: unexpected slirp switch: %#v", name, sw)
+		}
+	}
+
+	if _, err := resolver.ResolveIdentityByName(SwitchTypeSlirp, "LAN"); !errors.Is(err, ErrSwitchNotFound) {
+		t.Fatalf("misnamed slirp error = %v, want ErrSwitchNotFound", err)
+	}
+
+	contract := Contract{
+		Version: CurrentVersion, Kind: KindVM, SwitchName: SlirpSwitchName, SwitchType: SwitchTypeSlirp,
+	}
+	result := resolver.ValidateEffectiveTargets(KindVM, []NamedContract{{Attachment: contract}})
+	if len(result.MissingSwitches) != 0 || len(result.IncompatibleSwitches) != 0 {
+		t.Fatalf("slirp target validation failed: %#v", result)
+	}
+}
+
 func TestResolverValidateTargetsClassifiesMissingAndIncompatible(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &networkModels.StandardSwitch{})
 	defaultVLAN := 20

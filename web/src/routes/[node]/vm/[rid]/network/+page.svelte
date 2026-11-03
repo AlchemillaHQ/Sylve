@@ -22,8 +22,8 @@ under sponsorship from the FreeBSD Foundation.
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import {
+		SLIRP_SWITCH_NAME,
 		emptySwitchList,
-		isSwitchVMCompatible,
 		isSwitchList,
 		type ManualSwitch,
 		type StandardSwitch,
@@ -188,7 +188,10 @@ under sponsorship from the FreeBSD Foundation.
 			const macAddress = macObject?.entries?.[0]?.value || network.mac || '';
 			rows.push({
 				id: network.id,
-				switchName: sw?.name || `Unknown ${network.switchType} switch (${network.switchId})`,
+				switchName:
+					network.switchType === 'slirp'
+						? SLIRP_SWITCH_NAME
+						: sw?.name || `Unknown ${network.switchType} switch (${network.switchId})`,
 				vlanFiltering: sw?.vlanFiltering ?? false,
 				accessVlan: sw?.vlanFiltering ? (sw.defaultAccessVlan ?? null) : null,
 				mac: macObject
@@ -206,20 +209,6 @@ under sponsorship from the FreeBSD Foundation.
 	let table = $derived(generateTableData());
 	let activeRows: Row[] = $state([]);
 	let query = $state('');
-	let usable = $derived([
-		...switches.current.standard.map((networkSwitch) => ({
-			...networkSwitch,
-			uid: `standard-${networkSwitch.id}`
-		})),
-		...switches.current.manual.map((networkSwitch) => ({
-			...networkSwitch,
-			uid: `manual-${networkSwitch.id}`
-		}))
-	]);
-	let hasUsableAttachSwitch = $derived(
-		usable.some((networkSwitch) => isSwitchVMCompatible(networkSwitch))
-	);
-
 	function createPageOptions() {
 		return {
 			attach: { open: false },
@@ -285,12 +274,6 @@ under sponsorship from the FreeBSD Foundation.
 	<div class="flex h-10 w-full items-center gap-2 border p-2">
 		<Button
 			onclick={() => {
-				if (!hasUsableAttachSwitch) {
-					toast.error('No network switches are available to attach', {
-						position: 'bottom-center'
-					});
-					return;
-				}
 				properties.attach.open = true;
 			}}
 			size="sm"

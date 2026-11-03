@@ -262,6 +262,7 @@ func (n *Network) AfterFind(tx *gorm.DB) error {
 			return fmt.Errorf("load manual switch %d: %w", n.SwitchID, err)
 		}
 		n.ManualSwitch = &m
+	case networkAttachment.SwitchTypeSlirp:
 	default:
 		return fmt.Errorf("unknown switch type: %s", n.SwitchType)
 	}

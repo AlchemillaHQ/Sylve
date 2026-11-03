@@ -75,6 +75,35 @@ func TestCompareAttachmentContract(t *testing.T) {
 	}
 }
 
+func TestSlirpContractIsVMOnlyAndUnfiltered(t *testing.T) {
+	contract, err := Normalize(Contract{
+		Version: CurrentVersion, Kind: KindVM, SwitchName: " slirp ", SwitchType: "SLIRP",
+	})
+	if err != nil {
+		t.Fatalf("normalize slirp contract: %v", err)
+	}
+	if contract.SwitchName != SlirpSwitchName || contract.SwitchType != SwitchTypeSlirp {
+		t.Fatalf("unexpected slirp contract: %#v", contract)
+	}
+
+	if _, err := Normalize(Contract{
+		Version: CurrentVersion, Kind: KindJail, SwitchName: SlirpSwitchName, SwitchType: SwitchTypeSlirp,
+	}); !errors.Is(err, ErrInvalidSwitch) {
+		t.Fatalf("jail slirp contract error = %v, want ErrInvalidSwitch", err)
+	}
+	if _, err := Normalize(Contract{
+		Version: CurrentVersion, Kind: KindVM, SwitchName: "LAN", SwitchType: SwitchTypeSlirp,
+	}); !errors.Is(err, ErrInvalidSwitch) {
+		t.Fatalf("misnamed slirp contract error = %v, want ErrInvalidSwitch", err)
+	}
+	if _, err := Normalize(Contract{
+		Version: CurrentVersion, Kind: KindVM, SwitchName: SlirpSwitchName, SwitchType: SwitchTypeSlirp,
+		VLANFiltering: true, DefaultAccessVLAN: vlanPointer(10),
+	}); err == nil || !strings.Contains(err.Error(), "vm_network_slirp_vlan_unsupported") {
+		t.Fatalf("filtered slirp contract error = %v", err)
+	}
+}
+
 func TestLegacyUnfilteredIsNarrow(t *testing.T) {
 	contract, err := LegacyUnfiltered(KindVM, "LAN", "")
 	if err != nil {

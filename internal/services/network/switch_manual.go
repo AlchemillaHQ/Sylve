@@ -20,6 +20,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/internal/network/reconcile"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"github.com/alchemillahq/sylve/pkg/network/iface"
@@ -218,6 +219,9 @@ func normalizeManualSwitch(name, bridge string) (string, string, error) {
 
 	if name == "" || len(name) > MaxManualSwitchNameBytes || !manualSwitchNamePattern.MatchString(name) {
 		return "", "", invalidManualSwitch("invalid_manual_switch_name", nil)
+	}
+	if networkAttachment.IsSlirpSwitchName(name) {
+		return "", "", invalidManualSwitch("reserved_manual_switch_name", nil)
 	}
 	if bridge == "" || len(bridge) > MaxManualSwitchBridgeBytes {
 		return "", "", invalidManualSwitch("invalid_manual_switch_bridge", nil)

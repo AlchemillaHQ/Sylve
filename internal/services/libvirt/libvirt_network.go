@@ -244,9 +244,12 @@ func (s *Service) syncVMNetworksWithDB(ctx context.Context, db *gorm.DB, rid uin
 		devicesElement = domainElement.CreateElement("devices")
 	}
 
-	// VM network rows are authoritative for bridge interfaces managed by Sylve.
-	// Rebuilding them also removes stale legacy/raw-MAC interfaces reliably.
-	for _, iface := range doc.FindElements("//interface[@type='bridge']") {
+	// VM network rows are authoritative for bridge and SLIRP interfaces managed
+	// by Sylve. Rebuilding them also removes stale legacy/raw-MAC interfaces.
+	for _, iface := range doc.FindElements("//interface") {
+		if ifaceType := iface.SelectAttrValue("type", ""); ifaceType != "bridge" && ifaceType != "user" {
+			continue
+		}
 		if parent := iface.Parent(); parent != nil {
 			parent.RemoveChild(iface)
 		}
@@ -300,11 +303,15 @@ func (s *Service) syncVMNetworksWithDB(ctx context.Context, db *gorm.DB, rid uin
 		}
 
 		iface := devicesElement.CreateElement("interface")
-		iface.CreateAttr("type", "bridge")
 		macElement := iface.CreateElement("mac")
 		macElement.CreateAttr("address", mac)
-		sourceElement := iface.CreateElement("source")
-		sourceElement.CreateAttr("bridge", sw.Bridge)
+		if sw.Type == networkAttachment.SwitchTypeSlirp {
+			iface.CreateAttr("type", "user")
+		} else {
+			iface.CreateAttr("type", "bridge")
+			sourceElement := iface.CreateElement("source")
+			sourceElement.CreateAttr("bridge", sw.Bridge)
+		}
 		modelElement := iface.CreateElement("model")
 		modelElement.CreateAttr("type", emulation)
 	}

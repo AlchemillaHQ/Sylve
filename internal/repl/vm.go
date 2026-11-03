@@ -675,16 +675,9 @@ func formatVMNetworks(vm *vmModels.VM) string {
 			mac = network.AddressObj.Entries[0].Value
 		}
 
-		switchName := strconv.FormatUint(uint64(network.SwitchID), 10)
-		if network.SwitchType == "standard" && network.StandardSwitch != nil {
-			switchName = network.StandardSwitch.Name
-		} else if network.SwitchType == "manual" && network.ManualSwitch != nil {
-			switchName = network.ManualSwitch.Name
-		}
-
 		rows = append(rows, []string{
 			strconv.FormatUint(uint64(network.ID), 10),
-			switchName,
+			vmNetworkSwitchName(network),
 			network.SwitchType,
 			network.Emulation,
 			strconv.FormatBool(network.Enable),

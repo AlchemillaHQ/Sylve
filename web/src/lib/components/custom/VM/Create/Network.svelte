@@ -12,7 +12,7 @@ under sponsorship from the FreeBSD Foundation.
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import { SLIRP_SWITCH_NAME, type SwitchList } from '$lib/types/network/switch';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { generateMACOptions } from '$lib/utils/network/object';
@@ -58,7 +58,7 @@ under sponsorship from the FreeBSD Foundation.
 {#snippet radioItem(
 	id: number,
 	name: string,
-	type: 'standard' | 'manual' | 'none',
+	type: 'standard' | 'manual' | 'slirp' | 'none',
 	vlanFiltering = false,
 	defaultAccessVlan: number | null = null,
 	runtimeAvailable = true
@@ -77,6 +77,8 @@ under sponsorship from the FreeBSD Foundation.
 					Runtime bridge state unavailable
 				{:else if type === 'none'}
 					No network switch will be allocated now, you can add it later
+				{:else if type === 'slirp'}
+					Outbound access only, no inbound access
 				{:else if type === 'manual'}
 					Manual switch{vlanFiltering && defaultAccessVlan !== null
 						? ` · VLAN filtered · access VLAN ${defaultAccessVlan}`
@@ -98,6 +100,8 @@ under sponsorship from the FreeBSD Foundation.
 <div class="flex flex-col gap-4 p-4">
 	<RadioGroup.Root bind:value={nwSwitch} class="border p-2">
 		<ScrollArea orientation="vertical" class="h-64 w-full max-w-full">
+			{@render radioItem(0, SLIRP_SWITCH_NAME, 'slirp')}
+
 			{#if switches && switches.standard}
 				{#each switches.standard ?? [] as sw (sw.id)}
 					{@render radioItem(sw.id, sw.name, 'standard', sw.vlanFiltering, sw.defaultAccessVlan)}

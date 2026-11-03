@@ -279,10 +279,10 @@ type Model struct {
 }
 
 type Interface struct {
-	Type   string       `xml:"type,attr"`
-	MAC    *MACAddress  `xml:"mac,omitempty"`
-	Source BridgeSource `xml:"source"`
-	Model  Model        `xml:"model"`
+	Type   string        `xml:"type,attr"`
+	MAC    *MACAddress   `xml:"mac,omitempty"`
+	Source *BridgeSource `xml:"source,omitempty"`
+	Model  Model         `xml:"model"`
 }
 
 type Input struct {

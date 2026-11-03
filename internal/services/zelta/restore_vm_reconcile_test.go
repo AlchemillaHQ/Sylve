@@ -312,6 +312,42 @@ func TestNormalizeRestoredVMNetworksDefaultsEmulation(t *testing.T) {
 	}
 }
 
+func TestNormalizeRestoredVMNetworksRestoresSlirp(t *testing.T) {
+	svc, db := newTestZeltaServiceWithDB(t,
+		&networkModels.StandardSwitch{},
+		&networkModels.ManualSwitch{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ObjectResolution{},
+		&jailModels.Network{},
+	)
+
+	attachment := networkAttachment.Contract{
+		Version: networkAttachment.CurrentVersion, Kind: networkAttachment.KindVM,
+		SwitchName: networkAttachment.SlirpSwitchName, SwitchType: networkAttachment.SwitchTypeSlirp,
+	}
+	networks := []vmModels.Network{{
+		Enable: true, SwitchType: networkAttachment.SwitchTypeSlirp, Attachment: &attachment, Emulation: "virtio",
+	}}
+
+	unlock, err := lockRestoredVMNetworkLifecycle(db, networks)
+	if err != nil {
+		t.Fatalf("lock restored SLIRP network: %v", err)
+	}
+	unlock()
+
+	tx := db.Begin()
+	defer tx.Rollback()
+	resolved, err := svc.normalizeRestoredVMNetworks(tx, 10, networks)
+	if err != nil || len(resolved) != 1 {
+		t.Fatalf("restore SLIRP network: resolved=%v err=%v", resolved, err)
+	}
+	if resolved[0].SwitchType != networkAttachment.SwitchTypeSlirp || resolved[0].SwitchID != 0 ||
+		!resolved[0].Enable {
+		t.Fatalf("unexpected restored SLIRP network: %+v", resolved[0])
+	}
+}
+
 func TestNormalizeRestoredVMNetworksPreservesEffectiveAccessVLAN(t *testing.T) {
 	svc, db := newTestZeltaServiceWithDB(t,
 		&networkModels.StandardSwitch{},

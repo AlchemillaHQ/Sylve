@@ -16718,10 +16718,6 @@ msgstr ""
 msgid "No address"
 msgstr ""
 
-#: src/routes/[node]/vm/[rid]/network/+page.svelte
-msgid "No network switches are available to attach"
-msgstr ""
-
 #. 0: escapeHTML(vm.current.name); 1: escapeHTML(properties.detach.name)
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 msgid "This will detach the VM <b>{0}</b> from the switch <b>{1}</b>. The MAC object will NOT be deleted."
@@ -23426,4 +23422,12 @@ msgstr ""
 #. 0: error
 #: src/routes/[node]/system/services/+page.svelte
 msgid "Failed to update Containers: {0}"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Network.svelte
+msgid "Outbound access only, no inbound access"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "SLIRP (internet only, not reachable from outside)"
 msgstr ""

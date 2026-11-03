@@ -27,6 +27,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/internal/network/interfaceref"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"github.com/alchemillahq/sylve/pkg/network/iface"
@@ -183,6 +184,9 @@ func normalizeStandardSwitchName(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || len(name) > MaxStandardSwitchNameBytes || !standardSwitchNamePattern.MatchString(name) {
 		return "", invalidStandardSwitch("invalid_standard_switch_name", nil)
+	}
+	if networkAttachment.IsSlirpSwitchName(name) {
+		return "", invalidStandardSwitch("reserved_standard_switch_name", nil)
 	}
 	return name, nil
 }

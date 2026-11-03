@@ -221,6 +221,8 @@ func (s *Service) resolveSwitchName(switchID uint, switchType string) (string, e
 			return "", fmt.Errorf("failed_to_get_manual_switch: %w", err)
 		}
 		return sw.Name, nil
+	case networkAttachment.SwitchTypeSlirp:
+		return networkAttachment.SlirpSwitchName, nil
 	default:
 		return "", fmt.Errorf("invalid_switch_type")
 	}
@@ -252,6 +254,11 @@ func (s *Service) resolveSwitchID(switchName, switchType string) (uint, error) {
 			return 0, fmt.Errorf("failed_to_get_manual_switch: %w", err)
 		}
 		return sw.ID, nil
+	case networkAttachment.SwitchTypeSlirp:
+		if !networkAttachment.IsSlirpSwitchName(switchName) {
+			return 0, fmt.Errorf("switch_not_found")
+		}
+		return 0, nil
 	default:
 		return 0, fmt.Errorf("invalid_switch_type")
 	}
@@ -1056,10 +1063,10 @@ func (s *Service) createVMFromTemplateTarget(
 			}
 
 			for idx, network := range template.Networks {
-				switchID := networkSwitchIDs[idx]
-				if switchID == 0 {
+				if strings.TrimSpace(network.SwitchName) == "" {
 					continue
 				}
+				switchID := networkSwitchIDs[idx]
 
 				macID, err := s.createUniqueMACObject(tx, fmt.Sprintf("%s-net-%d", target.Name, idx+1))
 				if err != nil {
@@ -1235,7 +1242,7 @@ func (s *Service) PreflightConvertVMToTemplate(
 func (s *Service) sourceVMNetworksForTemplate(vm vmModels.VM) ([]vmModels.VMTemplateNetwork, error) {
 	templateNetworks := make([]vmModels.VMTemplateNetwork, 0, len(vm.Networks))
 	for _, network := range vm.Networks {
-		if network.SwitchID == 0 {
+		if network.SwitchID == 0 && network.SwitchType != networkAttachment.SwitchTypeSlirp {
 			continue
 		}
 		switchName, err := s.resolveSwitchName(network.SwitchID, network.SwitchType)

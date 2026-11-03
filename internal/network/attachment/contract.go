@@ -26,6 +26,17 @@ const (
 	KindJail Kind = "jail"
 )
 
+// SLIRP is a built-in VM-only switch backed by bhyve's user-mode network
+// stack. It has no database row or host bridge, so every node provides it.
+const (
+	SwitchTypeSlirp = "slirp"
+	SlirpSwitchName = "SLIRP"
+)
+
+func IsSlirpSwitchName(name string) bool {
+	return strings.EqualFold(strings.TrimSpace(name), SlirpSwitchName)
+}
+
 var (
 	ErrUnsupportedVersion = errors.New("unsupported network attachment contract version")
 	ErrInvalidKind        = errors.New("invalid network attachment kind")
@@ -78,7 +89,7 @@ func NormalizeSwitchType(value string) (string, error) {
 	if value == "" {
 		value = "standard"
 	}
-	if value != "standard" && value != "manual" {
+	if value != "standard" && value != "manual" && value != SwitchTypeSlirp {
 		return "", fmt.Errorf("%w: %q", ErrInvalidSwitch, value)
 	}
 	return value, nil
@@ -102,6 +113,20 @@ func Normalize(value Contract) (Contract, error) {
 	value.SwitchType = switchType
 	value.DefaultAccessVLAN = cloneVLAN(value.DefaultAccessVLAN)
 	value.VLANPolicy = clonePolicy(value.VLANPolicy)
+
+	if switchType == SwitchTypeSlirp {
+		if value.Kind != KindVM {
+			return value, fmt.Errorf("%w: slirp is only supported for VMs", ErrInvalidSwitch)
+		}
+		if !IsSlirpSwitchName(value.SwitchName) {
+			return value, fmt.Errorf("%w: invalid slirp switch name %q", ErrInvalidSwitch, value.SwitchName)
+		}
+		if value.VLANFiltering || value.DefaultAccessVLAN != nil || value.VLANPolicy != nil {
+			return value, fmt.Errorf("vm_network_slirp_vlan_unsupported")
+		}
+		value.SwitchName = SlirpSwitchName
+		return value, nil
+	}
 
 	switch value.Kind {
 	case KindVM:

@@ -682,6 +682,63 @@ func TestCreateVMXMLValidatesLiveManualSwitchVLANState(t *testing.T) {
 	}
 }
 
+func TestCreateVMXMLUsesUserInterfaceForSlirp(t *testing.T) {
+	db := newVMNetworkMutationTestDB(t)
+	vm := vmModels.VM{Name: "slirp-xml-vm", RID: 103}
+	if err := db.Create(&vm).Error; err != nil {
+		t.Fatalf("seed VM: %v", err)
+	}
+	vm.Networks = []vmModels.Network{{
+		VMID: vm.ID, SwitchType: networkAttachment.SwitchTypeSlirp, Emulation: "virtio", Enable: true,
+	}}
+
+	xmlText, err := (&Service{DB: db}).CreateVmXML(vm, t.TempDir())
+	if err != nil {
+		t.Fatalf("failed to create VM XML: %v", err)
+	}
+	if !strings.Contains(xmlText, `<interface type="user">`) {
+		t.Fatalf("generated XML did not include a SLIRP interface: %s", xmlText)
+	}
+	if strings.Contains(xmlText, "<source bridge") {
+		t.Fatalf("generated SLIRP interface referenced a bridge: %s", xmlText)
+	}
+}
+
+func TestNetworkAttachSlirpCreatesSwitchlessAttachment(t *testing.T) {
+	db := newVMNetworkMutationTestDB(t)
+	vm, _ := seedVMNetworkMutationBase(t, db, 104, "slirp-vm")
+
+	network, err := (&Service{DB: db}).networkAttachApply(
+		context.Background(),
+		libvirtServiceInterfaces.NetworkAttachRequest{
+			RID:        vm.RID,
+			SwitchName: "slirp",
+			Emulation:  "virtio",
+		},
+		vm,
+		noOpVMNetworkHooks(),
+	)
+	if err != nil {
+		t.Fatalf("attach failed: %v", err)
+	}
+	if network.SwitchType != networkAttachment.SwitchTypeSlirp || network.SwitchID != 0 || network.MacID == nil {
+		t.Fatalf("unexpected SLIRP network: %+v", network)
+	}
+
+	contract, err := ResolveDesiredVMNetworkAttachment(db, network.SwitchType, network.SwitchID)
+	if err != nil {
+		t.Fatalf("resolve SLIRP attachment: %v", err)
+	}
+	if contract.SwitchName != networkAttachment.SlirpSwitchName || contract.VLANFiltering {
+		t.Fatalf("unexpected SLIRP contract: %#v", contract)
+	}
+
+	var loaded vmModels.VM
+	if err := db.Preload("Networks").First(&loaded, vm.ID).Error; err != nil {
+		t.Fatalf("load VM with SLIRP network: %v", err)
+	}
+}
+
 func TestVMNetworkAttachmentFromMetadataHasNarrowLegacyFallback(t *testing.T) {
 	legacy := vmModels.Network{
 		SwitchType: "standard",
