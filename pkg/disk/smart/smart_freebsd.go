@@ -332,15 +332,6 @@ func (d *Device) Supported() (bool, error) {
 	return bool(C.smart_supported(h)), nil
 }
 
-func Supported(devicePath string) (bool, error) {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return false, err
-	}
-	defer d.Close()
-	return d.Supported()
-}
-
 func CheckATAPowerMode(devicePath string) (ATAPowerMode, error) {
 	if !strings.HasPrefix(devicePath, "/dev/") {
 		devicePath = "/dev/" + devicePath
@@ -403,15 +394,6 @@ func (d *Device) Enable() error {
 		return wrapDeviceError(h, fmt.Errorf("failed to enable SMART on %s: code %d", devicePath, int(rc)), devicePath)
 	}
 	return nil
-}
-
-func Enable(devicePath string) error {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.Enable()
 }
 
 func (d *Device) Read() (*DeviceInfo, error) {
@@ -1057,15 +1039,6 @@ func (d *Device) SelfTestCapabilities() (*SelfTestCapabilities, error) {
 	return &capabilities, nil
 }
 
-func ReadSelfTestCapabilities(devicePath string) (*SelfTestCapabilities, error) {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return nil, err
-	}
-	defer d.Close()
-	return d.SelfTestCapabilities()
-}
-
 func (d *Device) selfTestStatusLocked(h C.smart_h, devicePath string) (*SelfTestStatus, error) {
 	proto := C.get_device_proto(h)
 	switch proto {
@@ -1144,15 +1117,6 @@ func (d *Device) SelfTestStatus() (*SelfTestStatus, error) {
 	}
 	defer d.mu.Unlock()
 	return d.selfTestStatusLocked(h, devicePath)
-}
-
-func ReadSelfTestStatus(devicePath string) (*SelfTestStatus, error) {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return nil, err
-	}
-	defer d.Close()
-	return d.SelfTestStatus()
 }
 
 func (d *Device) StartSelfTest(kind SelfTestKind) error {
@@ -1241,33 +1205,6 @@ func (d *Device) StartSelectiveSelfTest(spans []SelectiveSpan, options Selective
 	return nil
 }
 
-func StartSelectiveSelfTest(devicePath string, spans []SelectiveSpan, options SelectiveSelfTestOptions) error {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.StartSelectiveSelfTest(spans, options)
-}
-
-func StartSelfTest(devicePath string, kind SelfTestKind) error {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.StartSelfTest(kind)
-}
-
-func StartVendorSelfTest(devicePath string, code uint8) error {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.StartVendorSelfTest(code)
-}
-
 func (d *Device) StartVendorSelfTest(code uint8) error {
 	if d == nil || d.selfTestMu == nil {
 		return ErrDeviceClosed
@@ -1298,15 +1235,6 @@ func (d *Device) StartVendorSelfTest(code uint8) error {
 		return wrapDeviceError(h, fmt.Errorf("start vendor self-test 0x%02x on %s failed with code %d", code, devicePath, int(rc)), devicePath)
 	}
 	return nil
-}
-
-func SelfTest(devicePath string, testType uint8) error {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.SelfTest(testType)
 }
 
 func (d *Device) SelfTest(testType uint8) error {
@@ -1347,24 +1275,6 @@ func (d *Device) AbortSelfTest() error {
 	return nil
 }
 
-func AbortSelfTest(devicePath string) error {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.AbortSelfTest()
-}
-
-func ReadErrorLog(devicePath string) (*ATAErrorLog, error) {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return nil, err
-	}
-	defer d.Close()
-	return d.ReadErrorLog()
-}
-
 func (d *Device) ReadErrorLog() (*ATAErrorLog, error) {
 	h, devicePath, err := d.lockHandle()
 	if err != nil {
@@ -1386,19 +1296,6 @@ func (d *Device) ReadErrorLog() (*ATAErrorLog, error) {
 	raw := C.GoBytes(elRawBuf, C.int(elBufSize))
 	log := parseATAErrorLogWithBugs(raw, d.driveMatch.FirmwareBugs)
 	return &log, nil
-}
-
-func ReadNVMeErrorLog(devicePath string) (*NVMeErrorLog, error) {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return nil, err
-	}
-	defer d.Close()
-	return d.ReadNVMeErrorLog()
-}
-
-func ReadNVMEErrorLog(devicePath string) (*NVMeErrorLog, error) {
-	return ReadNVMeErrorLog(devicePath)
 }
 
 func (d *Device) ReadNVMeErrorLog() (*NVMeErrorLog, error) {
@@ -1435,15 +1332,6 @@ func (d *Device) ReadNVMeErrorLog() (*NVMeErrorLog, error) {
 
 func (d *Device) ReadNVMEErrorLog() (*NVMeErrorLog, error) {
 	return d.ReadNVMeErrorLog()
-}
-
-func ReadSCTStatus(devicePath string) (*SCTStatus, error) {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return nil, err
-	}
-	defer d.Close()
-	return d.ReadSCTStatus()
 }
 
 func (d *Device) ReadSCTStatus() (*SCTStatus, error) {
@@ -1565,15 +1453,6 @@ func readSCTStatusLocked(h C.smart_h, devicePath string) (*SCTStatus, error) {
 	return status, nil
 }
 
-func ReadSCTTempHistory(devicePath string) (*SCTTempHistory, error) {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return nil, err
-	}
-	defer d.Close()
-	return d.ReadSCTTempHistory()
-}
-
 func (d *Device) ReadSCTTempHistory() (*SCTTempHistory, error) {
 	h, devicePath, err := d.lockHandle()
 	if err != nil {
@@ -1629,15 +1508,6 @@ func (d *Device) ReadSCTTempHistory() (*SCTTempHistory, error) {
 	}
 
 	return hist, nil
-}
-
-func ReadNVMeIdentifyCtrl(devicePath string) (*NVMeIdentifyCtrl, error) {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return nil, err
-	}
-	defer d.Close()
-	return d.ReadNVMeIdentifyCtrl()
 }
 
 func (d *Device) ReadNVMeIdentifyCtrl() (*NVMeIdentifyCtrl, error) {
@@ -1749,15 +1619,6 @@ func parseNVMeIdentifyCtrl(buf []byte) *NVMeIdentifyCtrl {
 	return result
 }
 
-func ReadNVMeIdentifyNamespace(devicePath string, namespaceID uint32) (*NVMeIdentifyNamespace, error) {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return nil, err
-	}
-	defer d.Close()
-	return d.ReadNVMeIdentifyNamespace(namespaceID)
-}
-
 func (d *Device) ReadNVMeIdentifyNamespace(namespaceID uint32) (*NVMeIdentifyNamespace, error) {
 	h, devicePath, err := d.lockHandle()
 	if err != nil {
@@ -1838,15 +1699,6 @@ func parseNVMeIdentifyNamespace(raw []byte) *NVMeIdentifyNamespace {
 	return result
 }
 
-func ReadLogDirectory(devicePath string) ([]uint8, error) {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return nil, err
-	}
-	defer d.Close()
-	return d.ReadLogDirectory()
-}
-
 func (d *Device) ReadLogDirectory() ([]uint8, error) {
 	h, devicePath, err := d.lockHandle()
 	if err != nil {
@@ -1867,15 +1719,6 @@ func (d *Device) ReadLogDirectory() ([]uint8, error) {
 	}
 
 	return parseATALogDirectory(raw), nil
-}
-
-func ReadGPLLogDirectory(devicePath string) ([]uint8, error) {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return nil, err
-	}
-	defer d.Close()
-	return d.ReadGPLLogDirectory()
 }
 
 func (d *Device) ReadGPLLogDirectory() ([]uint8, error) {
@@ -1921,15 +1764,6 @@ func (d *Device) gplDirectoryLocked(h C.smart_h, devicePath string) (map[uint8]u
 	return d.gplDirectory, nil
 }
 
-func ReadExtendedErrorLog(devicePath string) (*ATAErrorLog, error) {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return nil, err
-	}
-	defer d.Close()
-	return d.ReadExtendedErrorLog()
-}
-
 func (d *Device) ReadExtendedErrorLog() (*ATAErrorLog, error) {
 	h, devicePath, err := d.lockHandle()
 	if err != nil {
@@ -1959,15 +1793,6 @@ func (d *Device) ReadExtendedErrorLog() (*ATAErrorLog, error) {
 	raw := C.GoBytes(rawBuf, C.int(bufSize))
 	result := parseATAExtendedErrorLogWithBugs(raw, d.driveMatch.FirmwareBugs)
 	return &result, nil
-}
-
-func ReadExtendedSelfTestLog(devicePath string) (*SelfTestLog, error) {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return nil, err
-	}
-	defer d.Close()
-	return d.ReadExtendedSelfTestLog()
 }
 
 func (d *Device) ReadExtendedSelfTestLog() (*SelfTestLog, error) {
@@ -2111,15 +1936,6 @@ func verifySCTCommandLocked(h C.smart_h, devicePath string, actionCode, function
 	return nil
 }
 
-func ReadDeviceStatistics(devicePath string) ([]Attribute, error) {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return nil, err
-	}
-	defer d.Close()
-	return d.ReadDeviceStatistics()
-}
-
 func (d *Device) ReadDeviceStatistics() ([]Attribute, error) {
 	h, devicePath, err := d.lockHandle()
 	if err != nil {
@@ -2230,15 +2046,6 @@ func (d *Device) ReadDeviceStatistics() ([]Attribute, error) {
 	return attrs, nil
 }
 
-func SetSCTFeatureControl(devicePath string, featureCode uint16, state uint16, persistent bool) error {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.SetSCTFeatureControl(featureCode, state, persistent)
-}
-
 func (d *Device) SetSCTFeatureControl(featureCode uint16, state uint16, persistent bool) error {
 	h, devicePath, err := d.lockHandle()
 	if err != nil {
@@ -2268,15 +2075,6 @@ func (d *Device) SetSCTFeatureControl(featureCode uint16, state uint16, persiste
 	}
 
 	return verifySCTCommandLocked(h, devicePath, 4, 1)
-}
-
-func ReadSelectiveSelfTestLog(devicePath string) (*SelfTestLog, error) {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return nil, err
-	}
-	defer d.Close()
-	return d.ReadSelectiveSelfTestLog()
 }
 
 func (d *Device) ReadSelectiveSelfTestLog() (*SelfTestLog, error) {
@@ -2356,15 +2154,6 @@ func parseSelectiveSelfTestLog(raw []byte) *SelfTestLog {
 	}
 
 	return log
-}
-
-func SetSCTErrorRecoveryControl(devicePath string, read bool, timeLimit uint16) error {
-	d, err := OpenDevice(devicePath)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.SetSCTErrorRecoveryControl(read, timeLimit)
 }
 
 func (d *Device) SetSCTErrorRecoveryControl(read bool, timeLimit uint16) error {

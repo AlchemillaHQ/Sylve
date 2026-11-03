@@ -797,11 +797,6 @@ func (s *Service) getSMARTHealth(smartData any) (bool, bool) {
 	return false, false
 }
 
-func (s *Service) getSMARTPassed(smartData any) bool {
-	known, passed := s.getSMARTHealth(smartData)
-	return !known || passed
-}
-
 func diskSmartCounterSamples(smartData any) map[string]string {
 	samples := make(map[string]string)
 	switch data := smartData.(type) {

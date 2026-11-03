@@ -257,19 +257,6 @@ func TestSelfTestEventRelayActivityTracksPendingEvents(t *testing.T) {
 	}
 }
 
-func TestLatestCompletedSelfTestResult(t *testing.T) {
-	status := &smart.SelfTestStatus{
-		Results: []smart.SelfTestEntry{
-			{Protocol: "SCSI", Type: "short", Status: "in_progress", Outcome: smart.SelfTestOutcomeInProgress},
-			{Protocol: "SCSI", Type: "short", Status: "completed", Outcome: smart.SelfTestOutcomePassed, LifetimeHours: 42},
-		},
-	}
-	entry, fingerprint := latestCompletedSelfTestResult(status)
-	if entry == nil || entry.Outcome != smart.SelfTestOutcomePassed || fingerprint == "" {
-		t.Fatalf("unexpected result: entry=%+v fingerprint=%q", entry, fingerprint)
-	}
-}
-
 func TestNewScheduledSelfTestResultIgnoresReorderedHistory(t *testing.T) {
 	first := smart.SelfTestEntry{Protocol: "ATA", Type: "short", Status: "completed", Outcome: smart.SelfTestOutcomePassed, LifetimeHours: 10}
 	second := smart.SelfTestEntry{Protocol: "ATA", Type: "short", Status: "completed", Outcome: smart.SelfTestOutcomePassed, LifetimeHours: 11}

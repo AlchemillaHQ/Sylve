@@ -87,10 +87,6 @@ func (m *mockDiskService) GetDiskDevicesInventory(ctx context.Context) ([]diskSe
 	return m.disks, nil
 }
 
-func (m *mockDiskService) GetSmartData(disk diskServiceInterfaces.DiskInfo) (any, *diskServiceInterfaces.DiskSelfTestLog, error) {
-	return nil, nil, nil
-}
-
 func (m *mockDiskService) GetWearOut(disk any) (float64, error) {
 	return 0, nil
 }
@@ -105,62 +101,6 @@ func (m *mockDiskService) DestroyPartitionTable(device string) error {
 
 func (m *mockDiskService) IsDiskGPT(device string, sectorSize int) bool {
 	return false
-}
-
-func (m *mockDiskService) RunSelfTest(disk diskServiceInterfaces.DiskInfo, testType string) error {
-	return nil
-}
-
-func (m *mockDiskService) GetSelfTestLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskSelfTestLog, error) {
-	return &diskServiceInterfaces.DiskSelfTestLog{}, nil
-}
-
-func (m *mockDiskService) GetErrorLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskErrorLog, error) {
-	return &diskServiceInterfaces.DiskErrorLog{}, nil
-}
-
-func (m *mockDiskService) GetNVMEErrorLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskNVMEErrorLog, error) {
-	return &diskServiceInterfaces.DiskNVMEErrorLog{}, nil
-}
-
-func (m *mockDiskService) GetSCTStatus(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskSCTStatus, error) {
-	return &diskServiceInterfaces.DiskSCTStatus{}, nil
-}
-
-func (m *mockDiskService) GetSCTTempHistory(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskSCTTempHistory, error) {
-	return &diskServiceInterfaces.DiskSCTTempHistory{}, nil
-}
-
-func (m *mockDiskService) AbortSelfTest(disk diskServiceInterfaces.DiskInfo) error {
-	return nil
-}
-
-func (m *mockDiskService) GetExtendedSelfTestLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskSelfTestLog, error) {
-	return &diskServiceInterfaces.DiskSelfTestLog{}, nil
-}
-
-func (m *mockDiskService) GetExtendedErrorLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskErrorLog, error) {
-	return &diskServiceInterfaces.DiskErrorLog{}, nil
-}
-
-func (m *mockDiskService) GetLogDirectory(disk diskServiceInterfaces.DiskInfo) ([]uint8, error) {
-	return nil, nil
-}
-
-func (m *mockDiskService) GetDeviceStatistics(disk diskServiceInterfaces.DiskInfo) ([]diskServiceInterfaces.DiskAttribute, error) {
-	return nil, nil
-}
-
-func (m *mockDiskService) GetSelectiveSelfTestLog(disk diskServiceInterfaces.DiskInfo) (*diskServiceInterfaces.DiskSelfTestLog, error) {
-	return &diskServiceInterfaces.DiskSelfTestLog{}, nil
-}
-
-func (m *mockDiskService) SetSCTFeatureControl(disk diskServiceInterfaces.DiskInfo, featureCode uint16, state uint16, persistent bool) error {
-	return nil
-}
-
-func (m *mockDiskService) SetSCTErrorRecoveryControl(disk diskServiceInterfaces.DiskInfo, read bool, timeLimit uint16) error {
-	return nil
 }
 
 func newTestServiceWithDisks(t *testing.T, disks []diskServiceInterfaces.Disk) *Service {

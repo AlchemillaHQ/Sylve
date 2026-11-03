@@ -29,34 +29,6 @@ func TestMapSelfTestStateMarshalsEmptyResultsAsArray(t *testing.T) {
 	}
 }
 
-func TestMapSelfTestStatusToInterface(t *testing.T) {
-	status := &smart.SelfTestStatus{
-		Running:       true,
-		ProgressPct:   42,
-		ChecksumValid: true,
-		Results: []smart.SelfTestEntry{
-			{
-				Type:          "extended",
-				Status:        "failed_read",
-				RemainingPct:  0,
-				LifetimeHours: 123,
-				LBA:           456,
-				LBAValid:      true,
-				NSID:          7,
-				NSIDValid:     true,
-			},
-		},
-	}
-	got := mapSelfTestStatusToInterface(status)
-	if !got.InProgress || got.ProgressPct != 42 || !got.ChecksumValid || len(got.Entries) != 1 {
-		t.Fatalf("log: %+v", got)
-	}
-	entry := got.Entries[0]
-	if entry.Type != "extended" || entry.Status != "failed_read" || entry.LifetimeHours != 123 || entry.LBA != 456 || !entry.LBAValid || entry.NSID != 7 || !entry.NSIDValid {
-		t.Fatalf("entry: %+v", entry)
-	}
-}
-
 func TestMapNVMeLibSmartToInterface(t *testing.T) {
 	info := &smart.DeviceInfo{
 		Device:          "nda0",

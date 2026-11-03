@@ -147,93 +147,10 @@ type SMARTNvme struct {
 
 type DiskServiceInterface interface {
 	GetDiskDevices(ctx context.Context) ([]Disk, error)
-	GetSmartData(disk DiskInfo) (any, *DiskSelfTestLog, error)
 	GetWearOut(disk any) (float64, error)
 	GetDiskSize(device string) (uint64, error)
 	DestroyPartitionTable(device string) error
 	IsDiskGPT(device string, sectorSize int) bool
-	RunSelfTest(disk DiskInfo, testType string) error
-	AbortSelfTest(disk DiskInfo) error
-	GetSelfTestLog(disk DiskInfo) (*DiskSelfTestLog, error)
-	GetExtendedSelfTestLog(disk DiskInfo) (*DiskSelfTestLog, error)
-	GetErrorLog(disk DiskInfo) (*DiskErrorLog, error)
-	GetExtendedErrorLog(disk DiskInfo) (*DiskErrorLog, error)
-	GetNVMEErrorLog(disk DiskInfo) (*DiskNVMEErrorLog, error)
-	GetSCTStatus(disk DiskInfo) (*DiskSCTStatus, error)
-	GetSCTTempHistory(disk DiskInfo) (*DiskSCTTempHistory, error)
-	GetLogDirectory(disk DiskInfo) ([]uint8, error)
-	GetDeviceStatistics(disk DiskInfo) ([]DiskAttribute, error)
-	GetSelectiveSelfTestLog(disk DiskInfo) (*DiskSelfTestLog, error)
-	SetSCTFeatureControl(disk DiskInfo, featureCode uint16, state uint16, persistent bool) error
-	SetSCTErrorRecoveryControl(disk DiskInfo, read bool, timeLimit uint16) error
-}
-
-type DiskSCTStatus struct {
-	FormatVersion     uint16 `json:"format_version"`
-	SCTVersion        uint16 `json:"sct_version"`
-	SCTSpec           uint16 `json:"sct_spec"`
-	StatusFlags       uint32 `json:"status_flags"`
-	DeviceState       uint8  `json:"device_state"`
-	ExtStatusCode     uint16 `json:"ext_status_code"`
-	ActionCode        uint16 `json:"action_code"`
-	FunctionCode      uint16 `json:"function_code"`
-	LBACurrent        uint64 `json:"lba_current"`
-	CurrentTemp       int8   `json:"current_temp"`
-	MinTempCycle      int8   `json:"min_temp_cycle"`
-	MaxTempCycle      int8   `json:"max_temp_cycle"`
-	LifetimeMinTemp   int8   `json:"lifetime_min_temp"`
-	LifetimeMaxTemp   int8   `json:"lifetime_max_temp"`
-	MaxOpLimit        int8   `json:"max_op_limit"`
-	OverTempCount     uint32 `json:"over_temp_count"`
-	UnderTempCount    uint32 `json:"under_temp_count"`
-	SmartStatusPassed bool   `json:"smart_status_passed"`
-	MinERCTime        uint16 `json:"min_erc_time"`
-}
-
-type DiskSCTTempSample struct {
-	Temperature int8 `json:"temperature"`
-}
-
-type DiskSCTTempHistory struct {
-	SamplingPeriod uint16              `json:"sampling_period"`
-	Interval       uint16              `json:"interval"`
-	MaxOpLimit     int8                `json:"max_op_limit"`
-	OverLimit      int8                `json:"over_limit"`
-	MinOpLimit     int8                `json:"min_op_limit"`
-	UnderLimit     int8                `json:"under_limit"`
-	CBSize         uint16              `json:"cb_size"`
-	CBIndex        uint16              `json:"cb_index"`
-	Samples        []DiskSCTTempSample `json:"samples"`
-}
-
-type DiskNVMEErrorEntry struct {
-	ErrorCount  uint64 `json:"error_count"`
-	SQID        uint16 `json:"sqid"`
-	CommandID   uint16 `json:"command_id"`
-	StatusField uint16 `json:"status_field"`
-	ParamError  uint16 `json:"param_error"`
-	LBA         uint64 `json:"lba"`
-	NamespaceID uint32 `json:"namespace_id"`
-}
-
-type DiskNVMEErrorLog struct {
-	Entries []DiskNVMEErrorEntry `json:"entries"`
-}
-
-type DiskErrorEntry struct {
-	ErrorData     uint16 `json:"error_data"`
-	ExtendedData  uint16 `json:"extended_data"`
-	LifetimeHours uint32 `json:"lifetime_hours"`
-	LBA           uint64 `json:"lba"`
-	Status        uint8  `json:"status"`
-	Error         uint8  `json:"error"`
-	SectorCount   uint8  `json:"sector_count"`
-	Device        uint8  `json:"device"`
-}
-
-type DiskErrorLog struct {
-	Entries       []DiskErrorEntry `json:"entries"`
-	ChecksumValid bool             `json:"checksum_valid"`
 }
 
 type DiskSelfTestEntry struct {
@@ -330,15 +247,4 @@ type DiskSelfTestInfo struct {
 	Device       string                   `json:"device"`
 	Capabilities DiskSelfTestCapabilities `json:"capabilities"`
 	Status       DiskSelfTestState        `json:"status"`
-}
-
-type DiskAttribute struct {
-	Page      uint32 `json:"page"`
-	ID        uint32 `json:"id"`
-	Name      string `json:"name"`
-	Value     int    `json:"value"`
-	Worst     int    `json:"worst"`
-	Threshold int    `json:"threshold"`
-	RawValue  uint64 `json:"raw_value"`
-	RawString string `json:"raw_string,omitempty"`
 }

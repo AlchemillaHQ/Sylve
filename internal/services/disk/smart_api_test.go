@@ -462,44 +462,6 @@ func TestStartSelfTestContextDoesNotStartAfterCancellation(t *testing.T) {
 	}
 }
 
-func TestRunSelfTestPreservesAdvancedKinds(t *testing.T) {
-	backend := &manualSelfTestBackend{startLeavesStatus: true}
-	service := newManualSelfTestService(backend)
-	disk := diskServiceInterfaces.DiskInfo{Name: "ada0"}
-	tests := []struct {
-		input string
-		kind  smart.SelfTestKind
-	}{
-		{input: "offline", kind: smart.SelfTestKindOffline},
-		{input: "default", kind: smart.SelfTestKindDefault},
-		{input: "short", kind: smart.SelfTestKindShort},
-		{input: "long", kind: smart.SelfTestKindExtended},
-		{input: "extended", kind: smart.SelfTestKindExtended},
-		{input: "conveyance", kind: smart.SelfTestKindConveyance},
-		{input: "short_captive", kind: smart.SelfTestKindShortCaptive},
-		{input: "extended_captive", kind: smart.SelfTestKindExtendedCaptive},
-		{input: "conveyance_captive", kind: smart.SelfTestKindConveyanceCaptive},
-	}
-	for _, test := range tests {
-		if err := service.RunSelfTest(disk, test.input); err != nil {
-			t.Fatalf("input=%s err=%v", test.input, err)
-		}
-	}
-	backend.mu.Lock()
-	defer backend.mu.Unlock()
-	if len(backend.starts) != len(tests) {
-		t.Fatalf("starts=%v", backend.starts)
-	}
-	for i, test := range tests {
-		if backend.starts[i] != test.kind {
-			t.Fatalf("index=%d got=%s want=%s", i, backend.starts[i], test.kind)
-		}
-	}
-	if err := service.RunSelfTest(disk, "selective"); !errors.Is(err, smart.ErrSelfTestConfigurationRequired) {
-		t.Fatalf("err=%v", err)
-	}
-}
-
 func TestStartSelfTestRejectsUnsafeKinds(t *testing.T) {
 	backend := &manualSelfTestBackend{}
 	service := newManualSelfTestService(backend)

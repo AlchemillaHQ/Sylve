@@ -300,11 +300,6 @@ func selfTestResultFingerprint(entry smart.SelfTestEntry) string {
 	}, "|")
 }
 
-func latestCompletedSelfTestResult(status *smart.SelfTestStatus) (*smart.SelfTestEntry, string) {
-	entry, _, fingerprint := latestScheduledSelfTestResult(status, "")
-	return entry, fingerprint
-}
-
 func latestScheduledSelfTestResult(status *smart.SelfTestStatus, testType string) (*smart.SelfTestEntry, string, string) {
 	if status == nil {
 		return nil, "", ""
