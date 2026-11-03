@@ -413,7 +413,7 @@
 				: serviceKey === 'nfs'
 					? `You are about to ${enabled ? 'disable' : 'enable'} NFS.`
 					: serviceKey === 'containers'
-						? `You are about to ${enabled ? 'disable' : 'enable'} Containers.${enabled ? ' All containers must be deleted first.' : ' The Firewall service must be enabled.'}`
+						? `You are about to ${enabled ? 'disable' : 'enable'} Containers.${enabled ? ' All containers must be deleted first.' : ' This needs the podman and cni-dnsname packages, and the Firewall service must be enabled.'}`
 						: `You are about to ${enabled ? 'disable' : 'enable'} ${displayName}.${networkWarning} You will have to restart Sylve and/or the host system for changes to take effect.`}
 		confirmLabel={serviceKey === 'mdns' && enabled ? 'Disable anyway' : 'Continue'}
 		loadingLabel={enabled ? 'Disabling...' : 'Enabling...'}
@@ -458,7 +458,11 @@
 							? 'Containers require the Firewall service'
 							: error.includes('containers_exist')
 								? 'Delete all containers before disabling Containers'
-								: `Failed to update ${serviceName}`,
+								: error.includes('podman_not_installed')
+									? 'Install podman first: pkg install podman cni-dnsname'
+									: serviceKey === 'containers' && error
+										? `Failed to update Containers: ${error}`
+										: `Failed to update ${serviceName}`,
 						toastOpts
 					);
 				}

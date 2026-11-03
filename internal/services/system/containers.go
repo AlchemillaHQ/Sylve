@@ -51,6 +51,9 @@ func (s *Service) setContainersEnabled(ctx context.Context, enabled bool, extern
 				conflict = newSettingsError(SettingsErrorConflict, "containers_exist", string(models.Containers), nil)
 				return nil
 			}
+		} else if err := s.Containers.Reconcile(ctx); err != nil {
+			conflict = newSettingsError(SettingsErrorConflict, err.Error(), string(models.Containers), nil)
+			return nil
 		}
 		return s.DB.WithContext(ctx).Model(&basic).Select("Services").Updates(&models.BasicSettings{Services: services}).Error
 	})
@@ -59,11 +62,6 @@ func (s *Service) setContainersEnabled(ctx context.Context, enabled bool, extern
 	}
 	if conflict != nil {
 		return false, conflict
-	}
-	if enabled {
-		if err := s.Containers.Reconcile(ctx); err != nil {
-			return changed, newSettingsError(SettingsErrorInternal, "service_runtime_update_failed", string(models.Containers), err)
-		}
 	}
 	if changed && externalApply != nil {
 		if err := externalApply(ctx, models.Containers, enabled); err != nil {

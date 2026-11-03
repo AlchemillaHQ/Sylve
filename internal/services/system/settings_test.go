@@ -679,6 +679,31 @@ type readyContainerRuntime struct{}
 
 func (readyContainerRuntime) Reconcile(context.Context) error { return nil }
 
+const missingPodman = "podman_not_installed: missing /usr/local/bin/podman (pkg install podman cni-dnsname)"
+
+type missingPodmanRuntime struct{}
+
+func (missingPodmanRuntime) Reconcile(context.Context) error { return errors.New(missingPodman) }
+
+func TestContainersStayDisabledWithoutPodman(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{})
+	if err := containerModels.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.Firewall}}).Error; err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{DB: db, Containers: missingPodmanRuntime{}}
+	_, err := service.SetServiceEnabled(t.Context(), models.Containers, true, nil)
+	if ClassifySettingsError(err) != SettingsErrorConflict || SettingsErrorCode(err) != missingPodman {
+		t.Fatal("the missing package must reach the caller", err)
+	}
+	var settings models.BasicSettings
+	if err := db.First(&settings).Error; err != nil || serviceIsEnabled(settings.Services, models.Containers) {
+		t.Fatal("containers were enabled without podman", settings.Services, err)
+	}
+}
+
 func TestContainersToggleReappliesTheFirewall(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{})
 	if err := containerModels.Migrate(db); err != nil {

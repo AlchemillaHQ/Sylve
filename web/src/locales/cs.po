@@ -853,9 +853,7 @@ msgstr "Poznámku se nepodařilo vytvořit"
 #: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/skeleton/ResourceTreeToolbar.svelte
@@ -1089,10 +1087,6 @@ msgstr "Nové"
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/lib/components/ui/dialog/dialog-content.svelte
 msgid "Reset"
 msgstr "Resetovat"
@@ -1108,10 +1102,6 @@ msgstr "Resetovat"
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/lib/components/ui/dialog/dialog-content.svelte
 #: src/lib/components/ui/sheet/sheet-content.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -1566,9 +1556,7 @@ msgstr "Správce"
 #: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -1690,7 +1678,6 @@ msgstr "Řídící uzel"
 msgid "Copy"
 msgstr "Zkopírovat"
 
-#: src/lib/components/custom/Charts/EChartSample.svelte
 #: src/routes/[node]/container/[ocid]/summary/+page.svelte
 #: src/routes/[node]/container/[ocid]/summary/+page.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
@@ -1699,7 +1686,6 @@ msgstr "Zkopírovat"
 msgid "Memory Usage"
 msgstr "Využití operační paměti"
 
-#: src/lib/components/custom/Charts/EChartSample.svelte
 #: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
 msgid "Save As Image"
 msgstr "Uložit jako obraz"
@@ -3134,7 +3120,6 @@ msgstr ""
 msgid "Moved"
 msgstr ""
 
-#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Total"
 msgstr ""
@@ -5940,12 +5925,8 @@ msgstr ""
 msgid "Snapshot created"
 msgstr ""
 
-#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
@@ -7093,8 +7074,6 @@ msgstr "Pouze čtení"
 
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Invalid name"
 msgstr "Neplatný název"
 
@@ -7123,41 +7102,22 @@ msgstr "Vyberte most"
 
 #. 0: dataset.name; 1: properties.name
 #. 0: dataset.name; 1: properties.name
-#. 0: dataset.name; 1: properties.name
-#. 0: dataset.name; 1: properties.name
-#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Snapshot {0}@{1} created"
 msgstr "Zachycený stav {0}@{1} pořízen"
 
-#. 0: dataset.name; 1: properties.name
 #. 0: datasetName; 1: snapshotName
-#. 0: dataset.name; 1: properties.name
-#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Snapshot {0}@{1} already exists"
 msgstr "Zachycený stav {0}@{1} už existuje"
 
-#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}` \\: `${dataset.name}`
-#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}` \\: `${dataset.name}`
-#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
-msgid "Snapshot - {0}"
-msgstr "Zachycený stav – {0}"
-
-#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Prefix"
 msgstr "Předpona"
 
-#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Recursive"
 msgstr "Rekurzivní"
 
@@ -10452,18 +10412,12 @@ msgid "Home Directory Permissions"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
-#: src/lib/components/custom/ZFS/Dashboard/LatencyScatter.svelte
 #: src/lib/components/custom/ZFS/Dashboard/PerformanceChart.svelte
-#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
-#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
 msgid "Read"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
-#: src/lib/components/custom/ZFS/Dashboard/LatencyScatter.svelte
 #: src/lib/components/custom/ZFS/Dashboard/PerformanceChart.svelte
-#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
-#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
 msgid "Write"
 msgstr ""
 
@@ -15040,14 +14994,6 @@ msgstr ""
 msgid "All pools"
 msgstr ""
 
-#: src/lib/components/custom/ZFS/Dashboard/CapacityChart.svelte
-msgid "Allocated"
-msgstr ""
-
-#: src/lib/components/custom/ZFS/Dashboard/CapacityChart.svelte
-msgid "Free"
-msgstr ""
-
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Fragmentation"
 msgstr ""
@@ -15101,10 +15047,6 @@ msgstr ""
 msgid "Bandwidth"
 msgstr ""
 
-#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
-msgid "IOPS"
-msgstr ""
-
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Latency"
 msgstr ""
@@ -15117,32 +15059,12 @@ msgstr ""
 msgid "ARC telemetry is warming up"
 msgstr ""
 
-#: src/lib/components/custom/ZFS/Dashboard/LatencyScatter.svelte
-msgid "Latency (ms)"
-msgstr ""
-
-#: src/lib/components/custom/ZFS/Dashboard/LatencyScatter.svelte
-msgid "No active I/O in this range"
-msgstr ""
-
-#: src/lib/components/custom/ZFS/Dashboard/LatencyScatter.svelte
-msgid "Latency points appear when the selected scope is serving operations."
-msgstr ""
-
 #: src/lib/components/custom/ZFS/Dashboard/PerformanceChart.svelte
 msgid "Performance history is warming up"
 msgstr ""
 
 #: src/lib/components/custom/ZFS/Dashboard/PerformanceChart.svelte
 msgid "Read and write samples will appear here as they are collected."
-msgstr ""
-
-#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
-msgid "<0/>Read"
-msgstr ""
-
-#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
-msgid "<0/>Write"
 msgstr ""
 
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
@@ -15423,10 +15345,6 @@ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Dataset - Delete"
-msgstr ""
-
-#: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
-msgid "Avg latency"
 msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -23346,7 +23264,7 @@ msgstr ""
 msgid "Network {0} deleted"
 msgstr ""
 
-#. 0: enabled ? 'disable' \\: 'enable'; 1: enabled ? ' All containers must be deleted first.' \\: ' The Firewall service must be enabled.'
+#. 0: enabled ? 'disable' \\: 'enable'; 1: enabled ? ' All containers must be deleted first.' \\: ' This needs the podman and cni-dnsname packages, and the Firewall service must be enabled.'
 #: src/routes/[node]/system/services/+page.svelte
 msgid "You are about to {0} Containers.{1}"
 msgstr ""
@@ -23505,4 +23423,13 @@ msgstr ""
 
 #: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid "This removes the Sylve registration and revokes its sessions. The externally managed account, groups, and home directory are left untouched."
+msgstr ""
+
+#: src/routes/[node]/system/services/+page.svelte
+msgid "Install podman first: pkg install podman cni-dnsname"
+msgstr ""
+
+#. 0: error
+#: src/routes/[node]/system/services/+page.svelte
+msgid "Failed to update Containers: {0}"
 msgstr ""
