@@ -93,6 +93,7 @@ export const ContainerListItemSchema = ContainerSchema.extend({ state: z.string(
 export const SimpleContainerSchema = z.object({
 	ocId: z.number().int(),
 	name: z.string(),
+	stack: z.string().catch(''),
 	state: z.string()
 });
 

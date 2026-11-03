@@ -136,6 +136,7 @@ type ListItem struct {
 type SimpleList struct {
 	OCID  uint   `json:"ocId"`
 	Name  string `json:"name"`
+	Stack string `json:"stack"`
 	State string `json:"state"`
 }
 
