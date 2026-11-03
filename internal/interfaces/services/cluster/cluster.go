@@ -48,7 +48,7 @@ type NodeResources struct {
 	JailTemplates []jailServiceInterfaces.SimpleTemplateList    `json:"jailTemplates"`
 	VMs           []libvirtServiceInterfaces.SimpleList         `json:"vms"`
 	VMTemplates   []libvirtServiceInterfaces.SimpleTemplateList `json:"vmTemplates"`
-	Containers    []containerServiceInterfaces.ListItem         `json:"containers"`
+	Containers    []containerServiceInterfaces.SimpleList       `json:"containers"`
 }
 
 type ClusterServiceInterface interface {

@@ -144,6 +144,14 @@ func TestEnsureAuthenticatedTrustBoundary(t *testing.T) {
 			headers: map[string]string{authSvc.ClusterTokenHeader: "Bearer " + readToken}, want: http.StatusForbidden,
 		},
 		{
+			name: "service read container tree", method: http.MethodGet, path: "/api/container/simple",
+			headers: map[string]string{authSvc.ClusterTokenHeader: "Bearer " + readToken}, want: http.StatusOK,
+		},
+		{
+			name: "service read full container list", method: http.MethodGet, path: "/api/container",
+			headers: map[string]string{authSvc.ClusterTokenHeader: "Bearer " + readToken}, want: http.StatusForbidden,
+		},
+		{
 			name: "internal control below prefix", method: http.MethodPost, path: "/api/intra-cluster/sync",
 			headers: map[string]string{authSvc.ClusterTokenHeader: "Bearer " + controlToken}, want: http.StatusOK,
 		},

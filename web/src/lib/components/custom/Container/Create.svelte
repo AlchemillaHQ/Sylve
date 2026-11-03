@@ -14,7 +14,7 @@ under sponsorship from the FreeBSD Foundation.
 	import { page } from '$app/state';
 	import { storage } from '$lib';
 	import { getNodes } from '$lib/api/cluster/cluster';
-	import { getContainers, newContainer } from '$lib/api/container/container';
+	import { getSimpleContainers, newContainer } from '$lib/api/container/container';
 	import { getSimpleJails } from '$lib/api/jail/jail';
 	import { getLifecycleTask } from '$lib/api/task/lifecycle';
 	import { getSimpleVMs } from '$lib/api/vm/vm';
@@ -88,7 +88,7 @@ under sponsorship from the FreeBSD Foundation.
 				getPools(false, hostname),
 				getSimpleVMs(hostname),
 				getSimpleJails(hostname),
-				getContainers(hostname)
+				getSimpleContainers(hostname)
 			]);
 			return { hostname, pools, vms, jails, containers };
 		}

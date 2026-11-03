@@ -119,6 +119,28 @@ func ListContainers(service containerServiceInterfaces.ContainerServiceInterface
 	}
 }
 
+// @Summary List containers in brief
+// @Description List each container's ID, name and live state for the resource tree
+// @Tags Container
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[[]containerServiceInterfaces.SimpleList] "Success"
+// @Router /container/simple [get]
+func ListContainersSimple(service containerServiceInterfaces.ContainerServiceInterface) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		items, err := service.List(c.Request.Context())
+		if err != nil {
+			failService(c, "failed_to_list_containers", err)
+			return
+		}
+		simple := make([]containerServiceInterfaces.SimpleList, len(items))
+		for i, item := range items {
+			simple[i] = containerServiceInterfaces.SimpleList{OCID: item.OCID, Name: item.Name, State: item.State}
+		}
+		respond(c, http.StatusOK, "containers_listed", simple)
+	}
+}
+
 // @Summary Get a container
 // @Description Get a container's configuration and live Podman state
 // @Tags Container

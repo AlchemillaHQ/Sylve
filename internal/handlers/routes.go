@@ -210,6 +210,7 @@ func RegisterRoutes(r *gin.Engine,
 		containers.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 		{
 			containers.GET("", containerHandlers.ListContainers(containerService))
+			containers.GET("/simple", containerHandlers.ListContainersSimple(containerService))
 			containers.POST("", containerHandlers.CreateContainer(lifecycleService))
 			containers.POST("/stack", containerHandlers.CreateStack(lifecycleService))
 			containers.GET("/ports", containerHandlers.ListUsedPorts(containerService))

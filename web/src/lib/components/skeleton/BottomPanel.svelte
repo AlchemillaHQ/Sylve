@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { storage } from '$lib';
 	import { getNodes } from '$lib/api/cluster/cluster';
-	import { getContainers } from '$lib/api/container/container';
+	import { getSimpleContainers } from '$lib/api/container/container';
 	import { getAuditRecords } from '$lib/api/info/audit';
 	import { getSimpleJails, getSimpleJailTemplates } from '$lib/api/jail/jail';
 	import { getSimpleVMs, getSimpleVMTemplates } from '$lib/api/vm/vm';
@@ -11,7 +11,7 @@
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
-	import type { ContainerListItem } from '$lib/types/container/container';
+	import type { SimpleContainer } from '$lib/types/container/container';
 	import type { AuditRecord } from '$lib/types/info/audit';
 	import type { SimpleJail, SimpleJailTemplate } from '$lib/types/jail/jail';
 	import type { SimpleVmTemplate } from '$lib/types/vm/vm';
@@ -101,12 +101,12 @@
 	const containerList = resource(
 		() => `container-list-${effectiveHostname || 'default'}`,
 		async (key) => {
-			const results = await getContainers(effectiveHostname || undefined);
+			const results = await getSimpleContainers(effectiveHostname || undefined);
 			updateCache(key, results);
 			return results;
 		},
 		{
-			initialValue: [] as ContainerListItem[]
+			initialValue: [] as SimpleContainer[]
 		}
 	);
 

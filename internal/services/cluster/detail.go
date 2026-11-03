@@ -104,7 +104,7 @@ func (s *Service) ResourcesContext(ctx context.Context) ([]clusterServiceInterfa
 			jailTemplatesURL := fmt.Sprintf("%s/api/jail/templates", base)
 			vmsURL := fmt.Sprintf("%s/api/vm/simple", base)
 			vmTemplatesURL := fmt.Sprintf("%s/api/vm/templates", base)
-			containersURL := fmt.Sprintf("%s/api/container", base)
+			containersURL := fmt.Sprintf("%s/api/container/simple", base)
 
 			headers := map[string]string{
 				"Accept":          "application/json",
@@ -115,13 +115,13 @@ func (s *Service) ResourcesContext(ctx context.Context) ([]clusterServiceInterfa
 			var vms []libvirtServiceInterfaces.SimpleList
 			var jailTemplates []jailServiceInterfaces.SimpleTemplateList
 			var vmTemplates []libvirtServiceInterfaces.SimpleTemplateList
-			var containers []containerServiceInterfaces.ListItem
+			var containers []containerServiceInterfaces.SimpleList
 
 			var eg errgroup.Group
 
 			eg.Go(func() error {
 				if body, _, err := utils.HTTPGetJSONReadContext(nodeCtx, containersURL, headers); err == nil {
-					var resp internal.APIResponse[[]containerServiceInterfaces.ListItem]
+					var resp internal.APIResponse[[]containerServiceInterfaces.SimpleList]
 					if err := json.Unmarshal(body, &resp); err == nil && resp.Status == "success" {
 						containers = resp.Data
 					}

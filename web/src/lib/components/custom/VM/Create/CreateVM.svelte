@@ -26,7 +26,7 @@
 	import Storage from './Storage.svelte';
 	import { getNodes } from '$lib/api/cluster/cluster';
 	import { getSimpleJails } from '$lib/api/jail/jail';
-	import { getContainers } from '$lib/api/container/container';
+	import { getSimpleContainers } from '$lib/api/container/container';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { reload as reloadStore } from '$lib/stores/api.svelte';
 	import { getBasicSettings } from '$lib/api/system/settings';
@@ -218,7 +218,7 @@
 
 	const containers = resource(
 		() => `container-list-${modal.node || '__default__'}`,
-		async () => await getContainers(modal.node || undefined),
+		async () => await getSimpleContainers(modal.node || undefined),
 		{ initialValue: [] }
 	);
 

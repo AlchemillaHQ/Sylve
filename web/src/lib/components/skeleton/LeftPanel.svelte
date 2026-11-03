@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
 	import { page } from '$app/state';
-	import { getContainers } from '$lib/api/container/container';
+	import { getSimpleContainers } from '$lib/api/container/container';
 	import { getSimpleJails, getSimpleJailTemplates } from '$lib/api/jail/jail';
 	import { getSimpleVMs, getSimpleVMTemplates } from '$lib/api/vm/vm';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { storage } from '$lib';
 	import { hasSavedOpenIds, loadOpenIds, saveOpenIds } from '$lib/left-panel';
 	import { reload } from '$lib/stores/api.svelte';
-	import type { ContainerListItem } from '$lib/types/container/container';
+	import type { SimpleContainer } from '$lib/types/container/container';
 	import type { SimpleJail, SimpleJailTemplate } from '$lib/types/jail/jail';
 	import type { ActiveLifecycleGuest } from '$lib/types/task/lifecycle';
 	import { DomainState, type SimpleVm, type SimpleVmTemplate } from '$lib/types/vm/vm';
@@ -169,7 +169,7 @@
 				return [];
 			}
 
-			const result = await getContainers(node);
+			const result = await getSimpleContainers(node);
 			if (Array.isArray(result)) {
 				updateCache(key, result);
 				return result;
@@ -178,7 +178,7 @@
 			return [];
 		},
 		{
-			initialValue: [] as ContainerListItem[]
+			initialValue: [] as SimpleContainer[]
 		}
 	);
 

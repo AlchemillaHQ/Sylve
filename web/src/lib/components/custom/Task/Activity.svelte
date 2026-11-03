@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { storage } from '$lib';
 	import { getNodes } from '$lib/api/cluster/cluster';
-	import { getContainers } from '$lib/api/container/container';
+	import { getSimpleContainers } from '$lib/api/container/container';
 	import { getSimpleJails, getSimpleJailTemplates } from '$lib/api/jail/jail';
 	import { getActiveLifecycleTasks, getRecentLifecycleTasks } from '$lib/api/task/lifecycle';
 	import { getSimpleVMs, getSimpleVMTemplates } from '$lib/api/vm/vm';
@@ -98,7 +98,7 @@
 				getSimpleJails(node, signal).catch(() => []),
 				getSimpleJailTemplates(node).catch(() => []),
 				getSimpleVMTemplates(node).catch(() => []),
-				getContainers(node, signal).catch(() => [])
+				getSimpleContainers(node, signal).catch(() => [])
 			]);
 			if (signal.aborted) throw new DOMException('Request aborted', 'AbortError');
 			return {

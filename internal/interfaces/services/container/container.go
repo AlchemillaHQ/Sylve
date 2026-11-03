@@ -133,6 +133,12 @@ type ListItem struct {
 	State string `json:"state"`
 }
 
+type SimpleList struct {
+	OCID  uint   `json:"ocId"`
+	Name  string `json:"name"`
+	State string `json:"state"`
+}
+
 type Detail struct {
 	containerModels.Container
 	Runtime     *State  `json:"runtime"`

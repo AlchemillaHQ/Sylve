@@ -106,12 +106,13 @@ func clusterBearer(header http.Header) (string, bool, bool) {
 }
 
 var serviceReadPaths = map[string]struct{}{
-	"/api/health/http":    {},
-	"/api/info/node":      {},
-	"/api/vm/simple":      {},
-	"/api/vm/templates":   {},
-	"/api/jail/simple":    {},
-	"/api/jail/templates": {},
+	"/api/health/http":      {},
+	"/api/info/node":        {},
+	"/api/vm/simple":        {},
+	"/api/vm/templates":     {},
+	"/api/jail/simple":      {},
+	"/api/jail/templates":   {},
+	"/api/container/simple": {},
 }
 
 func clusterRequestAllowed(claims serviceInterfaces.CustomClaims, method, path string) bool {

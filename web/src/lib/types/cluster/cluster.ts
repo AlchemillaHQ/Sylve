@@ -9,7 +9,7 @@
  */
 
 import { z } from 'zod/v4';
-import { ContainerListItemSchema } from '../container/container';
+import { SimpleContainerSchema } from '../container/container';
 import { SimpleJailSchema, SimpleJailTemplateSchema } from '../jail/jail';
 import { SimpleVmSchema, SimpleVmTemplateSchema } from '../vm/vm';
 
@@ -91,7 +91,7 @@ export const NodeResourceSchema = z.object({
 	jailTemplates: z.array(SimpleJailTemplateSchema).nullable().default([]),
 	vms: z.array(SimpleVmSchema).nullable().default([]),
 	vmTemplates: z.array(SimpleVmTemplateSchema).nullable().default([]),
-	containers: z.array(ContainerListItemSchema).nullable().default([])
+	containers: z.array(SimpleContainerSchema).nullable().default([])
 });
 
 export const PeerRemovalDependencySchema = z.object({

@@ -90,6 +90,12 @@ export const ContainerSchema = z.object({
 
 export const ContainerListItemSchema = ContainerSchema.extend({ state: z.string() });
 
+export const SimpleContainerSchema = z.object({
+	ocId: z.number().int(),
+	name: z.string(),
+	state: z.string()
+});
+
 export const ContainerRuntimeSchema = z.object({
 	state: z.string(),
 	startedAt: z.string(),
@@ -161,6 +167,7 @@ export type ContainerMount = z.infer<typeof ContainerMountSchema>;
 export type ContainerRestart = z.infer<typeof ContainerRestartSchema>;
 export type Container = z.infer<typeof ContainerSchema>;
 export type ContainerListItem = z.infer<typeof ContainerListItemSchema>;
+export type SimpleContainer = z.infer<typeof SimpleContainerSchema>;
 export type ContainerDetail = z.infer<typeof ContainerDetailSchema>;
 export type ContainerTask = z.infer<typeof ContainerTaskSchema>;
 export type ContainerStat = z.infer<typeof ContainerStatSchema>;

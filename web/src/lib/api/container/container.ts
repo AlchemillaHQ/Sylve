@@ -16,6 +16,7 @@ import {
 	ContainerStatSchema,
 	ContainerStatsBootstrapSchema,
 	ContainerTaskSchema,
+	SimpleContainerSchema,
 	type ContainerAction,
 	type ContainerCreateRequest,
 	type ContainerDetail,
@@ -25,7 +26,8 @@ import {
 	type ContainerSpec,
 	type ContainerStat,
 	type ContainerStatsBootstrap,
-	type ContainerTask
+	type ContainerTask,
+	type SimpleContainer
 } from '$lib/types/container/container';
 import { apiRequestData, apiRequestResult, type NodeAPIDataRequestOptions } from '$lib/utils/http';
 import { z } from 'zod/v4';
@@ -56,6 +58,22 @@ export async function getContainers(
 		hostname,
 		signal
 	});
+}
+
+export async function getSimpleContainers(
+	hostname?: string,
+	signal?: AbortSignal
+): Promise<SimpleContainer[]> {
+	return await apiRequestData(
+		'/container/simple',
+		z.array(SimpleContainerSchema),
+		'GET',
+		undefined,
+		{
+			hostname,
+			signal
+		}
+	);
 }
 
 export async function getContainer(
