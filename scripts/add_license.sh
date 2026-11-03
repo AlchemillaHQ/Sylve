@@ -3,7 +3,6 @@ set -eu
 
 addlicense -f docs/CODE_LICENSE \
   -ignore 'internal/assets/web-files/**' \
-  -ignore 'internal/assets/swagger/**' \
   -ignore 'internal/assets/zelta/**' \
   cmd/** \
   internal/** \
