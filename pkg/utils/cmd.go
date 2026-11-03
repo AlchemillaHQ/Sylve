@@ -45,7 +45,9 @@ func RunCommandWithInputContext(ctx context.Context, input, command string, args
 	cmd.Stdin = strings.NewReader(input)
 	var stdout bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, io.Discard
-	cmd.WaitDelay = 250 * time.Millisecond
+	// Bounds descendants that escape the process group and hold our pipes. It also
+	// covers draining output after a normal exit, so it must outlast scheduler stalls.
+	cmd.WaitDelay = 2 * time.Second
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}

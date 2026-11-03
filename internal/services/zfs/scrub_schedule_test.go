@@ -44,8 +44,10 @@ func (b *fakePoolScrubBackend) Read(_ context.Context, guid string) (*gzfs.ZPool
 func (b *fakePoolScrubBackend) Start(_ context.Context, guid string, _ *gzfs.ZPoolStatusScanStats) error {
 	b.starts = append(b.starts, guid)
 	if b.startErr == nil {
+		// Manual scrubs stamp their request with the wall clock, which may have
+		// ticked past b.now; a real scan never starts before its request.
 		b.pools[guid].ScanStats = &gzfs.ZPoolStatusScanStats{
-			Function: "SCRUB", State: "SCANNING", StartTime: fmt.Sprint(b.now.Unix()), EndTime: "0",
+			Function: "SCRUB", State: "SCANNING", StartTime: fmt.Sprint(max(b.now.Unix(), time.Now().Unix())), EndTime: "0",
 			Errors: "0", Processed: "0", Examined: "20", Issued: "10", ToExamine: "100", ScrubPause: "0",
 		}
 	}
@@ -685,7 +687,7 @@ func TestPoolScrubRecoverIntentBeforeCommandAndImmediateCompletion(t *testing.T)
 			if immediate {
 				b.onStart = func() {
 					b.pools["101"].ScanStats.State = "FINISHED"
-					b.pools["101"].ScanStats.EndTime = fmt.Sprint(b.now.Unix())
+					b.pools["101"].ScanStats.EndTime = b.pools["101"].ScanStats.StartTime
 				}
 				if err := s.ScrubPool(t.Context(), "101"); err != nil {
 					t.Fatal(err)
@@ -775,7 +777,7 @@ func TestPoolScrubNotificationOrderingAndPermanentFailure(t *testing.T) {
 	if err := s.ScrubPool(t.Context(), "101"); err != nil {
 		t.Fatal(err)
 	}
-	b.pools["101"].ScanStats.State, b.pools["101"].ScanStats.EndTime = "FINISHED", fmt.Sprint(b.now.Unix())
+	b.pools["101"].ScanStats.State, b.pools["101"].ScanStats.EndTime = "FINISHED", b.pools["101"].ScanStats.StartTime
 	if err := s.runPoolScrubTick(t.Context(), b.now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
