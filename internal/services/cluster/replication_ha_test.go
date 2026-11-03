@@ -98,31 +98,6 @@ func TestParseReplicationHAIneligibleReasons(t *testing.T) {
 	})
 }
 
-func TestIsReplicationHAStaticIneligibleError(t *testing.T) {
-	tests := []struct {
-		name    string
-		reasons []string
-		want    bool
-	}{
-		{"min 3 voters is static", []string{ReplicationHAReasonMinThreeVoters}, true},
-		{"quorum lost is static", []string{ReplicationHAReasonQuorumLost}, false},
-		{"min 1 target is static", []string{ReplicationHAReasonMinOneTarget}, true},
-		{"remote target is static", []string{ReplicationHAReasonRemoteTarget}, true},
-		{"reduced redundancy is NOT static", []string{ReplicationHAReasonReducedRedundancy}, false},
-		{"mixed static+dynamic has static", []string{ReplicationHAReasonReducedRedundancy, ReplicationHAReasonMinThreeVoters}, true},
-		{"unknown is assumed false", []string{"unknown_reason"}, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := NewReplicationHAIneligibleError(tt.reasons)
-			got := IsReplicationHAStaticIneligibleError(err)
-			if got != tt.want {
-				t.Fatalf("expected %v, got %v", tt.want, got)
-			}
-		})
-	}
-}
-
 func TestReplicationHAReasonSetIncludes(t *testing.T) {
 	reasons := []string{ReplicationHAReasonMinThreeVoters, ReplicationHAReasonQuorumLost}
 	if !ReplicationHAReasonSetIncludes(reasons, ReplicationHAReasonMinThreeVoters) {

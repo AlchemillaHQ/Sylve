@@ -190,8 +190,8 @@ func BackupEvents(cS *clusterService.Service, zS *zelta.Service) gin.HandlerFunc
 			writeBackupEventQueryError(c, err)
 			return
 		}
-		if shouldForwardBackupEventsRequest(cS, query.NodeID) {
-			response, err := forwardBackupEventsRequestToNode(c, cS, query.NodeID, "/api/cluster/backups/events")
+		if shouldForwardEventsRequest(cS, query.NodeID) {
+			response, err := forwardEventsRequestToNode(c, cS, query.NodeID, "/api/cluster/backups/events")
 			if err != nil {
 				writeBackupNodeForwardError(
 					c, "backup_events_remote_forward_failed", "backup_events_node_not_found", err,
@@ -249,9 +249,9 @@ func BackupEventByID(cS *clusterService.Service, zS *zelta.Service) gin.HandlerF
 		}
 
 		requestedNodeID := strings.TrimSpace(c.Query("nodeId"))
-		if shouldForwardBackupEventsRequest(cS, requestedNodeID) {
+		if shouldForwardEventsRequest(cS, requestedNodeID) {
 			path := fmt.Sprintf("/api/cluster/backups/events/%d", id64)
-			response, err := forwardBackupEventsRequestToNode(c, cS, requestedNodeID, path)
+			response, err := forwardEventsRequestToNode(c, cS, requestedNodeID, path)
 			if err != nil {
 				writeBackupNodeForwardError(
 					c, "backup_event_remote_forward_failed", "backup_events_node_not_found", err,
@@ -318,9 +318,9 @@ func BackupEventProgressByID(cS *clusterService.Service, zS *zelta.Service) gin.
 		}
 
 		requestedNodeID := strings.TrimSpace(c.Query("nodeId"))
-		if shouldForwardBackupEventsRequest(cS, requestedNodeID) {
+		if shouldForwardEventsRequest(cS, requestedNodeID) {
 			path := fmt.Sprintf("/api/cluster/backups/events/%d/progress", id64)
-			response, err := forwardBackupEventsRequestToNode(c, cS, requestedNodeID, path)
+			response, err := forwardEventsRequestToNode(c, cS, requestedNodeID, path)
 			if err != nil {
 				writeBackupNodeForwardError(
 					c, "backup_event_progress_remote_forward_failed", "backup_events_node_not_found", err,
@@ -385,8 +385,8 @@ func BackupEventsRemote(cS *clusterService.Service, zS *zelta.Service) gin.Handl
 			writeBackupEventQueryError(c, err)
 			return
 		}
-		if shouldForwardBackupEventsRequest(cS, query.NodeID) {
-			response, err := forwardBackupEventsRequestToNode(c, cS, query.NodeID, "/api/cluster/backups/events/remote")
+		if shouldForwardEventsRequest(cS, query.NodeID) {
+			response, err := forwardEventsRequestToNode(c, cS, query.NodeID, "/api/cluster/backups/events/remote")
 			if err != nil {
 				writeBackupNodeForwardError(
 					c, "backup_events_remote_forward_failed", "backup_events_node_not_found", err,
@@ -417,47 +417,4 @@ func BackupEventsRemote(cS *clusterService.Service, zS *zelta.Service) gin.Handl
 			Data:    events,
 		})
 	}
-}
-
-func shouldForwardBackupEventsRequest(cS *clusterService.Service, requestedNodeID string) bool {
-	requestedNodeID = strings.TrimSpace(requestedNodeID)
-	if requestedNodeID == "" || cS == nil {
-		return false
-	}
-
-	localNodeID := ""
-	if detail := cS.Detail(); detail != nil {
-		localNodeID = strings.TrimSpace(detail.NodeID)
-	}
-
-	return localNodeID == "" || requestedNodeID != localNodeID
-}
-
-func forwardBackupEventsRequestToNode(
-	c *gin.Context,
-	cS *clusterService.Service,
-	nodeID string,
-	path string,
-) (clusterForwardResponse, error) {
-	targetAPI, err := resolveClusterNodeAPI(cS, nodeID)
-	if err != nil {
-		return clusterForwardResponse{}, err
-	}
-
-	query := c.Request.URL.Query()
-	query.Del("nodeId")
-
-	remoteURL := fmt.Sprintf("https://%s%s", targetAPI, path)
-	if encoded := query.Encode(); encoded != "" {
-		remoteURL += "?" + encoded
-	}
-
-	return performClusterForward(
-		c,
-		cS,
-		http.MethodGet,
-		remoteURL,
-		nil,
-		clusterForwardShortRead,
-	)
 }

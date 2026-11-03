@@ -724,8 +724,8 @@ func ReplicationEvents(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		if shouldForwardReplicationEventsRequest(cS, requestedNodeID) {
-			response, err := forwardReplicationEventsRequestToNode(c, cS, requestedNodeID, "/api/cluster/replication/events")
+		if shouldForwardEventsRequest(cS, requestedNodeID) {
+			response, err := forwardEventsRequestToNode(c, cS, requestedNodeID, "/api/cluster/replication/events")
 			if err != nil {
 				writeBackupNodeForwardError(
 					c, "replication_events_remote_forward_failed", "replication_events_node_not_found", err,
@@ -791,9 +791,9 @@ func ReplicationEventByID(cS *cluster.Service) gin.HandlerFunc {
 		}
 
 		requestedNodeID := strings.TrimSpace(c.Query("nodeId"))
-		if shouldForwardReplicationEventsRequest(cS, requestedNodeID) {
+		if shouldForwardEventsRequest(cS, requestedNodeID) {
 			path := fmt.Sprintf("/api/cluster/replication/events/%d", id64)
-			response, err := forwardReplicationEventsRequestToNode(c, cS, requestedNodeID, path)
+			response, err := forwardEventsRequestToNode(c, cS, requestedNodeID, path)
 			if err != nil {
 				writeBackupNodeForwardError(
 					c, "replication_event_remote_forward_failed", "replication_event_node_not_found", err,
@@ -866,9 +866,9 @@ func ReplicationEventProgressByID(cS *cluster.Service, zS *zelta.Service) gin.Ha
 		}
 
 		requestedNodeID := strings.TrimSpace(c.Query("nodeId"))
-		if shouldForwardReplicationEventsRequest(cS, requestedNodeID) {
+		if shouldForwardEventsRequest(cS, requestedNodeID) {
 			path := fmt.Sprintf("/api/cluster/replication/events/%d/progress", id64)
-			response, err := forwardReplicationEventsRequestToNode(c, cS, requestedNodeID, path)
+			response, err := forwardEventsRequestToNode(c, cS, requestedNodeID, path)
 			if err != nil {
 				writeBackupNodeForwardError(
 					c, "replication_event_progress_remote_forward_failed", "replication_event_node_not_found", err,
@@ -1699,47 +1699,4 @@ func UpdateReplicationPolicyStateInternal(cS *cluster.Service) gin.HandlerFunc {
 			Data:    nil,
 		})
 	}
-}
-
-func shouldForwardReplicationEventsRequest(cS *cluster.Service, requestedNodeID string) bool {
-	requestedNodeID = strings.TrimSpace(requestedNodeID)
-	if requestedNodeID == "" || cS == nil {
-		return false
-	}
-
-	localNodeID := ""
-	if detail := cS.Detail(); detail != nil {
-		localNodeID = strings.TrimSpace(detail.NodeID)
-	}
-
-	return localNodeID == "" || requestedNodeID != localNodeID
-}
-
-func forwardReplicationEventsRequestToNode(
-	c *gin.Context,
-	cS *cluster.Service,
-	nodeID string,
-	path string,
-) (clusterForwardResponse, error) {
-	targetAPI, err := resolveClusterNodeAPI(cS, nodeID)
-	if err != nil {
-		return clusterForwardResponse{}, err
-	}
-
-	query := c.Request.URL.Query()
-	query.Del("nodeId")
-
-	remoteURL := fmt.Sprintf("https://%s%s", targetAPI, path)
-	if encoded := query.Encode(); encoded != "" {
-		remoteURL += "?" + encoded
-	}
-
-	return performClusterForward(
-		c,
-		cS,
-		http.MethodGet,
-		remoteURL,
-		nil,
-		clusterForwardShortRead,
-	)
 }

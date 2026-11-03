@@ -26,17 +26,9 @@ const (
 	ReplicationHAReasonReducedRedundancy         = "reduced_redundancy_one_voter_down"
 	ReplicationHAReasonQuorumLost                = "quorum_lost"
 	replicationHAIneligibleErrorPrefix           = "replication_policy_ha_ineligible"
-	replicationHAStaticReasonsKeyTransition      = ReplicationHAReasonTransitionRemoteTarget
 	replicationHARemoteReasonDefault             = ReplicationHAReasonRemoteTarget
 	replicationHARemoteReasonTransitionProjected = ReplicationHAReasonTransitionRemoteTarget
 )
-
-var replicationHAStaticReasonSet = map[string]struct{}{
-	ReplicationHAReasonMinThreeVoters:       {},
-	ReplicationHAReasonMinOneTarget:         {},
-	ReplicationHAReasonRemoteTarget:         {},
-	replicationHAStaticReasonsKeyTransition: {},
-}
 
 type ReplicationHAIneligibleError struct {
 	Reasons []string
@@ -116,19 +108,6 @@ func ParseReplicationHAIneligibleReasons(err error) []string {
 		return nil
 	}
 	return normalizeReplicationHAReasons(strings.Split(reasonPart, ","))
-}
-
-func IsReplicationHAStaticIneligibleError(err error) bool {
-	reasons := ParseReplicationHAIneligibleReasons(err)
-	if len(reasons) == 0 {
-		return false
-	}
-	for _, reason := range reasons {
-		if _, ok := replicationHAStaticReasonSet[reason]; ok {
-			return true
-		}
-	}
-	return false
 }
 
 func ReplicationHAReasonSetIncludes(reasons []string, reason string) bool {

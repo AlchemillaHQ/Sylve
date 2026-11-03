@@ -113,17 +113,6 @@ func TestBuildBKRetentionPruneCandidates(t *testing.T) {
 	}
 }
 
-func TestFilterHaSnapshots(t *testing.T) {
-	output := "pool/ds@ha_2025-01-01\npool/ds@ha_2025-01-02\npool/ds@not-ha\n"
-	snaps := filterHaSnapshots(output, "pool/ds")
-	if len(snaps) != 2 {
-		t.Fatalf("expected 2 ha_ snaps, got %d: %v", len(snaps), snaps)
-	}
-	if snap := filterHaSnapshots("", "pool/ds"); len(snap) != 0 {
-		t.Fatal("empty output")
-	}
-}
-
 func TestDatasetLineageBaseSuffixForDataset(t *testing.T) {
 	if s := datasetLineageBaseSuffixForDataset("tank/backups", "tank/backups/jails/42_gen-5"); s != "jails/42" {
 		t.Fatalf("rotated: %q", s)
@@ -145,18 +134,6 @@ func TestShouldAutoRotateBackupErrorCode(t *testing.T) {
 	}
 	if shouldAutoRotateBackupErrorCode("") {
 		t.Fatal("empty should not auto-rotate")
-	}
-}
-
-func TestShouldRenameTargetAfterRotateFailure(t *testing.T) {
-	if !shouldRenameTargetAfterRotateFailure("target is not a replica of the source") {
-		t.Fatal("not replica message should trigger rename")
-	}
-	if !shouldRenameTargetAfterRotateFailure("to perform a full backup, rename the target dataset or sync to an empty target") {
-		t.Fatal("rename suggestion should trigger rename")
-	}
-	if shouldRenameTargetAfterRotateFailure("some other error occurred") {
-		t.Fatal("unrelated error should not trigger rename")
 	}
 }
 

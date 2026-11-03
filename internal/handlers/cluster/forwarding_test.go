@@ -281,7 +281,7 @@ func TestDirectClusterForwardingPathsPreserveResponsesAndBudgets(t *testing.T) {
 			"",
 			nil,
 		)
-		response, err := forwardReplicationEventsRequestToNode(
+		response, err := forwardEventsRequestToNode(
 			c,
 			service,
 			"remote-node",
@@ -305,7 +305,7 @@ func TestDirectClusterForwardingPathsPreserveResponsesAndBudgets(t *testing.T) {
 			"",
 			nil,
 		)
-		response, err := forwardBackupEventsRequestToNode(
+		response, err := forwardEventsRequestToNode(
 			c,
 			service,
 			"remote-node",

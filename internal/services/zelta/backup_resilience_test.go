@@ -60,18 +60,6 @@ func TestParseSnapshotInfoOutputLegacyFourColumns(t *testing.T) {
 	}
 }
 
-func TestSnapshotCreationTime(t *testing.T) {
-	if _, ok := snapshotCreationTime(SnapshotInfo{Creation: ""}); ok {
-		t.Fatal("empty creation should not parse")
-	}
-	if _, ok := snapshotCreationTime(SnapshotInfo{Creation: "2026-06-26T02:00:00Z"}); !ok {
-		t.Fatal("RFC3339 should parse")
-	}
-	if tm, ok := snapshotCreationTime(SnapshotInfo{Creation: "1700000000"}); !ok || tm.IsZero() {
-		t.Fatal("epoch fallback should parse")
-	}
-}
-
 func TestLatestCommonBackupSnapshotByGUID(t *testing.T) {
 	prefix := "bk_jx"
 	local := []SnapshotInfo{

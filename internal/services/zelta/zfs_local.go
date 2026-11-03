@@ -47,29 +47,6 @@ func (s *Service) localDatasetExists(ctx context.Context, name string) (bool, er
 	return ds != nil, nil
 }
 
-// requireRestoreStagingDatasetAvailable fails closed when a deterministic
-// restore staging path already exists. A name alone is not proof that the
-// dataset belongs to an abandoned Sylve operation, so callers must never
-// destroy it automatically.
-func (s *Service) requireRestoreStagingDatasetAvailable(ctx context.Context, name string) error {
-	name = normalizeDatasetPath(name)
-	if name == "" {
-		return fmt.Errorf("restore_staging_dataset_required")
-	}
-
-	exists, err := s.localDatasetExists(ctx, name)
-	if err != nil {
-		return fmt.Errorf("restore_staging_dataset_check_failed: %w", err)
-	}
-	if exists {
-		return fmt.Errorf(
-			"restore_staging_dataset_exists_requires_manual_cleanup: dataset=%s",
-			name,
-		)
-	}
-	return nil
-}
-
 func (s *Service) destroyLocalDataset(ctx context.Context, name string, recursive bool) error {
 	ds, err := s.getLocalDataset(ctx, name)
 	if err != nil {

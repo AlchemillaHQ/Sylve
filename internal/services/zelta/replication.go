@@ -856,25 +856,6 @@ func replicationPolicyAcceptsNewTransition(policy *clusterModels.ReplicationPoli
 	}
 }
 
-func transitionDemoteAckRequired(reason string) bool {
-	reason = strings.ToLower(strings.TrimSpace(reason))
-	if reason == "" {
-		return true
-	}
-	if strings.Contains(reason, "force") {
-		return false
-	}
-	return !strings.Contains(reason, "node_down_failover")
-}
-
-func transitionAllowUnsafe(reason string) bool {
-	reason = strings.ToLower(strings.TrimSpace(reason))
-	if reason == "" {
-		return false
-	}
-	return strings.Contains(reason, "force")
-}
-
 func policyFailoverMode(policy *clusterModels.ReplicationPolicy) string {
 	if policy == nil {
 		return clusterModels.ReplicationFailoverManual
@@ -4131,176 +4112,6 @@ func (s *Service) applyReplicationRetention(
 	return nil
 }
 
-func (s *Service) trimLocalReplicationLineageDatasets(
-	ctx context.Context,
-	rootDataset string,
-	keepOutOfBand int,
-) error {
-	lineageDatasets, err := s.listLocalReplicationLineageDatasets(ctx, rootDataset)
-	if err != nil {
-		return err
-	}
-
-	staleDatasets := staleReplicationLineageDatasets(rootDataset, lineageDatasets, keepOutOfBand)
-	for _, dataset := range staleDatasets {
-		if err := s.destroyLocalDatasetWithRetry(ctx, dataset, true, 5, 500*time.Millisecond); err != nil {
-			return fmt.Errorf("destroy_local_lineage_dataset_%s_failed: %w", dataset, err)
-		}
-	}
-
-	return nil
-}
-
-func (s *Service) trimRemoteReplicationLineageDatasets(
-	ctx context.Context,
-	target *clusterModels.BackupTarget,
-	remoteDataset string,
-	keepOutOfBand int,
-) error {
-	if target == nil {
-		return fmt.Errorf("replication_target_required")
-	}
-
-	lineageDatasets, err := s.listRemoteLineageDatasets(ctx, target, remoteDataset)
-	if err != nil {
-		return err
-	}
-
-	staleDatasets := staleReplicationLineageDatasets(remoteDataset, lineageDatasets, keepOutOfBand)
-	for _, dataset := range staleDatasets {
-		script := fmt.Sprintf(
-			`set -eu
-ds=%q
-if zfs list -H "$ds" >/dev/null 2>&1; then
-  zfs destroy -r -f "$ds"
-fi`,
-			dataset,
-		)
-		if _, err := s.runTargetDatasetScript(ctx, target, dataset, script); err != nil {
-			return fmt.Errorf("destroy_remote_lineage_dataset_%s_failed: %w", dataset, err)
-		}
-	}
-
-	return nil
-}
-
-func (s *Service) listLocalReplicationLineageDatasets(ctx context.Context, rootDataset string) ([]string, error) {
-	rootDataset = normalizeDatasetPath(rootDataset)
-	if rootDataset == "" {
-		return nil, fmt.Errorf("root_dataset_required")
-	}
-
-	parent := rootDataset
-	leaf := rootDataset
-	if idx := strings.LastIndex(rootDataset, "/"); idx > 0 {
-		parent = rootDataset[:idx]
-		leaf = rootDataset[idx+1:]
-	}
-	baseLeaf := replicationLineageBaseLeaf(leaf)
-
-	datasets, err := s.listLocalFilesystemDatasets(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	seen := make(map[string]struct{})
-	results := make([]string, 0)
-	add := func(dataset string) {
-		dataset = normalizeDatasetPath(dataset)
-		if dataset == "" {
-			return
-		}
-		if _, ok := seen[dataset]; ok {
-			return
-		}
-		seen[dataset] = struct{}{}
-		results = append(results, dataset)
-	}
-
-	for _, dataset := range datasets {
-		dataset = normalizeDatasetPath(dataset)
-		if dataset == "" {
-			continue
-		}
-		if dataset == rootDataset {
-			add(dataset)
-			continue
-		}
-		if !strings.HasPrefix(dataset, parent+"/") {
-			continue
-		}
-		if datasetDepth(dataset) != datasetDepth(rootDataset) {
-			continue
-		}
-
-		suffix := strings.TrimPrefix(dataset, parent+"/")
-		switch {
-		case suffix == baseLeaf:
-			add(dataset)
-		case strings.HasPrefix(suffix, baseLeaf+"_gen-"):
-			add(dataset)
-		}
-	}
-
-	if len(results) == 0 {
-		return []string{rootDataset}, nil
-	}
-
-	return results, nil
-}
-
-func staleReplicationLineageDatasets(rootDataset string, lineageDatasets []string, keepOutOfBand int) []string {
-	rootDataset = normalizeDatasetPath(rootDataset)
-	if rootDataset == "" || len(lineageDatasets) == 0 {
-		return nil
-	}
-
-	if keepOutOfBand < 0 {
-		keepOutOfBand = 0
-	}
-
-	rootLeaf := rootDataset
-	if idx := strings.LastIndex(rootDataset, "/"); idx >= 0 && idx+1 < len(rootDataset) {
-		rootLeaf = rootDataset[idx+1:]
-	}
-	baseLeaf := replicationLineageBaseLeaf(rootLeaf)
-
-	outOfBand := make([]string, 0)
-	for _, dataset := range lineageDatasets {
-		dataset = normalizeDatasetPath(dataset)
-		if dataset == "" || dataset == rootDataset {
-			continue
-		}
-
-		leaf := dataset
-		if idx := strings.LastIndex(dataset, "/"); idx >= 0 && idx+1 < len(dataset) {
-			leaf = dataset[idx+1:]
-		}
-
-		if strings.HasPrefix(leaf, baseLeaf+"_gen-") {
-			outOfBand = append(outOfBand, dataset)
-		}
-	}
-
-	if len(outOfBand) <= keepOutOfBand {
-		return nil
-	}
-
-	sort.SliceStable(outOfBand, func(i, j int) bool {
-		return outOfBand[i] > outOfBand[j]
-	})
-
-	return outOfBand[keepOutOfBand:]
-}
-
-func replicationLineageBaseLeaf(leaf string) string {
-	leaf = strings.TrimSpace(leaf)
-	if idx := strings.Index(leaf, "_gen-"); idx > 0 {
-		return leaf[:idx]
-	}
-	return leaf
-}
-
 func isReplicationTargetModifiedError(err error) bool {
 	if err == nil {
 		return false
@@ -4445,38 +4256,6 @@ func (s *Service) updateReplicationPolicyResult(policy *clusterModels.Replicatio
 	_ = s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Updates(map[string]any{
 		"last_run_at": now, "last_status": lastStatus, "last_error": lastError, "next_run_at": next,
 	}).Error
-}
-
-func (s *Service) syncReplicationPolicyRuntimeState(policyID uint, lastRunAt time.Time, nextRunAt *time.Time, lastStatus, lastError string) bool {
-	if s == nil || s.Cluster == nil {
-		return false
-	}
-
-	update := clusterService.ReplicationPolicyRuntimeState{
-		ID:         policyID,
-		LastRunAt:  &lastRunAt,
-		LastStatus: lastStatus,
-		LastError:  lastError,
-		NextRunAt:  nextRunAt,
-	}
-	bypassRaft, authorityErr := s.runtimeStateBypassRaft()
-	if authorityErr != nil {
-		logger.L.Warn().Err(authorityErr).Uint("policy_id", policyID).Msg("replication_runtime_authority_unavailable")
-		return false
-	}
-	if err := s.Cluster.ProposeReplicationPolicyStateUpdate(update, bypassRaft); err == nil {
-		return true
-	} else if !bypassRaft && strings.Contains(strings.ToLower(err.Error()), "not_leader") {
-		forwardErr := s.forwardReplicationPolicyStateToLeader(update)
-		if forwardErr == nil {
-			return true
-		}
-		logger.L.Warn().Err(forwardErr).Uint("policy_id", policyID).Msg("failed_to_forward_replication_policy_state_to_leader")
-	} else {
-		logger.L.Warn().Err(err).Uint("policy_id", policyID).Msg("failed_to_sync_replication_policy_state_cluster_wide")
-	}
-
-	return false
 }
 
 func (s *Service) forwardReplicationPolicyStateToLeader(update clusterService.ReplicationPolicyRuntimeState) error {
@@ -6828,31 +6607,6 @@ func backupJobGuestIdentity(job *clusterModels.BackupJob) (string, uint) {
 	return clusterModels.BackupJobGuestIdentity(job)
 }
 
-func backupJobToReqWithRunner(job *clusterModels.BackupJob, runnerNodeID string) clusterServiceInterfaces.BackupJobReq {
-	enabled := false
-	if job != nil {
-		enabled = job.Enabled
-	}
-	req := clusterServiceInterfaces.BackupJobReq{
-		RunnerNodeID: strings.TrimSpace(runnerNodeID),
-		Enabled:      &enabled,
-	}
-	if job == nil {
-		return req
-	}
-	req.Name = strings.TrimSpace(job.Name)
-	req.TargetID = job.TargetID
-	req.Mode = strings.TrimSpace(job.Mode)
-	req.SourceDataset = strings.TrimSpace(job.SourceDataset)
-	req.JailRootDataset = strings.TrimSpace(job.JailRootDataset)
-	req.PruneKeepLast = job.PruneKeepLast
-	req.PruneTarget = job.PruneTarget
-	req.StopBeforeBackup = job.StopBeforeBackup
-	req.Recursive = job.Recursive
-	req.CronExpr = strings.TrimSpace(job.CronExpr)
-	return req
-}
-
 func (s *Service) rebindReplicationGuestBackupJobRunners(
 	ctx context.Context,
 	policy *clusterModels.ReplicationPolicy,
@@ -7433,117 +7187,6 @@ func (s *Service) reassignDisabledReplicationPolicyOwner(
 			return fmt.Errorf("disabled_replication_owner_reassignment_ambiguous: %w", err)
 		}
 	}
-	return nil
-}
-
-func (s *Service) reassignReplicationPolicyOwner(policy *clusterModels.ReplicationPolicy, newOwnerNodeID string) error {
-	if policy == nil || policy.ID == 0 {
-		return fmt.Errorf("invalid_policy")
-	}
-
-	currentEpoch := replicationPolicyOwnerEpoch(policy)
-	currentOwner := replicationPolicyOwnerNode(policy)
-	newOwnerNodeID = strings.TrimSpace(newOwnerNodeID)
-	if currentOwner == "" || newOwnerNodeID == "" {
-		return fmt.Errorf("replication_policy_owner_missing")
-	}
-	if currentOwner == newOwnerNodeID {
-		return nil
-	}
-	if currentEpoch == math.MaxUint64 {
-		return fmt.Errorf("replication_policy_owner_epoch_exhausted")
-	}
-	nextEpoch := currentEpoch + 1
-	runID := fmt.Sprintf("migration-owner-%d-%s", policy.ID, compactNowToken())
-	now := s.now().UTC()
-	transition := clusterModels.ReplicationPolicyTransition{
-		State:                clusterModels.ReplicationTransitionStateDemoting,
-		RunID:                runID,
-		Reason:               "manual_migration_ownership",
-		SourceNodeID:         currentOwner,
-		TargetNodeID:         newOwnerNodeID,
-		OwnerEpoch:           currentEpoch,
-		RequestedAt:          &now,
-		TriggerValidationRun: true,
-		OriginalSourceNodeID: strings.TrimSpace(policy.SourceNodeID),
-	}
-	if err := s.Cluster.BeginReplicationPolicyTransition(
-		clusterModels.ReplicationPolicyTransitionBegin{
-			PolicyID:           policy.ID,
-			ExpectedOwnerEpoch: currentEpoch,
-			Transition:         transition,
-			ProtectionState:    clusterModels.ReplicationProtectionStateSuspended,
-		},
-		false,
-	); err != nil {
-		return fmt.Errorf("begin_migration_ownership_transition_failed: %w", err)
-	}
-	policy.ProtectionState = clusterModels.ReplicationProtectionStateSuspended
-	policy.TransitionState = transition.State
-	policy.TransitionRunID = transition.RunID
-	policy.TransitionReason = transition.Reason
-	policy.TransitionSourceNodeID = transition.SourceNodeID
-	policy.TransitionTargetNodeID = transition.TargetNodeID
-	policy.TransitionOwnerEpoch = transition.OwnerEpoch
-	policy.TransitionRequestedAt = transition.RequestedAt
-	policy.TransitionTriggerValidationRun = transition.TriggerValidationRun
-	policy.TransitionOriginalSourceNodeID = transition.OriginalSourceNodeID
-
-	// A migrated guest no longer exists on the old source. Move both
-	// follow-active and pinned replication sources to the new owner.
-	sourceNode := newOwnerNodeID
-	sourceNodeUpdate := &sourceNode
-	transition.State = clusterModels.ReplicationTransitionStateCompleted
-	transition.OwnerEpoch = nextEpoch
-	transition.PromotedAt = &now
-	transition.CompletedAt = &now
-	leaseVersion, err := s.nextReplicationPolicyLeaseVersion(policy.ID, now)
-	if err != nil {
-		return s.failPolicyTransition(policy, fmt.Errorf("migration_ownership_lease_version_failed: %w", err))
-	}
-	rotatedTargets := rotatedReplicationPolicyTargets(policy, currentOwner, newOwnerNodeID, nextEpoch)
-	payload := clusterModels.ReplicationOwnershipTransitionPayload{
-		PolicyID:                policy.ID,
-		ExpectedActiveNodeID:    currentOwner,
-		ExpectedOwnerEpoch:      currentEpoch,
-		ExpectedTransitionRunID: runID,
-		ActiveNodeID:            newOwnerNodeID,
-		SourceNodeID:            sourceNodeUpdate,
-		OwnerEpoch:              nextEpoch,
-		ReplaceTargets:          true,
-		Targets:                 rotatedTargets,
-		Lease: clusterModels.ReplicationLease{
-			PolicyID:    policy.ID,
-			GuestType:   policy.GuestType,
-			GuestID:     policy.GuestID,
-			OwnerNodeID: newOwnerNodeID,
-			OwnerEpoch:  nextEpoch,
-			ExpiresAt:   now.Add(replicationLeaseTTL),
-			Version:     leaseVersion,
-			LastReason:  "manual_migration",
-			LastActor:   s.Cluster.LocalNodeID(),
-		},
-		Transition:      transition,
-		ProtectionState: clusterModels.ReplicationProtectionStateDegraded,
-	}
-	commitErr := s.Cluster.CommitReplicationOwnershipTransition(payload, false)
-	if commitErr != nil {
-		latest, lookupErr := s.Cluster.GetReplicationPolicyByID(policy.ID)
-		latestLease, leaseErr := s.Cluster.GetReplicationLeaseByPolicyID(policy.ID)
-		if lookupErr != nil || leaseErr != nil ||
-			classifyReplicationOwnershipCommit(
-				latest,
-				latestLease,
-				currentOwner,
-				newOwnerNodeID,
-				currentEpoch,
-				nextEpoch,
-				runID,
-			) != replicationOwnershipCommitApplied {
-			return fmt.Errorf("migration_ownership_commit_outcome_ambiguous: %w", commitErr)
-		}
-	}
-
 	return nil
 }
 
@@ -10005,14 +9648,6 @@ func parseCanonicalReplicationGuestDataset(dataset string) (string, uint, string
 		return "", 0, "", false
 	}
 	return guestType, uint(guestID64), strings.Join(parts[:4], "/"), true
-}
-
-func canonicalReplicationGuestDatasetRoot(dataset, guestType string) string {
-	parsedType, _, root, ok := parseCanonicalReplicationGuestDataset(dataset)
-	if !ok || parsedType != strings.TrimSpace(guestType) {
-		return ""
-	}
-	return root
 }
 
 type replicationZFSPropertyState struct {

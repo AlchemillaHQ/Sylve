@@ -298,6 +298,49 @@ func writeClusterForwardResponse(c *gin.Context, response clusterForwardResponse
 	c.Data(response.StatusCode, contentType, response.Body)
 }
 
+func shouldForwardEventsRequest(cS *cluster.Service, requestedNodeID string) bool {
+	requestedNodeID = strings.TrimSpace(requestedNodeID)
+	if requestedNodeID == "" || cS == nil {
+		return false
+	}
+
+	localNodeID := ""
+	if detail := cS.Detail(); detail != nil {
+		localNodeID = strings.TrimSpace(detail.NodeID)
+	}
+
+	return localNodeID == "" || requestedNodeID != localNodeID
+}
+
+func forwardEventsRequestToNode(
+	c *gin.Context,
+	cS *cluster.Service,
+	nodeID string,
+	path string,
+) (clusterForwardResponse, error) {
+	targetAPI, err := resolveClusterNodeAPI(cS, nodeID)
+	if err != nil {
+		return clusterForwardResponse{}, err
+	}
+
+	query := c.Request.URL.Query()
+	query.Del("nodeId")
+
+	remoteURL := fmt.Sprintf("https://%s%s", targetAPI, path)
+	if encoded := query.Encode(); encoded != "" {
+		remoteURL += "?" + encoded
+	}
+
+	return performClusterForward(
+		c,
+		cS,
+		http.MethodGet,
+		remoteURL,
+		nil,
+		clusterForwardShortRead,
+	)
+}
+
 func writeClusterForwardError(c *gin.Context, message string, err error) {
 	status := http.StatusBadGateway
 	errorText := strings.ToLower(err.Error())

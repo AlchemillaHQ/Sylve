@@ -2431,31 +2431,6 @@ func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr err
 	}
 }
 
-func (s *Service) syncBackupJobRuntimeState(update cluster.BackupJobRuntimeStateUpdate) bool {
-	if s == nil || s.Cluster == nil {
-		return false
-	}
-
-	bypassRaft, authorityErr := s.runtimeStateBypassRaft()
-	if authorityErr != nil {
-		logger.L.Warn().Err(authorityErr).Uint("job_id", update.JobID).Msg("backup_runtime_authority_unavailable")
-		return false
-	}
-	if err := s.Cluster.UpdateBackupJobRuntimeState(update, bypassRaft); err == nil {
-		return true
-	} else if !bypassRaft && strings.Contains(strings.ToLower(err.Error()), "not_leader") {
-		forwardErr := s.forwardBackupJobStateToLeader(update)
-		if forwardErr == nil {
-			return true
-		}
-		logger.L.Warn().Err(forwardErr).Uint("job_id", update.JobID).Msg("failed_to_forward_backup_job_state_to_leader")
-	} else {
-		logger.L.Warn().Err(err).Uint("job_id", update.JobID).Msg("failed_to_sync_backup_job_state_cluster_wide")
-	}
-
-	return false
-}
-
 func (s *Service) forwardBackupJobStateToLeader(update cluster.BackupJobRuntimeStateUpdate) error {
 	if s == nil || s.Cluster == nil {
 		return fmt.Errorf("cluster_service_unavailable")

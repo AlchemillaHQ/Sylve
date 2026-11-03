@@ -89,57 +89,6 @@ func TestEmergencyStopAllManagedGuestRuntimesMissingCapabilitiesFailsClosed(t *t
 	}
 }
 
-func TestCanonicalReplicationGuestDatasetRootRequiresExactSylveBoundary(t *testing.T) {
-	for _, tc := range []struct {
-		name      string
-		dataset   string
-		guestType string
-		guestID   uint
-		root      string
-	}{
-		{
-			name: "vm root", dataset: "tank/sylve/virtual-machines/42",
-			guestType: clusterModels.ReplicationGuestTypeVM, guestID: 42,
-			root: "tank/sylve/virtual-machines/42",
-		},
-		{
-			name: "jail descendant", dataset: "tank/sylve/jails/7/root/data",
-			guestType: clusterModels.ReplicationGuestTypeJail, guestID: 7,
-			root: "tank/sylve/jails/7",
-		},
-		{name: "backup prefix", dataset: "tank/backups/sylve/virtual-machines/42"},
-		{name: "backup namespace", dataset: "tank/sylve-backups/virtual-machines/42"},
-		{name: "nested sylve namespace", dataset: "tank/tenant/sylve/jails/7"},
-		{name: "suffixed vm", dataset: "tank/sylve/virtual-machines/42_backup"},
-		{name: "leading-zero vm alias", dataset: "tank/sylve/virtual-machines/0042"},
-		{name: "rotated vm", dataset: "tank/sylve/virtual-machines/42_gen-run"},
-		{name: "snapshot", dataset: "tank/sylve/jails/7@snap"},
-		{name: "zero id", dataset: "tank/sylve/jails/0"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			guestType, guestID, root, ok := parseCanonicalReplicationGuestDataset(tc.dataset)
-			if tc.root == "" {
-				if ok || guestType != "" || guestID != 0 || root != "" {
-					t.Fatalf("noncanonical dataset parsed as type=%q id=%d root=%q", guestType, guestID, root)
-				}
-				return
-			}
-			if !ok || guestType != tc.guestType || guestID != tc.guestID || root != tc.root {
-				t.Fatalf("canonical parse = (%q,%d,%q,%t), want (%q,%d,%q,true)",
-					guestType, guestID, root, ok, tc.guestType, tc.guestID, tc.root)
-			}
-			if got := canonicalReplicationGuestDatasetRoot(tc.dataset, tc.guestType); got != tc.root {
-				t.Fatalf("canonical root = %q, want %q", got, tc.root)
-			}
-		})
-	}
-	if got := canonicalReplicationGuestDatasetRoot(
-		"tank/sylve/virtual-machines/42", clusterModels.ReplicationGuestTypeJail,
-	); got != "" {
-		t.Fatalf("wrong guest type returned canonical root %q", got)
-	}
-}
-
 func TestSelfFenceExpiredLeasesEmptyLocalNodeFailsClosed(t *testing.T) {
 	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
 	order := []string{}

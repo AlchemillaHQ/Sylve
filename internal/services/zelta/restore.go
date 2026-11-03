@@ -96,38 +96,6 @@ func (s *Service) listBackupJobSnapshotCandidates(
 	return filterSnapshotsForBackupJob(snapshots, job.ID), nil
 }
 
-func (s *Service) ListRemoteSnapshots(ctx context.Context, job *clusterModels.BackupJob) ([]SnapshotInfo, error) {
-	target, remoteDataset, err := backupJobSnapshotTarget(job)
-	if err != nil {
-		return nil, err
-	}
-	releaseTargetKey, err := s.acquireBackupTargetSSHKey(&target)
-	if err != nil {
-		return nil, fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
-	}
-	defer releaseTargetKey()
-
-	snapshots, err := s.listBackupJobSnapshotCandidates(ctx, job, &target, remoteDataset)
-	if err != nil {
-		return nil, err
-	}
-	filtered, err := s.filterRestorableBackupSnapshots(ctx, job, snapshots)
-	if err != nil {
-		return nil, fmt.Errorf("failed_to_validate_backup_restore_points: %w", err)
-	}
-
-	childCount := s.remoteDatasetChildCount(ctx, &target, remoteDataset)
-	for i := range filtered {
-		filtered[i].ChildCount = childCount
-	}
-
-	if job.Mode == clusterModels.BackupJobModeVM {
-		return collapseSnapshotsByShortName(filtered), nil
-	}
-
-	return filtered, nil
-}
-
 func (s *Service) ListRemoteSnapshotsPage(
 	ctx context.Context,
 	job *clusterModels.BackupJob,

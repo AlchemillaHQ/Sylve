@@ -427,39 +427,6 @@ func parseRemoteDatasetEncryption(line string) (dataset string, encrypted bool) 
 	return dataset, encryption != "" && encryption != "-" && encryption != "none" && encryption != "off"
 }
 
-func (s *Service) ListRemoteTargetDatasetSnapshots(ctx context.Context, targetID uint, remoteDataset string) ([]SnapshotInfo, error) {
-	parsedRemoteDataset, err := requiredRemoteDataset(remoteDataset)
-	if err != nil {
-		return nil, err
-	}
-	remoteDataset = parsedRemoteDataset.String()
-	target, rootDataset, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
-	if err != nil {
-		return nil, err
-	}
-	defer releaseTargetKey()
-
-	if !parsedRemoteDataset.Within(rootDataset) {
-		return nil, fmt.Errorf("remote_dataset_outside_backup_root")
-	}
-
-	snapshots, err := s.listRemoteSnapshotsWithLineage(ctx, &target, remoteDataset)
-	if err != nil {
-		return nil, err
-	}
-	snapshots = filterBackupSnapshots(snapshots)
-	kind, _ := inferRestoreDatasetKind(relativeDatasetSuffix(target.BackupRoot, remoteDataset))
-	snapshots, err = s.filterRestorableTargetSnapshots(ctx, &target, kind, snapshots)
-	if err != nil {
-		return nil, fmt.Errorf("failed_to_validate_target_restore_points: %w", err)
-	}
-	if kind == clusterModels.BackupJobModeVM {
-		snapshots = collapseSnapshotsByShortName(snapshots)
-	}
-
-	return snapshots, nil
-}
-
 func (s *Service) ListRemoteTargetDatasetSnapshotsPage(
 	ctx context.Context,
 	targetID uint,

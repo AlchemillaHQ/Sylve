@@ -578,20 +578,6 @@ func (s *Service) clearClusteredData(prepare func(tx *gorm.DB) error) error {
 	})
 }
 
-func (s *Service) MarkClustered() error {
-	var c clusterModels.Cluster
-	if err := s.DB.First(&c).Error; err != nil {
-		return err
-	}
-
-	c.Enabled = true
-	if err := s.DB.Save(&c).Error; err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (s *Service) MarkDeclustered() error {
 	err := s.DB.Transaction(func(tx *gorm.DB) error {
 		return markDeclusteredTx(tx)

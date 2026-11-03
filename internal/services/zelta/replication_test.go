@@ -42,36 +42,6 @@ func TestTransitionStateInProgress(t *testing.T) {
 	}
 }
 
-func TestTransitionDemoteAckRequired(t *testing.T) {
-	if !transitionDemoteAckRequired("") {
-		t.Fatal("empty reason should require ack")
-	}
-	if transitionDemoteAckRequired("force") {
-		t.Fatal("force should not require ack")
-	}
-	if transitionDemoteAckRequired("node_down_failover") {
-		t.Fatal("node_down_failover should not require ack")
-	}
-	if !transitionDemoteAckRequired("manual_failover") {
-		t.Fatal("manual_failover should require ack")
-	}
-}
-
-func TestTransitionAllowUnsafe(t *testing.T) {
-	if transitionAllowUnsafe("") {
-		t.Fatal("empty reason should not allow unsafe")
-	}
-	if !transitionAllowUnsafe("force") {
-		t.Fatal("force should allow unsafe")
-	}
-	if !transitionAllowUnsafe("FORCE_FAILOVER") {
-		t.Fatal("FORCE_FAILOVER should allow unsafe")
-	}
-	if transitionAllowUnsafe("manual") {
-		t.Fatal("manual should not allow unsafe")
-	}
-}
-
 func TestPolicyFailoverMode(t *testing.T) {
 	if policyFailoverMode(nil) != clusterModels.ReplicationFailoverManual {
 		t.Fatal("nil policy should return manual")
@@ -304,28 +274,6 @@ func TestReplicationRunnerNodeID(t *testing.T) {
 	}
 }
 
-func TestBackupJobToReqWithRunnerPreservesRecursive(t *testing.T) {
-	for _, recursive := range []bool{false, true} {
-		t.Run(fmt.Sprintf("recursive_%t", recursive), func(t *testing.T) {
-			job := &clusterModels.BackupJob{
-				Name:      "guest-backup",
-				TargetID:  7,
-				Mode:      clusterModels.BackupJobModeVM,
-				Recursive: recursive,
-				Enabled:   true,
-			}
-
-			req := backupJobToReqWithRunner(job, " node-b ")
-			if req.Recursive != recursive {
-				t.Fatalf("recursive = %v, want %v", req.Recursive, recursive)
-			}
-			if req.RunnerNodeID != "node-b" {
-				t.Fatalf("runner node = %q, want node-b", req.RunnerNodeID)
-			}
-		})
-	}
-}
-
 func TestIsReplicationTargetModifiedError(t *testing.T) {
 	if !isReplicationTargetModifiedError(errors.New("cannot receive incremental stream: destination has been modified")) {
 		t.Fatal("destination modified should match")
@@ -442,35 +390,4 @@ func TestAcquireReleaseReplication(t *testing.T) {
 	s.releaseReplication(1)
 	s.releaseReplication(2)
 	s.releaseReplication(999) // releasing non-existent is no-op
-}
-
-func TestStaleReplicationLineageDatasets(t *testing.T) {
-	root := "tank/vm-1"
-	lineage := []string{
-		"tank/vm-1",
-		"tank/vm-1_gen-0",
-		"tank/vm-1_gen-1",
-		"tank/vm-1_gen-2",
-		"tank/vm-1_gen-3",
-	}
-	stale := staleReplicationLineageDatasets(root, lineage, 2)
-	if len(stale) != 2 {
-		t.Fatalf("expected 2 stale datasets (keeping 2 out-of-band), got %d: %v", len(stale), stale)
-	}
-
-	if len(staleReplicationLineageDatasets(root, nil, 1)) != 0 {
-		t.Fatal("nil lineage should return empty")
-	}
-	if len(staleReplicationLineageDatasets(root, lineage, 0)) != 4 {
-		t.Fatalf("keepOutOfBand=0 should keep all 4 gen entries")
-	}
-}
-
-func TestReplicationLineageBaseLeaf(t *testing.T) {
-	if replicationLineageBaseLeaf("vm-1_gen-0") != "vm-1" {
-		t.Fatal("should strip _gen- suffix")
-	}
-	if replicationLineageBaseLeaf("vm-1") != "vm-1" {
-		t.Fatal("no _gen- suffix should return unchanged")
-	}
 }

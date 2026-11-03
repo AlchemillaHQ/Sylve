@@ -52,29 +52,6 @@ func (s *Service) ProposeEncryptionKeyUpsert(uuid, keyData, keyFormat string, by
 	return s.applyRaftCommand(cmd)
 }
 
-func (s *Service) ProposeEncryptionKeyDelete(uuid string, bypassRaft bool) error {
-	uuid = strings.TrimSpace(uuid)
-	if uuid == "" {
-		return nil
-	}
-
-	if bypassRaft || s.Raft == nil {
-		return s.DB.Where("uuid = ?", uuid).Delete(&clusterModels.EncryptionKey{}).Error
-	}
-
-	payload := struct {
-		UUID string `json:"uuid"`
-	}{UUID: uuid}
-
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("marshal_delete_payload_failed: %w", err)
-	}
-
-	cmd := clusterModels.Command{Type: "encryption_key", Action: "delete", Data: data}
-	return s.applyRaftCommand(cmd)
-}
-
 func (s *Service) ListEncryptionKeys() ([]clusterModels.EncryptionKey, error) {
 	var keys []clusterModels.EncryptionKey
 	if err := s.DB.Order("id ASC").Find(&keys).Error; err != nil {

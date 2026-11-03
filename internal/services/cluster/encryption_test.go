@@ -151,32 +151,6 @@ func TestProposeEncryptionKeyUpsertBypassRaft(t *testing.T) {
 	}
 }
 
-func TestProposeEncryptionKeyDeleteBypassRaft(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.EncryptionKey{})
-	s := &Service{DB: db}
-
-	s.UpsertEncryptionKeyLocally("delete-bypass", "delete-bypass-data-32bytes", "passphrase")
-
-	if err := s.ProposeEncryptionKeyDelete("delete-bypass", true); err != nil {
-		t.Fatalf("ProposeEncryptionKeyDelete bypass failed: %v", err)
-	}
-
-	var count int64
-	db.Model(&clusterModels.EncryptionKey{}).Where("uuid = ?", "delete-bypass").Count(&count)
-	if count != 0 {
-		t.Fatalf("expected key to be deleted, got %d rows", count)
-	}
-}
-
-func TestProposeEncryptionKeyDeleteEmptyUUID(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.EncryptionKey{})
-	s := &Service{DB: db}
-
-	if err := s.ProposeEncryptionKeyDelete("  ", true); err != nil {
-		t.Fatalf("delete with empty uuid should be no-op, got: %v", err)
-	}
-}
-
 func TestForwardEncryptionKeyToLeaderRaftNil(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.EncryptionKey{})
 	s := &Service{DB: db, Raft: nil}

@@ -227,11 +227,11 @@ func TestIntegrationListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 		t.Fatal("expected snapshots via direct SSH listing on the specific dataset")
 	}
 
-	snapshots, err := svc.ListRemoteSnapshots(ctx, &loaded)
+	page, err := svc.ListRemoteSnapshotsPage(ctx, &loaded, SnapshotPageRequest{})
 	if err != nil {
-		t.Fatalf("ListRemoteSnapshots: %v", err)
+		t.Fatalf("ListRemoteSnapshotsPage: %v", err)
 	}
-	t.Logf("ListRemoteSnapshots (after filtering): %d snapshots", len(snapshots))
+	snapshots := page.Items
 	if len(snapshots) == 0 {
 		t.Fatal("committed backup disappeared from restore listing")
 	}
@@ -243,11 +243,11 @@ func TestIntegrationListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 	if output, err := exec.CommandContext(ctx, zfsBin, "snapshot", remoteDS+"@"+interruptedName).CombinedOutput(); err != nil {
 		t.Fatalf("create interrupted target snapshot: %v\n%s", err, output)
 	}
-	visibleAfterInterrupted, err := svc.ListRemoteSnapshots(ctx, &loaded)
+	visibleAfterInterrupted, err := svc.ListRemoteSnapshotsPage(ctx, &loaded, SnapshotPageRequest{})
 	if err != nil {
-		t.Fatalf("ListRemoteSnapshots after interrupted snapshot: %v", err)
+		t.Fatalf("ListRemoteSnapshotsPage after interrupted snapshot: %v", err)
 	}
-	for _, snapshot := range visibleAfterInterrupted {
+	for _, snapshot := range visibleAfterInterrupted.Items {
 		if snapshotShortName(snapshot) == "@"+interruptedName {
 			t.Fatalf("uncommitted restore point was advertised: %+v", snapshot)
 		}
@@ -256,100 +256,6 @@ func TestIntegrationListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 		!strings.Contains(err.Error(), "not_committed") {
 		t.Fatalf("uncommitted restore point error = %v", err)
 	}
-}
-
-func TestIntegrationRunRestoreJobDatasetWithEphemeralZFS(t *testing.T) {
-	zfstest.SkipIfUnavailable(t)
-	hostKey := requireLocalhostBackupSSH(t)
-
-	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
-	defer cleanup()
-	_ = gzfsClient
-
-	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/data")
-	zfstest.EnsureDataset(t, gzfsClient, poolName+"/target")
-	zfstest.EnsureDataset(t, gzfsClient, poolName+"/restore")
-
-	ctx := context.Background()
-	zfsBin, _ := exec.LookPath("zfs")
-	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/source").CombinedOutput()
-	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/source/data").CombinedOutput()
-	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/target").CombinedOutput()
-	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/restore").CombinedOutput()
-
-	extractZeltaToTemp(t)
-
-	db := newZeltaServiceTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
-	svc := &Service{
-		DB:                db,
-		queuedJobs:        make(map[uint]struct{}),
-		runningJobs:       make(map[uint]struct{}),
-		runningWorkloadOp: make(map[string]string),
-		GZFS:              gzfsClient,
-	}
-
-	target := clusterModels.BackupTarget{
-		ID: 2, Name: "restore-target", SSHHost: "root@localhost",
-		BackupRoot: poolName + "/target", Enabled: true,
-	}
-	if err := db.Create(&target).Error; err != nil {
-		t.Fatalf("failed to seed target: %v", err)
-	}
-	seedBackupTargetHostTrust(t, db, &target, hostKey)
-
-	job := clusterModels.BackupJob{
-		ID: 2, Name: "restore-dataset", Mode: "dataset", TargetID: 2,
-		SourceDataset: poolName + "/restore",
-		CronExpr:      "0 0 * * *", Enabled: true,
-	}
-	if err := db.Create(&job).Error; err != nil {
-		t.Fatalf("failed to seed job: %v", err)
-	}
-
-	var loaded clusterModels.BackupJob
-	db.Preload("Target").First(&loaded, 2)
-
-	svc.queuedJobs = make(map[uint]struct{})
-	svc.runningJobs = make(map[uint]struct{})
-	svc.runningWorkloadOp = make(map[string]string)
-
-	err := svc.runBackupJob(ctx, &loaded)
-	if err != nil {
-		t.Logf("backup may have failed (no source data): %v", err)
-	}
-
-	snapshots, err := svc.ListRemoteSnapshots(ctx, &loaded)
-	if err != nil {
-		t.Fatalf("ListRemoteSnapshots failed: %v", err)
-	}
-	if len(snapshots) == 0 {
-		t.Skip("no snapshots to restore from")
-	}
-
-	restoreSnapshot := snapshots[len(snapshots)-1].ShortName
-	t.Logf("restoring from snapshot: %s", restoreSnapshot)
-
-	svc.queuedJobs = make(map[uint]struct{})
-	svc.runningJobs = make(map[uint]struct{})
-	svc.runningWorkloadOp = make(map[string]string)
-
-	err = svc.runRestoreJob(ctx, &loaded, restoreSnapshot, "")
-	if err != nil {
-		t.Logf("restore result: %v", err)
-	}
-
-	var events []clusterModels.BackupEvent
-	db.Where("mode = ?", "restore").Order("id desc").Find(&events)
-	for _, e := range events {
-		t.Logf("restore event: status=%q source=%q target=%q error=%q",
-			e.Status, e.SourceDataset, e.TargetEndpoint, e.Error)
-		if e.Output != "" {
-			t.Logf("  output tail: %s", lastLines(e.Output, 5))
-		}
-	}
-
-	afterSnaps := listZFSSnapshots(t, poolName+"/restore")
-	t.Logf("snapshots on restore dataset: %v", afterSnaps)
 }
 
 func TestSnapshotDatasetName(t *testing.T) {

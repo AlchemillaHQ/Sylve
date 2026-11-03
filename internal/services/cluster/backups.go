@@ -22,10 +22,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
-	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
-	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/raft"
@@ -99,22 +96,6 @@ func validateBackupJobUpdateIdentity(existing, proposed *clusterModels.BackupJob
 	}
 
 	return nil
-}
-
-// BackupJobInput represents the input for creating/updating a backup job.
-type BackupJobInput struct {
-	Name             string `json:"name"`
-	TargetID         uint   `json:"targetId"`
-	RunnerNodeID     string `json:"runnerNodeId"`
-	Mode             string `json:"mode"`
-	SourceDataset    string `json:"sourceDataset"`
-	JailRootDataset  string `json:"jailRootDataset"`
-	PruneKeepLast    int    `json:"pruneKeepLast"`
-	PruneTarget      bool   `json:"pruneTarget"`
-	StopBeforeBackup bool   `json:"stopBeforeBackup"`
-	Recursive        bool   `json:"recursive"`
-	CronExpr         string `json:"cronExpr"`
-	Enabled          *bool  `json:"enabled"`
 }
 
 const BackupJobRuntimeStateVersion = 1
@@ -643,37 +624,6 @@ func (s *Service) resolveClusterNodeAPIByNodeID(nodeID string) (string, error) {
 	return "", fmt.Errorf("cluster_node_not_found")
 }
 
-/*
-backupJobRequest
-type BackupJobReq struct {
-	Name             string `json:"name" binding:"required,min=2"`
-	TargetID         uint   `json:"targetId" binding:"required"`
-	RunnerNodeID     string `json:"runnerNodeId"`
-	Mode             string `json:"mode" binding:"required"`
-	SourceDataset    string `json:"sourceDataset"`
-	JailRootDataset  string `json:"jailRootDataset"`
-	PruneKeepLast    int    `json:"pruneKeepLast"`
-	PruneTarget      bool   `json:"pruneTarget"`
-	StopBeforeBackup bool   `json:"stopBeforeBackup"`
-	CronExpr         string `json:"cronExpr"`
-	Enabled          *bool  `json:"enabled"`
-}
-
-		err := cS.ProposeBackupJobCreate(cluster.BackupJobInput{
-			Name:             req.Name,
-			TargetID:         req.TargetID,
-			RunnerNodeID:     req.RunnerNodeID,
-			Mode:             req.Mode,
-			SourceDataset:    req.SourceDataset,
-			JailRootDataset:  req.JailRootDataset,
-			PruneKeepLast:    req.PruneKeepLast,
-			PruneTarget:      req.PruneTarget,
-			StopBeforeBackup: req.StopBeforeBackup,
-			CronExpr:         req.CronExpr,
-			Enabled:          req.Enabled,
-		}, cS.Raft == nil)
-*/
-
 func (s *Service) ProposeBackupJobCreate(input clusterServiceInterfaces.BackupJobReq, bypassRaft bool) error {
 	return s.ProposeBackupJobCreateContext(context.Background(), input, bypassRaft)
 }
@@ -1072,58 +1022,6 @@ func normalizeBackupDatasetPath(dataset string) string {
 		dataset = strings.TrimSuffix(dataset, "/")
 	}
 	return dataset
-}
-
-func (s *Service) resolveBackupJobFriendlySource(mode, sourceDataset, jailRootDataset string) string {
-	if mode == clusterModels.BackupJobModeDataset {
-		return strings.TrimSpace(sourceDataset)
-	}
-
-	if mode == clusterModels.BackupJobModeVM {
-		vmDataset := strings.TrimSpace(sourceDataset)
-		if vmDataset == "" {
-			return ""
-		}
-
-		rid, ok := parseVMRIDFromDataset(vmDataset)
-		if !ok {
-			return vmDataset
-		}
-
-		var vm vmModels.VM
-		if err := s.DB.Select("name").Where("rid = ?", rid).First(&vm).Error; err == nil {
-			name := strings.TrimSpace(vm.Name)
-			if name != "" {
-				return name
-			}
-		} else {
-			logger.L.Err(err).Msg("failed_to_lookup_vm_for_backup_job_friendly_source")
-		}
-
-		return vmDataset
-	}
-
-	jailDataset := strings.TrimSpace(jailRootDataset)
-	if jailDataset == "" {
-		return ""
-	}
-
-	ctID, ok := parseJailCTIDFromDataset(jailDataset)
-	if !ok {
-		return jailDataset
-	}
-
-	var jail jailModels.Jail
-	if err := s.DB.Select("name").Where("ct_id = ?", ctID).First(&jail).Error; err == nil {
-		name := strings.TrimSpace(jail.Name)
-		if name != "" {
-			return name
-		}
-	} else {
-		logger.L.Err(err).Msg("failed_to_lookup_jail_for_backup_job_friendly_source")
-	}
-
-	return jailDataset
 }
 
 func parseJailCTIDFromDataset(dataset string) (uint, bool) {

@@ -69,51 +69,6 @@ func TestIntegrationZFSLocalDatasetExists(t *testing.T) {
 	}
 }
 
-func TestIntegrationRestoreStagingDatasetExistsFailsClosedWithDependentClone(t *testing.T) {
-	pool, client, cleanup := zfstest.SharedPool(t)
-	defer cleanup()
-	ctx := context.Background()
-	staging := pool + "/live.restoring"
-	clone := pool + "/external-clone"
-	zfstest.EnsureDataset(t, client, staging)
-
-	for _, args := range [][]string{
-		{"snapshot", staging + "@preserve"},
-		{"clone", staging + "@preserve", clone},
-	} {
-		output, err := exec.Command("zfs", args...).CombinedOutput()
-		if err != nil {
-			t.Fatalf("zfs %s: %v\noutput: %s", strings.Join(args, " "), err, output)
-		}
-	}
-
-	s := &Service{GZFS: client}
-	err := s.requireRestoreStagingDatasetAvailable(ctx, staging)
-	if err == nil {
-		t.Fatal("expected existing restore staging dataset to fail closed")
-	}
-	if !strings.Contains(err.Error(), "restore_staging_dataset_exists_requires_manual_cleanup") {
-		t.Fatalf("unexpected staging error: %v", err)
-	}
-
-	for _, dataset := range []string{staging, clone} {
-		exists, existsErr := s.localDatasetExists(ctx, dataset)
-		if existsErr != nil {
-			t.Fatalf("check %s: %v", dataset, existsErr)
-		}
-		if !exists {
-			t.Fatalf("%s was destroyed by staging preflight", dataset)
-		}
-	}
-	originOut, err := exec.Command("zfs", "get", "-H", "-o", "value", "origin", clone).CombinedOutput()
-	if err != nil {
-		t.Fatalf("read clone origin: %v\noutput: %s", err, originOut)
-	}
-	if got, want := strings.TrimSpace(string(originOut)), staging+"@preserve"; got != want {
-		t.Fatalf("clone origin = %q, want %q", got, want)
-	}
-}
-
 func TestIntegrationRestoreBackupCleanupPreservesArchiveWithDependentClone(t *testing.T) {
 	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()

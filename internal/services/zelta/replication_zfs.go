@@ -1366,23 +1366,6 @@ func (s *Service) listHaSnapshotsRemote(ctx context.Context, target *clusterMode
 	return snapshotIdentityNames(identities), nil
 }
 
-func filterHaSnapshots(output, dataset string) []string {
-	var snaps []string
-	scan := bufio.NewScanner(strings.NewReader(output))
-	prefix := dataset + "@" + haSnapPrefix
-	for scan.Scan() {
-		line := strings.TrimSpace(scan.Text())
-		if !strings.HasPrefix(line, prefix) {
-			continue
-		}
-		short := strings.TrimPrefix(line, dataset+"@")
-		if short != "" {
-			snaps = append(snaps, short)
-		}
-	}
-	return snaps
-}
-
 func (s *Service) ensureTargetParentDatasets(ctx context.Context, target *clusterModels.BackupTarget, targetPath string) error {
 	parsedTarget, err := canonicalTargetDataset(target, targetPath)
 	if err != nil {

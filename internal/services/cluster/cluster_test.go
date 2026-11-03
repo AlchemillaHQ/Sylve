@@ -73,25 +73,6 @@ func TestClusterRaftNodeDetails(t *testing.T) {
 	}
 }
 
-func TestMarkClustered(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.Cluster{})
-	s := &Service{DB: db}
-
-	if err := db.Create(&clusterModels.Cluster{Enabled: false}).Error; err != nil {
-		t.Fatalf("seed cluster: %v", err)
-	}
-
-	if err := s.MarkClustered(); err != nil {
-		t.Fatalf("MarkClustered failed: %v", err)
-	}
-
-	var c clusterModels.Cluster
-	db.First(&c)
-	if !c.Enabled {
-		t.Fatal("expected Cluster.Enabled=true")
-	}
-}
-
 func TestMarkDeclustered(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.Cluster{})
 	s := &Service{DB: db}

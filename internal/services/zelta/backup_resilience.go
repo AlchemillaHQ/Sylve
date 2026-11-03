@@ -12,9 +12,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
-	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
@@ -36,20 +34,6 @@ func (s *Service) backupRunScopes(job *clusterModels.BackupJob, sourceDataset, d
 		return scopes
 	}
 	return []backupScope{{sourceDataset: sourceDataset, destSuffix: destSuffix}}
-}
-
-func snapshotCreationTime(info SnapshotInfo) (time.Time, bool) {
-	raw := strings.TrimSpace(info.Creation)
-	if raw == "" {
-		return time.Time{}, false
-	}
-	if t, err := time.Parse(time.RFC3339, raw); err == nil {
-		return t.UTC(), true
-	}
-	if epoch, err := strconv.ParseInt(raw, 10, 64); err == nil {
-		return time.Unix(epoch, 0).UTC(), true
-	}
-	return time.Time{}, false
 }
 
 func snapshotGUIDKey(info SnapshotInfo) string {
