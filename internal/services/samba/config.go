@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/alchemillahq/gzfs"
@@ -172,7 +173,7 @@ func (s *Service) SetGlobalConfig(
 
 	supportedCharsets := sambaSupportedCharsets()
 
-	if !utils.StringInSlice(unixCharset, supportedCharsets) {
+	if !slices.Contains(supportedCharsets, unixCharset) {
 		return invalidGlobalConfig("unsupported unixCharset: %s", unixCharset)
 	}
 

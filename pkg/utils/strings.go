@@ -9,15 +9,12 @@
 package utils
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"math/big"
 	"net"
 	"net/url"
@@ -38,12 +35,6 @@ const Base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvw
 const letters = "abcdefghijklmnopqrstuvwxyz"
 
 var validFilenamePattern = regexp.MustCompile(`^[^\\/:*?"<>|]{1,255}$`)
-
-func FNVHash(s string) uint64 {
-	hasher := fnv.New64a()
-	hasher.Write([]byte(s))
-	return hasher.Sum64()
-}
 
 // BcryptPasswordHasher provides the production password hashing behavior.
 type BcryptPasswordHasher struct{}
@@ -81,27 +72,8 @@ func SHA256(input string, count int) string {
 	return hex.EncodeToString(sum)
 }
 
-func PasswordQueryHash(input string) string {
-	return SHA256(input, 1)
-}
-
 func RemoveSpaces(input string) string {
 	return strings.ReplaceAll(input, " ", "")
-}
-
-func StringToUintId(s string) uint {
-	hasher := fnv.New64a()
-	hasher.Write([]byte(s))
-
-	// Keep the synthetic ID within signed int64 range so SQLite/GORM can round-trip it.
-	// Values above math.MaxInt64 are stored as negative INTEGERs by SQLite and then fail
-	const signedInt64Mask = (uint64(1) << 63) - 1
-	id := hasher.Sum64() & signedInt64Mask
-	if id == 0 {
-		return 1
-	}
-
-	return uint(id)
 }
 
 func GenerateRandomUUID() string {
@@ -125,15 +97,6 @@ func GenerateRandomString(length int) string {
 	return string(result)
 }
 
-func StringInSlice(a string, list []string) bool {
-	for _, b := range list {
-		if b == a {
-			return true
-		}
-	}
-	return false
-}
-
 func PartialStringInSlice(a string, list []string) bool {
 	for _, b := range list {
 		if strings.Contains(a, b) {
@@ -151,16 +114,6 @@ func StringToUint64(s string) uint64 {
 	}
 
 	return r
-}
-
-func StringToFloat64(s string) float64 {
-	r, _ := strconv.ParseFloat(s, 64)
-	return r
-}
-
-func RemoveEmptyLines(s string) string {
-	re := regexp.MustCompile(`(?m)^\n`)
-	return re.ReplaceAllString(s, "")
 }
 
 func ParseJWT(tokenString string) (any, error) {
@@ -202,40 +155,6 @@ func BytesToSize(toType string, bytes float64) float64 {
 	default:
 		return bytes
 	}
-}
-
-/*
- * from zfs diff`s escape function:
- *
- * Prints a file name out a character at a time.  If the character is
- * not in the range of what we consider "printable" ASCII, display it
- * as an escaped 3-digit octal value.  ASCII values less than a space
- * are all control characters and we declare the upper end as the
- * DELete character.  This also is the last 7-bit ASCII character.
- * We choose to treat all 8-bit ASCII as not printable for this
- * application.
- */
-func UnescapeFilepath(path string) (string, error) {
-	buf := make([]byte, 0, len(path))
-	llen := len(path)
-	for i := 0; i < llen; {
-		if path[i] == '\\' {
-			if llen < i+4 {
-				return "", fmt.Errorf("invalid octal code: too short")
-			}
-			octalCode := path[(i + 1):(i + 4)]
-			val, err := strconv.ParseUint(octalCode, 8, 8)
-			if err != nil {
-				return "", fmt.Errorf("invalid octal code: %w", err)
-			}
-			buf = append(buf, byte(val))
-			i += 4
-		} else {
-			buf = append(buf, path[i])
-			i++
-		}
-	}
-	return string(buf), nil
 }
 
 func HumanFormatToSize(size string) uint64 {
@@ -296,19 +215,6 @@ func HumanFormatToSize(size string) uint64 {
 	return uint64(result)
 }
 
-func IsIndented(line string) bool {
-	return len(line) > 0 && unicode.IsSpace(rune(line[0]))
-}
-
-func Contains(slice []string, val string) bool {
-	for _, s := range slice {
-		if s == val {
-			return true
-		}
-	}
-	return false
-}
-
 func EncodeBase62(num uint64, length int) string {
 	res := make([]byte, length)
 	for i := length - 1; i >= 0; i-- {
@@ -322,22 +228,6 @@ func ShortHash(input string) string {
 	hash := sha256.Sum256([]byte(input))
 	num := binary.BigEndian.Uint64(hash[:8]) >> 16
 	return EncodeBase62(num, 8)
-}
-
-func JoinStrings(slice []string, sep string) string {
-	if len(slice) == 0 {
-		return ""
-	}
-	if len(slice) == 1 {
-		return slice[0]
-	}
-	var sb strings.Builder
-	sb.WriteString(slice[0])
-	for _, s := range slice[1:] {
-		sb.WriteString(sep)
-		sb.WriteString(s)
-	}
-	return sb.String()
 }
 
 func IsValidVMName(name string) bool {
@@ -367,18 +257,6 @@ func GenerateRandomMAC() string {
 	mac[0] |= 0x02
 
 	return fmt.Sprintf("%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5])
-}
-
-func IsHex(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, c := range strings.ToLower(s) {
-		if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') {
-			return false
-		}
-	}
-	return true
 }
 
 func IsValidEmail(email string) bool {
@@ -459,52 +337,6 @@ func IsValidGroupName(name string) bool {
 	}
 
 	return true
-}
-
-func JoinStringSlices(slices ...[]string) []string {
-	if len(slices) == 0 {
-		return nil
-	}
-
-	result := make([]string, 0)
-	for _, slice := range slices {
-		result = append(result, slice...)
-	}
-
-	return RemoveDuplicates(result)
-}
-
-func SliceEqual(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	m := make(map[string]int)
-	for _, v := range a {
-		m[v]++
-	}
-	for _, v := range b {
-		if _, ok := m[v]; !ok || m[v] == 0 {
-			return false
-		}
-		m[v]--
-	}
-
-	for _, count := range m {
-		if count != 0 {
-			return false
-		}
-	}
-
-	return true
-}
-
-func IntSliceToStrSlice(slice []int) []string {
-	strSlice := make([]string, len(slice))
-	for i, v := range slice {
-		strSlice[i] = strconv.Itoa(v)
-	}
-	return strSlice
 }
 
 var validCountryCodes = map[string]struct{}{
@@ -668,149 +500,8 @@ func IsMagnetURI(uri string) bool {
 	return true
 }
 
-func UintSliceToJSON(slice []uint) (string, error) {
-	bytes, err := json.Marshal(slice)
-	if err != nil {
-		return "", err
-	}
-	return string(bytes), nil
-}
-
 func FormatMAC(mac []byte) string {
 	return net.HardwareAddr(mac).String()
-}
-
-func MustJSON(v any) []byte {
-	b, _ := json.Marshal(v)
-	return b
-}
-
-func IsValidDiskName(name string) bool {
-	regex := regexp.MustCompile(`^[a-zA-Z0-9-_]+$`)
-	return regex.MatchString(name)
-}
-
-func IsValidDHCPRange(startIP, endIP string) bool {
-	start := net.ParseIP(startIP).To4()
-	end := net.ParseIP(endIP).To4()
-	if start == nil || end == nil {
-		return false
-	}
-
-	return bytes.Compare(start, end) < 0
-}
-
-func IsValidIPRangeWithSubnet(startIP, endIP, subnet string) bool {
-	_, ipNet, err := net.ParseCIDR(subnet)
-	if err != nil {
-		return false
-	}
-
-	start := net.ParseIP(startIP)
-	end := net.ParseIP(endIP)
-	if start == nil || end == nil {
-		return false
-	}
-
-	ipFamily := func(ip net.IP) int {
-		if ip == nil {
-			return 0
-		}
-		if ip.To4() != nil {
-			return 4
-		}
-		if ip.To16() != nil {
-			return 6
-		}
-		return 0
-	}
-
-	compareIPs := func(a, b net.IP) int {
-		if a4, b4 := a.To4(), b.To4(); a4 != nil && b4 != nil {
-			return bytes.Compare(a4, b4)
-		}
-		return bytes.Compare(a.To16(), b.To16())
-	}
-
-	lastIP := func(n *net.IPNet) net.IP {
-		base := n.IP.To16()
-		if base == nil {
-			return nil
-		}
-		mask := n.Mask
-		if len(mask) != net.IPv6len { // normalize to 16 bytes
-			m16 := make([]byte, net.IPv6len)
-			copy(m16[net.IPv6len-len(mask):], mask)
-			mask = m16
-		}
-		out := make(net.IP, net.IPv6len)
-		for i := 0; i < net.IPv6len; i++ {
-			out[i] = base[i] | ^mask[i]
-		}
-		return out
-	}
-
-	incIP := func(ip net.IP) net.IP {
-		if ip == nil {
-			return nil
-		}
-		ip = append(net.IP(nil), ip...)
-		for i := len(ip) - 1; i >= 0; i-- {
-			ip[i]++
-			if ip[i] != 0 {
-				break
-			}
-		}
-		return ip
-	}
-
-	decIP := func(ip net.IP) net.IP {
-		if ip == nil {
-			return nil
-		}
-		ip = append(net.IP(nil), ip...)
-		for i := len(ip) - 1; i >= 0; i-- {
-			if ip[i] == 0 {
-				ip[i] = 0xFF
-				continue
-			}
-			ip[i]--
-			break
-		}
-		return ip
-	}
-
-	fam := ipFamily(ipNet.IP)
-	if fam == 0 || ipFamily(start) != fam || ipFamily(end) != fam {
-		return false
-	}
-
-	if !ipNet.Contains(start) || !ipNet.Contains(end) {
-		return false
-	}
-
-	if compareIPs(start, end) > 0 {
-		return false
-	}
-
-	if fam == 4 {
-		firstUsable := incIP(ipNet.IP.To4())
-		lastUsable := decIP(lastIP(ipNet).To4())
-
-		if firstUsable == nil || lastUsable == nil || bytes.Compare(firstUsable, lastUsable) > 0 {
-			return false
-		}
-
-		s4, e4 := start.To4(), end.To4()
-		if bytes.Compare(s4, firstUsable) < 0 || bytes.Compare(s4, lastUsable) > 0 {
-			return false
-		}
-		if bytes.Compare(e4, firstUsable) < 0 || bytes.Compare(e4, lastUsable) > 0 {
-			return false
-		}
-	}
-
-	return true
 }
 
 func PtrIfNonZero(v uint) *uint {
@@ -837,24 +528,6 @@ func RemoveStringFromSlice(slice []string, str string) []string {
 	return result
 }
 
-func IntToString(input int) string {
-	return strconv.Itoa(input)
-}
-
-func KeepUniqueIntSlice(slice []int) []int {
-	seen := make(map[int]struct{}, len(slice))
-	out := make([]int, 0, len(slice))
-
-	for _, v := range slice {
-		if _, exists := seen[v]; !exists {
-			seen[v] = struct{}{}
-			out = append(out, v)
-		}
-	}
-
-	return out
-}
-
 func MergeMaps(maps ...map[string]string) map[string]string {
 	merged := make(map[string]string)
 	for _, m := range maps {
@@ -869,15 +542,6 @@ func IsValidYAML(data string) bool {
 	var out interface{}
 	err := yaml.Unmarshal([]byte(data), &out)
 	return err == nil
-}
-
-func HashPasswordSHA512(password string) (string, error) {
-	output, err := RunCommand("openssl", "passwd", "-6", password)
-	if err != nil {
-		return "", err
-	}
-
-	return strings.TrimSpace(output), nil
 }
 
 func IsValidZFSPoolName(name string) bool {

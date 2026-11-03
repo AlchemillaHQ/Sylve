@@ -10,9 +10,6 @@ package utils
 
 import (
 	"fmt"
-	"math"
-	"reflect"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -20,43 +17,6 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"golang.org/x/crypto/bcrypt"
 )
-
-func TestFNVHash(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected uint64
-	}{
-		{
-			input:    "hello",
-			expected: FNVHash("hello"),
-		},
-		{
-			input:    "world",
-			expected: FNVHash("world"),
-		},
-		{
-			input:    "",
-			expected: FNVHash(""),
-		},
-		{
-			input:    "12345",
-			expected: FNVHash("12345"),
-		},
-		{
-			input:    "special@chars!",
-			expected: FNVHash("special@chars!"),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("input=%q", tt.input), func(t *testing.T) {
-			result := FNVHash(tt.input)
-			if result != tt.expected {
-				t.Errorf("FNVHash(%q) = %d; want %d", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
 
 func TestHashAndCheckPassword(t *testing.T) {
 	const password = "supersecret123"
@@ -174,53 +134,6 @@ func TestRemoveSpaces(t *testing.T) {
 	}
 }
 
-func TestStringToUintId(t *testing.T) {
-	const signedInt64Mask = (uint64(1) << 63) - 1
-
-	tests := []struct {
-		input    string
-		expected uint
-	}{
-		{
-			input:    "hello",
-			expected: uint(FNVHash("hello") & signedInt64Mask),
-		},
-		{
-			input:    "world",
-			expected: uint(FNVHash("world") & signedInt64Mask),
-		},
-		{
-			input:    "",
-			expected: uint(FNVHash("") & signedInt64Mask),
-		},
-		{
-			input:    "12345",
-			expected: uint(FNVHash("12345") & signedInt64Mask),
-		},
-		{
-			input:    "special@chars!",
-			expected: uint(FNVHash("special@chars!") & signedInt64Mask),
-		},
-		{
-			input:    "root",
-			expected: uint(FNVHash("root") & signedInt64Mask),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("input=%q", tt.input), func(t *testing.T) {
-			result := StringToUintId(tt.input)
-			if result != tt.expected {
-				t.Errorf("StringToUintId(%q) = %d; want %d", tt.input, result, tt.expected)
-			}
-
-			if result > uint(math.MaxInt64) {
-				t.Errorf("StringToUintId(%q) = %d; expected <= %d", tt.input, result, uint(math.MaxInt64))
-			}
-		})
-	}
-}
-
 func TestGenerateRandomUUID(t *testing.T) {
 	uuids := make(map[string]bool)
 	for i := 0; i < 100; i++ {
@@ -311,49 +224,6 @@ func TestIsValidFilename(t *testing.T) {
 	}
 }
 
-func TestStringInSlice(t *testing.T) {
-	tests := []struct {
-		element  string
-		list     []string
-		expected bool
-	}{
-		{
-			element:  "apple",
-			list:     []string{"apple", "banana", "cherry"},
-			expected: true,
-		},
-		{
-			element:  "grape",
-			list:     []string{"apple", "banana", "cherry"},
-			expected: false,
-		},
-		{
-			element:  "",
-			list:     []string{"apple", "banana", "cherry"},
-			expected: false,
-		},
-		{
-			element:  "banana",
-			list:     []string{},
-			expected: false,
-		},
-		{
-			element:  "orange",
-			list:     []string{"orange"},
-			expected: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("element=%q,list=%v", tt.element, tt.list), func(t *testing.T) {
-			result := StringInSlice(tt.element, tt.list)
-			if result != tt.expected {
-				t.Errorf("StringInSlice(%q, %v) = %v; want %v", tt.element, tt.list, result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestStringToUint64(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -390,88 +260,6 @@ func TestStringToUint64(t *testing.T) {
 			result := StringToUint64(tt.input)
 			if result != tt.expected {
 				t.Errorf("StringToUint64(%q) = %d; want %d", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestStringToFloat64(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected float64
-	}{
-		{
-			input:    "123.45",
-			expected: 123.45,
-		},
-		{
-			input:    "0",
-			expected: 0,
-		},
-		{
-			input:    "-987.65",
-			expected: -987.65,
-		},
-		{
-			input:    "1e3",
-			expected: 1000,
-		},
-		{
-			input:    "",
-			expected: 0,
-		},
-		{
-			input:    "notanumber",
-			expected: 0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("input=%q", tt.input), func(t *testing.T) {
-			result := StringToFloat64(tt.input)
-			if result != tt.expected {
-				t.Errorf("StringToFloat64(%q) = %f; want %f", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestRemoveEmptyLines(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{
-			input:    "line1\n\nline2\n\nline3\n",
-			expected: "line1\nline2\nline3\n",
-		},
-		{
-			input:    "\n\n\nline1\n\nline2\n\n",
-			expected: "line1\nline2\n",
-		},
-		{
-			input:    "line1\nline2\nline3",
-			expected: "line1\nline2\nline3",
-		},
-		{
-			input:    "\n\n\n",
-			expected: "",
-		},
-		{
-			input:    "",
-			expected: "",
-		},
-		{
-			input:    "   \n\nline1\n   \n\nline2\n",
-			expected: "   \nline1\n   \nline2\n",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("input=%q", tt.input), func(t *testing.T) {
-			result := RemoveEmptyLines(tt.input)
-			if result != tt.expected {
-				t.Errorf("RemoveEmptyLines(%q) = %q; want %q", tt.input, result, tt.expected)
 			}
 		})
 	}
@@ -599,62 +387,6 @@ func TestBytesToSize(t *testing.T) {
 	}
 }
 
-func TestUnescapeFilepath(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-		hasError bool
-	}{
-		{
-			input:    "normal/path",
-			expected: "normal/path",
-			hasError: false,
-		},
-		{
-			input:    "escaped\\040path",
-			expected: "escaped path",
-			hasError: false,
-		},
-		{
-			input:    "multiple\\040escaped\\041chars",
-			expected: "multiple escaped!chars",
-			hasError: false,
-		},
-		{
-			input:    "\\011tab\\012newline",
-			expected: "\ttab\nnewline",
-			hasError: false,
-		},
-		{
-			input:    "invalid\\08code",
-			expected: "",
-			hasError: true,
-		},
-		{
-			input:    "short\\04",
-			expected: "",
-			hasError: true,
-		},
-		{
-			input:    "",
-			expected: "",
-			hasError: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("input=%q", tt.input), func(t *testing.T) {
-			result, err := UnescapeFilepath(tt.input)
-			if (err != nil) != tt.hasError {
-				t.Errorf("UnescapeFilepath(%q) error = %v; want error = %v", tt.input, err != nil, tt.hasError)
-			}
-			if result != tt.expected {
-				t.Errorf("UnescapeFilepath(%q) = %q; want %q", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestHumanFormatToSize(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -693,88 +425,6 @@ func TestHumanFormatToSize(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := HumanFormatToSize(tt.input); got != tt.expected {
 				t.Errorf("HumanFormatToSize(%q) = %v, want %v", tt.input, got, tt.expected)
-			}
-		})
-	}
-}
-func TestIsIndented(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected bool
-	}{
-		{
-			input:    "    indented line",
-			expected: true,
-		},
-		{
-			input:    "\tindented with tab",
-			expected: true,
-		},
-		{
-			input:    "not indented",
-			expected: false,
-		},
-		{
-			input:    "",
-			expected: false,
-		},
-		{
-			input:    " \t mixed spaces and tab",
-			expected: true,
-		},
-		{
-			input:    "\nnewline character",
-			expected: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("input=%q", tt.input), func(t *testing.T) {
-			result := IsIndented(tt.input)
-			if result != tt.expected {
-				t.Errorf("IsIndented(%q) = %v; want %v", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-func TestContains(t *testing.T) {
-	tests := []struct {
-		slice    []string
-		val      string
-		expected bool
-	}{
-		{
-			slice:    []string{"apple", "banana", "cherry"},
-			val:      "banana",
-			expected: true,
-		},
-		{
-			slice:    []string{"apple", "banana", "cherry"},
-			val:      "grape",
-			expected: false,
-		},
-		{
-			slice:    []string{},
-			val:      "apple",
-			expected: false,
-		},
-		{
-			slice:    []string{"apple", "banana", "cherry"},
-			val:      "",
-			expected: false,
-		},
-		{
-			slice:    []string{"", "banana", "cherry"},
-			val:      "",
-			expected: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("slice=%v,val=%q", tt.slice, tt.val), func(t *testing.T) {
-			result := Contains(tt.slice, tt.val)
-			if result != tt.expected {
-				t.Errorf("Contains(%v, %q) = %v; want %v", tt.slice, tt.val, result, tt.expected)
 			}
 		})
 	}
@@ -847,70 +497,6 @@ func TestShortHashUniqueness(t *testing.T) {
 	}
 }
 
-func TestJoinStringsEmptySlice(t *testing.T) {
-	result := JoinStrings([]string{}, ",")
-	if result != "" {
-		t.Errorf("Expected empty string for empty slice, got %q", result)
-	}
-}
-
-func TestJoinStringsSingleElement(t *testing.T) {
-	result := JoinStrings([]string{"hello"}, ",")
-	if result != "hello" {
-		t.Errorf("Expected 'hello', got %q", result)
-	}
-}
-
-func TestJoinStringsMultipleElements(t *testing.T) {
-	result := JoinStrings([]string{"a", "b", "c"}, "-")
-	expected := "a-b-c"
-	if result != expected {
-		t.Errorf("Expected %q, got %q", expected, result)
-	}
-}
-
-func TestJoinStringsCustomSeparator(t *testing.T) {
-	result := JoinStrings([]string{"1", "2", "3"}, " | ")
-	expected := "1 | 2 | 3"
-	if result != expected {
-		t.Errorf("Expected %q, got %q", expected, result)
-	}
-}
-
-func TestMapKeysEmpty(t *testing.T) {
-	m := map[string]struct{}{}
-	keys := MapKeys(m)
-
-	if len(keys) != 0 {
-		t.Errorf("Expected 0 keys, got %d", len(keys))
-	}
-}
-
-func TestMapKeysSingle(t *testing.T) {
-	m := map[string]struct{}{"one": {}}
-	keys := MapKeys(m)
-
-	if len(keys) != 1 || keys[0] != "one" {
-		t.Errorf("Expected [\"one\"], got %v", keys)
-	}
-}
-
-func TestMapKeysMultiple(t *testing.T) {
-	m := map[string]struct{}{
-		"a": {},
-		"b": {},
-		"c": {},
-	}
-	keys := MapKeys(m)
-
-	sort.Strings(keys)
-	expected := []string{"a", "b", "c"}
-
-	if !reflect.DeepEqual(keys, expected) {
-		t.Errorf("Expected %v, got %v", expected, keys)
-	}
-}
-
 func TestIsValidVMName(t *testing.T) {
 	valid := []string{"vm1", "my-vm", "VM_123", "a", "A-B_C"}
 	invalid := []string{"vm!", "my.vm", "name with space", "💻", ""}
@@ -963,48 +549,5 @@ func TestGenerateRandomMAC(t *testing.T) {
 		if !IsValidMACAddress(mac) {
 			t.Errorf("Generated MAC is not valid: %s", mac)
 		}
-	}
-}
-
-func TestIsHexValid(t *testing.T) {
-	valid := []string{
-		"abc123",
-		"ABCDEF",
-		"0123456789abcdef",
-		"deadBEEF",
-		"CAFEBABE",
-		"0",
-		"f",
-	}
-
-	for _, s := range valid {
-		if !IsHex(s) {
-			t.Errorf("Expected IsHex(%q) to be true", s)
-		}
-	}
-}
-
-func TestIsHexInvalid(t *testing.T) {
-	invalid := []string{
-		"xyz123",
-		"hello",
-		"123g",
-		"ABCXYZ",
-		"abc-123",
-		"12 34",
-		"💀dead",
-		"",
-	}
-
-	for _, s := range invalid {
-		if IsHex(s) {
-			t.Errorf("Expected IsHex(%q) to be false", s)
-		}
-	}
-}
-
-func TestIsHexEmpty(t *testing.T) {
-	if IsHex("") {
-		t.Error("Expected IsHex(\"\") to be true (empty string is valid hex)")
 	}
 }

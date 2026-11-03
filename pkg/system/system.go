@@ -89,41 +89,6 @@ func UnixUIDExists(uid int) (bool, error) {
 	return false, fmt.Errorf("failed to check UID %d: %w", uid, err)
 }
 
-func CreateUnixUser(name string, shell string, dir string, group string) error {
-	args := []string{"user", "add", "-n", name}
-
-	if dir != "" && dir != "/nonexistent" {
-		args = append(args, "-m")
-	}
-
-	if group != "" {
-		if unixGroupExists(group) {
-			args = append(args, "-g", group)
-		} else {
-			return fmt.Errorf("specified group '%s' does not exist", group)
-		}
-	}
-
-	if shell != "" {
-		args = append(args, "-s", shell)
-	} else {
-		args = append(args, "-s", "/usr/sbin/nologin")
-	}
-
-	if dir != "" {
-		args = append(args, "-d", dir)
-	} else {
-		args = append(args, "-d", "/nonexistent")
-	}
-
-	_, err := runCommand("/usr/sbin/pw", args...)
-	if err != nil {
-		return fmt.Errorf("pw command failed: %w", err)
-	}
-
-	return nil
-}
-
 func DeleteUnixUser(name string, removeHome bool) error {
 	args := []string{"userdel", name}
 
@@ -252,56 +217,6 @@ func RemoveUserFromGroup(user string, group string) error {
 	}
 
 	return nil
-}
-
-func RenameGroup(oldName, newName string) error {
-	if exists := unixGroupExists(oldName); !exists {
-		return fmt.Errorf("group %s does not exist", oldName)
-	}
-
-	if exists := unixGroupExists(newName); exists {
-		return fmt.Errorf("group %s already exists", newName)
-	}
-
-	_, err := runCommand("/usr/sbin/pw", "groupmod", oldName, "-n", newName)
-	if err != nil {
-		return fmt.Errorf("failed to rename group %s to %s: %w", oldName, newName, err)
-	}
-
-	return nil
-}
-
-func ChangeUsername(oldUsername, newUsername string) error {
-	if exists, _ := unixUserExists(oldUsername); !exists {
-		return fmt.Errorf("user %s does not exist", oldUsername)
-	}
-
-	if exists, _ := unixUserExists(newUsername); exists {
-		return fmt.Errorf("user %s already exists", newUsername)
-	}
-
-	_, err := runCommand("/usr/sbin/pw", "usermod", oldUsername, "-l", newUsername)
-	if err != nil {
-		return fmt.Errorf("failed to change username from %s to %s: %w", oldUsername, newUsername, err)
-	}
-
-	return nil
-}
-
-func PixzExists() bool {
-	_, err := runCommand("which", "pixz")
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return false
-		}
-		return false
-	}
-
-	return true
-}
-
-func IsRoot() bool {
-	return getEUID() == 0
 }
 
 // UnixUserCreateOpts holds parameters for CreateUnixUserFull.

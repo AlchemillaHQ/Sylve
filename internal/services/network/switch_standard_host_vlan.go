@@ -13,13 +13,13 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 	"strconv"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"github.com/alchemillahq/sylve/pkg/network/iface"
-	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 const standardSwitchHostVLANGroup = "svm-host-vlan"
@@ -43,7 +43,7 @@ func standardSwitchHostVLANDescription(sw networkModels.StandardSwitch) string {
 }
 
 func managedStandardSwitchHostVLAN(interfaceObj *iface.Interface) bool {
-	return interfaceObj != nil && utils.Contains(interfaceObj.Groups, standardSwitchHostVLANGroup)
+	return interfaceObj != nil && slices.Contains(interfaceObj.Groups, standardSwitchHostVLANGroup)
 }
 
 func ensureStandardSwitchHostVLAN(sw networkModels.StandardSwitch) (string, error) {

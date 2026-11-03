@@ -24,27 +24,6 @@ import (
 	"github.com/h2non/filetype/types"
 )
 
-func DeleteFile(path string) error {
-	info, err := os.Stat(path)
-	if os.IsNotExist(err) {
-		return nil
-	}
-
-	if err != nil {
-		return fmt.Errorf("stat %q: %w", path, err)
-	}
-
-	if info.IsDir() {
-		return fmt.Errorf("%q is a directory, not a file", path)
-	}
-
-	if err := os.Remove(path); err != nil {
-		return fmt.Errorf("remove %q: %w", path, err)
-	}
-
-	return nil
-}
-
 func DeleteFileIfExists(path string) error {
 	err := os.Remove(path)
 	if err != nil && !os.IsNotExist(err) {
@@ -77,34 +56,6 @@ func CopyFile(src, dst string) error {
 	}
 
 	return nil
-}
-
-func FindFileInDirectoryByPrefix(dir, prefix string) (string, error) {
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if d.IsDir() {
-			return nil
-		}
-
-		if len(d.Name()) >= len(prefix) && d.Name()[:len(prefix)] == prefix {
-			return fmt.Errorf("FOUND:%s", path)
-		}
-
-		return nil
-	})
-
-	if err != nil && len(err.Error()) > 6 && err.Error()[:6] == "FOUND:" {
-		return err.Error()[6:], nil
-	}
-
-	if err != nil {
-		return "", fmt.Errorf("walk_error: %w", err)
-	}
-
-	return "", fmt.Errorf("file_with_prefix_not_found: %s in %s", prefix, dir)
 }
 
 func IsAbsPath(path string) bool {
@@ -164,38 +115,6 @@ func FileExists(path string) (bool, error) {
 	return true, nil
 }
 
-func ReadFile(path string) ([]byte, error) {
-	data, err := os.ReadFile(path)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file %q: %w", path, err)
-	}
-
-	return data, nil
-}
-
-func IsEmptyDir(path string) (bool, error) {
-	info, err := os.Stat(path)
-	if os.IsNotExist(err) {
-		return false, fmt.Errorf("directory %q does not exist", path)
-	}
-
-	if err != nil {
-		return false, fmt.Errorf("stat %q: %w", path, err)
-	}
-
-	if !info.IsDir() {
-		return false, fmt.Errorf("%q is not a directory", path)
-	}
-
-	files, err := os.ReadDir(path)
-	if err != nil {
-		return false, fmt.Errorf("failed to read directory %q: %w", path, err)
-	}
-
-	return len(files) == 0, nil
-}
-
 func IsDir(path string) (bool, error) {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
@@ -232,40 +151,6 @@ func RemoveDirContents(dir string) error {
 		}
 	}
 	return nil
-}
-
-func DoesPathHaveBase(root string) (bool, error) {
-	if root == "" {
-		return false, fmt.Errorf("path_required")
-	}
-
-	info, err := os.Stat(root)
-
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, fmt.Errorf("path_does_not_exist: %s", root)
-		}
-		return false, err
-	}
-
-	if !info.IsDir() {
-		return false, fmt.Errorf("not_a_directory: %s", root)
-	}
-
-	required := []string{
-		"bin/freebsd-version",
-		"bin/sh",
-		"libexec/ld-elf.so.1",
-		"lib/libc.so.7",
-	}
-
-	for _, rel := range required {
-		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
-			return false, nil
-		}
-	}
-
-	return true, nil
 }
 
 func IsTarLike(path string, mime string) bool {
@@ -465,29 +350,6 @@ func HasCmd(name string) bool {
 	return err == nil
 }
 
-func IsFileInDirectory(filePath, dirPath string) (bool, error) {
-	absFilePath, err := filepath.Abs(filePath)
-	if err != nil {
-		return false, fmt.Errorf("failed_to_get_absolute_file_path: %w", err)
-	}
-
-	absDirPath, err := filepath.Abs(dirPath)
-	if err != nil {
-		return false, fmt.Errorf("failed_to_get_absolute_dir_path: %w", err)
-	}
-
-	relPath, err := filepath.Rel(absDirPath, absFilePath)
-	if err != nil {
-		return false, fmt.Errorf("failed_to_get_relative_path: %w", err)
-	}
-
-	if relPath == "." || relPath == ".." || relPath[:3] == ".."+string(os.PathSeparator) {
-		return false, nil
-	}
-
-	return true, nil
-}
-
 const (
 	defaultBlockSize  = "1M"
 	defaultQueueDepth = 8
@@ -556,10 +418,6 @@ func FlashImageToDiskCtx(ctx context.Context, source, dest string) error {
 	return nil
 }
 
-func FlashImageToDisk(source, dest string) error {
-	return FlashImageToDiskCtx(context.Background(), source, dest)
-}
-
 func AtomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 
@@ -570,61 +428,6 @@ func AtomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	tmp := f.Name()
 
 	defer os.Remove(tmp)
-
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		return err
-	}
-
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return err
-	}
-
-	if err := f.Close(); err != nil {
-		return err
-	}
-
-	if err := os.Chmod(tmp, perm); err != nil {
-		return err
-	}
-
-	if err := os.Rename(tmp, path); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func AtomicAppendFile(path string, data []byte, perm os.FileMode) error {
-	dir := filepath.Dir(path)
-
-	var existing []byte
-	if b, err := os.ReadFile(path); err == nil {
-		existing = b
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-
-	f, err := os.CreateTemp(dir, ".tmp-*")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-
-	defer os.Remove(tmp)
-
-	if _, err := f.Write(existing); err != nil {
-		f.Close()
-		return err
-	}
-
-	if len(existing) > 0 && existing[len(existing)-1] != '\n' {
-		if _, err := f.Write([]byte("\n")); err != nil {
-			f.Close()
-			return err
-		}
-	}
 
 	if _, err := f.Write(data); err != nil {
 		f.Close()

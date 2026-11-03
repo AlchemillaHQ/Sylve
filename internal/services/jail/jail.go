@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -1062,7 +1063,7 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string) (str
 	}
 
 	// devfs mount and rules
-	if !config.IsDevFSDisabled() && data.AllowedOptions != nil && utils.StringInSlice("allow.mount.devfs", data.AllowedOptions) {
+	if !config.IsDevFSDisabled() && data.AllowedOptions != nil && slices.Contains(data.AllowedOptions, "allow.mount.devfs") {
 		cfg += "\tmount.devfs;\n"
 
 		if data.DevFSRuleset != "" {

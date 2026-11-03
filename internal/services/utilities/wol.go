@@ -11,6 +11,7 @@ package utilities
 import (
 	"context"
 	"net"
+	"slices"
 	"sync"
 	"time"
 
@@ -63,8 +64,8 @@ func (s *Service) StartWOLServer() error {
 			continue
 		}
 
-		if utils.StringInSlice("tap", h.Groups) ||
-			utils.StringInSlice("epair", h.Groups) {
+		if slices.Contains(h.Groups, "tap") ||
+			slices.Contains(h.Groups, "epair") {
 			continue
 		}
 

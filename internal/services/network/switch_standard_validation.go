@@ -531,7 +531,7 @@ func (s *Service) validateStandardSwitchInput(
 		if interfaceObj == nil {
 			return input, invalidStandardSwitch("standard_switch_port_not_found", nil)
 		}
-		if utils.Contains(interfaceObj.Groups, standardSwitchHostVLANGroup) {
+		if slices.Contains(interfaceObj.Groups, standardSwitchHostVLANGroup) {
 			return input, invalidStandardSwitch("standard_switch_host_vlan_cannot_be_port", nil)
 		}
 
@@ -541,7 +541,7 @@ func (s *Service) validateStandardSwitchInput(
 			if vlanErr != nil && !isInterfaceMissingError(vlanErr) {
 				return input, fmt.Errorf("inspect standard switch VLAN interface %q: %w", vlanName, vlanErr)
 			}
-			if vlanErr == nil && vlanObj != nil && !utils.Contains(vlanObj.Groups, "svm-vlan") {
+			if vlanErr == nil && vlanObj != nil && !slices.Contains(vlanObj.Groups, "svm-vlan") {
 				return input, standardSwitchConflict("standard_switch_vlan_interface_conflict", nil)
 			}
 		}
@@ -1106,7 +1106,7 @@ func (s *Service) validateAdoptionLegacyVLANInterface(sw networkModels.StandardS
 	if vlanInterface == nil {
 		return nil
 	}
-	if !utils.Contains(vlanInterface.Groups, "svm-vlan") || vlanInterface.VLANParent != portName || vlanInterface.VLANTag != sw.VLAN {
+	if !slices.Contains(vlanInterface.Groups, "svm-vlan") || vlanInterface.VLANParent != portName || vlanInterface.VLANTag != sw.VLAN {
 		return standardSwitchConflict("standard_switch_vlan_interface_conflict",
 			fmt.Errorf("interface %s is not the managed VLAN %d on %s (group=%v parent=%q tag=%d)",
 				name, sw.VLAN, portName, vlanInterface.Groups, vlanInterface.VLANParent, vlanInterface.VLANTag))
@@ -1165,7 +1165,7 @@ func (s *Service) validateAdoptableStandardSwitchBridge(sw networkModels.Standar
 	if bridge == nil {
 		return standardSwitchConflict("standard_switch_bridge_conflict", fmt.Errorf("bridge %s not found", sw.BridgeName))
 	}
-	if !utils.Contains(bridge.Groups, "bridge") {
+	if !slices.Contains(bridge.Groups, "bridge") {
 		return standardSwitchConflict("standard_switch_bridge_conflict", fmt.Errorf("interface %s exists but is not a real bridge", sw.BridgeName))
 	}
 	state, err := syncInspectBridgeVLAN(sw.BridgeName)

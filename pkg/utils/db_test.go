@@ -10,9 +10,6 @@ package utils
 
 import (
 	"testing"
-
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 type testDownload struct {
@@ -34,62 +31,4 @@ func TestGetValNonNil(t *testing.T) {
 	if got != 42 {
 		t.Fatalf("expected 42, got %d", got)
 	}
-}
-
-func TestExistsReturnsTrueWhenRecordExists(t *testing.T) {
-	db := setupExistsTestDB(t)
-
-	err := db.Create(&testDownload{
-		URL: "https://example.com/file.raw",
-	}).Error
-	if err != nil {
-		t.Fatalf("failed to create test record: %v", err)
-	}
-
-	exists, err := Exists[testDownload](db, "url = ?", "https://example.com/file.raw")
-	if err != nil {
-		t.Fatalf("Exists returned error: %v", err)
-	}
-
-	if !exists {
-		t.Fatal("expected record to exist")
-	}
-}
-
-func TestExistsReturnsFalseWhenRecordDoesNotExist(t *testing.T) {
-	db := setupExistsTestDB(t)
-
-	exists, err := Exists[testDownload](db, "url = ?", "https://example.com/missing.raw")
-	if err != nil {
-		t.Fatalf("Exists returned error: %v", err)
-	}
-
-	if exists {
-		t.Fatal("expected record not to exist")
-	}
-}
-
-func TestExistsReturnsErrorForInvalidQuery(t *testing.T) {
-	db := setupExistsTestDB(t)
-
-	_, err := Exists[testDownload](db, "definitely_not_a_column = ?", "value")
-	if err == nil {
-		t.Fatal("expected error for invalid query, got nil")
-	}
-}
-
-func setupExistsTestDB(t *testing.T) *gorm.DB {
-	t.Helper()
-
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("failed to open sqlite database: %v", err)
-	}
-
-	err = db.AutoMigrate(&testDownload{})
-	if err != nil {
-		t.Fatalf("failed to migrate test schema: %v", err)
-	}
-
-	return db
 }

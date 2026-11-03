@@ -9,11 +9,11 @@
 package crypto_test
 
 import (
+	"encoding/hex"
 	"testing"
 	"time"
 
 	"github.com/alchemillahq/sylve/pkg/crypto"
-	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 func TestGenerateSignature(t *testing.T) {
@@ -56,7 +56,7 @@ func TestGenerateSignatureFormat(t *testing.T) {
 	secretKey := []byte("key")
 	sig := crypto.GenerateSignature("input", 9999999999, secretKey)
 
-	if !utils.IsHex(sig) {
+	if _, err := hex.DecodeString(sig); sig == "" || err != nil {
 		t.Errorf("Signature is not a valid hex string: %s", sig)
 	}
 }

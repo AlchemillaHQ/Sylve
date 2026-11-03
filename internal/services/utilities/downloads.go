@@ -18,6 +18,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -1912,7 +1913,7 @@ func (s *Service) DeleteDownloads(
 			}
 			for _, candidate := range []string{download.Path, download.ExtractedPath} {
 				candidate = strings.TrimSpace(candidate)
-				if candidate != "" && !utils.Contains(failure.RetainedPaths, candidate) {
+				if candidate != "" && !slices.Contains(failure.RetainedPaths, candidate) {
 					failure.RetainedPaths = append(failure.RetainedPaths, candidate)
 				}
 			}

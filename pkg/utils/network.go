@@ -11,9 +11,7 @@ package utils
 import (
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 	"syscall"
@@ -171,10 +169,6 @@ func IsValidDUID(duid string) bool {
 	return err == nil
 }
 
-func BridgeIfName(name string) string {
-	return ShortHash("syl" + name)
-}
-
 func IsTCPPortInUse(port int) bool {
 	return isPortInUse("tcp", port)
 }
@@ -232,78 +226,4 @@ func isPortInUse(protocol string, port int) bool {
 		}
 	}
 	return false
-}
-
-func GetPortUserPID(proto string, port int) (int, error) {
-	if proto != "tcp" && proto != "udp" {
-		return 0, fmt.Errorf("invalid protocol: %s", proto)
-	}
-
-	if !IsValidPort(port) {
-		return 0, fmt.Errorf("invalid port: %d", port)
-	}
-
-	output, err := RunCommand("sockstat", "-P", proto, "-p", strconv.Itoa(port))
-
-	if err != nil {
-		return 0, fmt.Errorf("failed to run sockstat: %w", err)
-	}
-
-	ownPID := os.Getpid()
-	portStr := fmt.Sprintf(":%d", port)
-
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		if !strings.Contains(line, portStr) {
-			continue
-		}
-
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
-			continue
-		}
-
-		pidStr := fields[2]
-		if pidStr == "??" {
-			continue
-		}
-
-		pidInt, err := strconv.Atoi(pidStr)
-		if err != nil {
-			continue
-		}
-
-		if pidInt == ownPID {
-			continue
-		}
-
-		if len(fields) >= 6 {
-			localAddr := fields[5]
-			if idx := strings.LastIndex(localAddr, ":"); idx >= 0 {
-				if localAddr[idx+1:] != strconv.Itoa(port) {
-					continue
-				}
-			}
-		}
-
-		return pidInt, nil
-	}
-
-	return 0, fmt.Errorf("no process found using %s port %d", proto, port)
-}
-
-func IsValidIPPort(ipPort string) bool {
-	parts := strings.Split(ipPort, ":")
-	if len(parts) != 2 {
-		return false
-	}
-
-	ip := parts[0]
-	portStr := parts[1]
-	portInt, err := strconv.Atoi(portStr)
-	if err != nil {
-		return false
-	}
-
-	return IsValidIP(ip) && IsValidPort(portInt)
 }

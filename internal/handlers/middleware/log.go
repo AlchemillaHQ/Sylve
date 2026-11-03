@@ -16,6 +16,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -97,7 +98,7 @@ func shouldRedactAuditResponse(path string) bool {
 }
 
 func isImportantAuditGetPath(path string) bool {
-	if utils.Contains(importantGetPaths, path) ||
+	if slices.Contains(importantGetPaths, path) ||
 		isVMConsoleWebSocketPath(path) ||
 		isJailConsoleWebSocketPath(path) ||
 		isContainerConsoleWebSocketPath(path) ||

@@ -1665,8 +1665,8 @@ func disableBridgeMemberOffloads(name string) error {
 	if strings.HasPrefix(interfaceName, "tap") || strings.HasPrefix(interfaceName, "epair") ||
 		strings.HasPrefix(interfaceName, "vnet") || strings.HasPrefix(interfaceName, "bridge") ||
 		strings.Contains(driver, "tap") || strings.Contains(driver, "epair") || strings.Contains(driver, "bridge") ||
-		utils.Contains(interfaceObj.Groups, "tap") || utils.Contains(interfaceObj.Groups, "epair") ||
-		utils.Contains(interfaceObj.Groups, "vnet") || utils.Contains(interfaceObj.Groups, "bridge") {
+		slices.Contains(interfaceObj.Groups, "tap") || slices.Contains(interfaceObj.Groups, "epair") ||
+		slices.Contains(interfaceObj.Groups, "vnet") || slices.Contains(interfaceObj.Groups, "bridge") {
 		return nil
 	}
 

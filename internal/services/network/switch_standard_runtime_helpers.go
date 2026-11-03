@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -527,7 +528,7 @@ func isManagedStandardSwitchVLAN(name string) (bool, error) {
 	if interfaceObj == nil {
 		return false, nil
 	}
-	return utils.Contains(interfaceObj.Groups, "svm-vlan"), nil
+	return slices.Contains(interfaceObj.Groups, "svm-vlan"), nil
 }
 
 func destroyStandardSwitchRuntimeInterfaces(sw networkModels.StandardSwitch) error {

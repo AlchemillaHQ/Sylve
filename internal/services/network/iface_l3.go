@@ -10,12 +10,12 @@ package network
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
 
@@ -83,7 +83,7 @@ func (s *Service) GetHostInterfaceL3() (networkServiceInterfaces.HostInterfaceL3
 		knownBridges[sw.Bridge] = struct{}{}
 	}
 	for name, obj := range liveByName {
-		if utils.Contains(obj.Groups, "bridge") {
+		if slices.Contains(obj.Groups, "bridge") {
 			knownBridges[name] = struct{}{}
 		}
 	}

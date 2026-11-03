@@ -10,8 +10,6 @@ package utils
 
 import (
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -31,32 +29,6 @@ func NextCronTime(expression string, after time.Time) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("invalid_cron_expression")
 	}
 	return next, nil
-}
-
-func ParseZfsTimeUnit(value string) int64 {
-	if value == "-" {
-		return 0
-	}
-	re := regexp.MustCompile(`([\d.]+)([a-zA-Z]*)`)
-	matches := re.FindStringSubmatch(value)
-	if len(matches) != 3 {
-		return 0
-	}
-	num, err := strconv.ParseFloat(matches[1], 64)
-	if err != nil {
-		return 0
-	}
-	unit := matches[2]
-	switch unit {
-	case "us":
-		return int64(num)
-	case "ms":
-		return int64(num * 1000)
-	case "s":
-		return int64(num * 1000000)
-	default:
-		return int64(num)
-	}
 }
 
 // ComputeLocalBoundary returns the local, wall-clock boundary for your supported intervals.

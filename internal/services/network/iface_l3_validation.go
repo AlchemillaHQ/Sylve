@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -100,7 +101,7 @@ func (s *Service) hostInterfaceL3BridgeMembers(
 	}
 
 	for _, candidate := range liveInterfaces {
-		if utils.Contains(candidate.Groups, "bridge") {
+		if slices.Contains(candidate.Groups, "bridge") {
 			bridgeSet[candidate.Name] = struct{}{}
 		}
 	}

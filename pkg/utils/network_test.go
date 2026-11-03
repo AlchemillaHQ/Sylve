@@ -10,8 +10,6 @@ package utils
 
 import (
 	"net"
-	"os/exec"
-	"strings"
 	"testing"
 )
 
@@ -174,37 +172,6 @@ func TestMiscNetworkValidation(t *testing.T) {
 			t.Fatal("expected invalid short DUID")
 		}
 	})
-
-	t.Run("bridge if name", func(t *testing.T) {
-		got := BridgeIfName("bridge0")
-		want := ShortHash("sylbridge0")
-		if got != want {
-			t.Fatalf("BridgeIfName mismatch: got %q, want %q", got, want)
-		}
-		if len(got) != 8 {
-			t.Fatalf("BridgeIfName length = %d, want 8", len(got))
-		}
-	})
-
-	t.Run("ip port", func(t *testing.T) {
-		tests := []struct {
-			input string
-			want  bool
-		}{
-			{"127.0.0.1:80", true},
-			{"127.0.0.1:0", false},
-			{"127.0.0.1:not-port", false},
-			{"127.0.0.1", false},
-			{"999.0.0.1:80", false},
-			{"2001:db8::1:443", false}, // this helper intentionally expects exactly one ':'
-		}
-
-		for _, tt := range tests {
-			if got := IsValidIPPort(tt.input); got != tt.want {
-				t.Fatalf("IsValidIPPort(%q) = %v, want %v", tt.input, got, tt.want)
-			}
-		}
-	})
 }
 
 func TestProtocolPortInUse(t *testing.T) {
@@ -241,113 +208,6 @@ func TestProtocolPortInUse(t *testing.T) {
 		}
 		if IsTCPPortInUse(port) {
 			t.Fatalf("UDP listener on port %d must not occupy TCP", port)
-		}
-	})
-}
-
-func TestGetPortUserPIDValidationErrors(t *testing.T) {
-	_, err := GetPortUserPID("icmp", 80)
-	if err == nil || !strings.Contains(err.Error(), "invalid protocol") {
-		t.Fatalf("expected invalid protocol error, got: %v", err)
-	}
-
-	_, err = GetPortUserPID("tcp", 0)
-	if err == nil || !strings.Contains(err.Error(), "invalid port") {
-		t.Fatalf("expected invalid port error, got: %v", err)
-	}
-}
-
-func TestGetPortUserPID_RunCommandError(t *testing.T) {
-	original := execCommand
-	defer func() { execCommand = original }()
-
-	execCommand = func(command string, args ...string) *exec.Cmd {
-		return exec.Command("sh", "-c", "echo sockstat-failed 1>&2; exit 2")
-	}
-
-	_, err := GetPortUserPID("tcp", 8180)
-	if err == nil || !strings.Contains(err.Error(), "failed to run sockstat") {
-		t.Fatalf("expected sockstat execution error, got: %v", err)
-	}
-}
-
-func TestGetPortUserPID_ParsePaths(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		original := execCommand
-		defer func() { execCommand = original }()
-
-		execCommand = func(command string, args ...string) *exec.Cmd {
-			return exec.Command("sh", "-c", "printf 'root bhyve 4321 9 tcp4 127.0.0.1:8180 *:*\\n'")
-		}
-
-		pid, err := GetPortUserPID("tcp", 8180)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if pid != 4321 {
-			t.Fatalf("pid = %d, want 4321", pid)
-		}
-	})
-
-	t.Run("non-numeric PID skipped", func(t *testing.T) {
-		original := execCommand
-		defer func() { execCommand = original }()
-
-		execCommand = func(command string, args ...string) *exec.Cmd {
-			return exec.Command("sh", "-c", "printf 'root bhyve not-a-pid 9 tcp4 127.0.0.1:8180 *:*\\n'")
-		}
-
-		_, err := GetPortUserPID("tcp", 8180)
-		if err == nil || !strings.Contains(err.Error(), "no process found") {
-			t.Fatalf("expected no process found error, got: %v", err)
-		}
-	})
-
-	t.Run("question-mark PID skipped", func(t *testing.T) {
-		original := execCommand
-		defer func() { execCommand = original }()
-
-		execCommand = func(command string, args ...string) *exec.Cmd {
-			return exec.Command("sh", "-c", "printf '?? ?? ?? ?? tcp4 10.1.0.1:8180 10.1.0.87:31773\\nroot bhyve 16018 9 tcp4 127.0.0.1:8180 *:*\\n'")
-		}
-
-		pid, err := GetPortUserPID("tcp", 8180)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if pid != 16018 {
-			t.Fatalf("pid = %d, want 16018", pid)
-		}
-	})
-
-	t.Run("foreign address port ignored", func(t *testing.T) {
-		original := execCommand
-		defer func() { execCommand = original }()
-
-		execCommand = func(command string, args ...string) *exec.Cmd {
-			return exec.Command("sh", "-c", "printf 'root sylve 99999 34 tcp4 127.0.0.1:20697 127.0.0.1:8180\\nroot bhyve 16018 9 tcp4 127.0.0.1:8180 *:*\\n'")
-		}
-
-		pid, err := GetPortUserPID("tcp", 8180)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if pid != 16018 {
-			t.Fatalf("pid = %d, want 16018 (bhyve), got sylve's PID or other", pid)
-		}
-	})
-
-	t.Run("no matching process", func(t *testing.T) {
-		original := execCommand
-		defer func() { execCommand = original }()
-
-		execCommand = func(command string, args ...string) *exec.Cmd {
-			return exec.Command("sh", "-c", "printf 'root bhyve 1234 9 tcp4 127.0.0.1:9999 *:*\\n'")
-		}
-
-		_, err := GetPortUserPID("tcp", 8180)
-		if err == nil || !strings.Contains(err.Error(), "no process found") {
-			t.Fatalf("expected no process found error, got: %v", err)
 		}
 	})
 }

@@ -9,7 +9,6 @@
 package utils
 
 import (
-	"bytes"
 	"compress/gzip"
 	"context"
 	"errors"
@@ -27,41 +26,6 @@ func TestHTTPGetJSONReadContextHonorsCancellation(t *testing.T) {
 	cancel()
 
 	_, _, err := HTTPGetJSONReadContext(ctx, "https://127.0.0.1:1", nil)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("error = %v, want context cancellation", err)
-	}
-}
-
-func TestHTTPPostJSONReadReturnsErrorResponseBody(t *testing.T) {
-	wantBody := []byte(`{"status":"error","message":"conflict","data":{"guestId":100}}`)
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		_, _ = w.Write(wantBody)
-	}))
-	defer server.Close()
-
-	body, status, err := HTTPPostJSONRead(server.URL, map[string]any{"request": true}, nil)
-	if err == nil {
-		t.Fatal("expected non-2xx HTTP error")
-	}
-	var statusErr *HTTPStatusError
-	if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusConflict || !bytes.Equal(statusErr.Body, wantBody) {
-		t.Fatalf("error = %#v, want typed conflict with preserved body", err)
-	}
-	if status != http.StatusConflict {
-		t.Fatalf("status = %d, want %d", status, http.StatusConflict)
-	}
-	if !bytes.Equal(body, wantBody) {
-		t.Fatalf("body = %q, want %q", body, wantBody)
-	}
-}
-
-func TestHTTPPostJSONReadContextHonorsCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	_, _, err := HTTPPostJSONReadContext(ctx, "https://127.0.0.1:1", map[string]any{}, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v, want context cancellation", err)
 	}

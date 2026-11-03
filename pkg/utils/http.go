@@ -179,62 +179,6 @@ func HTTPPostJSON(url string, payload any, headers map[string]string) error {
 	return nil
 }
 
-func HTTPPostJSONRead(url string, payload any, headers map[string]string) ([]byte, int, error) {
-	return HTTPPostJSONReadContext(context.Background(), url, payload, headers)
-}
-
-func HTTPPostJSONReadContext(ctx context.Context, url string, payload any, headers map[string]string) ([]byte, int, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return nil, 0, err
-	}
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-	if req.Header.Get("Accept-Encoding") == "" {
-		req.Header.Set("Accept-Encoding", "gzip")
-	}
-	if req.Header.Get("Content-Type") == "" {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := intraClusterClient().Do(req)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer resp.Body.Close()
-
-	var reader io.ReadCloser
-	if resp.Header.Get("Content-Encoding") == "gzip" {
-		gz, err := gzip.NewReader(resp.Body)
-		if err != nil {
-			return nil, resp.StatusCode, fmt.Errorf("failed to create gzip reader: %w", err)
-		}
-		defer gz.Close()
-		reader = gz
-	} else {
-		reader = resp.Body
-	}
-
-	b, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, resp.StatusCode, err
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return b, resp.StatusCode, &HTTPStatusError{StatusCode: resp.StatusCode, Body: b}
-	}
-	return b, resp.StatusCode, nil
-}
-
 func HTTPGetJSONRead(url string, headers map[string]string) ([]byte, int, error) {
 	return HTTPGetJSONReadContext(context.Background(), url, headers)
 }

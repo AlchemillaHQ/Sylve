@@ -467,7 +467,7 @@ func TestIntegrationStandardSwitchFilteredHostVLANLifecycle(t *testing.T) {
 			continue
 		}
 		physicalFound = true
-		if utils.Contains(member.Flags.Desc, "PRIVATE") {
+		if slices.Contains(member.Flags.Desc, "PRIVATE") {
 			t.Fatalf("physical uplink %s was marked private", portName)
 		}
 	}
