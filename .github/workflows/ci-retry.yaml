@@ -1,4 +1,5 @@
 name: CI Retry
+run-name: ${{ github.event.workflow_run.display_title }}
 
 # Some GitHub runner hosts don't expose nested virtualization, which bhyve needs.
 # Every re-run lands on a fresh runner, so retry those failures up to five times.
