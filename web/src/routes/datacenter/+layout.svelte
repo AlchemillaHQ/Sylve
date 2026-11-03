@@ -10,12 +10,6 @@
 	import { isAPIResponse } from '$lib/utils/http';
 	import { resource } from 'runed';
 
-	let openCategories: { [key: string]: boolean } = $state({});
-
-	const toggleCategory = (label: string) => {
-		openCategories = { ...openCategories, [label]: !openCategories[label] };
-	};
-
 	interface NodeItem {
 		label: string;
 		icon: string;
@@ -166,7 +160,7 @@
 						<ul>
 							<ScrollArea orientation="both" class="h-full w-full">
 								{#each nodeItems as item (item.href ?? item.icon)}
-									<TreeView {item} onToggle={toggleCategory} />
+									<TreeView {item} />
 								{/each}
 							</ScrollArea>
 						</ul>

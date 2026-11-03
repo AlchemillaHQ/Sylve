@@ -2,29 +2,29 @@
 	import { page } from '$app/state';
 	import { slide } from 'svelte/transition';
 	import SidebarElement from './TreeView.svelte';
+	import SylveIcon from './SylveIcon.svelte';
+	import { watch } from 'runed';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 
 	interface SidebarProps {
 		label: string;
 		icon: string;
 		href?: string;
-		state?: 'active' | 'inactive';
 		children?: SidebarProps[];
 	}
 
 	interface Props {
 		item: SidebarProps;
-		onToggle: (label: string) => void;
 	}
 
-	let { item, onToggle }: Props = $props();
+	let { item }: Props = $props();
+	let isOpen = $state(false);
 
 	const toggle = (e: MouseEvent) => {
 		e.preventDefault();
 
 		if (item.children) {
 			isOpen = !isOpen;
-			onToggle(item.label);
 		}
 
 		if (item.href) {
@@ -51,17 +51,10 @@
 		return segments[segments.length - 1];
 	});
 
-	function isItemOpen(menuItem: SidebarProps, currentUrl: string): boolean {
-		if (menuItem.href && currentUrl.startsWith(menuItem.href)) {
-			return true;
-		}
-		if (menuItem.children) {
-			return menuItem.children.some((child) => isItemOpen(child, currentUrl));
-		}
-		return false;
-	}
-
-	let isOpen = $derived(isItemOpen(item, activeUrl));
+	// Only the URL resets the open state, so a refreshed item tree keeps the user's toggle.
+	watch([() => activeUrl], ([activeUrl]) => {
+		isOpen = isItemActive(item, activeUrl);
+	});
 </script>
 
 <li class="w-full">
@@ -71,20 +64,8 @@
 		onclick={toggle}
 	>
 		<div class="flex items-center space-x-1 text-sm">
-			{#if item.icon === 'material-symbols--monitor-outline' || item.icon === 'hugeicons--prison'}
-				<div class="flex items-center space-x-1 text-sm">
-					<div class="relative">
-						<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>
-
-						{#if item.state && item.state === 'active'}
-							<div
-								class="absolute -right-1 -bottom-1 flex h-2 w-2 items-center justify-center rounded-full bg-green-500"
-							>
-								<span class="icon-[mdi--play] h-2 w-2 text-white"></span>
-							</div>
-						{/if}
-					</div>
-				</div>
+			{#if item.icon === 'sylve'}
+				<SylveIcon class="h-[18px] w-[18px]" />
 			{:else}
 				<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>
 			{/if}
@@ -102,7 +83,7 @@
 {#if isOpen && item.children}
 	<ul class="pl-5" transition:slide={{ duration: 200, easing: (t) => t }} style="overflow: hidden;">
 		{#each item.children as child (child.href ?? child.icon)}
-			<SidebarElement item={child} {onToggle} />
+			<SidebarElement item={child} />
 		{/each}
 	</ul>
 {/if}
