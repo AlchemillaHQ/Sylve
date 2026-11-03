@@ -9,8 +9,6 @@
  */
 
 import type { ResourceTreeView } from '$lib/resource-tree';
-
-const STORAGE_KEY = 'left-panel-state';
 const OPEN_IDS_STORAGE_KEY = 'left-panel-open-ids';
 const LEGACY_CLUSTER_OPEN_IDS_STORAGE_KEY = 'clusterIds';
 
@@ -36,27 +34,6 @@ function parseOpenIds(value: string, storageKey: string): Set<string> {
 		localStorage.removeItem(storageKey);
 		return new Set<string>();
 	}
-}
-
-export function saveOpenCategories(state: { [key: string]: boolean }) {
-	if (typeof localStorage !== 'undefined') {
-		localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-	}
-}
-
-export function loadOpenCategories(): { [key: string]: boolean } {
-	if (typeof localStorage !== 'undefined') {
-		const saved = localStorage.getItem(STORAGE_KEY);
-		if (saved) {
-			try {
-				return JSON.parse(saved);
-			} catch (e) {
-				console.error('Failed to parse open categories:', e);
-				localStorage.removeItem(STORAGE_KEY);
-			}
-		}
-	}
-	return {};
 }
 
 export function saveOpenIds(

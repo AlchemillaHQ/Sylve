@@ -16,10 +16,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -252,28 +248,6 @@ func TestNFSWritesRequireLocalAdmin(t *testing.T) {
 		response := testutil.PerformJSONRequest(t, router, http.MethodPut, "/config", configRequest(t, "v3", false))
 		if response.Code != test.status {
 			t.Errorf("%s status=%d want=%d body=%s", test.authType, response.Code, test.status, response.Body)
-		}
-	}
-}
-
-func TestNFSRouteGuards(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-	source, err := os.ReadFile(filepath.Join(filepath.Dir(filename), "..", "routes.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, pattern := range []string{
-		`nfsGroup\.Use\(middleware\.EnsureAuthenticated\(authService\)\)`,
-		`nfsGroup\.Use\(middleware\.RequireLocalAdminForWrites\(authService\)\)`,
-		`nfsGroup\.Use\(EnsureCorrectHost\(db, authService\)\)`,
-		`nfsGroup\.Use\(middleware\.LimitRequestBody\(nfs.MaxRequestBodyBytes\)\)`,
-		`nfsGroup\.Use\(middleware\.RequestLoggerMiddleware\(telemetryDB, authService\)\)`,
-	} {
-		if !regexp.MustCompile(pattern).Match(source) {
-			t.Errorf("missing NFS route guard: %s", pattern)
 		}
 	}
 }

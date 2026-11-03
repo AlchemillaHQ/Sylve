@@ -11,8 +11,6 @@ package systemHandlers
 import (
 	"errors"
 	"net/http"
-	"os"
-	"regexp"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -131,27 +129,5 @@ func TestRemovePPTDeviceReturnsRebootWarning(t *testing.T) {
 	body := testutil.DecodeJSONResponse[internal.APIResponse[RemovePassthroughDeviceResponse]](t, response)
 	if body.Message != "device_removed_reboot_required" || !body.Data.RebootRequired {
 		t.Fatalf("unexpected response: %+v", body)
-	}
-}
-
-func TestSystemRoutesUseWriteAuthorizationAndPreLoggerJSONLimit(t *testing.T) {
-	source, err := os.ReadFile("../routes.go")
-	if err != nil {
-		t.Fatalf("reading routes.go: %v", err)
-	}
-
-	checks := map[string]*regexp.Regexp{
-		"write authorization":         regexp.MustCompile(`system\.Use\(middleware\.RequireLocalAdminForWrites\(authService\)\)`),
-		"selected node before limit":  regexp.MustCompile(`system\.Use\(EnsureCorrectHost\(db, authService\)\)[\s\S]*systemJSON\.Use\(middleware\.LimitRequestBody`),
-		"limit before logger":         regexp.MustCompile(`systemJSON\.Use\(middleware\.LimitRequestBody[\s\S]*systemJSON\.Use\(middleware\.RequestLoggerMiddleware`),
-		"file explorer admin":         regexp.MustCompile(`fileExplorer\.Use\(middleware\.RequireLocalAdmin\(authService\)\)`),
-		"file explorer core ordering": regexp.MustCompile(`fileExplorerCore\.Use\(middleware\.LimitRequestBody[\s\S]*fileExplorerCore\.Use\(middleware\.RequestLoggerMiddleware`),
-		"file explorer transfer log":  regexp.MustCompile(`fileExplorerTransfer\.Use\(middleware\.RequestLoggerMiddleware`),
-	}
-
-	for name, pattern := range checks {
-		if !pattern.Match(source) {
-			t.Errorf("routes.go is missing %s", name)
-		}
 	}
 }

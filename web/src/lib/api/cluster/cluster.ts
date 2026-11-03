@@ -156,12 +156,6 @@ export async function getNodesResult(signal?: AbortSignal): Promise<ClusterNode[
 	});
 }
 
-export async function getClusterResources(signal?: AbortSignal): Promise<NodeResource[]> {
-	return await apiRequestData('/cluster/resources', z.array(NodeResourceSchema), 'GET', undefined, {
-		signal
-	});
-}
-
 export async function getClusterResourcesResult(
 	signal?: AbortSignal
 ): Promise<NodeResource[] | APIResponse> {

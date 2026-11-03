@@ -1,7 +1,6 @@
 import {
 	BackupJailMetadataInfoSchema,
 	BackupVMMetadataInfoSchema,
-	BackupEventSchema,
 	BackupEventProgressSchema,
 	BackupJobSchema,
 	BackupTargetDatasetInfoSchema,
@@ -9,7 +8,6 @@ import {
 	SnapshotPageSchema,
 	type BackupJailMetadataInfo,
 	type BackupVMMetadataInfo,
-	type BackupEvent,
 	type BackupEventProgress,
 	type BackupGuestFilter,
 	type BackupJob,
@@ -71,10 +69,6 @@ export type BackupJobSnapshotsResult = {
 };
 
 const emptySnapshotPage = (): SnapshotPage => ({ items: [], nextCursor: '', hasMore: false });
-
-export async function listBackupTargets(): Promise<BackupTarget[]> {
-	return await apiRequestData('/cluster/backups/targets', z.array(BackupTargetSchema), 'GET');
-}
 
 export async function listBackupTargetsResult(): Promise<BackupTarget[] | APIResponse> {
 	return await apiRequestResult('/cluster/backups/targets', z.array(BackupTargetSchema), 'GET');
@@ -183,39 +177,6 @@ export async function deleteBackupJob(id: number): Promise<APIResponse> {
 
 export async function runBackupJob(id: number): Promise<APIResponse> {
 	return await apiRequestResult(`/cluster/backups/jobs/${id}/run`, APIResponseSchema, 'POST', {});
-}
-
-export async function getBackupEvents(
-	limit: number = 200,
-	jobId?: number,
-	nodeId?: string
-): Promise<BackupEvent[]> {
-	const params = new URLSearchParams();
-	params.set('limit', String(limit));
-	if (jobId && jobId > 0) {
-		params.set('jobId', String(jobId));
-	}
-	if (nodeId && nodeId.trim() !== '') {
-		params.set('nodeId', nodeId.trim());
-	}
-	return await apiRequestData(
-		`/cluster/backups/events?${params.toString()}`,
-		z.array(BackupEventSchema),
-		'GET'
-	);
-}
-
-export async function getBackupEvent(id: number, nodeId?: string): Promise<BackupEvent> {
-	const params = new URLSearchParams();
-	if (nodeId && nodeId.trim() !== '') {
-		params.set('nodeId', nodeId.trim());
-	}
-	const query = params.toString();
-	return await apiRequestData(
-		`/cluster/backups/events/${id}${query ? `?${query}` : ''}`,
-		BackupEventSchema,
-		'GET'
-	);
 }
 
 export async function getBackupEventProgress(

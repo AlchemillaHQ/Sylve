@@ -95,13 +95,6 @@ export async function getVMTemplateByIdResult(
 	});
 }
 
-export async function getSimpleVMById(
-	rid: number,
-	options?: NodeAPIDataRequestOptions
-): Promise<SimpleVm> {
-	return await apiRequestData(`/vm/simple/${rid}`, SimpleVmSchema, 'GET', undefined, options);
-}
-
 export async function getSimpleVMByIdResult(
 	rid: number,
 	options?: NodeAPIDataRequestOptions

@@ -10,11 +10,8 @@ package systemHandlers
 
 import (
 	"net/http"
-	"os"
 	"os/exec"
-	"regexp"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -251,18 +248,5 @@ func TestBasicSettingsReturnsNotFoundWithoutSettings(t *testing.T) {
 	body := testutil.DecodeJSONResponse[internal.APIResponse[any]](t, response)
 	if body.Error != system.ErrBasicSettingsNotFound.Error() {
 		t.Fatalf("error = %v; want %q", body.Error, system.ErrBasicSettingsNotFound.Error())
-	}
-}
-
-func TestBasicSettingsServiceRouteUsesDesiredStatePatch(t *testing.T) {
-	routesSource, err := os.ReadFile("../routes.go")
-	if err != nil {
-		t.Fatalf("reading routes.go: %v", err)
-	}
-	if !regexp.MustCompile(`systemJSON\.PATCH\("/basic-settings/services/:service",\s*systemHandlers\.SetServiceState`).Match(routesSource) {
-		t.Fatal("routes.go is missing the desired-state service PATCH route")
-	}
-	if strings.Contains(string(routesSource), "/basic-settings/services/:service/toggle") {
-		t.Fatal("routes.go still registers the non-idempotent toggle route")
 	}
 }

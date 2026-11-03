@@ -175,29 +175,6 @@ func TestClearClusteredData(t *testing.T) {
 	}
 }
 
-func TestListBackupTargetsForSync(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.BackupTarget{})
-	s := &Service{DB: db}
-
-	targets := []clusterModels.BackupTarget{
-		{ID: 1, Name: "b-first", SSHHost: "h1", BackupRoot: "tank/bk1"},
-		{ID: 2, Name: "a-second", SSHHost: "h2", BackupRoot: "tank/bk2"},
-	}
-	for _, target := range targets {
-		if err := db.Create(&target).Error; err != nil {
-			t.Fatalf("seed target: %v", err)
-		}
-	}
-
-	got, err := s.ListBackupTargetsForSync()
-	if err != nil {
-		t.Fatalf("ListBackupTargetsForSync failed: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("expected 2 targets, got %d", len(got))
-	}
-}
-
 func TestResyncClusterStateRequiresRaft(t *testing.T) {
 	s := &Service{Raft: nil}
 	if err := s.ResyncClusterState(); err == nil {

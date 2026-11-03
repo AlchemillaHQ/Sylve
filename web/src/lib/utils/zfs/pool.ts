@@ -1,7 +1,6 @@
-import type { APIResponse, PieChartData, SeriesDataWithBaseline } from '$lib/types/common';
+import type { APIResponse } from '$lib/types/common';
 import type { Column, Row } from '$lib/types/components/tree-table';
 import type { Disk } from '$lib/types/disk/disk';
-import type { Dataset } from '$lib/types/zfs/dataset';
 import type {
 	ScanSentenceResult,
 	VdevType,
@@ -473,73 +472,6 @@ export function parsePoolActionError(error: APIResponse): string {
 
 	return '';
 }
-
-export function getPoolUsagePieData(pools: Zpool[], pool: string): PieChartData[] {
-	const poolData = pools.find((p) => p.name === pool);
-
-	return [
-		{
-			label: 'Used',
-			value: poolData?.allocated || 0,
-			color: 'chart-1'
-		},
-		{
-			label: 'Free',
-			value: poolData?.free || 0,
-			color: 'chart-2'
-		}
-	];
-}
-
-export function getDatasetCompressionHist(
-	pool: string,
-	datasets: Dataset[]
-): SeriesDataWithBaseline[] {
-	const results: SeriesDataWithBaseline[] = [];
-	const related = datasets.filter(
-		(dataset) => dataset.name.startsWith(pool + '/') || dataset.name === pool
-	);
-
-	for (const dataset of related) {
-		const used = dataset.used;
-		const logicalUsed = dataset.properties?.logicalused;
-
-		if (typeof used === 'number' && typeof logicalUsed === 'number' && logicalUsed > 0) {
-			if (dataset.name.includes('/')) {
-				results.push({
-					name: dataset.name,
-					baseline: logicalUsed,
-					value: used
-				});
-			}
-		}
-	}
-
-	results.sort((a, b) => {
-		if (a.baseline !== b.baseline) {
-			return b.baseline - a.baseline;
-		}
-
-		const ratioA = a.value / a.baseline;
-		const ratioB = b.value / b.baseline;
-
-		return ratioB - ratioA;
-	});
-
-	return results;
-}
-
-export type StatType = 'allocated' | 'free' | 'size' | 'dedupRatio';
-
-export const getDateFormatByInterval = (intervalValue: number, includeTime: boolean): string => {
-	if (intervalValue <= 1) return includeTime ? 'hh:mm:ss a' : 'hh:mm a';
-	if (intervalValue <= 5) return includeTime ? 'hh:mm a' : 'hh:mm a';
-	if (intervalValue <= 60) return includeTime ? 'hh:mm a' : 'hh:mm a';
-	if (intervalValue <= 1440) return includeTime ? 'MMM d, hh:mm a' : 'MMM d';
-	if (intervalValue <= 10080) return includeTime ? 'MMM d, hh:mm a' : 'MMM d';
-	if (intervalValue <= 40320) return includeTime ? 'MMM yyyy' : 'MMM yyyy';
-	return includeTime ? 'yyyy' : 'yyyy';
-};
 
 export function formatValue(
 	value: number,

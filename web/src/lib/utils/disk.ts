@@ -219,10 +219,6 @@ export function getDiskSize(disk: Disk): string {
 	return disk.size.toString();
 }
 
-export function stripDev(disk: string): string {
-	return disk.replace(/^\/dev\//, '');
-}
-
 export function generateTableData(disks: Disk[]): { rows: Row[]; columns: Column[] } {
 	const rows: Row[] = [];
 	const columns: Column[] = [

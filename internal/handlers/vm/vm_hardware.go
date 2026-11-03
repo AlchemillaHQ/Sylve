@@ -11,7 +11,6 @@ package libvirtHandlers
 import (
 	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
@@ -36,41 +35,6 @@ type vmHardwareService interface {
 	ModifyPassthrough(rid uint, pciDevices []int) error
 }
 
-func vmHardwareErrorCodes(err error) map[string]struct{} {
-	codes := make(map[string]struct{})
-	if err == nil {
-		return codes
-	}
-
-	for _, part := range strings.Split(strings.ToLower(err.Error()), ":") {
-		if code := strings.TrimSpace(part); code != "" {
-			codes[code] = struct{}{}
-		}
-	}
-	return codes
-}
-
-func vmHardwareErrorHasCode(codes map[string]struct{}, candidates ...string) bool {
-	for _, candidate := range candidates {
-		if _, ok := codes[candidate]; ok {
-			return true
-		}
-	}
-	return false
-}
-
-func vmHardwareErrorCode(err error) string {
-	if err == nil {
-		return ""
-	}
-
-	code := strings.ToLower(strings.TrimSpace(err.Error()))
-	if idx := strings.IndexByte(code, ':'); idx >= 0 {
-		code = code[:idx]
-	}
-	return strings.TrimSpace(code)
-}
-
 func vmHardwareErrorStatus(err error) int {
 	if err == nil {
 		return http.StatusInternalServerError
@@ -79,16 +43,16 @@ func vmHardwareErrorStatus(err error) int {
 		return http.StatusNotFound
 	}
 
-	codes := vmHardwareErrorCodes(err)
+	codes := utils.ErrorCodes(err)
 	switch {
-	case vmHardwareErrorHasCode(codes,
+	case utils.HasErrorCode(codes,
 		"libvirt_not_initialized", "libvirt_connection_unavailable", "db_not_initialized",
 		"replication_lease_check_failed", "failed_to_check_vm_shutoff",
 		"failed_to_check_domain_shutoff_status", "failed_to_capture_domain_xml",
 		"failed_to_lookup_domain", "failed_to_lookup_domain_by_name",
 		"failed_to_get_domain_xml_desc", "failed_to_get_domain_state"):
 		return http.StatusServiceUnavailable
-	case vmHardwareErrorHasCode(codes,
+	case utils.HasErrorCode(codes,
 		"invalid_request", "invalid_rid", "invalid_vm_rid", "rid_must_be_positive",
 		"cpu_topology_must_be_positive", "cpu_topology_overflow",
 		"csmwrap_requires_two_vcpus",
@@ -106,12 +70,12 @@ func vmHardwareErrorStatus(err error) int {
 		"vnc_resolution_out_of_range", "vnc_password_cannot_contain_commas",
 		"invalid_passthrough_device_id", "duplicate_passthrough_device"):
 		return http.StatusBadRequest
-	case vmHardwareErrorHasCode(codes, "replication_lease_not_owned"):
+	case utils.HasErrorCode(codes, "replication_lease_not_owned"):
 		return http.StatusForbidden
-	case vmHardwareErrorHasCode(codes,
+	case utils.HasErrorCode(codes,
 		"vm_not_found", "passthrough_device_not_found", "passthrough_device_does_not_exist"):
 		return http.StatusNotFound
-	case vmHardwareErrorHasCode(codes,
+	case utils.HasErrorCode(codes,
 		"domain_not_shutoff", "domain_state_not_shutoff", "core_conflict",
 		"vnc_port_already_in_use_by_another_vm",
 		"vnc_port_already_in_use_by_another_service", "no_free_passthrough_indices",
@@ -125,7 +89,7 @@ func vmHardwareErrorStatus(err error) int {
 func writeVMHardwareError(c *gin.Context, fallbackMessage string, err error) {
 	status := vmHardwareErrorStatus(err)
 	message := fallbackMessage
-	if code := vmHardwareErrorCode(err); status != http.StatusInternalServerError && code != "" {
+	if code := utils.ErrorCode(err); status != http.StatusInternalServerError && code != "" {
 		message = code
 	}
 
@@ -165,7 +129,7 @@ func handleVMHardwareMutationResult(c *gin.Context, successMessage, fallbackMess
 		writeVMHardwareSuccess(c, successMessage)
 		return
 	}
-	if vmHardwareErrorHasCode(vmHardwareErrorCodes(err), "no_changes_detected") {
+	if utils.HasErrorCode(utils.ErrorCodes(err), "no_changes_detected") {
 		writeVMHardwareSuccess(c, "no_changes_detected")
 		return
 	}

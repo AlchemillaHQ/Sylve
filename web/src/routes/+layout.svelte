@@ -10,7 +10,6 @@
 	import Throbber from '$lib/components/custom/Throbber.svelte';
 	import Shell from '$lib/components/skeleton/Shell.svelte';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
-	import '$lib/utils/i18n';
 	import { addTabulatorFilters } from '$lib/utils/table';
 	import { mode, ModeWatcher, setMode } from 'mode-watcher';
 	import { onMount, type Component } from 'svelte';

@@ -14,9 +14,5 @@ export const RAMInfoSchema = z.object({
 	usedPercent: z.number().default(0)
 });
 
-export const RAMInfoResponseSchema = z.object({
-	info: RAMInfoSchema
-});
-
 export type RAMInfo = z.infer<typeof RAMInfoSchema>;
 export type RAMInfoHistorical = z.infer<typeof RAMInfoHistoricalSchema>;

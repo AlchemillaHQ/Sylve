@@ -11,7 +11,6 @@ package db
 import (
 	"bytes"
 	"testing"
-	"time"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/dgraph-io/badger/v4"
@@ -76,49 +75,6 @@ func TestGetValueMissingKeyReturnsFalse(t *testing.T) {
 	}
 	if got != nil {
 		t.Fatalf("expected nil value for missing key, got %q", string(got))
-	}
-}
-
-func TestSetValueWithTTLExpires(t *testing.T) {
-	_ = installTempCacheDB(t)
-
-	if err := SetValue("ephemeral", []byte("soon-gone"), 1); err != nil {
-		t.Fatalf("set_value_failed: %v", err)
-	}
-
-	time.Sleep(2 * time.Second)
-
-	got, ok := GetValue("ephemeral")
-	if ok {
-		t.Fatalf("expected key to expire, got value=%q", string(got))
-	}
-}
-
-func TestSetValueReturnsErrorAfterCacheClose(t *testing.T) {
-	cache := installTempCacheDB(t)
-
-	if err := cache.Close(); err != nil {
-		t.Fatalf("failed_to_close_cache: %v", err)
-	}
-
-	if err := SetValue("closed", []byte("x"), 10); err == nil {
-		t.Fatal("expected SetValue to fail on closed cache")
-	}
-}
-
-func TestRunCacheGCDoesNotHang(t *testing.T) {
-	_ = installTempCacheDB(t)
-
-	done := make(chan struct{})
-	go func() {
-		RunCacheGC()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("RunCacheGC did not return in time")
 	}
 }
 

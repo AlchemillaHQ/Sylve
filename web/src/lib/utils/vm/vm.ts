@@ -326,15 +326,6 @@ export function getNextGuestId(clusterNodes: ClusterNode[]): number {
 	return maxId === 0 ? 100 : maxId + 1;
 }
 
-export function generateCores(threadCount: number) {
-	return Array.from({ length: threadCount }, (_, i) => {
-		return {
-			id: i + 1,
-			status: Math.random() > 0.5 ? 'available' : 'busy'
-		};
-	});
-}
-
 export function getVMIconByGaId(id: string): string {
 	switch (id) {
 		case 'debian':
@@ -423,111 +414,6 @@ const vmLifecycleBadgeStyles: Record<VMLifecycleAction, VMLifecycleBadgeStyle> =
 		label: 'Reboot'
 	}
 };
-
-export type VMPendingLifecycleSnapshot = {
-	initialStartedAt: string | null;
-	observedNonRunningDuringReboot: boolean;
-};
-
-export function createVMPendingLifecycleSnapshot(
-	currentDomainStatus: string,
-	initialStartedAt?: string | null
-): VMPendingLifecycleSnapshot {
-	const normalizedStatus = String(currentDomainStatus || '')
-		.trim()
-		.toLowerCase();
-	return {
-		initialStartedAt: initialStartedAt ?? null,
-		observedNonRunningDuringReboot: normalizedStatus !== 'running'
-	};
-}
-
-export function markVMPendingSnapshotNonRunning(
-	snapshot: VMPendingLifecycleSnapshot | null,
-	normalizedDomainStatus: string,
-	isDomainErrorState: boolean
-): VMPendingLifecycleSnapshot | null {
-	if (!snapshot) {
-		return snapshot;
-	}
-
-	if (
-		normalizedDomainStatus !== '' &&
-		normalizedDomainStatus !== 'running' &&
-		!isDomainErrorState &&
-		!snapshot.observedNonRunningDuringReboot
-	) {
-		return {
-			...snapshot,
-			observedNonRunningDuringReboot: true
-		};
-	}
-
-	return snapshot;
-}
-
-export function isVMPendingLifecycleActionSettled(
-	pendingAction: VMLifecycleAction | '',
-	snapshot: VMPendingLifecycleSnapshot | null,
-	normalizedDomainStatus: string,
-	isDomainErrorState: boolean,
-	currentStartedAt?: string | null
-): boolean {
-	if (!pendingAction || !snapshot) {
-		return false;
-	}
-
-	if (pendingAction === 'start') {
-		return normalizedDomainStatus === 'running';
-	}
-
-	if (pendingAction === 'stop' || pendingAction === 'shutdown') {
-		return (
-			normalizedDomainStatus !== '' && normalizedDomainStatus !== 'running' && !isDomainErrorState
-		);
-	}
-
-	if (pendingAction === 'reboot') {
-		if (normalizedDomainStatus !== 'running') {
-			return false;
-		}
-
-		const startedAtChanged = (currentStartedAt ?? null) !== snapshot.initialStartedAt;
-		return snapshot.observedNonRunningDuringReboot || startedAtChanged;
-	}
-
-	return false;
-}
-
-export function getEffectiveVMLifecycleAction(
-	activeAction: string,
-	pendingAction: VMLifecycleAction | ''
-): string {
-	return activeAction || pendingAction;
-}
-
-export function getVMLifecyclePendingTimeoutMs(action: VMLifecycleAction): number {
-	// Shutdown can legitimately take much longer before task state is observed.
-	if (action === 'shutdown') {
-		return 20000;
-	}
-
-	return 7000;
-}
-
-export function isVMLifecycleTransitionPending(
-	pendingAction: VMLifecycleAction | '',
-	hasActiveLifecycleTask: boolean
-): boolean {
-	return pendingAction !== '' && !hasActiveLifecycleTask;
-}
-
-export function shouldHideVMLifecycleButtons(
-	hasActiveLifecycleTask: boolean,
-	pendingAction: VMLifecycleAction | ''
-): boolean {
-	return pendingAction !== '' || hasActiveLifecycleTask;
-}
 
 export function getVMLifecycleBadgeStyle(action: string): VMLifecycleBadgeStyle {
 	if (action in vmLifecycleBadgeStyles) {

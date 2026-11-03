@@ -13,47 +13,12 @@ import (
 	"testing"
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	"github.com/beevik/etree"
 )
-
-func updateIgnoreUMSR(xml string, ignore bool) (string, error) {
-	doc := etree.NewDocument()
-	if err := doc.ReadFromString(xml); err != nil {
-		return "", err
-	}
-
-	root := doc.Root()
-
-	featuresEl := root.FindElement("features")
-	if featuresEl != nil {
-		for _, el := range featuresEl.FindElements("msrs") {
-			featuresEl.RemoveChild(el)
-		}
-	}
-
-	if bhyveCL := doc.FindElement("//commandline"); bhyveCL != nil && bhyveCL.Space == "bhyve" {
-		for _, arg := range bhyveCL.ChildElements() {
-			if arg.SelectAttrValue("value", "") == "-w" {
-				bhyveCL.RemoveChild(arg)
-			}
-		}
-	}
-
-	if ignore {
-		if featuresEl == nil {
-			featuresEl = root.CreateElement("features")
-		}
-		msrsEl := featuresEl.CreateElement("msrs")
-		msrsEl.CreateAttr("unknown", "ignore")
-	}
-
-	return doc.WriteToString()
-}
 
 func TestIgnoreUMSR_MigratesOldFormatToNative(t *testing.T) {
 	xml := `<domain type="bhyve" xmlns:bhyve="http://libvirt.org/schemas/domain/bhyve/1.0"><name>100</name><features><apic></apic></features><bhyve:commandline><bhyve:arg value="-S"/><bhyve:arg value="-w"/><bhyve:arg value="-u"/></bhyve:commandline></domain>`
 
-	updated, err := updateIgnoreUMSR(xml, true)
+	updated, err := updateIgnoreUMSROptionXML(xml, true)
 	if err != nil {
 		t.Fatalf("updateIgnoreUMSR returned error: %v", err)
 	}
@@ -82,7 +47,7 @@ func TestIgnoreUMSR_MigratesOldFormatToNative(t *testing.T) {
 func TestIgnoreUMSR_UpdatesAlreadyNativeFormat(t *testing.T) {
 	xml := `<domain type="bhyve"><name>100</name><features><msrs unknown="ignore"/></features></domain>`
 
-	updated, err := updateIgnoreUMSR(xml, true)
+	updated, err := updateIgnoreUMSROptionXML(xml, true)
 	if err != nil {
 		t.Fatalf("updateIgnoreUMSR returned error: %v", err)
 	}
@@ -95,7 +60,7 @@ func TestIgnoreUMSR_UpdatesAlreadyNativeFormat(t *testing.T) {
 func TestIgnoreUMSR_DisablesWhenAlreadyNative(t *testing.T) {
 	xml := `<domain type="bhyve"><name>100</name><features><msrs unknown="ignore"/></features></domain>`
 
-	updated, err := updateIgnoreUMSR(xml, false)
+	updated, err := updateIgnoreUMSROptionXML(xml, false)
 	if err != nil {
 		t.Fatalf("updateIgnoreUMSR returned error: %v", err)
 	}
@@ -108,7 +73,7 @@ func TestIgnoreUMSR_DisablesWhenAlreadyNative(t *testing.T) {
 func TestIgnoreUMSR_DisablesWhenOldFormat(t *testing.T) {
 	xml := `<domain type="bhyve" xmlns:bhyve="http://libvirt.org/schemas/domain/bhyve/1.0"><name>100</name><bhyve:commandline><bhyve:arg value="-w"/></bhyve:commandline></domain>`
 
-	updated, err := updateIgnoreUMSR(xml, false)
+	updated, err := updateIgnoreUMSROptionXML(xml, false)
 	if err != nil {
 		t.Fatalf("updateIgnoreUMSR returned error: %v", err)
 	}
@@ -125,7 +90,7 @@ func TestIgnoreUMSR_DisablesWhenOldFormat(t *testing.T) {
 func TestIgnoreUMSR_HandlesBothFormatsSimultaneously(t *testing.T) {
 	xml := `<domain type="bhyve" xmlns:bhyve="http://libvirt.org/schemas/domain/bhyve/1.0"><name>100</name><features><msrs unknown="ignore"/></features><bhyve:commandline><bhyve:arg value="-w"/></bhyve:commandline></domain>`
 
-	updated, err := updateIgnoreUMSR(xml, true)
+	updated, err := updateIgnoreUMSROptionXML(xml, true)
 	if err != nil {
 		t.Fatalf("updateIgnoreUMSR returned error: %v", err)
 	}

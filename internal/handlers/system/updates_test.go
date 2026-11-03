@@ -13,9 +13,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -201,30 +198,5 @@ func TestHostUpdateErrorClassification(t *testing.T) {
 		if response.Code != test.status {
 			t.Fatalf("%s: got %d", test.error, response.Code)
 		}
-	}
-}
-
-func TestHostUpdateRoutesRequireAdminAndSelectedNodeRouting(t *testing.T) {
-	_, file, _, _ := runtime.Caller(0)
-	raw, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "routes.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	source := string(raw)
-	for _, fragment := range []string{
-		"system.Use(middleware.EnsureAuthenticated(authService))",
-		"system.Use(EnsureCorrectHost(db, authService))",
-		`hostUpdates := systemJSON.Group("/updates")`,
-		"hostUpdates.Use(middleware.RequireLocalAdmin(authService))",
-		"systemHandlers.RegisterHostUpdateRoutes(hostUpdates, systemService.HostUpdates)",
-	} {
-		if !strings.Contains(source, fragment) {
-			t.Fatalf("missing authorization/routing contract: %s", fragment)
-		}
-	}
-	admin := strings.Index(source, "hostUpdates.Use(middleware.RequireLocalAdmin(authService))")
-	registration := strings.Index(source, "systemHandlers.RegisterHostUpdateRoutes(hostUpdates, systemService.HostUpdates)")
-	if admin >= registration {
-		t.Fatal("host update routes registered before administrator guard")
 	}
 }

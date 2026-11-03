@@ -58,12 +58,9 @@ jobs:
           cache-dependency-path: installer/backend/go.sum
 
       - name: Build, vet and test
-        working-directory: installer/backend
         run: |
-          go build ./...
-          go vet ./...
-          go test ./...
-          sh ../build/test-pkgbase.sh
+          (cd installer/backend && go build ./...)
+          make installer-vet installer-test
 
       - name: Cross-build the daemon (freebsd/amd64)
         run: make installer-backend

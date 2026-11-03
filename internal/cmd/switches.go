@@ -499,7 +499,7 @@ func buildStandardSwitchEditRequest(command *cli.Command, id uint) (consoleproto
 		request.PortPolicies = &policies
 	}
 
-	if !standardSwitchEditChanged(request) {
+	if !request.HasChanges() {
 		return consoleprotocol.StandardSwitchEditRequest{}, fmt.Errorf("specify at least one standard switch edit option")
 	}
 	return request, nil
@@ -589,30 +589,4 @@ func optionalSwitchEditPorts(command *cli.Command) (*[]string, error) {
 		ports = append(ports, port)
 	}
 	return &ports, nil
-}
-
-func standardSwitchEditChanged(request consoleprotocol.StandardSwitchEditRequest) bool {
-	return request.MTU != nil ||
-		request.VLAN != nil ||
-		request.Network4 != nil ||
-		request.Gateway4 != nil ||
-		request.Network6 != nil ||
-		request.Gateway6 != nil ||
-		request.Network4Manual != nil ||
-		request.Gateway4Manual != nil ||
-		request.Network6Manual != nil ||
-		request.Gateway6Manual != nil ||
-		request.Ports != nil ||
-		request.BridgeMAC != nil ||
-		request.Private != nil ||
-		request.DHCP != nil ||
-		request.DisableIPv6 != nil ||
-		request.SLAAC != nil ||
-		request.DefaultRoute != nil ||
-		request.DefaultRoute6 != nil ||
-		request.DisableBridgeOffloads != nil ||
-		request.VLANFiltering != nil ||
-		request.DefaultAccessVLAN != nil ||
-		request.HostVLAN != nil ||
-		request.PortPolicies != nil
 }

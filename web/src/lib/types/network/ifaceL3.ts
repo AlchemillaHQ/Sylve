@@ -55,9 +55,6 @@ export const HostInterfaceL3PendingEntrySchema = z.object({
 	phase: z.string(),
 	deadline: z.string()
 });
-
-export type HostInterfaceL3Address = z.infer<typeof HostInterfaceL3AddressSchema>;
-export type HostInterfaceL3ManagedAddress = z.infer<typeof HostInterfaceL3ManagedAddressSchema>;
 export type HostInterfaceL3Entry = z.infer<typeof HostInterfaceL3EntrySchema>;
 export type HostInterfaceL3Target = z.infer<typeof HostInterfaceL3TargetSchema>;
 export type HostInterfaceL3List = z.infer<typeof HostInterfaceL3ListSchema>;

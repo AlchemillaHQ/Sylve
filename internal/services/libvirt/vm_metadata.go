@@ -14,6 +14,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
 
@@ -100,7 +101,7 @@ func (s *Service) RetireVMLocalMetadata(rid uint, cleanUpMacs bool) error {
 			return fmt.Errorf("failed_to_delete_vm_rows_for_retire: %w", err)
 		}
 
-		for _, datasetID := range uniqueUintValues(datasetIDs) {
+		for _, datasetID := range utils.UniqueIDs(datasetIDs) {
 			var refCount int64
 			if err := tx.Model(&vmModels.Storage{}).
 				Where("dataset_id = ?", datasetID).
@@ -117,7 +118,7 @@ func (s *Service) RetireVMLocalMetadata(rid uint, cleanUpMacs bool) error {
 		}
 
 		if cleanUpMacs {
-			macIDs = uniqueUintValues(macIDs)
+			macIDs = utils.UniqueIDs(macIDs)
 			if len(macIDs) > 0 {
 				if err := tx.Where("object_id IN ?", macIDs).Delete(&networkModels.ObjectEntry{}).Error; err != nil {
 					return fmt.Errorf("failed_to_delete_mac_object_entries_for_retire: %w", err)

@@ -1,11 +1,9 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
 	WireGuardClientSchema,
-	WireGuardServerPeerSchema,
 	WireGuardServerSchema,
 	type WireGuardClient,
-	type WireGuardServer,
-	type WireGuardServerPeer
+	type WireGuardServer
 } from '$lib/types/network/wireguard';
 import { apiRequest, isAPIResponse } from '$lib/utils/http';
 
@@ -176,12 +174,3 @@ export const wireGuardClients = {
 		return apiRequest(`/network/wireguard/clients/${id}`, APIResponseSchema, 'PATCH', { enabled });
 	}
 };
-
-export function wireGuardPeerName(peer: WireGuardServerPeer): string {
-	const parsed = WireGuardServerPeerSchema.safeParse(peer);
-	if (!parsed.success) {
-		return `Peer ${peer.id}`;
-	}
-
-	return parsed.data.name;
-}

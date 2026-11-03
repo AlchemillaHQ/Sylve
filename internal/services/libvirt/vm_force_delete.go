@@ -363,7 +363,7 @@ func (s *Service) forceRemoveVMDBRecords(rid uint, cleanUpMacs bool, warnings *[
 		}
 	}
 
-	cleanupDatasetIDs := uniqueUintValues(datasetIDs)
+	cleanupDatasetIDs := utils.UniqueIDs(datasetIDs)
 	patternDatasetIDs := make([]uint, 0)
 	if err := s.DB.Model(&vmModels.VMStorageDataset{}).
 		Where("name LIKE ? OR name LIKE ? OR name LIKE ? OR name LIKE ?",
@@ -374,7 +374,7 @@ func (s *Service) forceRemoveVMDBRecords(rid uint, cleanUpMacs bool, warnings *[
 		Pluck("id", &patternDatasetIDs).Error; err != nil {
 		appendForceRemoveWarning(warnings, rid, "failed_to_lookup_vm_storage_dataset_rows_by_name", err)
 	} else {
-		cleanupDatasetIDs = uniqueUintValues(append(cleanupDatasetIDs, patternDatasetIDs...))
+		cleanupDatasetIDs = utils.UniqueIDs(append(cleanupDatasetIDs, patternDatasetIDs...))
 	}
 
 	for _, datasetID := range cleanupDatasetIDs {
@@ -395,7 +395,7 @@ func (s *Service) forceRemoveVMDBRecords(rid uint, cleanUpMacs bool, warnings *[
 	}
 
 	if cleanUpMacs {
-		macIDs = uniqueUintValues(macIDs)
+		macIDs = utils.UniqueIDs(macIDs)
 		if len(macIDs) > 0 {
 			if err := s.DB.Where("object_id IN ?", macIDs).Delete(&networkModels.ObjectEntry{}).Error; err != nil {
 				appendForceRemoveWarning(warnings, rid, "failed_to_delete_mac_object_entries_for_force_delete", err)
@@ -408,24 +408,4 @@ func (s *Service) forceRemoveVMDBRecords(rid uint, cleanUpMacs bool, warnings *[
 			}
 		}
 	}
-}
-
-func uniqueUintValues(values []uint) []uint {
-	if len(values) == 0 {
-		return []uint{}
-	}
-
-	seen := make(map[uint]struct{}, len(values))
-	out := make([]uint, 0, len(values))
-	for _, value := range values {
-		if value == 0 {
-			continue
-		}
-		if _, exists := seen[value]; exists {
-			continue
-		}
-		seen[value] = struct{}{}
-		out = append(out, value)
-	}
-	return out
 }

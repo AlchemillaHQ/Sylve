@@ -579,3 +579,58 @@ func IsValidZFSPoolName(name string) bool {
 func SplitLines(s string) []string {
 	return strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
 }
+
+// ErrorCode returns the lowercased text before the first ':' in err, e.g. "vm_not_found".
+func ErrorCode(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	code := strings.ToLower(strings.TrimSpace(err.Error()))
+	if idx := strings.IndexByte(code, ':'); idx >= 0 {
+		code = code[:idx]
+	}
+	return strings.TrimSpace(code)
+}
+
+// ErrorCodes returns every ':'-separated part of err as a set of lowercased codes.
+func ErrorCodes(err error) map[string]struct{} {
+	codes := make(map[string]struct{})
+	if err == nil {
+		return codes
+	}
+
+	for _, part := range strings.Split(strings.ToLower(err.Error()), ":") {
+		if code := strings.TrimSpace(part); code != "" {
+			codes[code] = struct{}{}
+		}
+	}
+	return codes
+}
+
+// HasErrorCode reports whether codes contains any of candidates.
+func HasErrorCode(codes map[string]struct{}, candidates ...string) bool {
+	for _, candidate := range candidates {
+		if _, ok := codes[candidate]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// UniqueIDs returns ids with zeros and duplicates removed, keeping first-seen order.
+func UniqueIDs(ids []uint) []uint {
+	seen := make(map[uint]struct{}, len(ids))
+	out := make([]uint, 0, len(ids))
+	for _, id := range ids {
+		if id == 0 {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}

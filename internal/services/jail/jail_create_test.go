@@ -1027,6 +1027,7 @@ func TestValidateCreate_AcceptsRawIPv4(t *testing.T) {
 		t.Fatalf("failed to create base directory: %v", err)
 	}
 	seedBaseDownload(t, db, "base-raw-ipv4", baseDir)
+	seedSwitch(t, db, "test-switch")
 
 	ctid := uint(790)
 	req := jailServiceInterfaces.CreateJailRequest{
@@ -1034,8 +1035,9 @@ func TestValidateCreate_AcceptsRawIPv4(t *testing.T) {
 		CTID:       &ctid,
 		Pool:       "tank",
 		Base:       "base-raw-ipv4",
-		SwitchName: "none",
+		SwitchName: "test-switch",
 		Type:       jailModels.JailTypeFreeBSD,
+		IPv4Raw:    "10.0.0.5/24",
 	}
 
 	err := svc.ValidateCreate(context.Background(), req)

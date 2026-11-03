@@ -364,16 +364,6 @@ func TestEditUserHandlerAuxGroupIDs(t *testing.T) {
 	}
 }
 
-func TestDeleteUserHandlerMissingID(t *testing.T) {
-	svc := newTestAuthService(t)
-	router := setupRouter(svc)
-
-	w := performJSON(t, router, "DELETE", "/auth/users/", nil)
-	if w.Code != http.StatusNotFound && w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 404 or 400, got %d", w.Code)
-	}
-}
-
 func TestDeleteUserHandlerInvalidID(t *testing.T) {
 	svc := newTestAuthService(t)
 	router := setupRouter(svc)
@@ -414,80 +404,6 @@ func TestUserCapabilitiesHandler(t *testing.T) {
 	}
 	if resp.Status != "success" {
 		t.Fatalf("expected status 'success', got: %s", resp.Status)
-	}
-}
-
-func TestCreateUserRequestFields(t *testing.T) {
-	raw := `{
-		"username": "testuser",
-		"fullName": "Test User",
-		"password": "password123",
-		"email": "test@example.com",
-		"admin": true,
-		"uid": 1001,
-		"shell": "/bin/sh",
-		"homeDirectory": "/home/test",
-		"homeDirPerms": 493,
-		"sshPublicKey": "ssh-rsa AAAA...",
-		"disablePassword": false,
-		"locked": false,
-		"doasEnabled": true,
-		"newPrimaryGroup": true,
-		"primaryGroupId": 1,
-		"auxGroupIds": [1, 2]
-	}`
-
-	var req CreateUserRequest
-	if err := json.Unmarshal([]byte(raw), &req); err != nil {
-		t.Fatalf("failed to unmarshal CreateUserRequest: %v", err)
-	}
-	if req.Username != "testuser" {
-		t.Fatalf("expected username 'testuser', got: %s", req.Username)
-	}
-	if !req.NewPrimaryGroup {
-		t.Fatalf("expected NewPrimaryGroup=true")
-	}
-	if len(req.AuxGroupIDs) != 2 {
-		t.Fatalf("expected 2 aux group IDs, got: %d", len(req.AuxGroupIDs))
-	}
-}
-
-func TestEditUserRequestFields(t *testing.T) {
-	raw := `{
-		"username": "testuser",
-		"fullName": "Test User",
-		"password": "password123",
-		"email": "test@example.com",
-		"admin": true,
-		"uid": 1001,
-		"shell": "/bin/sh",
-		"homeDirectory": "/home/test",
-		"homeDirPerms": 493,
-		"sshPublicKey": "ssh-rsa AAAA...",
-		"disablePassword": false,
-		"locked": false,
-		"doasEnabled": true,
-		"newPrimaryGroup": true,
-		"primaryGroupId": 1,
-		"auxGroupIds": [1, 2],
-		"sambaAction": "upsert"
-	}`
-
-	var req EditUserRequest
-	if err := json.Unmarshal([]byte(raw), &req); err != nil {
-		t.Fatalf("failed to unmarshal EditUserRequest: %v", err)
-	}
-	if !req.NewPrimaryGroup {
-		t.Fatalf("expected NewPrimaryGroup=true")
-	}
-	if len(req.AuxGroupIDs) != 2 {
-		t.Fatalf("expected 2 aux group IDs, got: %d", len(req.AuxGroupIDs))
-	}
-	if req.PrimaryGroupID == nil || *req.PrimaryGroupID != 1 {
-		t.Fatalf("expected PrimaryGroupID=1")
-	}
-	if req.SambaAction != authService.SambaActionUpsert {
-		t.Fatalf("expected SambaAction=upsert, got %q", req.SambaAction)
 	}
 }
 

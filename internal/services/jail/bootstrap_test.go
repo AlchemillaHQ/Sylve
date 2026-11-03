@@ -712,15 +712,3 @@ func TestRecoverInterruptedBootstraps_RefusesStoredDatasetOutsideCanonicalMember
 		t.Fatalf("unexpected recovery state: %+v", updated)
 	}
 }
-
-func TestRecoverInterruptedBootstraps_NoOpWhenNoStaleRecords(t *testing.T) {
-	svc, _ := newBootstrapTestService(t, nil, "tank")
-
-	svc.RecoverInterruptedBootstraps(context.Background())
-
-	var count int64
-	svc.DB.Model(&jailModels.JailBootstrap{}).Count(&count)
-	if count != 0 {
-		t.Errorf("expected 0 records, got %d", count)
-	}
-}

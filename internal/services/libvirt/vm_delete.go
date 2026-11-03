@@ -224,7 +224,7 @@ func (s *Service) removeVMWithWarningsWithIdentity(
 	}
 	sort.Strings(result.RetainedDatasets)
 
-	usedMACs = uniqueUintValues(usedMACs)
+	usedMACs = utils.UniqueIDs(usedMACs)
 	if cleanUpMacs {
 		if err := s.cleanupVMMACObjects(true, usedMACs); err != nil {
 			result.RetainedMACObjectIDs = append(result.RetainedMACObjectIDs, usedMACs...)
@@ -290,7 +290,7 @@ func (s *Service) prepareVMRemoval(
 		return prepared, fmt.Errorf("failed_to_find_vm_mac_ids: %w", err)
 	}
 
-	prepared.usedMACs = uniqueUintValues(prepared.usedMACs)
+	prepared.usedMACs = utils.UniqueIDs(prepared.usedMACs)
 	prepared.plan = buildVMStorageRemovalPlan(prepared.vm, deleteRawDisks, deleteVolumes)
 	s.discoverOrphanVMStorageRoots(ctx, prepared.vm.RID, &prepared.plan)
 	addOwnedVMSnapshotsToRemovalPlan(&prepared.plan, snapshots)
@@ -352,7 +352,7 @@ func (s *Service) removeVMIdentityTransaction(
 			return fmt.Errorf("failed_to_lookup_vm_storage_dataset_rows: %w", err)
 		}
 
-		for _, datasetID := range uniqueUintValues(append(datasetIDs, patternDatasetIDs...)) {
+		for _, datasetID := range utils.UniqueIDs(append(datasetIDs, patternDatasetIDs...)) {
 			var refs int64
 			if err := tx.Model(&vmModels.Storage{}).
 				Where("dataset_id = ?", datasetID).

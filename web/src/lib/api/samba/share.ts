@@ -109,12 +109,6 @@ export async function updateSambaShare(
 	);
 }
 
-export async function setSambaShareEnabled(id: number, enabled: boolean): Promise<APIResponse> {
-	return await apiRequestResult(`/samba/shares/${id}/enabled`, APIResponseSchema, 'PUT', {
-		enabled
-	});
-}
-
 export async function deleteSambaShare(
 	id: number,
 	options?: NodeAPIRequestOptions

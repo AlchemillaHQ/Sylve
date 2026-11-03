@@ -14,41 +14,6 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
 
-func TestListEncryptionKeys(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.EncryptionKey{})
-	s := &Service{DB: db}
-
-	keys := []clusterModels.EncryptionKey{
-		{UUID: "zzz-first", KeyData: "key-data-zzz-32bytes-long-enough", KeyFormat: "passphrase"},
-		{UUID: "aaa-second", KeyData: "key-data-aaa-32bytes-long-enough", KeyFormat: "passphrase"},
-		{UUID: "mmm-third", KeyData: "key-data-mmm-32bytes-long-enough", KeyFormat: "passphrase"},
-	}
-	if err := db.Create(&keys).Error; err != nil {
-		t.Fatalf("failed to seed encryption keys: %v", err)
-	}
-
-	got, err := s.ListEncryptionKeys()
-	if err != nil {
-		t.Fatalf("ListEncryptionKeys failed: %v", err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("expected 3 keys, got %d", len(got))
-	}
-}
-
-func TestListEncryptionKeysEmpty(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.EncryptionKey{})
-	s := &Service{DB: db}
-
-	got, err := s.ListEncryptionKeys()
-	if err != nil {
-		t.Fatalf("ListEncryptionKeys on empty table failed: %v", err)
-	}
-	if len(got) != 0 {
-		t.Fatalf("expected 0 keys, got %d", len(got))
-	}
-}
-
 func TestGetEncryptionKeyByUUID(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.EncryptionKey{})
 	s := &Service{DB: db}
@@ -163,15 +128,5 @@ func TestForwardEncryptionKeyToLeaderRaftNil(t *testing.T) {
 	var key clusterModels.EncryptionKey
 	if err := db.Where("uuid = ?", "test-uuid").First(&key).Error; err != nil {
 		t.Fatalf("key not persisted: %v", err)
-	}
-}
-
-func TestForwardEncryptionKeyToLeaderNoLeaderElected(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.EncryptionKey{})
-	s := &Service{DB: db, Raft: nil}
-
-	err := s.ForwardEncryptionKeyToLeader("no-leader-key", "no-leader-key-data-32-bytes", "passphrase")
-	if err != nil {
-		t.Fatalf("ForwardEncryptionKeyToLeader with nil Raft: %v", err)
 	}
 }

@@ -26,13 +26,6 @@ export function deselectAllRows(table: Tabulator | null) {
 	}
 }
 
-export function selectOneRow(table: Tabulator | null, row: RowComponent) {
-	if (table) {
-		deselectAllRows(table);
-		row.select();
-	}
-}
-
 export function getTable(id: string): Tabulator | null {
 	const table = TabulatorFull.findTable(`#${id}`);
 	if (table) {
@@ -40,33 +33,6 @@ export function getTable(id: string): Tabulator | null {
 	}
 
 	return null;
-}
-
-export function deleteRowByFieldValue(tableId: string, field: string, value: string | number) {
-	try {
-		const table = getTable(tableId);
-		if (table) {
-			const rows = table.getRows();
-			for (const row of rows) {
-				if (row.getData()[field] === value) {
-					row.delete();
-				}
-
-				if (row.getData()['children']) {
-					if (Array.isArray(row.getData()['children'])) {
-						const children = row.getData()['children'];
-						for (const child of children) {
-							if (child[field] === value) {
-								row.delete();
-							}
-						}
-					}
-				}
-			}
-		}
-	} catch (error) {
-		console.error('Error deleting row:', error);
-	}
 }
 
 export const renderWithIcon = (

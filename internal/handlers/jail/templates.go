@@ -22,6 +22,7 @@ import (
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -60,24 +61,12 @@ type JailTemplateInstantiationTaskResponse struct {
 	Outcome    string `json:"outcome"`
 }
 
-func jailTemplateErrorCode(err error) string {
-	if err == nil {
-		return ""
-	}
-
-	code := strings.ToLower(strings.TrimSpace(err.Error()))
-	if idx := strings.IndexByte(code, ':'); idx >= 0 {
-		code = code[:idx]
-	}
-	return strings.TrimSpace(code)
-}
-
 func jailTemplatePreflightStatusCode(err error) int {
 	if err == nil {
 		return http.StatusBadRequest
 	}
 
-	switch jailTemplateErrorCode(err) {
+	switch utils.ErrorCode(err) {
 	case "replication_lease_not_owned":
 		return http.StatusForbidden
 	case "guest_identity_inventory_unavailable",
@@ -112,7 +101,7 @@ func jailTemplatePreflightStatusCode(err error) int {
 	case "guest_identity_inventory_scan_failed", "replication_lease_check_failed":
 		return http.StatusInternalServerError
 	}
-	if strings.HasPrefix(jailTemplateErrorCode(err), "failed_to_") {
+	if strings.HasPrefix(utils.ErrorCode(err), "failed_to_") {
 		return http.StatusInternalServerError
 	}
 
@@ -179,7 +168,7 @@ func GetJailTemplateByID(jailService jailTemplateService) gin.HandlerFunc {
 
 		template, err := jailService.GetJailTemplate(uint(templateID))
 		if err != nil {
-			if jailTemplateErrorCode(err) == "template_not_found" {
+			if utils.ErrorCode(err) == "template_not_found" {
 				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "template_not_found",
@@ -498,7 +487,7 @@ func DeleteJailTemplate(jailService jailTemplateService, lifecycleService jailTe
 
 		if err := jailService.DeleteJailTemplate(c.Request.Context(), uint(templateID)); err != nil {
 			status := http.StatusInternalServerError
-			switch jailTemplateErrorCode(err) {
+			switch utils.ErrorCode(err) {
 			case "template_not_found":
 				status = http.StatusNotFound
 			case "jail_template_in_use":

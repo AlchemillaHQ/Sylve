@@ -58,8 +58,3 @@ export interface BootstrapRequest {
 	minor: number;
 	type: string;
 }
-
-export interface SupportedBootstrapVersion {
-	major: number;
-	minor: number;
-}

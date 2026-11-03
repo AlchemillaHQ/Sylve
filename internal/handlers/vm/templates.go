@@ -21,6 +21,7 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -59,24 +60,12 @@ type VMTemplateInstantiationTaskResponse struct {
 	Outcome    string `json:"outcome"`
 }
 
-func vmTemplateErrorCode(err error) string {
-	if err == nil {
-		return ""
-	}
-
-	code := strings.ToLower(strings.TrimSpace(err.Error()))
-	if idx := strings.IndexByte(code, ':'); idx >= 0 {
-		code = code[:idx]
-	}
-	return strings.TrimSpace(code)
-}
-
 func vmTemplatePreflightStatusCode(err error) int {
 	if err == nil {
 		return http.StatusBadRequest
 	}
 
-	switch vmTemplateErrorCode(err) {
+	switch utils.ErrorCode(err) {
 	case "replication_lease_not_owned":
 		return http.StatusForbidden
 	case "guest_identity_inventory_unavailable",
@@ -113,7 +102,7 @@ func vmTemplatePreflightStatusCode(err error) int {
 		return http.StatusInternalServerError
 	}
 
-	if strings.HasPrefix(vmTemplateErrorCode(err), "failed_to_") {
+	if strings.HasPrefix(utils.ErrorCode(err), "failed_to_") {
 		return http.StatusInternalServerError
 	}
 	return http.StatusBadRequest
@@ -498,7 +487,7 @@ func DeleteVMTemplate(libvirtService vmTemplateService, lifecycleService vmTempl
 
 		if err := libvirtService.DeleteVMTemplate(c.Request.Context(), uint(templateID)); err != nil {
 			status := http.StatusInternalServerError
-			if vmTemplateErrorCode(err) == "template_not_found" {
+			if utils.ErrorCode(err) == "template_not_found" {
 				status = http.StatusNotFound
 			}
 

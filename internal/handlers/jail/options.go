@@ -105,15 +105,6 @@ func jailOptionErrorCodes(err error) map[string]struct{} {
 	return codes
 }
 
-func jailOptionHasErrorCode(codes map[string]struct{}, candidates ...string) bool {
-	for _, candidate := range candidates {
-		if _, ok := codes[candidate]; ok {
-			return true
-		}
-	}
-	return false
-}
-
 func firstJailOptionErrorCode(err error) string {
 	if err == nil {
 		return "internal_server_error"
@@ -138,23 +129,23 @@ func classifyJailOptionError(err error) (int, string) {
 
 	codes := jailOptionErrorCodes(err)
 	switch {
-	case jailOptionHasErrorCode(codes,
+	case utils.HasErrorCode(codes,
 		"invalid_request", "invalid_ct_id", "ctid_must_be_positive",
 		"start_order_must_be_greater_than_or_equal_to_0", "exec_timeout_out_of_range",
 		"invalid_jail_allowed_options",
 		"invalid_jail_metadata", "invalid_lifecycle_hooks", "lifecycle_hook_script_required",
 		"reserved_jail_option_marker"):
 		return http.StatusBadRequest, firstJailOptionErrorCode(err)
-	case jailOptionHasErrorCode(codes, "replication_lease_not_owned"):
+	case utils.HasErrorCode(codes, "replication_lease_not_owned"):
 		return http.StatusForbidden, "replication_lease_not_owned"
-	case jailOptionHasErrorCode(codes, "jail_not_found"):
+	case utils.HasErrorCode(codes, "jail_not_found"):
 		return http.StatusNotFound, "jail_not_found"
-	case jailOptionHasErrorCode(codes,
+	case utils.HasErrorCode(codes,
 		"restore_in_progress", "jail_config_not_found",
 		"jail_option_config_conflict", "jail_lifecycle_hook_conflict",
 		"jail_dataset_mountpoint_not_usable"):
 		return http.StatusConflict, firstJailOptionErrorCode(err)
-	case jailOptionHasErrorCode(codes, "devfs_management_disabled", "devfs_service_unavailable"):
+	case utils.HasErrorCode(codes, "devfs_management_disabled", "devfs_service_unavailable"):
 		return http.StatusServiceUnavailable, firstJailOptionErrorCode(err)
 	default:
 		return http.StatusInternalServerError, "internal_server_error"

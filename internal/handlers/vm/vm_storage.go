@@ -31,41 +31,6 @@ type vmStorageService interface {
 	StorageUpdate(req libvirtServiceInterfaces.StorageUpdateRequest, ctx context.Context) (*vmModels.Storage, error)
 }
 
-func vmStorageErrorCodes(err error) map[string]struct{} {
-	codes := make(map[string]struct{})
-	if err == nil {
-		return codes
-	}
-
-	for _, part := range strings.Split(strings.ToLower(err.Error()), ":") {
-		if code := strings.TrimSpace(part); code != "" {
-			codes[code] = struct{}{}
-		}
-	}
-	return codes
-}
-
-func vmStorageErrorHasCode(codes map[string]struct{}, candidates ...string) bool {
-	for _, candidate := range candidates {
-		if _, ok := codes[candidate]; ok {
-			return true
-		}
-	}
-	return false
-}
-
-func vmStorageErrorCode(err error) string {
-	if err == nil {
-		return ""
-	}
-
-	code := strings.ToLower(strings.TrimSpace(err.Error()))
-	if idx := strings.IndexByte(code, ':'); idx >= 0 {
-		code = code[:idx]
-	}
-	return strings.TrimSpace(code)
-}
-
 func vmStorageErrorStatus(err error) int {
 	if err == nil {
 		return http.StatusInternalServerError
@@ -74,14 +39,14 @@ func vmStorageErrorStatus(err error) int {
 		return http.StatusNotFound
 	}
 
-	codes := vmStorageErrorCodes(err)
+	codes := utils.ErrorCodes(err)
 	switch {
-	case vmStorageErrorHasCode(codes,
+	case utils.HasErrorCode(codes,
 		"libvirt_not_initialized", "libvirt_connection_unavailable", "gzfs_not_initialized",
 		"system_service_not_initialized", "db_not_initialized", "failed_to_check_vm_shutoff",
 		"failed_to_lookup_domain_by_name", "failed_to_get_domain_state"):
 		return http.StatusServiceUnavailable
-	case vmStorageErrorHasCode(codes,
+	case utils.HasErrorCode(codes,
 		"invalid_request", "invalid_rid", "invalid_storage_id", "invalid_storage_name",
 		"invalid_storage_type", "invalid_storage_emulation", "invalid_storage_attach_type",
 		"invalid_attach_type_for_filesystem_storage", "invalid_attach_type_for_image_storage",
@@ -94,14 +59,14 @@ func vmStorageErrorStatus(err error) int {
 		"unsafe_disk_image_backing_chain", "target_size_too_small",
 		"invalid_source_virtual_size"):
 		return http.StatusBadRequest
-	case vmStorageErrorHasCode(codes, "replication_lease_not_owned"):
+	case utils.HasErrorCode(codes, "replication_lease_not_owned"):
 		return http.StatusForbidden
-	case vmStorageErrorHasCode(codes,
+	case utils.HasErrorCode(codes,
 		"vm_not_found", "storage_not_found", "pool_not_found", "raw_path_does_not_exist",
 		"zvol_dataset_not_found", "filesystem_dataset_not_found", "download_not_found",
 		"source_file_missing", "target_zvol_dataset_not_found", "zvol_dataset_not_found_in_pool"):
 		return http.StatusNotFound
-	case vmStorageErrorHasCode(codes,
+	case utils.HasErrorCode(codes,
 		"replication_storage_topology_change_requires_policy_disabled",
 		"replication_run_in_progress", "download_not_ready",
 		"domain_state_not_shutoff", "boot_order_index_already_in_use",
@@ -121,7 +86,7 @@ func vmStorageErrorStatus(err error) int {
 func writeVMStorageError(c *gin.Context, fallbackMessage string, err error) {
 	status := vmStorageErrorStatus(err)
 	message := fallbackMessage
-	if code := vmStorageErrorCode(err); status != http.StatusInternalServerError && code != "" {
+	if code := utils.ErrorCode(err); status != http.StatusInternalServerError && code != "" {
 		message = code
 	}
 

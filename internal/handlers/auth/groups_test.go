@@ -170,16 +170,6 @@ func TestCreateGroupHandlerMissingMembers(t *testing.T) {
 	}
 }
 
-func TestDeleteGroupHandlerMissingID(t *testing.T) {
-	svc := newTestAuthServiceForGroups(t)
-	router := setupGroupRouter(svc)
-
-	w := performGroupJSON(t, router, "DELETE", "/auth/groups/", nil)
-	if w.Code != http.StatusNotFound && w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 404 or 400, got %d", w.Code)
-	}
-}
-
 func TestDeleteGroupHandlerInvalidID(t *testing.T) {
 	svc := newTestAuthServiceForGroups(t)
 	router := setupGroupRouter(svc)

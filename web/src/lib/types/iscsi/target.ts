@@ -9,8 +9,6 @@ export const ISCSITargetPortalSchema = z.object({
 	updatedAt: z.string()
 });
 
-export type ISCSITargetPortal = z.infer<typeof ISCSITargetPortalSchema>;
-
 export const ISCSITargetLUNSchema = z.object({
 	id: z.number(),
 	targetId: z.number(),
@@ -19,8 +17,6 @@ export const ISCSITargetLUNSchema = z.object({
 	createdAt: z.string(),
 	updatedAt: z.string()
 });
-
-export type ISCSITargetLUN = z.infer<typeof ISCSITargetLUNSchema>;
 
 export const ISCSITargetSchema = z.object({
 	id: z.number(),

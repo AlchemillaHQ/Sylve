@@ -759,29 +759,6 @@ func appendJailCreateCleanupWarning(warnings *[]string, ctid uint, code string, 
 	*warnings = append(*warnings, message)
 }
 
-func uniqueUintValues(values []uint) []uint {
-	if len(values) == 0 {
-		return []uint{}
-	}
-
-	seen := make(map[uint]struct{}, len(values))
-	out := make([]uint, 0, len(values))
-	for _, value := range values {
-		if value == 0 {
-			continue
-		}
-
-		if _, exists := seen[value]; exists {
-			continue
-		}
-
-		seen[value] = struct{}{}
-		out = append(out, value)
-	}
-
-	return out
-}
-
 func (s *Service) hasStaleJailRootDatasetForCreate(ctx context.Context, ctid uint) (bool, error) {
 	if s.System == nil {
 		return false, fmt.Errorf("system_service_not_initialized")
@@ -842,7 +819,7 @@ func (s *Service) validateNoStaleJailCreateArtifacts(ctx context.Context, ctid u
 }
 
 func (s *Service) cleanupAutoCreatedJailCreateObjects(ctid uint, autoCreatedIDs []uint, warnings *[]string) {
-	for _, objID := range uniqueUintValues(autoCreatedIDs) {
+	for _, objID := range utils.UniqueIDs(autoCreatedIDs) {
 		if s.NetworkService != nil {
 			used, _, err := s.NetworkService.IsObjectUsed(objID)
 			if err != nil {
@@ -1729,7 +1706,7 @@ func (s *Service) loadJailDeletePlan(ctx context.Context, ctID uint) (jailDelete
 		Pluck("mac_id", &plan.macIDs).Error; err != nil {
 		return plan, fmt.Errorf("failed_to_collect_jail_mac_ids_for_delete: %w", err)
 	}
-	plan.macIDs = uniqueUintValues(plan.macIDs)
+	plan.macIDs = utils.UniqueIDs(plan.macIDs)
 	sort.Slice(plan.macIDs, func(i, j int) bool { return plan.macIDs[i] < plan.macIDs[j] })
 
 	var networkIDs []uint

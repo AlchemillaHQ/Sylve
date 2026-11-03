@@ -70,8 +70,6 @@ export interface CreateData {
 		qemuGuestAgent: boolean;
 	};
 }
-
-export type VMStorageType = 'raw' | 'zvol' | 'image' | 'filesystem';
 export type VMStorageEmulationType = 'virtio-blk' | 'virtio-9p' | 'ahci-hd' | 'ahci-cd' | 'nvme';
 
 export const VMStorageDatasetSchema = z.object({
@@ -348,8 +346,6 @@ export type VMLogs = z.infer<typeof VMLogsSchema>;
 export type SimpleVm = z.infer<typeof SimpleVmSchema>;
 export type SimpleVmTemplate = z.infer<typeof SimpleVmTemplateSchema>;
 export type VMTemplate = z.infer<typeof VMTemplateSchema>;
-export type VMTemplateStorage = z.infer<typeof VMTemplateStorageSchema>;
-export type VMTemplateNetwork = z.infer<typeof VMTemplateNetworkSchema>;
 export type QGAInfo = z.infer<typeof QGAInfoSchema>;
 export type VMLifecycleAction = 'start' | 'stop' | 'shutdown' | 'reboot';
 export type VMLifecycleBadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';

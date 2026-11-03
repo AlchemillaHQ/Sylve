@@ -130,7 +130,6 @@ export const PackageDetailsSchema = z.object({
 });
 
 export type JailPackage = z.infer<typeof JailPackageSchema>;
-export type PackageAudit = z.infer<typeof PackageAuditSchema>;
 export type PackageJob = z.infer<typeof PackageJobSchema>;
 export type PackageView = z.infer<typeof PackageViewSchema>;
 export type PackageMonitoring = z.infer<typeof PackageMonitoringSchema>;

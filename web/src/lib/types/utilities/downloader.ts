@@ -112,7 +112,6 @@ export type DownloadStartResult = z.infer<typeof DownloadStartResultSchema>;
 export type DownloadDeleteResult = z.infer<typeof DownloadDeleteResultSchema>;
 export type SignedDownloadURLResult = z.infer<typeof SignedDownloadURLResultSchema>;
 export type DetectFilenameResult = z.infer<typeof DetectFilenameResultSchema>;
-export type DownloadedFile = z.infer<typeof DownloadedFileSchema>;
 export type UTypeGroupedDownload = z.infer<typeof UTypeGroupedDownloadSchema>;
 export type DownloaderUploadCompletion = z.infer<typeof DownloaderUploadCompletionSchema>;
 export type DownloaderUploadAbort = z.infer<typeof DownloaderUploadAbortSchema>;

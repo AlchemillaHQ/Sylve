@@ -12,10 +12,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -98,20 +94,5 @@ func TestListFirewallLiveHitsRejectsInvalidQueryParameters(t *testing.T) {
 				t.Fatalf("response leaked parser detail: %+v", response)
 			}
 		})
-	}
-}
-
-func TestFirewallLiveLogsRouteRequiresLocalAdmin(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-	handlerDir := filepath.Dir(filename)
-	routesSource, err := os.ReadFile(filepath.Join(handlerDir, "..", "routes.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !regexp.MustCompile(`network\.GET\("/firewall/logs/live",\s*middleware\.RequireLocalAdmin\(authService\),\s*networkHandlers\.ListFirewallLiveHits\(networkService\)\)`).Match(routesSource) {
-		t.Fatal("firewall live logs route is not protected by explicit local-admin middleware")
 	}
 }

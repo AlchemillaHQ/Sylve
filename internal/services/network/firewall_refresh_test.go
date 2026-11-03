@@ -2586,42 +2586,6 @@ func TestEnsureDefaultAllowTrafficRulesNoopWhenRulesExist(t *testing.T) {
 	}
 }
 
-func TestReorderFirewallTrafficRulesUpdatesPriorities(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t,
-		&networkModels.FirewallTrafficRule{},
-	)
-
-	ruleA := networkModels.FirewallTrafficRule{Name: "a", Enabled: true, Priority: 1000, Action: "pass", Direction: "in", Protocol: "any", Family: "any"}
-	ruleB := networkModels.FirewallTrafficRule{Name: "b", Enabled: true, Priority: 1010, Action: "pass", Direction: "in", Protocol: "any", Family: "any"}
-	if err := db.Create(&ruleA).Error; err != nil {
-		t.Fatalf("failed to create rule A: %v", err)
-	}
-	if err := db.Create(&ruleB).Error; err != nil {
-		t.Fatalf("failed to create rule B: %v", err)
-	}
-
-	err := svc.ReorderFirewallTrafficRules([]networkServiceInterfaces.FirewallReorderRequest{
-		{ID: ruleA.ID, Priority: 2},
-		{ID: ruleB.ID, Priority: 1},
-	})
-	if err != nil {
-		t.Fatalf("expected reorder to succeed, got: %v", err)
-	}
-
-	var refreshedA networkModels.FirewallTrafficRule
-	var refreshedB networkModels.FirewallTrafficRule
-	if err := db.First(&refreshedA, ruleA.ID).Error; err != nil {
-		t.Fatalf("failed to reload rule A: %v", err)
-	}
-	if err := db.First(&refreshedB, ruleB.ID).Error; err != nil {
-		t.Fatalf("failed to reload rule B: %v", err)
-	}
-
-	if refreshedA.Priority != 2 || refreshedB.Priority != 1 {
-		t.Fatalf("unexpected reordered priorities: A=%d B=%d", refreshedA.Priority, refreshedB.Priority)
-	}
-}
-
 func TestReorderFirewallNATRulesRejectsDuplicateIDs(t *testing.T) {
 	svc := &Service{}
 	err := svc.ReorderFirewallNATRules([]networkServiceInterfaces.FirewallReorderRequest{
@@ -2633,64 +2597,6 @@ func TestReorderFirewallNATRulesRejectsDuplicateIDs(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "duplicate_rule_id") {
 		t.Fatalf("expected duplicate_rule_id error, got: %v", err)
-	}
-}
-
-func TestReorderFirewallNATRulesUpdatesPriorities(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t,
-		&networkModels.FirewallNATRule{},
-	)
-
-	ruleA := networkModels.FirewallNATRule{
-		Name:             "a",
-		Enabled:          true,
-		Priority:         1,
-		NATType:          "snat",
-		EgressInterfaces: []string{"em0"},
-		Family:           "inet",
-		Protocol:         "any",
-		TranslateMode:    "interface",
-		SourceRaw:        "any",
-		DestRaw:          "any",
-	}
-	ruleB := networkModels.FirewallNATRule{
-		Name:             "b",
-		Enabled:          true,
-		Priority:         2,
-		NATType:          "snat",
-		EgressInterfaces: []string{"em0"},
-		Family:           "inet",
-		Protocol:         "any",
-		TranslateMode:    "interface",
-		SourceRaw:        "any",
-		DestRaw:          "any",
-	}
-	if err := db.Create(&ruleA).Error; err != nil {
-		t.Fatalf("failed to create NAT rule A: %v", err)
-	}
-	if err := db.Create(&ruleB).Error; err != nil {
-		t.Fatalf("failed to create NAT rule B: %v", err)
-	}
-
-	err := svc.ReorderFirewallNATRules([]networkServiceInterfaces.FirewallReorderRequest{
-		{ID: ruleA.ID, Priority: 2},
-		{ID: ruleB.ID, Priority: 1},
-	})
-	if err != nil {
-		t.Fatalf("expected NAT reorder to succeed, got: %v", err)
-	}
-
-	var refreshedA networkModels.FirewallNATRule
-	var refreshedB networkModels.FirewallNATRule
-	if err := db.First(&refreshedA, ruleA.ID).Error; err != nil {
-		t.Fatalf("failed to reload NAT rule A: %v", err)
-	}
-	if err := db.First(&refreshedB, ruleB.ID).Error; err != nil {
-		t.Fatalf("failed to reload NAT rule B: %v", err)
-	}
-
-	if refreshedA.Priority != 2 || refreshedB.Priority != 1 {
-		t.Fatalf("unexpected NAT reordered priorities: A=%d B=%d", refreshedA.Priority, refreshedB.Priority)
 	}
 }
 

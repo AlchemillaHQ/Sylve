@@ -95,15 +95,6 @@ func vmOptionErrorCodeSet(err error) map[string]struct{} {
 	return codes
 }
 
-func vmOptionHasErrorCode(codes map[string]struct{}, candidates ...string) bool {
-	for _, candidate := range candidates {
-		if _, ok := codes[candidate]; ok {
-			return true
-		}
-	}
-	return false
-}
-
 func vmOptionHasErrorCodePrefix(codes map[string]struct{}, prefix string) bool {
 	for code := range codes {
 		if strings.HasPrefix(code, prefix) {
@@ -128,7 +119,7 @@ func classifyVMOptionError(err error) (int, string) {
 
 	codes := vmOptionErrorCodeSet(err)
 	switch {
-	case vmOptionHasErrorCode(codes,
+	case utils.HasErrorCode(codes,
 		"invalid_request", "invalid_rid", "invalid_vm_rid", "rid_must_be_positive",
 		"invalid_time_offset", "invalid_boot_rom", "uefi_firmware_not_available_on_arm64",
 		"csmwrap_requires_two_vcpus", "csmwrap_only_available_on_amd64", "csmwrap_pci_slot_in_use",
@@ -139,15 +130,15 @@ func classifyVMOptionError(err error) (int, string) {
 		"too_many_extra_bhyve_options", "extra_bhyve_option_too_long",
 		"extra_bhyve_options_too_large", "invalid_extra_bhyve_option"):
 		return http.StatusBadRequest, firstVMOptionErrorCode(err)
-	case vmOptionHasErrorCode(codes, "replication_lease_not_owned"):
+	case utils.HasErrorCode(codes, "replication_lease_not_owned"):
 		return http.StatusForbidden, "replication_lease_not_owned"
-	case vmOptionHasErrorCode(codes, "vm_not_found"):
+	case utils.HasErrorCode(codes, "vm_not_found"):
 		return http.StatusNotFound, "vm_not_found"
-	case vmOptionHasErrorCode(codes,
+	case utils.HasErrorCode(codes,
 		"domain_state_not_shutoff", "qemu_guest_agent_disabled", "qga_requires_running_vm",
 		"filesystem_dataset_mountpoint_not_usable"):
 		return http.StatusConflict, firstVMOptionErrorCode(err)
-	case vmOptionHasErrorCode(codes,
+	case utils.HasErrorCode(codes,
 		"libvirt_not_initialized", "libvirt_connection_unavailable",
 		"failed_to_check_vm_shutoff", "failed_to_lookup_domain_by_name",
 		"failed_to_get_domain_state", "failed_to_get_domain_xml_desc",
@@ -200,7 +191,7 @@ func handleVMOptionMutationResult(c *gin.Context, successMessage string, err err
 		writeVMOptionSuccess(c, successMessage)
 		return
 	}
-	if vmOptionHasErrorCode(vmOptionErrorCodeSet(err), "no_changes_detected") {
+	if utils.HasErrorCode(vmOptionErrorCodeSet(err), "no_changes_detected") {
 		writeVMOptionSuccess(c, "no_changes_detected")
 		return
 	}

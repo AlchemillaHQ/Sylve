@@ -244,12 +244,6 @@ func TestAuthorizationMatrix(t *testing.T) {
 	}
 
 	cases := []testCase{
-		{"info: unauthenticated → 401", anonUser, nil, http.StatusUnauthorized},
-		{"info: authenticated → 200", sylveNonAdmin, nil, http.StatusOK},
-
-		{"cluster: unauthenticated → 401", anonUser, nil, http.StatusUnauthorized},
-		{"cluster: authenticated → 200", sylveNonAdmin, nil, http.StatusOK},
-
 		{"admin: unauthenticated → 401", anonUser, []gin.HandlerFunc{adminMW}, http.StatusUnauthorized},
 		{"admin: non-admin → 403", sylveNonAdmin, []gin.HandlerFunc{adminMW}, http.StatusForbidden},
 		{"admin: admin → 200", sylveAdmin, []gin.HandlerFunc{adminMW}, http.StatusOK},

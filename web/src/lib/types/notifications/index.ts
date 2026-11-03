@@ -113,7 +113,6 @@ export type NotificationsCount = z.infer<typeof NotificationsCountSchema>;
 export type NotificationsDismissAll = z.infer<typeof NotificationsDismissAllSchema>;
 export type NotificationConfig = z.infer<typeof NotificationConfigSchema>;
 export type NotificationRule = z.infer<typeof NotificationRuleSchema>;
-export type NotificationRuleTemplateTarget = z.infer<typeof NotificationRuleTemplateTargetSchema>;
 export type NotificationRuleTemplate = z.infer<typeof NotificationRuleTemplateSchema>;
 export type NotificationRulesConfig = z.infer<typeof NotificationRulesConfigSchema>;
 
@@ -142,21 +141,6 @@ export type NotificationTransportInput = {
 	discord: {
 		webhookUrl?: string;
 	} | null;
-};
-
-export type UpdateNotificationRulesInput = {
-	rules: Array<{
-		id?: number;
-		kind: string;
-		pool?: string;
-		templateKey?: string;
-		targetKey?: string;
-		uiEnabled: boolean;
-		ntfyEnabled: boolean;
-		pushoverEnabled: boolean;
-		emailEnabled: boolean;
-		discordEnabled: boolean;
-	}>;
 };
 
 export type CreateNotificationRuleInput = {

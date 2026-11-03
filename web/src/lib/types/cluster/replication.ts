@@ -98,7 +98,6 @@ export type ReplicationGuestType = z.infer<typeof ReplicationGuestTypeSchema>;
 export type ReplicationSourceMode = z.infer<typeof ReplicationSourceModeSchema>;
 export type ReplicationFailbackMode = z.infer<typeof ReplicationFailbackModeSchema>;
 export type ReplicationFailoverMode = z.infer<typeof ReplicationFailoverModeSchema>;
-export type ReplicationPolicyTarget = z.infer<typeof ReplicationPolicyTargetSchema>;
 export type ReplicationPolicy = z.infer<typeof ReplicationPolicySchema>;
 export type ReplicationEvent = z.infer<typeof ReplicationEventSchema>;
 export type ReplicationEventProgress = z.infer<typeof ReplicationEventProgressSchema>;

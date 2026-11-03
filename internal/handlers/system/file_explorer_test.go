@@ -495,25 +495,6 @@ func TestFileExplorerCopyOrMoveMapsMissingAndConflictingTargets(t *testing.T) {
 	}
 }
 
-func TestFileExplorerCopyOrMoveRouteIsBoundedAndSingleRouteIsRemoved(t *testing.T) {
-	routes, err := os.ReadFile("../routes.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	source := string(routes)
-	limitIndex := strings.Index(source, "fileExplorerCore.Use(middleware.LimitRequestBody")
-	batchIndex := strings.Index(source, `fileExplorerCore.POST("/copy-or-move-batch"`)
-	if limitIndex < 0 || batchIndex < 0 || limitIndex > batchIndex {
-		t.Fatalf("bounded core route ordering missing: limit=%d batch=%d", limitIndex, batchIndex)
-	}
-	if strings.Contains(source, `POST("/copy-or-move"`) {
-		t.Fatal("unused single copy-or-move route is still registered")
-	}
-	if strings.Contains(source, `fileExplorerTransfer.POST("/copy-or-move`) {
-		t.Fatal("copy-or-move JSON route must not bypass the bounded core group")
-	}
-}
-
 func TestFileExplorerErrorStatus(t *testing.T) {
 	tests := []struct {
 		err        error

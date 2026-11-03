@@ -72,17 +72,6 @@ export async function getPoolsResponse(all?: boolean, hostname?: string): Promis
 	};
 }
 
-export async function getPoolsDiskUsage(options?: NodeAPIDataRequestOptions): Promise<number> {
-	const response = await apiRequestData(
-		'/zfs/pools/disks-usage',
-		PoolsDiskUsageSchema,
-		'GET',
-		undefined,
-		options
-	);
-	return response.usage;
-}
-
 export async function getPoolsDiskUsageFull(
 	options?: NodeAPIDataRequestOptions
 ): Promise<PoolsDiskUsage> {
@@ -226,26 +215,6 @@ export async function getZFSDashboardSnapshot(
 	return await apiRequestData(
 		'/zfs/dashboard/snapshot',
 		ZFSDashboardSnapshotSchema,
-		'GET',
-		undefined,
-		options
-	);
-}
-
-export async function getZFSDashboardHistoryDelta(
-	poolAfter: number,
-	arcAfter: number,
-	poolGuid = '',
-	options?: NodeAPIDataRequestOptions
-): Promise<ZFSDashboardHistory> {
-	const query = new URLSearchParams({
-		poolAfter: poolAfter.toString(),
-		arcAfter: arcAfter.toString()
-	});
-	if (poolGuid) query.set('poolGuid', poolGuid);
-	return await apiRequestData(
-		`/zfs/dashboard/history/delta?${query.toString()}`,
-		ZFSDashboardHistorySchema,
 		'GET',
 		undefined,
 		options

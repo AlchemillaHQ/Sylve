@@ -40,18 +40,6 @@ export async function getDatasetsResult(
 	);
 }
 
-export async function deleteSnapshot(
-	snapshot: Dataset,
-	recursive: boolean = false
-): Promise<APIResponse> {
-	const query = new URLSearchParams({ name: snapshot.name, recursive: String(recursive) });
-	return await apiRequestResult(
-		`/zfs/datasets/snapshot/${snapshot.guid}?${query.toString()}`,
-		APIResponseSchema,
-		'DELETE'
-	);
-}
-
 export async function createSnapshot(
 	dataset: Dataset,
 	name: string,
@@ -136,14 +124,6 @@ export async function modifyPeriodicSnapshot(
 	);
 }
 
-export async function deletePeriodicSnapshot(id: number): Promise<APIResponse> {
-	return await apiRequestResult(
-		`/zfs/datasets/snapshot/periodic/${id}`,
-		APIResponseSchema,
-		'DELETE'
-	);
-}
-
 export async function bulkDeletePeriodicSnapshots(ids: number[]): Promise<APIResponse> {
 	return await apiRequestResult('/zfs/datasets/snapshot/periodic', APIResponseSchema, 'DELETE', {
 		ids
@@ -176,18 +156,6 @@ export async function deleteFileSystem(dataset: Dataset): Promise<APIResponse> {
 		`/zfs/datasets/filesystem/${dataset.guid}`,
 		APIResponseSchema,
 		'DELETE'
-	);
-}
-
-export async function rollbackSnapshot(snapshot: Dataset): Promise<APIResponse> {
-	return await apiRequestResult(
-		`/zfs/datasets/snapshot/${snapshot.guid}/rollback`,
-		APIResponseSchema,
-		'POST',
-		{
-			name: snapshot.name,
-			destroyMoreRecent: true
-		}
 	);
 }
 

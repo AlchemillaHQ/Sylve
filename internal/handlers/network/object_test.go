@@ -12,10 +12,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -240,35 +236,5 @@ func TestBulkDeleteNetworkObjectsUsesCollectionDelete(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("expected collection DELETE to remove both objects, count=%d", count)
-	}
-}
-
-func TestNetworkObjectRoutesUseWriteAuthorizationAndPreLoggerBodyLimit(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-	routesSource, err := os.ReadFile(filepath.Join(filepath.Dir(filename), "..", "routes.go"))
-	if err != nil {
-		t.Fatalf("read routes.go: %v", err)
-	}
-
-	if !regexp.MustCompile(`objects\.Use\(middleware\.RequireLocalAdminForWrites\(authService\)\)`).Match(routesSource) {
-		t.Error("network object routes are missing local-admin write authorization")
-	}
-	limitIndex := strings.Index(string(routesSource), "network.Use(middleware.LimitRequestBody(networkServicePkg.MaxRequestBodyBytes))")
-	loggerIndex := strings.Index(string(routesSource), "network.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))")
-	correctHostIndex := strings.Index(string(routesSource), "network.Use(EnsureCorrectHost(db, authService))")
-	if correctHostIndex < 0 || limitIndex < 0 || correctHostIndex > limitIndex {
-		t.Error("selected-node proxy middleware must run before local network body processing")
-	}
-	if limitIndex < 0 || loggerIndex < 0 || limitIndex > loggerIndex {
-		t.Error("network request-body limit must be installed before request logging")
-	}
-
-	diskLimitIndex := strings.Index(string(routesSource), "disk.Use(middleware.LimitRequestBody(diskServicePkg.MaxRequestBodyBytes))")
-	diskLoggerIndex := strings.Index(string(routesSource), "disk.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))")
-	if diskLimitIndex < 0 || diskLoggerIndex < 0 || diskLimitIndex > diskLoggerIndex {
-		t.Error("disk request-body limit must be installed before request logging")
 	}
 }

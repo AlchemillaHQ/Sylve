@@ -57,15 +57,6 @@ func jailNetworkErrorCodes(err error) map[string]struct{} {
 	return codes
 }
 
-func jailNetworkErrorHasCode(codes map[string]struct{}, candidates ...string) bool {
-	for _, candidate := range candidates {
-		if _, ok := codes[candidate]; ok {
-			return true
-		}
-	}
-	return false
-}
-
 func jailNetworkErrorStatus(err error) int {
 	if err == nil {
 		return http.StatusInternalServerError
@@ -76,11 +67,11 @@ func jailNetworkErrorStatus(err error) int {
 
 	codes := jailNetworkErrorCodes(err)
 	switch {
-	case jailNetworkErrorHasCode(codes,
+	case utils.HasErrorCode(codes,
 		"db_not_initialized", "network_service_unavailable", "jail_network_service_unavailable",
 		"failed_to_inspect_manual_switch_vlan_state", "unfiltered_switch_runtime_inspection_failed"):
 		return http.StatusServiceUnavailable
-	case jailNetworkErrorHasCode(codes,
+	case utils.HasErrorCode(codes,
 		"invalid_request", "invalid_request_data", "invalid_ct_id", "invalid_network_id",
 		"network_name_required", "invalid_network_name", "switch_name_required", "invalid_mac",
 		"invalid_ip4_cidr_not_assignable", "invalid_ip6_cidr_not_assignable",
@@ -90,12 +81,12 @@ func jailNetworkErrorStatus(err error) int {
 		"cannot_set_dhcp_or_slaac_when_linux_jail", "vlan_policy_requires_switch",
 		"vlan_policy_requires_filtered_switch", "filtered_switch_vlan_policy_required", "invalid_vlan_policy"):
 		return http.StatusBadRequest
-	case jailNetworkErrorHasCode(codes, "replication_lease_not_owned"):
+	case utils.HasErrorCode(codes, "replication_lease_not_owned"):
 		return http.StatusForbidden
-	case jailNetworkErrorHasCode(codes,
+	case utils.HasErrorCode(codes,
 		"jail_not_found", "network_not_found", "switch_not_found", "network_object_not_found"):
 		return http.StatusNotFound
-	case jailNetworkErrorHasCode(codes,
+	case utils.HasErrorCode(codes,
 		"restore_in_progress", "jail_network_change_requires_inactive",
 		"cannot_add_network_when_inheriting_network", "cannot_edit_network_when_inheriting_network",
 		"jail_network_name_exists", "jail_default_gateway_exists", "network_object_already_used",

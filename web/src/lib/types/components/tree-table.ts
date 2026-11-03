@@ -29,5 +29,3 @@ export interface TreeTableState {
 	expandedRows: Record<string | number, boolean>;
 	hiddenColumns: Record<string, boolean>;
 }
-
-export type ExpandedRows = Record<number, boolean>;

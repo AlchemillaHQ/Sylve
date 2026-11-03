@@ -16,6 +16,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -32,20 +33,8 @@ type jailBootstrapService interface {
 	) (jailServiceInterfaces.BootstrapDeleteResult, error)
 }
 
-func bootstrapErrorCode(err error) string {
-	if err == nil {
-		return ""
-	}
-
-	code := strings.ToLower(strings.TrimSpace(err.Error()))
-	if idx := strings.IndexByte(code, ':'); idx >= 0 {
-		code = code[:idx]
-	}
-	return strings.TrimSpace(code)
-}
-
 func bootstrapErrorStatus(err error) int {
-	switch bootstrapErrorCode(err) {
+	switch utils.ErrorCode(err) {
 	case "invalid_bootstrap_pool",
 		"invalid_bootstrap_name",
 		"unsupported_bootstrap_type",
@@ -99,7 +88,7 @@ func ListBootstraps(jailService jailBootstrapService) gin.HandlerFunc {
 
 		entries, err := jailService.ListBootstraps(c.Request.Context(), pool)
 		if err != nil {
-			code := bootstrapErrorCode(err)
+			code := utils.ErrorCode(err)
 			c.JSON(bootstrapErrorStatus(err), internal.APIResponse[any]{
 				Status:  "error",
 				Message: code,
@@ -151,7 +140,7 @@ func DeleteBootstrap(jailService jailBootstrapService) gin.HandlerFunc {
 
 		result, err := jailService.DeleteBootstrap(c.Request.Context(), pool, name)
 		if err != nil {
-			code := bootstrapErrorCode(err)
+			code := utils.ErrorCode(err)
 			c.JSON(bootstrapErrorStatus(err), internal.APIResponse[any]{
 				Status:  "error",
 				Message: code,
@@ -203,7 +192,7 @@ func CreateBootstrap(jailService jailBootstrapService) gin.HandlerFunc {
 
 		result, err := jailService.CreateBootstrap(c.Request.Context(), req)
 		if err != nil {
-			code := bootstrapErrorCode(err)
+			code := utils.ErrorCode(err)
 			c.JSON(bootstrapErrorStatus(err), internal.APIResponse[any]{
 				Status:  "error",
 				Message: code,

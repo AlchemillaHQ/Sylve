@@ -296,21 +296,6 @@ func TestRunBackupJobSetsNextRunAtOnCompletion(t *testing.T) {
 	}
 }
 
-func TestRunBackupJobCreatesEventOnStart(t *testing.T) {
-	svc := newRunBackupJobTestDB(t)
-	seedBackupTarget(t, svc.DB, 1, "t1")
-	job := seedAndLoadJob(t, svc.DB, 107, "event-test", "dataset", 1, "tank/data")
-
-	err := svc.runBackupJob(context.Background(), &job)
-	_ = err
-
-	var events []clusterModels.BackupEvent
-	svc.DB.Where("job_id = ?", 107).Find(&events)
-	if len(events) != 0 {
-		t.Logf("found %d events for job 107", len(events))
-	}
-}
-
 func TestRunBackupJobVMInvalidRID(t *testing.T) {
 	svc := newRunBackupJobTestDB(t)
 	seedBackupTarget(t, svc.DB, 1, "t1")
@@ -439,17 +424,6 @@ func TestRunBackupJobVMStopBeforeBackupInvalidRID(t *testing.T) {
 	err := svc.runBackupJob(context.Background(), &loaded)
 	if err == nil {
 		t.Fatal("expected error for VM backup without VM service")
-	}
-}
-
-func TestResolveVMBackupSourceDatasetsNilVM(t *testing.T) {
-	svc := &Service{VM: nil, DB: nil}
-	sources, err := svc.resolveVMBackupSourceDatasets(context.Background(), 42, "zroot/virtual-machines/42")
-	if err == nil {
-		t.Logf("resolveVMBackupSourceDatasets with nil VM/DB returned %v sources (no error)", len(sources))
-		return
-	} else {
-		t.Logf("resolveVMBackupSourceDatasets returned error (expected): %v", err)
 	}
 }
 

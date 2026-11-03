@@ -345,7 +345,6 @@ export type JailStorage = z.infer<typeof JailStorageSchema>;
 export type JailRootMountPoint = z.infer<typeof JailRootMountPointSchema>;
 export type JailNetwork = z.infer<typeof NetworkSchema>;
 export type JailNetworkInheritanceResult = z.infer<typeof JailNetworkInheritanceResultSchema>;
-export type JailHook = z.infer<typeof JailHookSchema>;
 export type JailTemplate = z.infer<typeof JailTemplateSchema>;
 export type JailTemplateCaptureTaskResponse = z.infer<typeof JailTemplateCaptureTaskResponseSchema>;
 export type JailTemplateInstantiationTaskResponse = z.infer<

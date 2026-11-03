@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -29,41 +28,6 @@ type vmNetworkService interface {
 	NetworkUpdate(req libvirtServiceInterfaces.NetworkUpdateRequest, ctx context.Context) (*vmModels.Network, error)
 }
 
-func vmNetworkErrorCodes(err error) map[string]struct{} {
-	codes := make(map[string]struct{})
-	if err == nil {
-		return codes
-	}
-
-	for _, part := range strings.Split(strings.ToLower(err.Error()), ":") {
-		if code := strings.TrimSpace(part); code != "" {
-			codes[code] = struct{}{}
-		}
-	}
-	return codes
-}
-
-func vmNetworkErrorHasCode(codes map[string]struct{}, candidates ...string) bool {
-	for _, candidate := range candidates {
-		if _, ok := codes[candidate]; ok {
-			return true
-		}
-	}
-	return false
-}
-
-func vmNetworkErrorCode(err error) string {
-	if err == nil {
-		return ""
-	}
-
-	code := strings.ToLower(strings.TrimSpace(err.Error()))
-	if idx := strings.IndexByte(code, ':'); idx >= 0 {
-		code = code[:idx]
-	}
-	return strings.TrimSpace(code)
-}
-
 func vmNetworkErrorStatus(err error) int {
 	if err == nil {
 		return http.StatusInternalServerError
@@ -72,26 +36,26 @@ func vmNetworkErrorStatus(err error) int {
 		return http.StatusNotFound
 	}
 
-	codes := vmNetworkErrorCodes(err)
+	codes := utils.ErrorCodes(err)
 	switch {
-	case vmNetworkErrorHasCode(codes,
+	case utils.HasErrorCode(codes,
 		"libvirt_not_initialized", "libvirt_connection_unavailable", "db_not_initialized",
 		"failed_to_check_vm_shutoff", "failed_to_lookup_domain_by_name",
 		"failed_to_lookup_domain", "failed_to_get_domain_state",
 		"failed_to_inspect_manual_switch_vlan_state", "unfiltered_switch_runtime_inspection_failed"):
 		return http.StatusServiceUnavailable
-	case vmNetworkErrorHasCode(codes,
+	case utils.HasErrorCode(codes,
 		"invalid_request", "invalid_rid", "invalid_vm_rid", "invalid_network_id",
 		"invalid_switch_name", "invalid_emulation_type", "invalid_mac_object_type",
 		"invalid_mac_address", "mac_object_has_no_entries", "mac_object_has_multiple_entries",
 		"network_mac_address_missing", "empty_network_update"):
 		return http.StatusBadRequest
-	case vmNetworkErrorHasCode(codes, "replication_lease_not_owned"):
+	case utils.HasErrorCode(codes, "replication_lease_not_owned"):
 		return http.StatusForbidden
-	case vmNetworkErrorHasCode(codes,
+	case utils.HasErrorCode(codes,
 		"vm_not_found", "network_not_found", "switch_not_found", "mac_object_not_found"):
 		return http.StatusNotFound
-	case vmNetworkErrorHasCode(codes,
+	case utils.HasErrorCode(codes,
 		"domain_state_not_shutoff", "vm_is_active", "mac_object_already_in_use",
 		"mac_address_already_in_use", "filesystem_dataset_mountpoint_not_usable",
 		"filtered_switch_vm_default_access_vlan_required", "filtered_switch_qinq_unsupported",
@@ -106,7 +70,7 @@ func vmNetworkErrorStatus(err error) int {
 func writeVMNetworkError(c *gin.Context, fallbackMessage string, err error) {
 	status := vmNetworkErrorStatus(err)
 	message := fallbackMessage
-	if code := vmNetworkErrorCode(err); status != http.StatusInternalServerError && code != "" {
+	if code := utils.ErrorCode(err); status != http.StatusInternalServerError && code != "" {
 		message = code
 	}
 

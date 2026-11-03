@@ -291,38 +291,6 @@ func TestAdvanceBackupJobScheduleAfterRestorePreventsImmediateBackup(t *testing.
 	}
 }
 
-func TestRunBackupSchedulerTickCatchesUpStalledJob(t *testing.T) {
-	svc := newSchedulerTestDB(t)
-
-	target := clusterModels.BackupTarget{ID: 1, Name: "t1", SSHHost: "localhost", BackupRoot: "/backup"}
-	if err := svc.DB.Create(&target).Error; err != nil {
-		t.Fatalf("failed to seed target: %v", err)
-	}
-
-	nextRun := time.Now().UTC().Add(1 * time.Hour)
-	lastRun := time.Now().UTC().Add(-26 * time.Hour)
-	job := clusterModels.BackupJob{
-		ID: 4, Name: "stalled-job", TargetID: 1, Mode: "dataset",
-		CronExpr: "0 0 * * *", Enabled: true,
-		NextRunAt: &nextRun, LastRunAt: &lastRun,
-	}
-	if err := svc.DB.Create(&job).Error; err != nil {
-		t.Fatalf("failed to seed job: %v", err)
-	}
-
-	svc.DB = nil
-	if err := svc.runBackupSchedulerTick(context.Background()); err != nil {
-		t.Fatalf("tick with nil DB should not error: %v", err)
-	}
-
-	svc.DB = testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{})
-	svc.DB.Create(&target)
-	svc.DB.Create(&job)
-	if job.LastRunAt == nil || time.Since(*job.LastRunAt).Hours() < 24 {
-		t.Skip("stall age not reached; run at a later wall clock")
-	}
-}
-
 func TestRunBackupSchedulerTickSkipsCatchUpWindowJob(t *testing.T) {
 	svc := newSchedulerTestDB(t)
 
@@ -349,38 +317,6 @@ func TestRunBackupSchedulerTickSkipsCatchUpWindowJob(t *testing.T) {
 	if updated.NextRunAt == nil {
 		t.Fatal("expected NextRunAt to be advanced past catch-up")
 	}
-}
-
-func TestRunBackupSchedulerTickEnqueuesDueJob(t *testing.T) {
-	svc := newSchedulerTestDB(t)
-
-	target := clusterModels.BackupTarget{ID: 1, Name: "t1", SSHHost: "localhost", BackupRoot: "/backup"}
-	if err := svc.DB.Create(&target).Error; err != nil {
-		t.Fatalf("failed to seed target: %v", err)
-	}
-
-	now := time.Now().UTC()
-	minuteAgo := now.Add(-1 * time.Minute)
-	job := clusterModels.BackupJob{
-		ID: 6, Name: "due-job", TargetID: 1, Mode: "dataset",
-		CronExpr: "* * * * *", Enabled: true, NextRunAt: &minuteAgo,
-	}
-	if err := svc.DB.Create(&job).Error; err != nil {
-		t.Fatalf("failed to seed job: %v", err)
-	}
-
-	svc.DB = nil
-	if err := svc.runBackupSchedulerTick(context.Background()); err != nil {
-		t.Fatalf("tick with nil DB should return nil: %v", err)
-	}
-
-	svc.DB = testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{})
-	svc.DB.Create(&target)
-	svc.DB.Create(&job)
-	if time.Until(*job.NextRunAt) > 0 {
-		t.Fatal("job is not due yet")
-	}
-	_ = now
 }
 
 func TestAcquireWorkloadOperation(t *testing.T) {

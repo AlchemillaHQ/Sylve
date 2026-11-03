@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
@@ -34,18 +33,6 @@ type jailSnapshotService interface {
 	DeleteJailSnapshot(ctx context.Context, ctID uint, snapshotID uint) error
 }
 
-func jailSnapshotErrorCode(err error) string {
-	if err == nil {
-		return ""
-	}
-
-	code := strings.ToLower(strings.TrimSpace(err.Error()))
-	if idx := strings.IndexByte(code, ':'); idx >= 0 {
-		code = code[:idx]
-	}
-	return strings.TrimSpace(code)
-}
-
 func jailSnapshotErrorStatus(err error) int {
 	if err == nil {
 		return http.StatusInternalServerError
@@ -54,7 +41,7 @@ func jailSnapshotErrorStatus(err error) int {
 		return http.StatusNotFound
 	}
 
-	switch jailSnapshotErrorCode(err) {
+	switch utils.ErrorCode(err) {
 	case "invalid_request", "invalid_ct_id", "invalid_snapshot_name", "snapshot_name_required",
 		"snapshot_name_too_long", "snapshot_description_too_long":
 		return http.StatusBadRequest
@@ -98,7 +85,7 @@ func jailSnapshotErrorResponse(err error, fallbackMessage string) (int, string) 
 	status := jailSnapshotErrorStatus(err)
 	message := fallbackMessage
 	if status != http.StatusInternalServerError {
-		if code := jailSnapshotErrorCode(err); code != "" {
+		if code := utils.ErrorCode(err); code != "" {
 			message = code
 		}
 	}

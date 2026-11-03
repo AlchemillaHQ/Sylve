@@ -1070,7 +1070,7 @@ func (s *Service) restoreVMDatabaseFromSnapshotConfig(
 		return fmt.Errorf("failed_to_commit_snapshot_reconciliation: %w", err)
 	}
 
-	for _, datasetID := range uniqueUintValues(previousDatasetIDs) {
+	for _, datasetID := range utils.UniqueIDs(previousDatasetIDs) {
 		var refCount int64
 		if err := s.DB.Model(&vmModels.Storage{}).Where("dataset_id = ?", datasetID).Count(&refCount).Error; err != nil {
 			return fmt.Errorf("failed_to_count_vm_storage_dataset_references: %w", err)

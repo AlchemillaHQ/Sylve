@@ -1,6 +1,5 @@
 import type { Column, Row } from '$lib/types/components/tree-table';
 import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
-import type { VM } from '$lib/types/vm/vm';
 import type { CellComponent } from 'tabulator-tables';
 import { generateNumberFromString } from '../numbers';
 import { renderWithIcon } from '../table';
@@ -45,24 +44,6 @@ export function buildPassablePCI(
 	}
 
 	return passable;
-}
-
-export function buildPptIdToVMsMap(vms: VM[]): Map<number, VM[]> {
-	const byPptId = new Map<number, VM[]>();
-
-	for (const vm of vms) {
-		if (!Array.isArray(vm.pciDevices)) continue;
-		for (const pptId of vm.pciDevices) {
-			const list = byPptId.get(pptId);
-			if (list) {
-				list.push(vm);
-			} else {
-				byPptId.set(pptId, [vm]);
-			}
-		}
-	}
-
-	return byPptId;
 }
 
 function getPassthroughStatus(device: PCIDevice, pptDevices: PPTDevice[]): string {
@@ -225,9 +206,4 @@ export function generateTableData(
 
 export function getPCIDeviceId(device: PCIDevice): string {
 	return `pci${device.domain}:${device.bus}:${device.device}:${device['function']}`;
-}
-
-export function getPPTDeviceId(device: PCIDevice, pptDevices: PPTDevice[]): number {
-	const pptDevice = findPPTDevice(device, pptDevices);
-	return pptDevice?.id || 0;
 }

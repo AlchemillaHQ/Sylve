@@ -132,23 +132,6 @@ export const DiskSchema = z.object({
 	partitions: z.array(PartitionSchema).default([])
 });
 
-export const DiskActionSchema = z.object({
-	device: z.string()
-});
-
-export const SmartSelfTestKindSchema = z.enum([
-	'offline',
-	'default',
-	'short',
-	'extended',
-	'conveyance',
-	'selective',
-	'short_captive',
-	'extended_captive',
-	'conveyance_captive',
-	'selective_captive'
-]);
-
 export const SmartSelfTestStartKindSchema = z.enum(['short', 'extended', 'conveyance']);
 
 export const SmartSelfTestCapabilitiesSchema = z.object({
@@ -257,18 +240,13 @@ export type SmartAttribute = Record<
 	string,
 	string | number | boolean | Record<string, string | number | boolean>
 >;
-
-export type DeviceInfo = z.infer<typeof DeviceInfoSchema>;
-export type ATASmartAttribute = z.infer<typeof ATASmartAttributeSchema>;
 export type SmartData = z.infer<typeof SmartDataSchema>;
 export type SmartNVMe = z.infer<typeof SmartNVMeSchema>;
 export type Disk = z.infer<typeof DiskSchema>;
 export type Partition = z.infer<typeof PartitionSchema>;
-export type SmartSelfTestKind = z.infer<typeof SmartSelfTestKindSchema>;
 export type SmartSelfTestStartKind = z.infer<typeof SmartSelfTestStartKindSchema>;
 export type SmartSelfTestCapabilities = z.infer<typeof SmartSelfTestCapabilitiesSchema>;
 export type SmartSelfTestResult = z.infer<typeof SmartSelfTestResultSchema>;
-export type SmartSelfTestStatus = z.infer<typeof SmartSelfTestStatusSchema>;
 export type SmartSelfTestDetails = z.infer<typeof SmartSelfTestDetailsSchema>;
 export type SmartSelfTestScheduleType = z.infer<typeof SmartSelfTestScheduleTypeSchema>;
 export type SmartSelfTestSchedule = z.infer<typeof SmartSelfTestScheduleSchema>;

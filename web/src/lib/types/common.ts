@@ -42,37 +42,12 @@ export function parseGuestDeletionData(value: unknown): GuestDeletionData {
 	return parsed.success ? parsed.data : { warnings: [], retainedDatasets: [] };
 }
 
-export interface HistoricalBase {
-	id?: number | string;
-	createdAt?: string | Date;
-	[key: string]: number | string | Date | undefined;
-}
-
-export interface HistoricalData {
-	date: Date;
-	[key: string]: number | string | Date;
-}
-
-export interface PieChartData {
-	label: string;
-	value: number;
-	color: string;
-}
-
 export interface SeriesData {
 	name: string;
 	value: number;
 }
 
-export interface SeriesDataWithBaseline {
-	name: string;
-	baseline: number;
-	value: number;
-}
-
 export type APIResponse = z.infer<typeof APIResponseSchema>;
 export type GuestDeletionData = z.infer<typeof GuestDeletionDataSchema>;
-export type GuestDeletionResponse = z.infer<typeof GuestDeletionResponseSchema>;
 export type Locales = 'en' | 'mal' | 'hi' | 'zh-CN' | 'de' | 'cs';
 export type GFSStep = z.infer<typeof GFSStepSchema>;
-export type StatsHistoryState = z.infer<typeof StatsHistoryStateSchema>;

@@ -295,17 +295,6 @@ export async function cachedFetch<T>(
 	return data;
 }
 
-export async function getCache<T>(key: string, hostname?: string): Promise<T | null> {
-	const scopedKey = getScopedCacheKey(key, hostname);
-	try {
-		const entry = await kvStorage.getItem<T>(scopedKey);
-		return entry?.data ?? null;
-	} catch (error) {
-		console.error(`Failed to read cached data for key "${scopedKey}"`, error);
-		return null;
-	}
-}
-
 export async function updateCache<T>(key: string, obj: T, hostname?: string): Promise<void> {
 	const scopedKey = getScopedCacheKey(key, hostname);
 	try {

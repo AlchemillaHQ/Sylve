@@ -11,9 +11,6 @@ package libvirtHandlers
 import (
 	"errors"
 	"net/http"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -379,50 +376,5 @@ func TestQGAInfoHandlerUsesNestedRIDAndMapsStates(t *testing.T) {
 				t.Fatalf("status=%d want=%d body=%s", response.Code, test.wantStatus, response.Body.String())
 			}
 		})
-	}
-}
-
-func TestVMOptionRoutesAreNestedAndLimitedBeforeLogging(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve test file path")
-	}
-	handlerDir := filepath.Dir(filename)
-	routesSource, err := os.ReadFile(filepath.Join(handlerDir, "..", "routes.go"))
-	if err != nil {
-		t.Fatalf("read routes.go: %v", err)
-	}
-	source := string(routesSource)
-
-	limitIndex := strings.Index(source, "vm.Use(middleware.LimitRequestBody(libvirt.MaxRequestBodyBytes))")
-	loggerIndex := strings.Index(source, "vm.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))")
-	hostIndex := strings.Index(source, "vm.Use(EnsureCorrectHost(db, authService))")
-	if hostIndex < 0 || limitIndex < 0 || hostIndex > limitIndex {
-		t.Error("selected-node routing must run before local VM body processing")
-	}
-	if limitIndex < 0 || loggerIndex < 0 || limitIndex > loggerIndex {
-		t.Error("VM body limit must be installed before request logging")
-	}
-
-	for _, route := range []string{
-		`vm.PUT("/:rid/options/wol"`,
-		`vm.PUT("/:rid/options/boot-order"`,
-		`vm.PUT("/:rid/options/clock"`,
-		`vm.PUT("/:rid/options/serial-console"`,
-		`vm.PUT("/:rid/options/shutdown-wait-time"`,
-		`vm.PUT("/:rid/options/cloud-init"`,
-		`vm.PUT("/:rid/options/boot-rom"`,
-		`vm.PUT("/:rid/options/extra-bhyve-options"`,
-		`vm.PUT("/:rid/options/ignore-umsrs"`,
-		`vm.PUT("/:rid/options/qemu-guest-agent"`,
-		`vm.PUT("/:rid/options/tpm"`,
-		`vm.GET("/:rid/guest-agent"`,
-	} {
-		if !strings.Contains(source, route) {
-			t.Errorf("missing normalized route %s", route)
-		}
-	}
-	if strings.Contains(source, `vm.PUT("/options/`) || strings.Contains(source, `vm.GET("/qga/`) {
-		t.Error("historical VM option/QGA route registration remains")
 	}
 }

@@ -110,15 +110,3 @@ export function epochToLocal(seconds: number | string): string {
 	const date = fromUnixTime(typeof seconds === 'string' ? parseInt(seconds) : seconds);
 	return format(date, 'yyyy-MM-dd hh:mm a');
 }
-
-export function snapNameToDate(name: string): string {
-	const parts = name.match(/\d+/g);
-	if (parts && parts.length === 6) {
-		const [year, month, day, hour, minute, second] = parts.map(Number);
-		const utcDate = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
-		return utcDate.toLocaleString();
-	} else {
-		console.error('Invalid backup string format');
-		return name;
-	}
-}

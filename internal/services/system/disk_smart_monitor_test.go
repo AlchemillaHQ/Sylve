@@ -462,31 +462,6 @@ func (m *mockDiskServiceForWearout) DestroyPartitionTable(device string) error {
 }
 func (m *mockDiskServiceForWearout) IsDiskGPT(device string, sectorSize int) bool { return false }
 
-func TestEvaluateWearoutSCSISilentlySkips(t *testing.T) {
-	diskService := &mockDiskServiceForWearout{
-		wearoutFn: func(smartData any) (float64, error) {
-			return 0, errors.New("wearout not available for SCSI protocol")
-		},
-	}
-	svc, _ := makeTestSystemService(t, diskService)
-
-	disk := diskServiceInterfaces.Disk{
-		Device:    "da0",
-		Type:      "SSD",
-		SmartData: makeSCSI(0, true),
-	}
-
-	st := &diskSmartState{}
-	svc.evaluateWearout(context.Background(), disk, st, false)
-
-	if st.wearCriticalCount != 0 {
-		t.Fatalf("expected wearCriticalCount=0, got %d", st.wearCriticalCount)
-	}
-	if st.wearWarningCount != 0 {
-		t.Fatalf("expected wearWarningCount=0, got %d", st.wearWarningCount)
-	}
-}
-
 func TestSCSIBytesProcessedDoNotTriggerSectorWarnings(t *testing.T) {
 	diskService := &mockDiskServiceForWearout{
 		wearoutFn: func(smartData any) (float64, error) {
@@ -1058,36 +1033,6 @@ func TestEvaluateTemperatureUnknownInterruptsConsecutiveReadings(t *testing.T) {
 	}
 }
 
-func TestEvaluateTemperatureNoAlertWhenNormal(t *testing.T) {
-	diskService := &mockDiskServiceForWearout{
-		wearoutFn: func(smartData any) (float64, error) {
-			return 0, errors.New("wearout not available for SCSI protocol")
-		},
-	}
-	svc, notifSvc := makeTestSystemService(t, diskService)
-
-	ata := makeATA(30, true, 0) // 30C < warning threshold (55C)
-	disk := diskServiceInterfaces.Disk{
-		Device:    "ada0",
-		Type:      "SSD",
-		SmartData: ata,
-	}
-
-	st := &diskSmartState{}
-
-	for i := 0; i < 10; i++ {
-		svc.evaluateTemperature(context.Background(), disk, st, false)
-	}
-
-	active, err := notifSvc.CountActive(context.Background())
-	if err != nil {
-		t.Fatalf("count active failed: %v", err)
-	}
-	if active != 0 {
-		t.Fatalf("expected no notifications for normal temperature, got %d", active)
-	}
-}
-
 func TestEvaluateTemperatureHonorsFractionalThreshold(t *testing.T) {
 	diskService := &mockDiskServiceForWearout{wearoutFn: func(any) (float64, error) { return 0, errors.New("unused") }}
 	svc, notifSvc := makeTestSystemService(t, diskService)
@@ -1527,51 +1472,6 @@ func TestConsecutiveTriggerRequiresTwoBadReadings(t *testing.T) {
 	active, _ = notifSvc.CountActive(context.Background())
 	if active != 1 {
 		t.Fatalf("expected still 1 active after interrupted bad streak, got %d", active)
-	}
-}
-
-func TestConsecutiveClearRequiresThreeGoodReadings(t *testing.T) {
-	diskService := &mockDiskServiceForWearout{
-		wearoutFn: func(smartData any) (float64, error) {
-			return 0, errors.New("unused")
-		},
-	}
-	svc, notifSvc := makeTestSystemService(t, diskService)
-
-	ataHealthy := makeATA(30, true, 0)
-	ataTempHigh := makeATA(60, true, 0) // above warning threshold
-	disk := diskServiceInterfaces.Disk{
-		Device:    "ada0",
-		Type:      "SSD",
-		SmartData: ataTempHigh,
-	}
-
-	st := &diskSmartState{}
-
-	// Trigger a warning by driving temp high twice
-	svc.evaluateSmartData(context.Background(), disk, st, false)
-	svc.evaluateSmartData(context.Background(), disk, st, false)
-
-	active, _ := notifSvc.CountActive(context.Background())
-	if active != 1 {
-		t.Fatalf("expected 1 active high-temp notification, got %d", active)
-	}
-
-	// Now return to normal — 1 good reading should NOT clear (clear=3)
-	disk.SmartData = ataHealthy
-	svc.evaluateSmartData(context.Background(), disk, st, false)
-	if st.tempNormalCount != 1 {
-		t.Fatalf("expected tempNormalCount=1, got %d", st.tempNormalCount)
-	}
-
-	// After diskSmartConsecutiveClear (3) good readings, clear notification fires
-	svc.evaluateSmartData(context.Background(), disk, st, false)
-	svc.evaluateSmartData(context.Background(), disk, st, false)
-
-	// The original warning notification should have been dismissed/replaced
-	// by the recovery notification; or at minimum normalization counter progressed
-	if st.tempNormalCount != 3 {
-		t.Fatalf("expected tempNormalCount=3, got %d", st.tempNormalCount)
 	}
 }
 

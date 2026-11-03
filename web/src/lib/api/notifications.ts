@@ -23,8 +23,7 @@ import {
 	type NotificationsDismissAll,
 	type NotificationsList,
 	type CreateNotificationRuleInput,
-	type UpdateNotificationRuleInput,
-	type UpdateNotificationRulesInput
+	type UpdateNotificationRuleInput
 } from '$lib/types/notifications';
 import { apiRequestData, apiRequestResult } from '$lib/utils/http';
 
@@ -95,17 +94,6 @@ export async function testNotificationTransport(id: number): Promise<APIResponse
 
 export async function getNotificationRules(): Promise<NotificationRulesConfig | APIResponse> {
 	return await apiRequestResult('/notifications/rules', NotificationRulesConfigSchema, 'GET');
-}
-
-export async function updateNotificationRules(
-	payload: UpdateNotificationRulesInput
-): Promise<NotificationRulesConfig | APIResponse> {
-	return await apiRequestResult(
-		'/notifications/rules',
-		NotificationRulesConfigSchema,
-		'PUT',
-		payload
-	);
 }
 
 export async function createNotificationRule(

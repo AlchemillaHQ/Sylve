@@ -34,21 +34,12 @@ func extractZeltaToTemp(t *testing.T) string {
 	return dir
 }
 
-func TestZeltaBinaryExtractsAndRuns(t *testing.T) {
+func TestZeltaBinaryExtracts(t *testing.T) {
 	dir := extractZeltaToTemp(t)
 
 	bin := filepath.Join(dir, "bin", "zelta")
 	if _, err := os.Stat(bin); err != nil {
 		t.Fatalf("zelta binary not found at %s: %v", bin, err)
-	}
-
-	cmd := exec.Command(bin, "--help")
-	cmd.Env = append(os.Environ(),
-		"ZELTA_SHARE="+filepath.Join(dir, "share", "zelta"),
-	)
-	out, _ := cmd.CombinedOutput()
-	if len(out) == 0 && cmd.ProcessState != nil && !cmd.ProcessState.Success() {
-		t.Logf("zelta --help produced no output but ran (exit: %d)", cmd.ProcessState.ExitCode())
 	}
 }
 
@@ -229,73 +220,6 @@ BEGIN {
 			t.Fatalf("command %d changed policy, paths, or input: %v\nwant=%q\ngot=%q", i, err, expected.String(), output)
 		}
 	}
-}
-
-func TestIntegrationZeltaBackupWithEphemeralZFS(t *testing.T) {
-	zfstest.SkipIfUnavailable(t)
-
-	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
-	defer cleanup()
-
-	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/data")
-	ctx := context.Background()
-
-	zfsBin, err := exec.LookPath("zfs")
-	if err != nil {
-		t.Fatalf("could not find zfs binary: %v", err)
-	}
-
-	setProp := exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/source")
-	if out, err := setProp.CombinedOutput(); err != nil {
-		t.Fatalf("zfs set mountpoint=legacy: %v\noutput: %s", err, string(out))
-	}
-	setProp = exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/source/data")
-	if out, err := setProp.CombinedOutput(); err != nil {
-		t.Fatalf("zfs set mountpoint=legacy data: %v\noutput: %s", err, string(out))
-	}
-
-	zeltaDir := extractZeltaToTemp(t)
-	zeltaBin := filepath.Join(zeltaDir, "bin", "zelta")
-
-	zeltaShare := filepath.Join(zeltaDir, "share", "zelta")
-	snapName := "bk_" + time.Now().UTC().Format("2006-01-02_15.04.05")
-
-	cmd := exec.CommandContext(ctx, zeltaBin,
-		"snapshot",
-		"--snap-name", snapName,
-		poolName+"/source/data",
-	)
-	cmd.Env = append(os.Environ(),
-		"ZELTA_SHARE="+zeltaShare,
-		"PATH="+filepath.Join(zeltaDir, "bin")+":"+os.Getenv("PATH"),
-	)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("zelta snapshot failed: %v\noutput: %s", err, string(out))
-	}
-	t.Logf("zelta snapshot output: %s", strings.TrimSpace(string(out)))
-
-	listSnaps := exec.CommandContext(ctx, zfsBin, "list", "-H", "-o", "name", "-t", "snapshot", "-r", poolName+"/source")
-	snapOut, err := listSnaps.CombinedOutput()
-	if err != nil {
-		t.Fatalf("zfs list snapshots failed: %v", err)
-	}
-	snapLines := strings.Split(strings.TrimSpace(string(snapOut)), "\n")
-	found := false
-	for _, line := range snapLines {
-		if strings.Contains(line, snapName) {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("snapshot %s not found in:\n%s", snapName, string(snapOut))
-	}
-
-	zfstest.EnsureDataset(t, gzfsClient, poolName+"/target")
-	setProp = exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/target")
-	setProp.CombinedOutput()
-	_ = gzfsClient
 }
 
 func TestIntegrationRunBackupJobWithEmbeddedZelta(t *testing.T) {

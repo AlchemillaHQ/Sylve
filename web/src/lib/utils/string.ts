@@ -8,7 +8,6 @@
  * under sponsorship from the FreeBSD Foundation.
  */
 
-import { getIcon, loadIcon } from '@iconify/svelte';
 import { sha256 as nobleSha256 } from '@noble/hashes/sha2.js';
 import { customRandom, nanoid } from 'nanoid';
 import isEmail from 'validator/lib/isEmail';
@@ -28,22 +27,6 @@ export function capitalizeFirstLetter(str: string, firstOnly: boolean = false): 
 		.join(' ');
 }
 
-export function parseJwt(token: string) {
-	const base64Url = token.split('.')[1];
-	const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-	const jsonPayload = decodeURIComponent(
-		window
-			.atob(base64)
-			.split('')
-			.map(function (c) {
-				return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-			})
-			.join('')
-	);
-
-	return JSON.parse(jsonPayload);
-}
-
 export function shortenString(str: string, maxLength: number): string {
 	if (str.length <= maxLength) return str;
 	return str.slice(0, maxLength) + '...';
@@ -51,19 +34,6 @@ export function shortenString(str: string, maxLength: number): string {
 
 export function generatePassword(): string {
 	return new Mnemonic().toWords().slice(0, 6).join('-');
-}
-
-export async function iconToSVG(icon: string): Promise<string> {
-	await loadIcon(icon);
-	const i = getIcon(icon);
-	if (i) {
-		const { body, width, height, left, top } = i;
-		const viewBox = `${left} ${top} ${width} ${height}`;
-		const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${viewBox}">${body}</svg>`;
-		return svg;
-	}
-
-	return ''; // Ensure the function always returns a string
 }
 
 function seedRandom(seed: string): () => number {
@@ -197,14 +167,6 @@ export function isValidAbsPath(loc: string): boolean {
 	return loc.length > 0 && loc.startsWith('/');
 }
 
-export function isValidRawDisk(path: string): boolean {
-	if (path.endsWith('.img') || path.endsWith('.raw')) {
-		return true;
-	}
-
-	return false;
-}
-
 export function getPathParent(path: string): string {
 	if (typeof path !== 'string' || !path.trim()) return '';
 	const parts = path.split('/').filter(Boolean);
@@ -335,55 +297,10 @@ export function isValidPortNumber(port: number | string): boolean {
 	return port > 0 && port < 65536;
 }
 
-export function toBase64(input: string): string {
-	return btoa(String.fromCharCode(...new TextEncoder().encode(input)));
-}
-
-export function fromBase64(input: string): string {
-	const decoded = atob(input);
-	return new TextDecoder().decode(Uint8Array.from(decoded.split('').map((c) => c.charCodeAt(0))));
-}
-
 export function toHex(input: string): string {
 	return Array.from(new TextEncoder().encode(input))
 		.map((b) => b.toString(16).padStart(2, '0'))
 		.join('');
-}
-
-function encodeBase62Big(num: bigint, length: number): string {
-	const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-	if (num === 0n) return '0'.repeat(length);
-	let out = '';
-	while (num > 0n) {
-		out = alphabet[Number(num % 62n)] + out;
-		num /= 62n;
-	}
-	return out.padStart(length, '0').slice(-length);
-}
-
-function firstHexBytes(hex: string, n: number): Uint8Array {
-	const bytes = new Uint8Array(n);
-	const take = Math.min(n, Math.floor(hex.length / 2));
-	for (let i = 0; i < take; i++) {
-		bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-	}
-	return bytes;
-}
-
-export async function shortHash(input: string, rounds = 1): Promise<string> {
-	const hex = await sha256(input, rounds);
-	const first8 = firstHexBytes(hex, 8);
-	let num = 0n;
-	for (let i = 0; i < first8.length; i++) {
-		num = (num << 8n) + BigInt(first8[i]);
-	}
-	num >>= 16n;
-	return encodeBase62Big(num, 8);
-}
-
-export function parseBoolean(value: string | boolean): boolean {
-	if (typeof value === 'boolean') return value;
-	return value.toLowerCase() === 'true';
 }
 
 export function isValidDHCPDomain(domain: string): boolean {
@@ -397,51 +314,6 @@ export function isValidDHCPDomain(domain: string): boolean {
 
 function ipToNumber(ip: string): number {
 	return ip.split('.').reduce((acc, o) => acc * 256 + Number(o), 0) >>> 0;
-}
-
-function isContiguousMask(maskNum: number): boolean {
-	if (maskNum === 0) return false;
-	return (maskNum | (maskNum - 1)) >>> 0 === 0xffffffff;
-}
-
-export function ipMaskToCIDR(ip: string, mask: string, requireNetworkAddr = false): string | null {
-	if (!isValidIPv4(ip) || !isValidIPv4(mask)) return null;
-
-	const ipNum = ipToNumber(ip) >>> 0;
-	const maskNum = ipToNumber(mask) >>> 0;
-
-	if (!isContiguousMask(maskNum)) return null;
-	if (requireNetworkAddr && (ipNum & (~maskNum >>> 0)) >>> 0 !== 0) return null;
-
-	let cidr = 0;
-	let m = maskNum;
-	while (m & 0x80000000) {
-		cidr++;
-		m = (m << 1) >>> 0;
-	}
-
-	if (m !== 0) return null;
-
-	return `${ip}/${cidr}`;
-}
-
-export function isValidDHCPRange(startIp: string, endIp: string): boolean {
-	if (!isValidIPv4(startIp) || !isValidIPv4(endIp)) {
-		return false;
-	}
-
-	const start = ipToNumber(startIp);
-	const end = ipToNumber(endIp);
-
-	if (start >= end) {
-		return false;
-	}
-
-	if ((start & 0xff) === 0 || (end & 0xff) === 255) {
-		return false;
-	}
-
-	return true;
 }
 
 export function isValidIPv4Range(startIP: string, endIP: string, subnet: string): boolean {
@@ -588,11 +460,6 @@ export function escapeHTML(str: string): string {
 		.replace(/'/g, '&#39;')
 		.replace(/</g, '&lt;')
 		.replace(/>/g, '&gt;');
-}
-
-export function parseNumberOrZero(value: string): number {
-	const num = Number(value);
-	return isNaN(num) ? 0 : num;
 }
 
 export function stringToTextDownload(content: string, filename: string) {

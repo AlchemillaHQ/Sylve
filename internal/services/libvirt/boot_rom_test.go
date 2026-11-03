@@ -9,13 +9,11 @@
 package libvirt
 
 import (
-	"encoding/xml"
 	"runtime"
 	"strings"
 	"testing"
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 )
 
 func TestParseBootROMValue_EmptyDefaultsToUEFI(t *testing.T) {
@@ -162,21 +160,6 @@ func TestBuildBootROMLoader_UBootSinglePath(t *testing.T) {
 	}
 }
 
-func TestHostLibvirtArch(t *testing.T) {
-	got := hostLibvirtArch()
-
-	switch runtime.GOARCH {
-	case "amd64":
-		if got != "x86_64" {
-			t.Fatalf("hostLibvirtArch = %q, want x86_64", got)
-		}
-	case "arm64":
-		if got != "aarch64" {
-			t.Fatalf("hostLibvirtArch = %q, want aarch64", got)
-		}
-	}
-}
-
 func TestHostUsesSplitFirmware(t *testing.T) {
 	got := hostUsesSplitFirmware()
 
@@ -208,56 +191,5 @@ func TestBuildBootROMLoader_DefaultIsArchAware(t *testing.T) {
 		if loader.Path != ubootFirmwarePath {
 			t.Fatalf("arm64: expected uboot firmware path %q, got %q", ubootFirmwarePath, loader.Path)
 		}
-	}
-}
-
-func TestEnsureVMBootROMArtifacts_UBootSkipsVars(t *testing.T) {
-	s := &Service{}
-
-	// For ARM64 with uboot, ensureVMBootROMArtifacts should return nil
-	// without trying to create vars files
-	err := s.ensureVMBootROMArtifacts(100, vmModels.VMBootROMUBoot, "/tmp/nonexistent")
-	if err != nil {
-		t.Fatalf("ensureVMBootROMArtifacts with uboot should skip vars: %v", err)
-	}
-}
-
-func TestEnsureVMBootROMArtifacts_NoneSkips(t *testing.T) {
-	s := &Service{}
-
-	err := s.ensureVMBootROMArtifacts(100, vmModels.VMBootROMNone, "/tmp/nonexistent")
-	if err != nil {
-		t.Fatalf("ensureVMBootROMArtifacts with none should skip: %v", err)
-	}
-}
-
-func TestOSTypeXML(t *testing.T) {
-	// Verify OSType struct marshals correctly to the expected XML shape
-	os := libvirtServiceInterfaces.OS{
-		Type: libvirtServiceInterfaces.OSType{
-			Arch: "aarch64",
-			Text: "hvm",
-		},
-		Loader: &libvirtServiceInterfaces.Loader{
-			ReadOnly: "yes",
-			Type:     "pflash",
-			Path:     ubootFirmwarePath,
-		},
-	}
-
-	out, err := xml.Marshal(os)
-	if err != nil {
-		t.Fatalf("failed to marshal OS: %v", err)
-	}
-
-	xmlStr := string(out)
-	if !strings.Contains(xmlStr, `arch="aarch64"`) {
-		t.Fatalf("expected arch=\"aarch64\" in XML, got: %s", xmlStr)
-	}
-	if !strings.Contains(xmlStr, "hvm") {
-		t.Fatalf("expected hvm in XML, got: %s", xmlStr)
-	}
-	if !strings.Contains(xmlStr, ubootFirmwarePath) {
-		t.Fatalf("expected uboot firmware path in XML, got: %s", xmlStr)
 	}
 }

@@ -9,11 +9,7 @@
 package zelta
 
 import (
-	"bytes"
 	"context"
-	"database/sql"
-	"encoding/gob"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -23,7 +19,6 @@ import (
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	_ "github.com/mattn/go-sqlite3"
-	"maragu.dev/goqite"
 )
 
 type fullBackupJailStub struct {
@@ -51,112 +46,6 @@ type fullBackupVMStub struct {
 
 func (fullBackupVMStub) WriteVMJson(uint) error {
 	return nil
-}
-
-type queueJobMessage struct {
-	Name    string
-	Message []byte
-}
-
-const goqiteSchema = `
-create table if not exists goqite (
-  id text primary key default ('m_' || lower(hex(randomblob(16)))),
-  created text not null default (strftime('%Y-%m-%dT%H:%M:%fZ')),
-  updated text not null default (strftime('%Y-%m-%dT%H:%M:%fZ')),
-  queue text not null,
-  body blob not null,
-  timeout text not null default (strftime('%Y-%m-%dT%H:%M:%fZ')),
-  received integer not null default 0,
-  priority integer not null default 0
-) strict;
-`
-
-type goqiteTestHarness struct {
-	db  *sql.DB
-	dir string
-}
-
-func newGoqiteHarness(t *testing.T) *goqiteTestHarness {
-	t.Helper()
-	dir := t.TempDir()
-	dbPath := dir + "/queue.db"
-	d, err := sql.Open("sqlite3", dbPath+"?_journal=WAL&_timeout=5000&_fk=true")
-	if err != nil {
-		t.Fatalf("failed to open goqite db: %v", err)
-	}
-	d.SetMaxOpenConns(1)
-	d.SetMaxIdleConns(1)
-	if _, err := d.Exec(goqiteSchema); err != nil {
-		t.Fatalf("failed to create goqite schema: %v", err)
-	}
-	return &goqiteTestHarness{db: d, dir: dir}
-}
-
-func (h *goqiteTestHarness) enqueue(ctx context.Context, name string, payload interface{}) error {
-	q := goqite.New(goqite.NewOpts{DB: h.db, Name: name})
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	var buf bytes.Buffer
-	if err := gob.NewEncoder(&buf).Encode(queueJobMessage{Name: name, Message: body}); err != nil {
-		return err
-	}
-	return q.Send(ctx, goqite.Message{Body: buf.Bytes()})
-}
-
-func (h *goqiteTestHarness) receive(ctx context.Context, name string) (*goqite.Message, string, error) {
-	q := goqite.New(goqite.NewOpts{DB: h.db, Name: name})
-	msg, err := q.Receive(ctx)
-	if err != nil {
-		return nil, "", err
-	}
-	if msg == nil {
-		return nil, "", nil
-	}
-	var jm queueJobMessage
-	if err := gob.NewDecoder(bytes.NewReader(msg.Body)).Decode(&jm); err != nil {
-		return msg, "", err
-	}
-	return msg, jm.Name, nil
-}
-
-func (h *goqiteTestHarness) deleteMsg(ctx context.Context, qName string, id goqite.ID) error {
-	q := goqite.New(goqite.NewOpts{DB: h.db, Name: qName})
-	return q.Delete(ctx, id)
-}
-
-func (h *goqiteTestHarness) close() {
-	if h.db != nil {
-		h.db.Close()
-	}
-}
-
-func TestGoqiteEnqueueAndReceive(t *testing.T) {
-	h := newGoqiteHarness(t)
-	defer h.close()
-
-	ctx := context.Background()
-	if err := h.enqueue(ctx, "jobs-zelta", backupJobPayload{JobID: 42}); err != nil {
-		t.Fatalf("enqueue failed: %v", err)
-	}
-
-	msg, msgName, err := h.receive(ctx, "jobs-zelta")
-	if err != nil {
-		t.Fatalf("receive failed: %v", err)
-	}
-	if msg == nil {
-		t.Fatal("received nil message")
-	}
-	if msgName != "" {
-		t.Logf("received message name: %q", msgName)
-	}
-	h.deleteMsg(ctx, "jobs-zelta", msg.ID)
-
-	var payload backupJobPayload
-	if err := json.Unmarshal(msg.Body[bytes.IndexByte(msg.Body, 0)+1:], &payload); err != nil {
-		_ = err
-	}
 }
 
 func newBackupServiceForIntegration(t *testing.T) *Service {
@@ -202,51 +91,6 @@ func TestRunBackupJobZeltaBinaryNotInstalled(t *testing.T) {
 	}
 	if updated.LastError == "" {
 		t.Fatal("expected LastError to be set")
-	}
-}
-
-func TestRunBackupJobZeltaBinaryNotFoundSetsFailure(t *testing.T) {
-	svc := newBackupServiceForIntegration(t)
-	seedBackupTarget(t, svc.DB, 1, "t1")
-	job := seedAndLoadJob(t, svc.DB, 201, "no-binary-fail", "dataset", 1, "tank/data")
-
-	ZeltaInstallDir = "/nonexistent/path"
-	t.Cleanup(func() { ZeltaInstallDir = "" })
-
-	err := svc.runBackupJob(context.Background(), &job)
-	if err == nil {
-		t.Fatal("expected error when zelta binary is missing")
-	}
-
-	updated := fetchJob(t, svc.DB, 201)
-	if updated.LastStatus != "failed" {
-		t.Fatalf("expected failed status when zelta not found, got %q", updated.LastStatus)
-	}
-	if updated.LastError == "" {
-		t.Fatal("expected LastError to be set")
-	}
-}
-
-func TestBackupJobWithZeltaBinaryIntegration(t *testing.T) {
-	svc := newBackupServiceForIntegration(t)
-	seedBackupTarget(t, svc.DB, 1, "t1")
-	job := seedAndLoadJob(t, svc.DB, 300, "integration-job", "dataset", 1, "tank/data")
-
-	ZeltaInstallDir = t.TempDir()
-	t.Cleanup(func() { ZeltaInstallDir = "" })
-
-	err := svc.runBackupJob(context.Background(), &job)
-	if err == nil {
-		t.Fatal("expected failure (no zelta binary)")
-	}
-
-	updated := fetchJob(t, svc.DB, 300)
-	if updated.LastStatus != "failed" {
-		t.Fatalf("expected failed status (no zelta binary), got %q with error %q",
-			updated.LastStatus, updated.LastError)
-	}
-	if !updated.LastRunAt.IsZero() && updated.LastError == "" {
-		t.Fatal("expected LastError when zelta binary fails to start")
 	}
 }
 

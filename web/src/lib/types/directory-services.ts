@@ -102,4 +102,3 @@ export const ADDiscoverySchema = z.object({
 	controllers: z.array(z.string()),
 	warning: z.string()
 });
-export type ADDiscovery = z.infer<typeof ADDiscoverySchema>;

@@ -136,10 +136,3 @@ export function randomPrivateIPv6Range(): string {
 
 	return `fd${h1}:${h2}${h3}:${h4}${h5}::1/48`;
 }
-
-export function generatePrivateRanges() {
-	return {
-		ipv4: randomPrivateIPv4Range(),
-		ipv6: randomPrivateIPv6Range()
-	};
-}

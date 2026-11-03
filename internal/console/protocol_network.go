@@ -152,6 +152,33 @@ type StandardSwitchEditRequest struct {
 	PortPolicies          *map[string]bridgevlan.PortPolicy `json:"portPolicies,omitempty"`
 }
 
+// HasChanges reports whether the request sets any field besides ID.
+func (r StandardSwitchEditRequest) HasChanges() bool {
+	return r.MTU != nil ||
+		r.VLAN != nil ||
+		r.Network4 != nil ||
+		r.Gateway4 != nil ||
+		r.Network6 != nil ||
+		r.Gateway6 != nil ||
+		r.Network4Manual != nil ||
+		r.Gateway4Manual != nil ||
+		r.Network6Manual != nil ||
+		r.Gateway6Manual != nil ||
+		r.Ports != nil ||
+		r.BridgeMAC != nil ||
+		r.Private != nil ||
+		r.DHCP != nil ||
+		r.DisableIPv6 != nil ||
+		r.SLAAC != nil ||
+		r.DefaultRoute != nil ||
+		r.DefaultRoute6 != nil ||
+		r.DisableBridgeOffloads != nil ||
+		r.VLANFiltering != nil ||
+		r.DefaultAccessVLAN != nil ||
+		r.HostVLAN != nil ||
+		r.PortPolicies != nil
+}
+
 type ManualSwitchEditRequest struct {
 	ID     uint    `json:"id"`
 	Name   *string `json:"name,omitempty"`

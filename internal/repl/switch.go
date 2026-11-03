@@ -495,7 +495,7 @@ func buildStandardSwitchEditRequest(id uint, options map[string]string) (console
 		}
 		request.PortPolicies = &policies
 	}
-	if !standardSwitchEditChanged(request) {
+	if !request.HasChanges() {
 		return consoleprotocol.StandardSwitchEditRequest{}, fmt.Errorf("specify at least one standard switch edit option")
 	}
 	return request, nil
@@ -889,7 +889,7 @@ func standardSwitchEditConfigFromModel(switchModel networkModels.StandardSwitch)
 }
 
 func applyStandardSwitchEditRequest(config *standardSwitchEditConfig, request consoleprotocol.StandardSwitchEditRequest) error {
-	if !standardSwitchEditChanged(request) {
+	if !request.HasChanges() {
 		return fmt.Errorf("specify at least one standard switch edit option")
 	}
 	if request.MTU != nil {
@@ -1027,32 +1027,6 @@ func switchEditIPv6AddressProvided(request consoleprotocol.StandardSwitchEditReq
 		(request.Gateway6 != nil && *request.Gateway6 != 0) ||
 		(request.Network6Manual != nil && strings.TrimSpace(*request.Network6Manual) != "") ||
 		(request.Gateway6Manual != nil && strings.TrimSpace(*request.Gateway6Manual) != "")
-}
-
-func standardSwitchEditChanged(request consoleprotocol.StandardSwitchEditRequest) bool {
-	return request.MTU != nil ||
-		request.VLAN != nil ||
-		request.Network4 != nil ||
-		request.Gateway4 != nil ||
-		request.Network6 != nil ||
-		request.Gateway6 != nil ||
-		request.Network4Manual != nil ||
-		request.Gateway4Manual != nil ||
-		request.Network6Manual != nil ||
-		request.Gateway6Manual != nil ||
-		request.Ports != nil ||
-		request.BridgeMAC != nil ||
-		request.Private != nil ||
-		request.DHCP != nil ||
-		request.DisableIPv6 != nil ||
-		request.SLAAC != nil ||
-		request.DefaultRoute != nil ||
-		request.DefaultRoute6 != nil ||
-		request.DisableBridgeOffloads != nil ||
-		request.VLANFiltering != nil ||
-		request.DefaultAccessVLAN != nil ||
-		request.HostVLAN != nil ||
-		request.PortPolicies != nil
 }
 
 func formatSwitches(result switchListResult) string {

@@ -1855,36 +1855,6 @@ func TestDismissDoesNotPersistSuppressionForZFSPoolState(t *testing.T) {
 	}
 }
 
-func TestTestRuleEmitsThroughPipeline(t *testing.T) {
-	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
-		{Device: "ada0", Model: "Test SSD", Type: "SSD", SmartData: diskServiceInterfaces.SmartData{}},
-	})
-
-	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
-		t.Fatalf("failed_to_seed_basic_settings: %v", err)
-	}
-	if _, err := svc.GetRuleConfig(context.Background()); err != nil {
-		t.Fatalf("seed_rule_config_failed: %v", err)
-	}
-
-	err := svc.TestRule(context.Background(), TestRuleInput{
-		TemplateKey: RuleTemplateDiskSmartTemperature,
-		TargetKey:   "ada0",
-		Condition:   "temperature_warning",
-	})
-	if err != nil {
-		t.Fatalf("test_rule_failed: %v", err)
-	}
-
-	var count int64
-	if err := svc.DB.Model(&models.Notification{}).Count(&count).Error; err != nil {
-		t.Fatalf("failed_to_count_notifications: %v", err)
-	}
-	if count != 1 {
-		t.Fatalf("expected_1_notification_in_db got: %d", count)
-	}
-}
-
 func TestTestRuleHistoricalCounterPreviewsDoNotChangeBaselines(t *testing.T) {
 	for _, key := range []string{
 		notifier.DiskSmartCounterReallocated, notifier.DiskSmartCounterNvmeMediaErrors,

@@ -16,26 +16,6 @@ export const FlagsSchema = z.object({
 	desc: z.array(z.string()).nullable().default([])
 });
 
-export const IPv4RCSchema = z.object({
-	id: z.number(),
-	interfaceId: z.number(),
-	protocol: z.string(),
-	address: z.string().nullable().optional(),
-	netmask: z.string().nullable().optional(),
-	options: z.string().default(''),
-	isAlias: z.boolean().default(false)
-});
-
-export const IPv6RCSchema = z.object({
-	id: z.number(),
-	interfaceId: z.number(),
-	protocol: z.string(),
-	address: z.string().nullable().optional(),
-	options: z.string().default(''),
-	prefixLength: z.number().nullable().optional(),
-	isAlias: z.boolean().default(false)
-});
-
 export const IPv4Schema = z.object({
 	ip: z.string(),
 	netmask: z.string(),
@@ -119,7 +99,6 @@ export const IfaceSchema = z.object({
 });
 
 export type Iface = z.infer<typeof IfaceSchema>;
-export type BridgeMember = z.infer<typeof BridgeMemberSchema>;
 
 export type IfaceRow = Omit<Iface, 'ipv4' | 'ipv6'> &
 	Row & {

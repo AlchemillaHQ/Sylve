@@ -63,48 +63,6 @@ export function isPoolScrubActive(status: PoolScrubRun['status']): boolean {
 	return status === 'starting' || status === 'running' || status === 'paused';
 }
 
-export const IODelaySchema = z.object({
-	delay: z.number().default(0)
-});
-
-export const IODelayHistoricalSchema = z.array(
-	z.object({
-		id: z.number().default(0),
-		delay: z.number().default(0),
-		createdAt: z.string().default('')
-	})
-);
-
-export const RWSchema = z.object({
-	read: z.number(),
-	write: z.number()
-});
-
-export const VdevDeviceSchema = z.object({
-	name: z.string(),
-	size: z.number(),
-	health: z.string()
-});
-
-export const ReplacingVdevDeviceSchema = z.object({
-	name: z.string(),
-	health: z.string(),
-	oldDrive: VdevDeviceSchema,
-	newDrive: VdevDeviceSchema
-});
-
-export const VdevSchema = z.object({
-	name: z.string(),
-	alloc: z.number(),
-	free: z.number(),
-	size: z.number(),
-	health: z.string(),
-	operations: RWSchema,
-	bandwidth: RWSchema,
-	devices: z.array(VdevDeviceSchema),
-	replacingDevices: z.array(ReplacingVdevDeviceSchema).optional()
-});
-
 export type ZpoolDevice = {
 	name: string;
 	state: string;
@@ -126,22 +84,6 @@ export const ZpoolDeviceSchema: z.ZodType<ZpoolDevice> = z.lazy(() =>
 		children: z.array(ZpoolDeviceSchema).optional().default([])
 	})
 );
-
-export const ZpoolStatusSchema = z.object({
-	name: z.string(),
-	state: z.string(),
-	status: z.string(),
-	action: z.string(),
-	scan: z.string(),
-	devices: z.array(ZpoolDeviceSchema).optional().default([]),
-	errors: z.string()
-});
-
-export const ZpoolSpareSchema = z.object({
-	name: z.string(),
-	size: z.number(),
-	health: z.string()
-});
 
 export const ZpoolPropertySourceSchema = z.object({
 	type: z.string(),
@@ -468,9 +410,6 @@ export const PoolsDiskUsageSchema = z.object({
 	total: z.number().default(0),
 	usage: z.number().default(0)
 });
-
-export type IODelay = z.infer<typeof IODelaySchema>;
-export type IODelayHistorical = z.infer<typeof IODelayHistoricalSchema>;
 export type ZpoolStatusPool = z.infer<typeof ZPoolStatusPoolSchema>;
 export type Zpool = z.infer<typeof ZpoolSchema>;
 export type ReplaceDevice = z.infer<typeof ReplaceDeviceSchema>;
@@ -481,13 +420,9 @@ export type PoolStatPoint = z.infer<typeof PoolStatPointSchema>;
 export type ZFSDashboardPoolSeries = z.infer<typeof ZFSDashboardPoolSeriesSchema>;
 export type ZFSDashboardARCPoint = z.infer<typeof ZFSDashboardARCPointSchema>;
 export type ZFSDashboardHistory = z.infer<typeof ZFSDashboardHistorySchema>;
-export type ZFSDashboardIOStats = z.infer<typeof ZFSDashboardIOStatsSchema>;
-export type ZFSDashboardPoolScan = z.infer<typeof ZFSDashboardPoolScanSchema>;
 export type ZFSDashboardPoolSnapshot = z.infer<typeof ZFSDashboardPoolSnapshotSchema>;
 export type ZFSDashboardSnapshot = z.infer<typeof ZFSDashboardSnapshotSchema>;
 export type PoolsDiskUsage = z.infer<typeof PoolsDiskUsageSchema>;
-
-export type ScanStatsRaw = Record<string, unknown>;
 export type ScanSentenceResult = {
 	title: string;
 	text: string | null;

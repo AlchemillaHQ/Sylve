@@ -342,13 +342,6 @@ func TestBackupEventReferencesGuest_Jail(t *testing.T) {
 	}
 }
 
-func TestReplicationEventConflictReason(t *testing.T) {
-	reason := "guest_has_running_replication_event"
-	if reason == "" {
-		t.Fatal("reason string must not be empty")
-	}
-}
-
 func TestBuildVMTargetProbeIncludesDisabledSwitchIdentity(t *testing.T) {
 	originalResolve := resolveMigrationVMNetworkAttachment
 	originalResolveIdentity := resolveMigrationVMNetworkIdentity
@@ -470,19 +463,5 @@ func TestBuildJailTargetProbePreservesVLANPolicy(t *testing.T) {
 		got.Attachment.VLANPolicy == nil || got.Attachment.VLANPolicy.Mode != bridgevlan.ModeAccess ||
 		got.Attachment.VLANPolicy.UntaggedVLAN == nil || *got.Attachment.VLANPolicy.UntaggedVLAN != 10 {
 		t.Fatalf("network probe = %+v", got)
-	}
-}
-
-func TestActiveLifecycleTaskConflictReason(t *testing.T) {
-	reason := "guest_has_active_lifecycle_task"
-	if reason == "" {
-		t.Fatal("reason string must not be empty")
-	}
-}
-
-func TestBackupEventConflictReason(t *testing.T) {
-	reason := "guest_has_running_backup_event"
-	if reason == "" {
-		t.Fatal("reason string must not be empty")
 	}
 }

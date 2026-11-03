@@ -832,7 +832,7 @@ func (s *Service) GetVMByRID(rid uint) (vmModels.VM, error) {
 }
 
 func (s *Service) cleanupAutoCreatedVMCreateMACObjects(rid uint, autoCreatedMACIDs []uint, warnings *[]string) {
-	for _, macID := range uniqueUintValues(autoCreatedMACIDs) {
+	for _, macID := range utils.UniqueIDs(autoCreatedMACIDs) {
 		var vmRefs int64
 		if err := s.DB.Model(&vmModels.Network{}).
 			Where("mac_id = ?", macID).

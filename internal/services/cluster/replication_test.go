@@ -16,8 +16,6 @@ import (
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
-
-	"gorm.io/gorm"
 )
 
 func TestReplicationGuestOwnerMatchesDetectsAmbiguousOwners(t *testing.T) {
@@ -63,75 +61,6 @@ func TestRequireReplicationVMStorageEligibility(t *testing.T) {
 	}
 	if err := requireReplicationVMStorageEligibility(resources, "node-b", 42); err == nil {
 		t.Fatal("missing owner capability evidence was accepted")
-	}
-}
-
-func TestListReplicationLeases(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationLease{})
-	s := &Service{DB: db}
-
-	now := time.Now()
-	leases := []clusterModels.ReplicationLease{
-		{PolicyID: 2, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 200, OwnerNodeID: "node-b", OwnerEpoch: 1, ExpiresAt: now.Add(time.Hour)},
-		{PolicyID: 1, GuestType: clusterModels.ReplicationGuestTypeJail, GuestID: 100, OwnerNodeID: "node-a", OwnerEpoch: 1, ExpiresAt: now.Add(time.Hour)},
-	}
-	for i := range leases {
-		if err := db.Create(&leases[i]).Error; err != nil {
-			t.Fatalf("seed: %v", err)
-		}
-	}
-
-	got, err := s.ListReplicationLeases()
-	if err != nil {
-		t.Fatalf("ListReplicationLeases: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("expected 2 leases, got %d", len(got))
-	}
-	if got[0].PolicyID != 1 {
-		t.Fatalf("expected ASC order by policy_id, got policy_id=%d first", got[0].PolicyID)
-	}
-}
-
-func TestListReplicationLeasesEmpty(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationLease{})
-	s := &Service{DB: db}
-	got, err := s.ListReplicationLeases()
-	if err != nil {
-		t.Fatalf("ListReplicationLeases empty: %v", err)
-	}
-	if len(got) != 0 {
-		t.Fatalf("expected 0, got %d", len(got))
-	}
-}
-
-func TestGetReplicationLeaseByPolicyID(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationLease{})
-	s := &Service{DB: db}
-
-	now := time.Now()
-	db.Create(&clusterModels.ReplicationLease{
-		PolicyID: 5, GuestType: clusterModels.ReplicationGuestTypeVM,
-		GuestID: 500, OwnerNodeID: "node-x", OwnerEpoch: 2,
-		ExpiresAt: now.Add(time.Hour),
-	})
-
-	lease, err := s.GetReplicationLeaseByPolicyID(5)
-	if err != nil {
-		t.Fatalf("get: %v", err)
-	}
-	if lease.OwnerNodeID != "node-x" {
-		t.Fatalf("owner: %q", lease.OwnerNodeID)
-	}
-
-	_, err = s.GetReplicationLeaseByPolicyID(999)
-	if err != gorm.ErrRecordNotFound {
-		t.Fatalf("expected record not found, got: %v", err)
-	}
-
-	_, err = s.GetReplicationLeaseByPolicyID(0)
-	if err == nil {
-		t.Fatal("expected error for id=0")
 	}
 }
 
@@ -372,37 +301,5 @@ func TestDeleteClusterSSHIdentityBypassRaft(t *testing.T) {
 	}
 	if err := s.DeleteClusterSSHIdentity("  ", true); err != nil {
 		t.Fatalf("whitespace nodeUUID should be no-op: %v", err)
-	}
-}
-
-func TestNodes(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ClusterNode{})
-	s := &Service{DB: db}
-
-	db.Create(&clusterModels.ClusterNode{
-		NodeUUID: "n1", Hostname: "host-1", API: "10.0.0.1:8184", Status: "online",
-	})
-	db.Create(&clusterModels.ClusterNode{
-		NodeUUID: "n2", Hostname: "host-2", API: "10.0.0.2:8184", Status: "online",
-	})
-
-	nodes, err := s.Nodes()
-	if err != nil {
-		t.Fatalf("Nodes: %v", err)
-	}
-	if len(nodes) != 2 {
-		t.Fatalf("expected 2 nodes, got %d", len(nodes))
-	}
-}
-
-func TestNodesEmpty(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ClusterNode{})
-	s := &Service{DB: db}
-	nodes, err := s.Nodes()
-	if err != nil {
-		t.Fatalf("Nodes empty: %v", err)
-	}
-	if len(nodes) != 0 {
-		t.Fatalf("expected empty, got %d", len(nodes))
 	}
 }
