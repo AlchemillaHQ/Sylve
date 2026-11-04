@@ -4,12 +4,10 @@ package containerHandlers
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
@@ -357,13 +355,8 @@ func HandleContainerConsole(service containerServiceInterfaces.ContainerServiceI
 			return
 		}
 		jailHandlers.ServeTerminal(c, fmt.Sprintf("container-%d-%s", ocid, shell), func(sm *jailHandlers.SessionManager, sessionID string) (*jailHandlers.TerminalSession, error) {
-			session := rand.Text()
-			cmd, err := service.ConsoleCommand(context.Background(), ocid, session, shell)
-			if err != nil {
-				return nil, err
-			}
-			return sm.GetOrCreateCommandSession(sessionID, func() *exec.Cmd { return cmd }, func() {
-				service.EndConsole(context.Background(), ocid, session)
+			return sm.GetOrCreateTerminalSession(sessionID, func(rows, cols uint16) (jailHandlers.Terminal, error) {
+				return service.Console(context.Background(), ocid, shell, rows, cols)
 			})
 		})
 	}

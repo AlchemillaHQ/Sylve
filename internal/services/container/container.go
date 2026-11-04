@@ -4,9 +4,13 @@ package container
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,7 +46,14 @@ type Service struct {
 
 	identity         clusterServiceInterfaces.GuestIdentityCoordinator
 	leftPanelRefresh func(reason string)
+	changedMu        sync.Mutex
+	changing         map[uint]bool
 	poolMu           sync.Mutex
+	pools            map[string]bool
+	serviceMu        sync.Mutex
+	services         map[string]*podmanService
+	stateMu          sync.Mutex
+	states           map[string]containerServiceInterfaces.State
 	monitorOnce      sync.Once
 }
 
@@ -62,10 +73,28 @@ func (s *Service) SetLeftPanelRefreshEmitter(emit func(reason string)) {
 	s.leftPanelRefresh = emit
 }
 
+// changed refreshes the UI on every node for a container, at most once a
+// second: an action and the podman events it causes would otherwise each
+// refresh it.
 func (s *Service) changed(ocid uint) {
-	if s.leftPanelRefresh != nil {
-		s.leftPanelRefresh(fmt.Sprintf("container_%d", ocid))
+	if s.leftPanelRefresh == nil {
+		return
 	}
+	s.changedMu.Lock()
+	defer s.changedMu.Unlock()
+	if s.changing[ocid] {
+		return
+	}
+	if s.changing == nil {
+		s.changing = map[uint]bool{}
+	}
+	s.changing[ocid] = true
+	time.AfterFunc(time.Second, func() {
+		s.changedMu.Lock()
+		delete(s.changing, ocid)
+		s.changedMu.Unlock()
+		s.leftPanelRefresh(fmt.Sprintf("container_%d", ocid))
+	})
 }
 
 func (s *Service) enabled(ctx context.Context) (bool, error) {
@@ -104,6 +133,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 
 func (s *Service) Startup(ctx context.Context) error {
 	s.StartStatsMonitoring(ctx)
+	go s.watchEvents(ctx)
 	if enabled, err := s.enabled(ctx); err != nil || !enabled {
 		return err
 	}
@@ -135,7 +165,7 @@ func (s *Service) Startup(ctx context.Context) error {
 			s.endConsole(ctx, record, "")
 			continue
 		}
-		_, _ = s.podman(ctx, record.Pool, nil, "rm", "--force", "--ignore", record.RuntimeName())
+		_ = s.remove(ctx, record)
 		if err := s.DB.WithContext(ctx).Delete(&record).Error; err != nil {
 			return err
 		}
@@ -223,14 +253,9 @@ type podmanInspect struct {
 }
 
 func (s *Service) inspect(ctx context.Context, record containerModels.Container) (podmanInspect, error) {
-	var inspected []podmanInspect
-	if err := s.podmanJSON(ctx, record.Pool, &inspected, "container", "inspect", "--format", "json", record.RuntimeName()); err != nil {
-		return podmanInspect{}, err
-	}
-	if len(inspected) != 1 {
-		return podmanInspect{}, fmt.Errorf("podman_container_not_found: %s", record.RuntimeName())
-	}
-	return inspected[0], nil
+	var inspected podmanInspect
+	err := s.api(ctx, record.Pool, "container", http.MethodGet, "/containers/"+record.RuntimeName()+"/json", nil, &inspected)
+	return inspected, err
 }
 
 func (s *Service) runtimeState(ctx context.Context, record containerModels.Container) (*containerServiceInterfaces.State, error) {
@@ -251,6 +276,44 @@ func (s *Service) runtimeState(ctx context.Context, record containerModels.Conta
 	return state, nil
 }
 
+// stateWait is how long Get waits for podman, which can't inspect a container
+// while a pull writes a layer to the pool's storage, for minutes on big images.
+const stateWait = 2 * time.Second
+
+// currentState inspects the container, or when podman takes longer than
+// stateWait, answers with its last inspected state if its jail still agrees
+// whether it runs, and with only that otherwise.
+func (s *Service) currentState(ctx context.Context, record containerModels.Container) (*containerServiceInterfaces.State, error) {
+	inspectCtx, cancel := context.WithTimeout(ctx, stateWait)
+	defer cancel()
+	state, err := s.runtimeState(inspectCtx, record)
+	if err == nil {
+		s.stateMu.Lock()
+		if s.states == nil {
+			s.states = map[string]containerServiceInterfaces.State{}
+		}
+		s.states[record.RuntimeID] = *state
+		s.stateMu.Unlock()
+		return state, nil
+	}
+	if ctx.Err() != nil || inspectCtx.Err() == nil {
+		return nil, err
+	}
+
+	running := exec.CommandContext(ctx, "/usr/sbin/jls", "-j", record.RuntimeID, "jid").Run() == nil && mainPID(record) > 0
+	s.stateMu.Lock()
+	last, ok := s.states[record.RuntimeID]
+	s.stateMu.Unlock()
+	if ok && (last.State == "running") == running {
+		return &last, nil
+	}
+	status := "stopped"
+	if running {
+		status = "running"
+	}
+	return &containerServiceInterfaces.State{State: status, IPs: []string{}, MACs: []string{}}, nil
+}
+
 func (s *Service) ImageInfo(ctx context.Context, ocid uint) (containerServiceInterfaces.ImageInfo, error) {
 	var info containerServiceInterfaces.ImageInfo
 	record, err := s.record(ctx, ocid)
@@ -261,7 +324,7 @@ func (s *Service) ImageInfo(ctx context.Context, ocid uint) (containerServiceInt
 	if err != nil {
 		return info, err
 	}
-	var images []struct {
+	var image struct {
 		ID     string            `json:"Id"`
 		Digest string            `json:"Digest"`
 		Size   int64             `json:"Size"`
@@ -271,13 +334,9 @@ func (s *Service) ImageInfo(ctx context.Context, ocid uint) (containerServiceInt
 			Volumes      map[string]struct{} `json:"Volumes"`
 		} `json:"Config"`
 	}
-	if err := s.podmanJSON(ctx, record.Pool, &images, "image", "inspect", "--format", "json", container.Image); err != nil {
+	if err := s.api(ctx, record.Pool, "image", http.MethodGet, "/images/"+container.Image+"/json", nil, &image); err != nil {
 		return info, err
 	}
-	if len(images) != 1 {
-		return info, fmt.Errorf("podman_image_not_found: %s", container.Image)
-	}
-	image := images[0]
 	info = containerServiceInterfaces.ImageInfo{ID: image.ID, Digest: image.Digest, Size: image.Size,
 		Title: image.Labels["org.opencontainers.image.title"], Description: image.Labels["org.opencontainers.image.description"],
 		Version: image.Labels["org.opencontainers.image.version"], URL: image.Labels["org.opencontainers.image.url"],
@@ -292,7 +351,7 @@ func (s *Service) Get(ctx context.Context, ocid uint) (containerServiceInterface
 	}
 	detail := containerServiceInterfaces.Detail{Container: record}
 	if !record.CreationPending {
-		if detail.Runtime, err = s.runtimeState(ctx, record); err != nil {
+		if detail.Runtime, err = s.currentState(ctx, record); err != nil && ctx.Err() == nil {
 			logger.L.Debug().Err(err).Uint("oc_id", ocid).Msg("container_state_unavailable")
 		}
 	}
@@ -307,12 +366,26 @@ func (s *Service) Logs(ctx context.Context, ocid uint, tail uint) (string, error
 	if err != nil {
 		return "", err
 	}
-	cmd := s.podmanCommand(ctx, record.Pool, "logs", "--tail", strconv.FormatUint(uint64(tail), 10), record.RuntimeName())
-	output, err := cmd.CombinedOutput()
+	response, err := s.request(ctx, record.Pool, "logs", http.MethodGet,
+		fmt.Sprintf("/containers/%s/logs?stdout=true&stderr=true&tail=%d", record.RuntimeName(), tail), nil)
 	if err != nil {
-		return "", fmt.Errorf("podman_logs_failed: %s", strings.TrimSpace(string(output)))
+		return "", err
 	}
-	return string(output), nil
+	defer response.Body.Close()
+
+	// Each frame is an 8-byte header ending in the frame's length, then the output.
+	var output strings.Builder
+	header := make([]byte, 8)
+	for {
+		if _, err := io.ReadFull(response.Body, header); err == io.EOF {
+			return output.String(), nil
+		} else if err != nil {
+			return "", fmt.Errorf("podman_logs_failed: %w", err)
+		}
+		if _, err := io.CopyN(&output, response.Body, int64(binary.BigEndian.Uint32(header[4:]))); err != nil {
+			return "", fmt.Errorf("podman_logs_failed: %w", err)
+		}
+	}
 }
 
 func (s *Service) Command(ctx context.Context, ocid uint, args ...string) (*exec.Cmd, error) {
@@ -336,14 +409,51 @@ func (s *Service) Command(ctx context.Context, ocid uint, args ...string) (*exec
 
 const consoleEnv = "SYLVE_CONSOLE"
 
-func (s *Service) ConsoleCommand(ctx context.Context, ocid uint, session, shell string) (*exec.Cmd, error) {
-	return s.Command(ctx, ocid, "exec", "--interactive", "--tty", "--env", consoleEnv+"="+session, "{}", shell)
+// Console starts shell in the container through an exec session, its
+// environment marked with a session that endConsole looks for.
+func (s *Service) Console(ctx context.Context, ocid uint, shell string, rows, cols uint16) (containerServiceInterfaces.Console, error) {
+	record, err := s.record(ctx, ocid)
+	if err != nil {
+		return nil, err
+	}
+	if record.CreationPending {
+		return nil, fmt.Errorf("container_creation_pending")
+	}
+	session := rand.Text()
+	var created struct {
+		ID string `json:"Id"`
+	}
+	if err := s.api(ctx, record.Pool, "exec", http.MethodPost, "/containers/"+record.RuntimeName()+"/exec", map[string]any{
+		"AttachStdin": true, "AttachStdout": true, "AttachStderr": true, "Tty": true,
+		"Cmd": []string{shell}, "Env": []string{"TERM=xterm", consoleEnv + "=" + session},
+	}, &created); err != nil {
+		return nil, err
+	}
+	terminal, err := s.upgrade(ctx, record.Pool, "exec", "/exec/"+created.ID+"/start", map[string]any{"Tty": true, "h": rows, "w": cols})
+	if err != nil {
+		return nil, err
+	}
+	return &console{ReadWriteCloser: terminal, service: s, record: record, exec: created.ID, session: session}, nil
 }
 
-func (s *Service) EndConsole(ctx context.Context, ocid uint, session string) {
-	if record, err := s.record(ctx, ocid); err == nil {
-		s.endConsole(ctx, record, session)
-	}
+type console struct {
+	io.ReadWriteCloser
+	service *Service
+	record  containerModels.Container
+	exec    string
+	session string
+}
+
+func (c *console) Resize(rows, cols uint16) error {
+	return c.service.api(context.Background(), c.record.Pool, "exec", http.MethodPost, fmt.Sprintf("/exec/%s/resize?h=%d&w=%d", c.exec, rows, cols), nil, nil)
+}
+
+// Close ends the shell and what it started too, which keep running when
+// their terminal goes away.
+func (c *console) Close() error {
+	err := c.ReadWriteCloser.Close()
+	c.service.endConsole(context.Background(), c.record, c.session)
+	return err
 }
 
 func (s *Service) endConsole(ctx context.Context, record containerModels.Container, session string) {

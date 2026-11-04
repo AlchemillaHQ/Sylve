@@ -28,7 +28,7 @@
 	import { getAPIErrorText, isAPIResponse, removeCache, updateCache } from '$lib/utils/http';
 	import { toastContainerError } from '$lib/utils/container/errors';
 	import { specProblem } from '$lib/utils/container/validate';
-	import { IsDocumentVisible, resource, useInterval } from 'runed';
+	import { resource, useInterval, watch } from 'runed';
 	import { setContext, type Snippet } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
@@ -76,6 +76,10 @@
 	});
 	let pendingAction = $derived(task.current?.action ?? '');
 
+	// Polls and refresh events share a running refetch: starting another would
+	// abort it, and podman answers late while it's busy with the container.
+	let refetching: Promise<unknown> | undefined;
+
 	const context: ContainerContext = {
 		get current() {
 			return current;
@@ -86,7 +90,10 @@
 		get busy() {
 			return !!pendingAction || current.creationPending;
 		},
-		refetch: () => Promise.all([container.refetch(), task.refetch()]),
+		refetch: () =>
+			(refetching ??= Promise.all([container.refetch(), task.refetch()]).finally(() => {
+				refetching = undefined;
+			})),
 		async update(spec) {
 			const problem = specProblem(spec);
 			if (problem) {
@@ -130,10 +137,17 @@
 		{ initialValue: [] }
 	);
 
-	const visible = new IsDocumentVisible();
-	useInterval(2000, {
+	watch(
+		() => reload.datacenterNodesPulse,
+		() => {
+			if (!inFlight) context.refetch();
+		},
+		{ lazy: true }
+	);
+	// A task is marked finished after its last refresh event, so follow it until then.
+	useInterval(1000, {
 		callback: () => {
-			if (visible.current && !inFlight) context.refetch();
+			if (context.busy && !inFlight) context.refetch();
 		}
 	});
 

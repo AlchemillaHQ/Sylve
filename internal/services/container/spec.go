@@ -3,16 +3,14 @@
 package container
 
 import (
+	"cmp"
 	"context"
-	"encoding/json"
 	"fmt"
-	"maps"
 	"net"
 	"os"
 	"path"
 	"regexp"
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -289,75 +287,111 @@ func (s *Service) ensureDataset(ctx context.Context, name string) error {
 	return err
 }
 
-func createArgs(record containerModels.Container, sources []string) ([]string, []string) {
-	args := []string{"create", "--name", record.RuntimeName(),
-		"--label", ocidLabel + "=" + strconv.FormatUint(uint64(record.OCID), 10),
-		"--platform", record.OS + "/" + runtime.GOARCH,
-		"--stop-timeout", strconv.FormatUint(uint64(record.StopTimeout), 10)}
+// createSpec is the libpod create request, holding what podman create's flags
+// would. The image is looked up locally; ensureImage has already pulled it.
+type createSpec struct {
+	Name          string                   `json:"name"`
+	Labels        map[string]string        `json:"labels"`
+	Image         string                   `json:"image"`
+	ImageOS       string                   `json:"image_os"`
+	ImageArch     string                   `json:"image_arch"`
+	StopTimeout   uint                     `json:"stop_timeout"`
+	NetNS         createNamespace          `json:"netns"`
+	Networks      map[string]createNetwork `json:"Networks,omitempty"`
+	Hostname      string                   `json:"hostname,omitempty"`
+	Env           map[string]string        `json:"env,omitempty"`
+	Annotations   map[string]string        `json:"annotations,omitempty"`
+	HostAdd       []string                 `json:"hostadd,omitempty"`
+	ShmSize       *int64                   `json:"shm_size,omitempty"`
+	PortMappings  []createPort             `json:"portmappings,omitempty"`
+	Mounts        []createMount            `json:"mounts,omitempty"`
+	WorkDir       string                   `json:"work_dir,omitempty"`
+	User          string                   `json:"user,omitempty"`
+	Umask         string                   `json:"umask"`
+	RestartPolicy string                   `json:"restart_policy"`
+	RestartTries  *uint                    `json:"restart_tries,omitempty"`
+	Entrypoint    []string                 `json:"entrypoint,omitempty"`
+	Command       []string                 `json:"command,omitempty"`
+}
 
-	hostname := record.Hostname
-	if hostname == "" {
-		hostname = record.Name
-	}
-	if record.Network == nil {
-		args = append(args, "--network", "host")
-	} else {
-		network := record.Network.PodmanName()
+type createNamespace struct {
+	Mode string `json:"nsmode"`
+}
+
+type createNetwork struct {
+	StaticIPs []string `json:"static_ips,omitempty"`
+	Aliases   []string `json:"aliases,omitempty"`
+}
+
+type createPort struct {
+	HostIP        string `json:"host_ip,omitempty"`
+	HostPort      uint16 `json:"host_port"`
+	ContainerPort uint16 `json:"container_port"`
+	Protocol      string `json:"protocol"`
+}
+
+type createMount struct {
+	Destination string   `json:"destination"`
+	Type        string   `json:"type"`
+	Source      string   `json:"source"`
+	Options     []string `json:"options,omitempty"`
+}
+
+func newCreateSpec(record containerModels.Container, sources []string) createSpec {
+	spec := createSpec{Name: record.RuntimeName(),
+		Labels: map[string]string{ocidLabel: strconv.FormatUint(uint64(record.OCID), 10)},
+		Image:  record.Image, ImageOS: record.OS, ImageArch: runtime.GOARCH, StopTimeout: record.StopTimeout,
+		NetNS: createNamespace{Mode: "host"}, Env: map[string]string{}, Annotations: record.Annotations,
+		HostAdd: record.ExtraHosts, WorkDir: record.WorkDir, User: record.User, Umask: "0022",
+		RestartPolicy: record.Restart, Entrypoint: record.Entrypoint, Command: record.Command}
+
+	if record.Network != nil {
+		network := createNetwork{}
 		if record.IP != "" {
-			network += ":ip=" + record.IP
+			network.StaticIPs = []string{record.IP}
 		}
-		args = append(args, "--network", network, "--hostname", hostname)
 		if record.Network.SwitchID == nil {
-			args = append(args, "--network-alias", strings.ToLower(record.Name))
+			network.Aliases = []string{strings.ToLower(record.Name)}
 		}
+		spec.NetNS.Mode = "bridge"
+		spec.Networks = map[string]createNetwork{record.Network.PodmanName(): network}
+		spec.Hostname = cmp.Or(record.Hostname, record.Name)
 	}
-
-	var env []string
 	for _, variable := range record.Env {
-		args = append(args, "--env", variable.Name)
-		env = append(env, variable.Name+"="+variable.Value)
-	}
-	for _, key := range slices.Sorted(maps.Keys(record.Annotations)) {
-		args = append(args, "--annotation", key+"="+record.Annotations[key])
-	}
-	for _, host := range record.ExtraHosts {
-		args = append(args, "--add-host", host)
+		spec.Env[variable.Name] = variable.Value
 	}
 	if record.ShmSize != "" {
-		args = append(args, "--shm-size", record.ShmSize)
+		size := shmBytes(record.ShmSize)
+		spec.ShmSize = &size
 	}
 	for _, port := range record.Ports {
-		mapping := fmt.Sprintf("%d:%d/%s", port.HostPort, port.ContainerPort, port.Protocol)
-		if port.HostIP != "" {
-			mapping = net.JoinHostPort(port.HostIP, strconv.Itoa(int(port.HostPort))) + fmt.Sprintf(":%d/%s", port.ContainerPort, port.Protocol)
-		}
-		args = append(args, "--publish", mapping)
+		spec.PortMappings = append(spec.PortMappings, createPort{HostIP: port.HostIP, HostPort: port.HostPort,
+			ContainerPort: port.ContainerPort, Protocol: port.Protocol})
 	}
 	for i, mount := range record.Mounts {
-		volume := sources[i] + ":" + mount.Target
+		// nullfs is podman's bind mount on FreeBSD.
+		bind := createMount{Destination: mount.Target, Type: "nullfs", Source: sources[i]}
 		if mount.ReadOnly {
-			volume += ":ro"
+			bind.Options = []string{"ro"}
 		}
-		args = append(args, "--volume", volume)
+		spec.Mounts = append(spec.Mounts, bind)
 	}
-	if record.WorkDir != "" {
-		args = append(args, "--workdir", record.WorkDir)
+	if record.Restart == "on-failure" && record.RestartRetries > 0 {
+		spec.RestartTries = &record.RestartRetries
 	}
-	if record.User != "" {
-		args = append(args, "--user", record.User)
+	return spec
+}
+
+// shmBytes reads a size that sizeRegex accepted, such as 64m or 1gb, in the
+// binary units podman uses.
+func shmBytes(size string) int64 {
+	size = strings.TrimSuffix(strings.ToLower(size), "b")
+	shift := 10 * (strings.IndexByte("kmg", size[len(size)-1]) + 1)
+	if shift > 0 {
+		size = size[:len(size)-1]
 	}
-	restart := record.Restart
-	if restart == "on-failure" && record.RestartRetries > 0 {
-		restart += ":" + strconv.FormatUint(uint64(record.RestartRetries), 10)
-	}
-	args = append(args, "--restart", restart)
-	if len(record.Entrypoint) > 0 {
-		entrypoint, _ := json.Marshal(record.Entrypoint)
-		args = append(args, "--entrypoint", string(entrypoint))
-	}
-	args = append(args, "--", record.Image)
-	args = append(args, record.Command...)
-	return args, env
+	value, _ := strconv.ParseInt(size, 10, 64)
+	return value << shift
 }
 
 func applySpec(record *containerModels.Container, spec containerServiceInterfaces.Spec, network *containerModels.Network) {

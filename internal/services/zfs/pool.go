@@ -19,7 +19,9 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/pkg/disk"
@@ -405,6 +407,17 @@ func (s *Service) deletePool(ctx context.Context, guid string) error {
 	}
 	defer release()
 
+	var jails, containers int64
+	if err := s.DB.WithContext(ctx).Model(&jailModels.Storage{}).Where("pool = ?", pool.Name).Count(&jails).Error; err != nil {
+		return err
+	}
+	if err := s.DB.WithContext(ctx).Model(&containerModels.Container{}).Where("pool = ?", pool.Name).Count(&containers).Error; err != nil {
+		return err
+	}
+	if jails+containers > 0 {
+		return classifyError(ErrConflict, "pool %s has jails or containers and cannot be deleted", pool.Name)
+	}
+
 	datasets, err := pool.Datasets(ctx, gzfs.DatasetTypeAll)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_datasets: %v", err)
@@ -420,6 +433,9 @@ func (s *Service) deletePool(ctx context.Context, guid string) error {
 		}
 	}
 
+	if s.ReleasePool != nil {
+		s.ReleasePool(pool.Name)
+	}
 	err = pool.Destroy(ctx)
 
 	if err != nil {

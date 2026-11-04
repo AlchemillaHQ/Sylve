@@ -71,12 +71,41 @@ func (o *Observer) Close() error {
 	return o.Conn.Close()
 }
 
+// Terminal is the shell a console session runs.
+type Terminal interface {
+	io.ReadWriteCloser
+	Resize(rows, cols uint16) error
+}
+
+// ptyTerminal is a command running on a pseudo-terminal.
+type ptyTerminal struct {
+	*os.File
+	cmd *exec.Cmd
+}
+
+func startTerminal(cmd *exec.Cmd, rows, cols uint16) (Terminal, error) {
+	file, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
+	if err != nil {
+		return nil, err
+	}
+	return &ptyTerminal{File: file, cmd: cmd}, nil
+}
+
+func (t *ptyTerminal) Resize(rows, cols uint16) error {
+	return pty.Setsize(t.File, &pty.Winsize{Rows: rows, Cols: cols})
+}
+
+func (t *ptyTerminal) Close() error {
+	err := t.File.Close()
+	_ = t.cmd.Process.Kill()
+	_ = t.cmd.Wait()
+	return err
+}
+
 type TerminalSession struct {
 	ID        string
-	Cmd       *exec.Cmd
-	Pty       *os.File
+	Terminal  Terminal
 	Observers map[*Observer]struct{}
-	OnClose   func()
 
 	Mu           sync.Mutex
 	closeOnce    sync.Once
@@ -104,48 +133,42 @@ var (
 type WindowSize struct {
 	Rows uint16 `json:"rows"`
 	Cols uint16 `json:"cols"`
-	X    uint16 `json:"x"`
-	Y    uint16 `json:"y"`
 }
 
 func (sm *SessionManager) GetOrCreateSession(sessionID string, ctidInt int) (*TerminalSession, error) {
-	return sm.GetOrCreateCommandSession(sessionID, func() *exec.Cmd {
+	return sm.GetOrCreateTerminalSession(sessionID, func(rows, cols uint16) (Terminal, error) {
 		ctidHash := utils.HashIntToNLetters(ctidInt, 5)
 		cmd := exec.Command("jexec", "-l", ctidHash, "su", "-l", "root")
 		cmd.Env = append(os.Environ(), "TERM=xterm")
-		return cmd
-	}, nil)
+		return startTerminal(cmd, rows, cols)
+	})
 }
 
-func (sm *SessionManager) GetOrCreateCommandSession(sessionID string, newCmd func() *exec.Cmd, onClose func()) (*TerminalSession, error) {
+func (sm *SessionManager) GetOrCreateTerminalSession(sessionID string, open func(rows, cols uint16) (Terminal, error)) (*TerminalSession, error) {
 	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
 	if session, exists := sm.sessions[sessionID]; exists && !session.IsClosed() {
+		sm.mu.Unlock()
 		return session, nil
 	}
+	sm.mu.Unlock()
 
-	cmd := newCmd()
-	ptymx, err := pty.Start(cmd)
+	// Opened unlocked: a container's shell waits on podman, which can be busy
+	// with that container for as long as its stop timeout.
+	terminal, err := open(defaultRows, defaultCols)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := pty.Setsize(ptymx, &pty.Winsize{
-		Rows: defaultRows,
-		Cols: defaultCols,
-	}); err != nil {
-		_ = ptymx.Close()
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		return nil, err
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if session, exists := sm.sessions[sessionID]; exists && !session.IsClosed() {
+		_ = terminal.Close()
+		return session, nil
 	}
 
 	session := &TerminalSession{
 		ID:           sessionID,
-		Cmd:          cmd,
-		OnClose:      onClose,
-		Pty:          ptymx,
+		Terminal:     terminal,
 		Observers:    make(map[*Observer]struct{}),
 		History:      make([]byte, 0, wsHistoryLimit),
 		HistoryLimit: wsHistoryLimit,
@@ -192,17 +215,8 @@ func (ts *TerminalSession) Close(sm *SessionManager) {
 			_ = obs.Close()
 		}
 
-		if ts.Pty != nil {
-			_ = ts.Pty.Close()
-		}
-		if ts.Cmd != nil && ts.Cmd.Process != nil {
-			_ = ts.Cmd.Process.Kill()
-		}
-		if ts.Cmd != nil {
-			_ = ts.Cmd.Wait()
-		}
-		if ts.OnClose != nil {
-			ts.OnClose()
+		if ts.Terminal != nil {
+			_ = ts.Terminal.Close()
 		}
 
 		sm.removeSession(ts.ID, ts)
@@ -280,7 +294,7 @@ func (ts *TerminalSession) PumpOutput(sm *SessionManager) {
 
 	buf := make([]byte, 4096)
 	for {
-		n, err := ts.Pty.Read(buf)
+		n, err := ts.Terminal.Read(buf)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				logger.L.Error().Err(err).Str("session", ts.ID).Msg("Error reading from PTY")
@@ -481,7 +495,7 @@ func ServeTerminal(c *gin.Context, sessionID string, open func(*SessionManager, 
 			if len(data) == 1 {
 				continue
 			}
-			if _, err := session.Pty.Write(data[1:]); err != nil {
+			if _, err := session.Terminal.Write(data[1:]); err != nil {
 				logger.L.Warn().Err(err).Str("session", sessionID).Msg("Failed to write terminal input to PTY")
 				return
 			}
@@ -502,13 +516,8 @@ func ServeTerminal(c *gin.Context, sessionID string, open func(*SessionManager, 
 				continue
 			}
 
-			if err := pty.Setsize(session.Pty, &pty.Winsize{
-				Rows: ws.Rows,
-				Cols: ws.Cols,
-				X:    ws.X,
-				Y:    ws.Y,
-			}); err != nil {
-				logger.L.Warn().Err(err).Str("session", sessionID).Msg("Failed to resize PTY")
+			if err := session.Terminal.Resize(ws.Rows, ws.Cols); err != nil {
+				logger.L.Warn().Err(err).Str("session", sessionID).Msg("Failed to resize terminal")
 			}
 
 		default:

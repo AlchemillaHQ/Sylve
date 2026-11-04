@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -36,7 +37,7 @@ func newTestService(t *testing.T) *Service {
 	return &Service{DB: db, DataDir: t.TempDir()}
 }
 
-func TestCreateArgsKeepEnvironmentValuesOffTheCommandLine(t *testing.T) {
+func TestCreateSpecIsWhatPodmanCreateFlagsWouldSend(t *testing.T) {
 	network := &containerModels.Network{ID: 1, Name: "default", Bridge: "sylc1"}
 	record := containerModels.Container{OCID: 7, Name: "Web", Image: "docker.io/library/nginx", OS: "linux",
 		Command: []string{"nginx", "-g", "daemon off;"}, Entrypoint: []string{"/entry"}, Network: network, IP: "10.89.0.7",
@@ -45,33 +46,46 @@ func TestCreateArgsKeepEnvironmentValuesOffTheCommandLine(t *testing.T) {
 		Mounts:  []containerModels.Mount{{Type: containerModels.MountVolume, Source: "data", Target: "/data", ReadOnly: true}},
 		Restart: "on-failure", RestartRetries: 3, StopTimeout: 10,
 		Annotations: map[string]string{"org.freebsd.jail.allow.mlock": "true"}, ExtraHosts: []string{"db:10.0.0.2"}, ShmSize: "1gb"}
-
-	args, env := createArgs(record, []string{"/tank/sylve/containers/7/data"})
-	joined := strings.Join(args, " ")
-	for _, want := range []string{"--name sylve-7", "--label io.sylve.ocid=7", "--platform linux/" + runtime.GOARCH,
-		"--network sylve-default:ip=10.89.0.7", "--hostname Web", "--network-alias web", "--env TOKEN",
-		"--publish 8080:80/tcp", "--publish 127.0.0.1:53:53/udp", "--volume /tank/sylve/containers/7/data:/data:ro",
-		"--restart on-failure:3", `--entrypoint ["/entry"]`, "--annotation org.freebsd.jail.allow.mlock=true",
-		"--add-host db:10.0.0.2", "--shm-size 1gb"} {
-		if !strings.Contains(joined, want) {
-			t.Fatalf("missing %q in %q", want, joined)
+	same := func(spec createSpec, want string) {
+		t.Helper()
+		data, err := json.Marshal(spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got, expected any
+		if err := json.Unmarshal(data, &got); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal([]byte(want), &expected); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, expected) {
+			t.Fatalf("create spec\n%s\nwant\n%s", data, want)
 		}
 	}
-	if strings.Contains(joined, "secret") || !slices.Equal(env, []string{"TOKEN=secret"}) {
-		t.Fatal("environment values must only be passed through the environment", joined, env)
-	}
-	if tail := args[len(args)-5:]; !slices.Equal(tail, []string{"--", "docker.io/library/nginx", "nginx", "-g", "daemon off;"}) {
-		t.Fatal("image and command must end the arguments", tail)
-	}
 
-	record.Network, record.Entrypoint = nil, []string{}
-	args, _ = createArgs(record, []string{"/data"})
-	joined = strings.Join(args, " ")
-	if !strings.Contains(joined, "--network host") || strings.Contains(joined, "--hostname") {
-		t.Fatal("host network containers share the host stack", joined)
-	}
-	if strings.Contains(joined, "--entrypoint") {
-		t.Fatal("an empty entrypoint must keep the image's", joined)
+	same(newCreateSpec(record, []string{"/tank/sylve/containers/7/data"}), fmt.Sprintf(`{
+		"name": "sylve-7", "labels": {"io.sylve.ocid": "7"},
+		"image": "docker.io/library/nginx", "image_os": "linux", "image_arch": %q, "stop_timeout": 10,
+		"netns": {"nsmode": "bridge"}, "Networks": {"sylve-default": {"static_ips": ["10.89.0.7"], "aliases": ["web"]}},
+		"hostname": "Web", "env": {"TOKEN": "secret"}, "annotations": {"org.freebsd.jail.allow.mlock": "true"},
+		"hostadd": ["db:10.0.0.2"], "shm_size": 1073741824,
+		"portmappings": [{"host_port": 8080, "container_port": 80, "protocol": "tcp"},
+			{"host_ip": "127.0.0.1", "host_port": 53, "container_port": 53, "protocol": "udp"}],
+		"mounts": [{"destination": "/data", "type": "nullfs", "source": "/tank/sylve/containers/7/data", "options": ["ro"]}],
+		"umask": "0022", "restart_policy": "on-failure", "restart_tries": 3,
+		"entrypoint": ["/entry"], "command": ["nginx", "-g", "daemon off;"]}`, runtime.GOARCH))
+
+	record = containerModels.Container{OCID: 8, Name: "Host", Image: "redis", OS: "freebsd", Entrypoint: []string{},
+		Restart: "no", StopTimeout: 5}
+	same(newCreateSpec(record, nil), fmt.Sprintf(`{
+		"name": "sylve-8", "labels": {"io.sylve.ocid": "8"}, "image": "redis", "image_os": "freebsd", "image_arch": %q,
+		"stop_timeout": 5, "netns": {"nsmode": "host"}, "umask": "0022", "restart_policy": "no"}`, runtime.GOARCH))
+
+	for size, want := range map[string]int64{"512": 512, "64b": 64, "2K": 2 << 10, "64m": 64 << 20, "1gb": 1 << 30} {
+		if got := shmBytes(size); got != want {
+			t.Fatalf("shmBytes(%q) = %d, want %d", size, got, want)
+		}
 	}
 }
 

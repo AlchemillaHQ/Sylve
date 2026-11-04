@@ -4,6 +4,7 @@ package containerServiceInterfaces
 
 import (
 	"context"
+	"io"
 	"os/exec"
 	"time"
 
@@ -225,6 +226,12 @@ type CatalogRenderRequest struct {
 	Choices map[string]string `json:"choices"`
 }
 
+// Console is an interactive shell in a container.
+type Console interface {
+	io.ReadWriteCloser
+	Resize(rows, cols uint16) error
+}
+
 type ContainerServiceInterface interface {
 	List(ctx context.Context) ([]ListItem, error)
 	Get(ctx context.Context, ocid uint) (Detail, error)
@@ -233,8 +240,7 @@ type ContainerServiceInterface interface {
 	Usage(ctx context.Context, ocid uint, step db.GFSStep) ([]containerModels.Stats, error)
 	UsageBootstrap(ctx context.Context, ocid uint) (db.StatsBootstrap[containerModels.Stats], error)
 	Command(ctx context.Context, ocid uint, args ...string) (*exec.Cmd, error)
-	ConsoleCommand(ctx context.Context, ocid uint, session, shell string) (*exec.Cmd, error)
-	EndConsole(ctx context.Context, ocid uint, session string)
+	Console(ctx context.Context, ocid uint, shell string, rows, cols uint16) (Console, error)
 	UpdateOptions(ctx context.Context, ocid uint, req OptionsRequest) error
 
 	UsedPorts(ctx context.Context, exceptOCID uint) ([]UsedPort, error)

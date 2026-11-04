@@ -61,6 +61,11 @@
 		{ initialValue: '' }
 	);
 
+	useInterval(2000, {
+		callback: () => {
+			if (visible.current && running) container.refetch();
+		}
+	});
 	useInterval(60000, {
 		callback: () => {
 			if (visible.current) stats.refetch();

@@ -8,13 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
-	"strconv"
-	"strings"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -143,7 +143,7 @@ func (s *Service) Create(ctx context.Context, req containerServiceInterfaces.Cre
 			return
 		}
 		cleanup := context.WithoutCancel(ctx)
-		_, _ = s.podman(cleanup, record.Pool, nil, "rm", "--force", "--ignore", record.RuntimeName())
+		_ = s.remove(cleanup, record)
 		s.destroyDatasets(cleanup, createdVolumes)
 		if deleteErr := s.DB.WithContext(cleanup).Delete(&record).Error; deleteErr != nil {
 			err = errors.Join(err, deleteErr)
@@ -182,25 +182,29 @@ func (s *Service) Create(ctx context.Context, req containerServiceInterfaces.Cre
 	s.changed(record.OCID)
 
 	if req.StartAfterCreate {
-		_, err = s.podman(ctx, record.Pool, nil, "start", record.RuntimeName())
+		err = s.start(ctx, record)
 	}
 	return err
 }
 
 func (s *Service) ensureImage(ctx context.Context, record *containerModels.Container, always bool) error {
-	_, missing := s.podman(ctx, record.Pool, nil, "image", "exists", record.Image)
-	if always || missing != nil {
-		if err := s.pullImage(ctx, record.Pool, record.Image, record.OS); err != nil {
+	inspect := func() (string, error) {
+		var image struct {
+			OS string `json:"Os"`
+		}
+		err := s.api(ctx, record.Pool, "image", http.MethodGet, "/images/"+url.PathEscape(record.Image)+"/json", nil, &image)
+		return image.OS, err
+	}
+	system, err := inspect()
+	if always || err != nil || (record.OS != "" && system != record.OS) {
+		if err = s.pullImage(ctx, record.Pool, record.Image, record.OS); err != nil {
+			return err
+		}
+		if system, err = inspect(); err != nil {
 			return err
 		}
 	}
-	if record.OS == "" {
-		os, err := s.podman(ctx, record.Pool, nil, "image", "inspect", "--format", "{{.Os}}", record.Image)
-		if err != nil {
-			return err
-		}
-		record.OS = strings.TrimSpace(os)
-	}
+	record.OS = system
 	return nil
 }
 
@@ -285,16 +289,11 @@ func directorySize(dir string) uint64 {
 }
 
 func (s *Service) createRuntime(ctx context.Context, record containerModels.Container, sources []string) (string, error) {
-	args, env := createArgs(record, sources)
-	output, err := s.podman(ctx, record.Pool, env, args...)
-	if err != nil {
-		return "", err
+	var created struct {
+		ID string `json:"Id"`
 	}
-	lines := strings.Fields(output)
-	if len(lines) == 0 {
-		return "", fmt.Errorf("podman_create_failed: no container id")
-	}
-	return lines[len(lines)-1], nil
+	err := s.api(ctx, record.Pool, "create", http.MethodPost, "/containers/create", newCreateSpec(record, sources), &created)
+	return created.ID, err
 }
 
 func (s *Service) destroyDatasets(ctx context.Context, names []string) {
@@ -316,14 +315,14 @@ func (s *Service) Action(ctx context.Context, ocid uint, action string) error {
 	}
 	switch action {
 	case "start":
-		_, err = s.podman(ctx, record.Pool, nil, "start", record.RuntimeName())
+		err = s.start(ctx, record)
 	case "stop":
 		err = s.stop(ctx, record, record.StopTimeout)
 	case "kill":
 		err = s.stop(ctx, record, 0)
 	case "restart":
 		if err = s.stop(ctx, record, record.StopTimeout); err == nil {
-			_, err = s.podman(ctx, record.Pool, nil, "start", record.RuntimeName())
+			err = s.start(ctx, record)
 		}
 	default:
 		return fmt.Errorf("invalid_container_action: %s", action)
@@ -332,17 +331,31 @@ func (s *Service) Action(ctx context.Context, ocid uint, action string) error {
 	return err
 }
 
+func (s *Service) start(ctx context.Context, record containerModels.Container) error {
+	return s.api(ctx, record.Pool, "start", http.MethodPost, "/containers/"+record.RuntimeName()+"/start", nil, nil)
+}
+
+func (s *Service) remove(ctx context.Context, record containerModels.Container) error {
+	err := s.api(ctx, record.Pool, "rm", http.MethodDelete,
+		fmt.Sprintf("/containers/%s?force=true&ignore=true&timeout=%d", record.RuntimeName(), record.StopTimeout), nil, nil)
+	s.stateMu.Lock()
+	delete(s.states, record.RuntimeID)
+	s.stateMu.Unlock()
+	return err
+}
+
 func (s *Service) stop(ctx context.Context, record containerModels.Container, timeout uint) error {
-	_, err := s.podman(ctx, record.Pool, nil, "stop", "--time", strconv.FormatUint(uint64(timeout), 10), record.RuntimeName())
+	err := s.api(ctx, record.Pool, "stop", http.MethodPost, fmt.Sprintf("/containers/%s/stop?timeout=%d", record.RuntimeName(), timeout), nil, nil)
 	if exec.CommandContext(ctx, "/bin/pkill", "-KILL", "-j", record.RuntimeID).Run() != nil {
 		return err
 	}
 	for range 50 {
-		if _, err = s.podman(ctx, record.Pool, nil, "container", "cleanup", record.RuntimeName()); err == nil {
-			return nil
+		if mainPID(record) == 0 {
+			break
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+	_, err = s.podman(ctx, record.Pool, nil, "container", "cleanup", record.RuntimeName())
 	return err
 }
 
@@ -371,8 +384,7 @@ func (s *Service) Update(ctx context.Context, ocid uint, spec containerServiceIn
 
 	state, _ := s.runtimeState(ctx, previous)
 	running := state != nil && state.State == "running"
-	timeout := strconv.FormatUint(uint64(previous.StopTimeout), 10)
-	if _, err := s.podman(ctx, previous.Pool, nil, "rm", "--force", "--ignore", "--time", timeout, previous.RuntimeName()); err != nil {
+	if err := s.remove(ctx, previous); err != nil {
 		return err
 	}
 	if updated.RuntimeID, err = s.createRuntime(ctx, updated, sources); err != nil {
@@ -385,7 +397,7 @@ func (s *Service) Update(ctx context.Context, ocid uint, spec containerServiceIn
 				_ = s.DB.WithContext(restore).Model(&previous).Update("runtime_id", id).Error
 				_ = applyLimits(restore, previous)
 				if running {
-					_, _ = s.podman(restore, previous.Pool, nil, "start", previous.RuntimeName())
+					_ = s.start(restore, previous)
 				}
 			}
 		}
@@ -400,7 +412,7 @@ func (s *Service) Update(ctx context.Context, ocid uint, spec containerServiceIn
 	}
 	s.changed(ocid)
 	if running {
-		_, err = s.podman(ctx, updated.Pool, nil, "start", updated.RuntimeName())
+		err = s.start(ctx, updated)
 	}
 	return err
 }
@@ -420,8 +432,7 @@ func (s *Service) Delete(ctx context.Context, ocid uint, deleteVolumes bool) err
 		defer s.identity.CancelGuestIdentityClaim(reservation)
 	}
 
-	timeout := strconv.FormatUint(uint64(record.StopTimeout), 10)
-	if _, err := s.podman(ctx, record.Pool, nil, "rm", "--force", "--ignore", "--time", timeout, record.RuntimeName()); err != nil {
+	if err := s.remove(ctx, record); err != nil {
 		return err
 	}
 	removeLimits(ctx, record.RuntimeID)

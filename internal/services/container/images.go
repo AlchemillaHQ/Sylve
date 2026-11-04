@@ -5,6 +5,8 @@ package container
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -41,7 +43,7 @@ func (s *Service) ListImages(ctx context.Context, pool string) ([]containerServi
 		Size    int64    `json:"Size"`
 		Created int64    `json:"Created"`
 	}
-	if err := s.podmanJSON(ctx, pool, &entries, "images", "--format", "json"); err != nil {
+	if err := s.api(ctx, pool, "images", http.MethodGet, "/images/json", nil, &entries); err != nil {
 		return nil, err
 	}
 	for _, entry := range entries {
@@ -67,8 +69,7 @@ func (s *Service) RemoveImage(ctx context.Context, pool, id string) error {
 	if err := s.requireUsablePool(ctx, pool); err != nil {
 		return err
 	}
-	_, err := s.podman(ctx, pool, nil, "rmi", id)
-	return err
+	return s.api(ctx, pool, "rmi", http.MethodDelete, "/images/"+url.PathEscape(id), nil, nil)
 }
 
 func (s *Service) PruneImages(ctx context.Context, pool string) error {

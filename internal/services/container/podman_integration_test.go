@@ -23,7 +23,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 	"github.com/alchemillahq/sylve/pkg/utils/sysctl"
-	"github.com/creack/pty"
 )
 
 const integrationImage = "docker.io/library/alpine:3.20"
@@ -48,6 +47,7 @@ func TestIntegrationContainerLifecycleRealPodman(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := &Service{DB: db, GZFS: client, DataDir: t.TempDir(), PrepareHost: (&startup.Service{}).PrepareContainerHost}
+	t.Cleanup(func() { service.ReleasePool(pool) })
 	ctx := t.Context()
 	if err := service.Reconcile(ctx); err != nil {
 		t.Fatal(err)
@@ -235,30 +235,55 @@ func TestIntegrationContainerLifecycleRealPodman(t *testing.T) {
 		output, _ := exec.Command("/bin/ps", "-e", "-J", record.RuntimeID, "-o", "command=").Output()
 		return strings.Count(string(output), consoleEnv+"=")
 	}
-	for _, session := range []string{"one", "two"} {
-		cmd, err := service.ConsoleCommand(ctx, 9101, session, "/bin/sh")
-		if err != nil {
-			t.Fatal(err)
-		}
-		terminal, err := pty.Start(cmd)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if session == "one" {
-			_, _ = terminal.WriteString("sleep 600 &\n")
-		}
-		time.Sleep(2 * time.Second)
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		terminal.Close()
+	one, err := service.Console(ctx, 9101, "/bin/sh", 24, 80)
+	if err != nil {
+		t.Fatal(err)
 	}
+	two, err := service.Console(ctx, 9101, "/bin/sh", 24, 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer two.Close()
+	output := make(chan string, 64)
+	go func() {
+		buffer := make([]byte, 1024)
+		for {
+			n, err := one.Read(buffer)
+			output <- string(buffer[:n])
+			if err != nil {
+				close(output)
+				return
+			}
+		}
+	}()
+	expect := func(command, answer string) {
+		_, _ = one.Write([]byte(command + "\n"))
+		var seen string
+		timeout := time.After(10 * time.Second)
+		for !strings.Contains(seen, answer) {
+			select {
+			case chunk, ok := <-output:
+				if !ok {
+					t.Fatalf("console ended before %q answered %q: %q", command, answer, seen)
+				}
+				seen += chunk
+			case <-timeout:
+				t.Fatalf("%q didn't answer %q: %q", command, answer, seen)
+			}
+		}
+	}
+	expect("stty size", "24 80")
+	if err := one.Resize(40, 120); err != nil {
+		t.Fatal(err)
+	}
+	expect("sleep 600 & stty size", "40 120")
 	if count := consoles(); count != 3 {
-		t.Fatal("expected two shells and a sleep left behind by the consoles, found", count)
+		t.Fatal("expected two shells and a sleep from the consoles, found", count)
 	}
-	service.EndConsole(ctx, 9101, "one")
+	_ = one.Close()
 	time.Sleep(500 * time.Millisecond)
 	if count := consoles(); count != 1 {
-		t.Fatal("ending a console must end its shell and what it started, and only those; left", count)
+		t.Fatal("closing a console must end its shell and what it started, and only those; left", count)
 	}
 	service.endConsole(ctx, record, "")
 	time.Sleep(500 * time.Millisecond)

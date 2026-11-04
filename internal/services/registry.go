@@ -282,6 +282,7 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	containerService.ApplyFirewall = networkService.(*network.Service).ApplyFirewallIfEnabled
 	sysSvc.Containers = containerService
 	startupService.Containers = containerService
+	zfsSvc.ReleasePool = containerService.ReleasePool
 
 	return &ServiceRegistry{
 		AuthService:        authService.(serviceInterfaces.AuthServiceInterface),
