@@ -494,6 +494,11 @@ func (s *consoleIntegrationSuite) Close() error {
 			errs = append(errs, fmt.Errorf("close suite utilities runtime: %w", err))
 		}
 	}
+	// The pool's podman service keeps its store, mounted under s.root, open.
+	// Left running, it recreates that path when it exits with this process.
+	if s.container != nil {
+		s.container.ReleasePool(s.poolName)
+	}
 	if err := s.destroyOwnedPool(); err != nil {
 		errs = append(errs, err)
 		return errors.Join(errs...)
