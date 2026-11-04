@@ -5,13 +5,16 @@ package container
 import (
 	"context"
 	"fmt"
+	"path"
 	"slices"
+	"strings"
 	"sync"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	containerServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/container"
 	"github.com/alchemillahq/sylve/internal/logger"
+	storagezfs "github.com/alchemillahq/sylve/pkg/storage/zfs"
 )
 
 func (s *Service) PrepareStack(ctx context.Context, req containerServiceInterfaces.StackRequest) (containerServiceInterfaces.StackRequest, error) {
@@ -50,7 +53,54 @@ func (s *Service) PrepareStack(ctx context.Context, req containerServiceInterfac
 	return req, nil
 }
 
+// stackFolders gives the folders a stack names relative to itself, like
+// "./data/postgres", datasets under the stack's own, which its containers
+// share as a compose project's share its folder. Deleting the stack keeps them,
+// as it keeps any dataset picked for a mount.
+func (s *Service) stackFolders(ctx context.Context, req containerServiceInterfaces.StackRequest) error {
+	for _, create := range req.Containers {
+		for i, mount := range create.Mounts {
+			folder, relative := strings.CutPrefix(mount.Source, "./")
+			if mount.Type != containerModels.MountDataset || !relative {
+				continue
+			}
+			if folder = path.Clean(folder); folder == "." || strings.HasPrefix(folder, "..") {
+				return fmt.Errorf("invalid_mount_dataset: %s", mount.Source)
+			}
+			name := req.Pool + "/sylve"
+			parts := strings.Split("stacks/"+req.Stack+"/"+folder, "/")
+			for j, part := range parts {
+				name += "/" + part
+				dataset, err := s.GZFS.ZFS.Get(ctx, name, false)
+				if err != nil && !storagezfs.DatasetDoesNotExist(err) {
+					return err
+				}
+				if dataset != nil {
+					continue
+				}
+				if dataset, err = s.GZFS.ZFS.CreateFilesystem(ctx, name, nil); err != nil {
+					return fmt.Errorf("failed_to_create_stack_folder_%s: %w", folder, err)
+				}
+				if j == len(parts)-1 {
+					mountpoint, err := storagezfs.FilesystemMountpoint(dataset)
+					if err == nil {
+						err = setPermissions(mountpoint, mount.Owner, "")
+					}
+					if err != nil {
+						return fmt.Errorf("failed_to_set_stack_folder_permissions_%s: %w", folder, err)
+					}
+				}
+			}
+			create.Mounts[i].Source = name
+		}
+	}
+	return nil
+}
+
 func (s *Service) createStack(ctx context.Context, req containerServiceInterfaces.StackRequest) error {
+	if err := s.stackFolders(ctx, req); err != nil {
+		return err
+	}
 	created := make([]bool, len(req.Containers))
 	kept := make([]bool, len(req.Containers))
 	errs := make([]error, len(req.Containers))

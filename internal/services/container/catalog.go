@@ -800,6 +800,9 @@ func (r catalogRender) spec(service composeService) (containerServiceInterfaces.
 			mount.Type = containerModels.MountPath
 		case strings.Contains(source, "/"):
 			mount.Type = containerModels.MountDataset
+			if strings.HasPrefix(source, "./") {
+				mount.Owner = cmp.Or(r.owners[variable][0], r.appOwner)
+			}
 		default:
 			mount.Source = strings.TrimLeft(source, ".")
 			mount.Owner, mount.Mode = cmp.Or(r.owners[variable][0], r.appOwner), r.owners[variable][1]
