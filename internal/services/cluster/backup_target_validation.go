@@ -327,10 +327,10 @@ func (s *Service) UpdateBackupTargetNodeReadiness(
 	if err := s.requireRuntimeWriteAuthority(bypassRaft); err != nil {
 		return err
 	}
-	if bypassRaft || s.Raft == nil {
+	if bypassRaft || s.Raft() == nil {
 		return clusterModels.ApplyBackupTargetNodeReadinessUpdateV2Txn(s.DB, &update)
 	}
-	if s.Raft.State() != raft.Leader {
+	if s.Raft().State() != raft.Leader {
 		return fmt.Errorf("not_leader")
 	}
 	data, err := json.Marshal(update)
@@ -355,11 +355,11 @@ func (s *Service) ValidateBackupTargetOnNode(
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if s.Raft != nil {
-		if s.Raft.State() != raft.Leader {
+	if s.Raft() != nil {
+		if s.Raft().State() != raft.Leader {
 			return update, fmt.Errorf("not_leader")
 		}
-		if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+		if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
 			return update, fmt.Errorf("backup_target_validation_leader_barrier_failed: %w", err)
 		}
 	}
@@ -370,7 +370,7 @@ func (s *Service) ValidateBackupTargetOnNode(
 	if err != nil {
 		return update, err
 	}
-	if err := s.UpdateBackupTargetNodeReadiness(update, s.Raft == nil); err != nil {
+	if err := s.UpdateBackupTargetNodeReadiness(update, s.Standalone()); err != nil {
 		return update, err
 	}
 	return update, backupTargetReadinessOutcome(&update)
@@ -492,7 +492,7 @@ func (s *Service) checkBackupTargetOnNode(
 	hostRevision := trust.Revision
 	nodeID = strings.TrimSpace(nodeID)
 	localNodeID := s.guestIdentityInventoryLocalNodeID()
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		if nodeID == "" {
 			nodeID = localNodeID
 		}
@@ -526,7 +526,7 @@ func (s *Service) checkBackupTargetOnNode(
 	request := BackupTargetValidationRequest{
 		HostKeyRevision: hostRevision, EnrollHostKey: enroll,
 		ExpectedNodeID:          nodeID,
-		MinimumRaftAppliedIndex: s.Raft.AppliedIndex(),
+		MinimumRaftAppliedIndex: s.Raft().AppliedIndex(),
 		TargetID:                target.ID,
 		TargetFingerprint:       fingerprint,
 	}
@@ -563,14 +563,14 @@ func (s *Service) currentBackupTargetVoterIDs() ([]string, error) {
 	if s == nil {
 		return nil, fmt.Errorf("backup_target_readiness_service_unavailable")
 	}
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		nodeID := s.guestIdentityInventoryLocalNodeID()
 		if nodeID == "" {
 			nodeID = "local"
 		}
 		return []string{nodeID}, nil
 	}
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return nil, fmt.Errorf("backup_target_readiness_raft_configuration_failed: %w", err)
 	}
@@ -687,16 +687,16 @@ func (s *Service) requireBackupTargetReadinessBarrier() error {
 	if s == nil {
 		return fmt.Errorf("backup_target_validation_service_unavailable")
 	}
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		if err := s.requireRuntimeWriteAuthority(true); err != nil {
 			return err
 		}
 		return nil
 	}
-	if s.Raft.State() != raft.Leader {
+	if s.Raft().State() != raft.Leader {
 		return fmt.Errorf("not_leader")
 	}
-	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
 		return fmt.Errorf("backup_target_readiness_barrier_failed: %w", err)
 	}
 	return nil
@@ -744,7 +744,7 @@ func (s *Service) InitializeBackupTargetHostTrust() error {
 	if s == nil || s.DB == nil || !s.DB.Migrator().HasTable(&clusterModels.BackupTargetSSHHostTrust{}) {
 		return fmt.Errorf("backup_target_host_key_state_unavailable")
 	}
-	if s.Raft != nil && s.Raft.State() != raft.Leader {
+	if s.Raft() != nil && s.Raft().State() != raft.Leader {
 		return nil
 	}
 	var options clusterModels.ClusterOption
@@ -758,7 +758,7 @@ func (s *Service) InitializeBackupTargetHostTrust() error {
 }
 
 func (s *Service) applyBackupTargetHostTrust(action string, change clusterModels.BackupTargetSSHHostTrustChange) error {
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		if err := s.requireRuntimeWriteAuthority(true); err != nil {
 			return err
 		}
@@ -767,7 +767,7 @@ func (s *Service) applyBackupTargetHostTrust(action string, change clusterModels
 		}
 		return clusterModels.ApplyBackupTargetSSHHostTrustTxn(s.DB, action, &change)
 	}
-	if s.Raft.State() != raft.Leader {
+	if s.Raft().State() != raft.Leader {
 		return raft.ErrNotLeader
 	}
 	data, err := json.Marshal(change)
@@ -786,8 +786,8 @@ func (s *Service) InstallBackupTargetHostKey(ctx context.Context, change cluster
 		return err
 	}
 	defer release()
-	if s.Raft != nil && s.Raft.State() != raft.Leader {
-		leader, _ := s.Raft.LeaderWithID()
+	if s.Raft() != nil && s.Raft().State() != raft.Leader {
+		leader, _ := s.Raft().LeaderWithID()
 		host, _, err := net.SplitHostPort(string(leader))
 		if err != nil || host == "" || s.AuthService == nil {
 			return fmt.Errorf("backup_target_host_key_leader_unavailable")

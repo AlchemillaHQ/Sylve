@@ -118,7 +118,7 @@ func TestProposeEncryptionKeyUpsertBypassRaft(t *testing.T) {
 
 func TestForwardEncryptionKeyToLeaderRaftNil(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.EncryptionKey{})
-	s := &Service{DB: db, Raft: nil}
+	s := &Service{DB: db}
 
 	err := s.ForwardEncryptionKeyToLeader("test-uuid", "data-32-bytes-minimum-for-key", "passphrase")
 	if err != nil {

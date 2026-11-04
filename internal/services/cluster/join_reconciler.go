@@ -11,6 +11,7 @@ package cluster
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -43,7 +44,7 @@ func (s *Service) recordJoinPromotionFailure(nodeID string, err error) {
 	if nodeID == "" {
 		return
 	}
-	if err == nil {
+	if err == nil || errors.Is(err, errJoinCatchupPending) {
 		s.clearJoinPromotionFailure(nodeID)
 		return
 	}
@@ -84,10 +85,10 @@ func (s *Service) clearJoinPromotionFailure(nodeID string) {
 }
 
 func (s *Service) verifiedLocalLeader() bool {
-	if s == nil || s.Raft == nil || s.Raft.State() != raft.Leader {
+	if s == nil || s.Raft() == nil || s.Raft().State() != raft.Leader {
 		return false
 	}
-	return s.Raft.VerifyLeader().Error() == nil
+	return s.Raft().VerifyLeader().Error() == nil
 }
 
 type JoinAdmissionLeaderState struct {
@@ -99,7 +100,7 @@ type JoinAdmissionLeaderState struct {
 
 func (s *Service) JoinAdmissionLeaderState(nodeID string) JoinAdmissionLeaderState {
 	state := JoinAdmissionLeaderState{}
-	if s == nil || s.Raft == nil || s.Raft.State() == raft.Shutdown {
+	if s == nil || s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		return state
 	}
 	if !s.verifiedLocalLeader() {
@@ -199,7 +200,7 @@ func (s *Service) fetchStagedJoinInventory(
 }
 
 func (s *Service) reconcileLeaderPendingJoins(ctx context.Context) {
-	if s == nil || s.DB == nil || s.Raft == nil || s.Raft.State() != raft.Leader {
+	if s == nil || s.DB == nil || s.Raft() == nil || s.Raft().State() != raft.Leader {
 		return
 	}
 	var clusterRecord clusterModels.Cluster
@@ -210,7 +211,7 @@ func (s *Service) reconcileLeaderPendingJoins(ctx context.Context) {
 	if !clusterRecord.Enabled || strings.TrimSpace(clusterRecord.Key) == "" {
 		return
 	}
-	configurationFuture := s.Raft.GetConfiguration()
+	configurationFuture := s.Raft().GetConfiguration()
 	if err := configurationFuture.Error(); err != nil {
 		logger.L.Debug().Err(err).Msg("cluster_join_reconcile_configuration_failed")
 		return
@@ -222,7 +223,7 @@ func (s *Service) reconcileLeaderPendingJoins(ctx context.Context) {
 
 	stagedNodeIDs := make(map[string]struct{}, len(servers))
 	for _, server := range servers {
-		if server.Suffrage != raft.Nonvoter && server.Suffrage != raft.Staging {
+		if server.Suffrage != raft.Nonvoter {
 			continue
 		}
 		nodeID := strings.TrimSpace(string(server.ID))
@@ -270,11 +271,19 @@ func (s *Service) reconcileLocalJoinIntent(ctx context.Context) {
 		return
 	}
 	phase := strings.TrimSpace(record.JoinPhase)
-	if record.Enabled && s.Raft != nil && s.Raft.State() != raft.Shutdown {
+	if record.Enabled && s.Raft() != nil && s.Raft().State() != raft.Shutdown {
 		status, err := s.JoinStatus()
 		isBootstrap := record.RaftBootstrap != nil && *record.RaftBootstrap
-		if err == nil && status.Phase == JoinPhaseComplete && !isBootstrap {
-			s.notifyJoinComplete()
+		if err == nil && status.Phase == JoinPhaseComplete {
+			if !isBootstrap {
+				s.notifyJoinComplete()
+			}
+			if strings.TrimSpace(record.JoinNodeID) != "" || phase != "" {
+				if err := s.finishJoinIntent(record); err != nil {
+					logger.L.Warn().Err(err).Msg("cluster_join_intent_clear_failed")
+				}
+			}
+			return
 		}
 	}
 	if strings.TrimSpace(record.JoinNodeID) == "" || phase == "" ||
@@ -303,8 +312,7 @@ func (s *Service) reconcileLocalJoinIntent(ctx context.Context) {
 		if status.Phase == JoinPhaseComplete {
 			return
 		}
-		if status.Suffrage == raftSuffrageName(raft.Nonvoter) ||
-			status.Suffrage == raftSuffrageName(raft.Staging) {
+		if status.Suffrage == raftSuffrageName(raft.Nonvoter) {
 			previous := strings.TrimSpace(record.JoinLastError)
 			result := s.pollJoinIntent(ctx)
 			if result.Err != nil && strings.TrimSpace(result.Err.Error()) != previous {

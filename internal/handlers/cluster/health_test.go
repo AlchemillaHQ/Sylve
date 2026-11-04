@@ -34,6 +34,7 @@ func TestFetchNodeHealthUsesGETAndHeaders(t *testing.T) {
 	defer server.Close()
 
 	result, err := fetchNodeHealth(
+		t.Context(),
 		server.URL,
 		map[string]string{auth.ClusterKeyHeader: "cluster-secret"},
 	)

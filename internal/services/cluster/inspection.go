@@ -47,13 +47,13 @@ type CommandMember struct {
 }
 
 func (s *Service) currentLeaderView() (raft.ServerAddress, raft.ServerID, bool) {
-	leaderAddress, leaderID := s.Raft.LeaderWithID()
+	leaderAddress, leaderID := s.Raft().LeaderWithID()
 	if leaderAddress == "" || leaderID == "" {
 		return "", "", false
 	}
 	localLeader := strings.TrimSpace(string(leaderID)) == strings.TrimSpace(s.LocalNodeID())
-	if localLeader || s.Raft.State() == raft.Leader {
-		if err := s.Raft.VerifyLeader().Error(); err != nil {
+	if localLeader || s.Raft().State() == raft.Leader {
+		if err := s.Raft().VerifyLeader().Error(); err != nil {
 			return "", "", false
 		}
 	}
@@ -85,19 +85,19 @@ func (s *Service) CommandStatus() (CommandStatus, error) {
 	if !record.Enabled {
 		return result, nil
 	}
-	if s.Raft == nil || s.Raft.State() == raft.Shutdown {
+	if s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		result.RaftState = "unavailable"
 		result.Partial = true
 		return result, nil
 	}
-	result.RaftState = strings.ToLower(s.Raft.State().String())
+	result.RaftState = strings.ToLower(s.Raft().State().String())
 	leaderAddress, leaderID, leaderKnown := s.currentLeaderView()
 	result.LeaderID = strings.TrimSpace(string(leaderID))
 	result.LeaderAddress = strings.TrimSpace(string(leaderAddress))
 	if !leaderKnown {
 		result.Partial = true
 	}
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		result.Partial = true
 		return result, nil
@@ -123,10 +123,10 @@ func (s *Service) CommandMembers() ([]CommandMember, error) {
 	if !record.Enabled {
 		return []CommandMember{}, nil
 	}
-	if s.Raft == nil || s.Raft.State() == raft.Shutdown {
+	if s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		return nil, fmt.Errorf("raft_unavailable")
 	}
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return nil, fmt.Errorf("raft_configuration_unavailable: %w", err)
 	}

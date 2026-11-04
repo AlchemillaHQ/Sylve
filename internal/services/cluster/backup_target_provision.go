@@ -59,7 +59,7 @@ func (s *Service) ProposeBackupTargetCreateCandidate(
 		}
 		return &target, nil
 	}
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return nil, fmt.Errorf("raft_not_initialized")
 	}
 	data, err := json.Marshal(command)
@@ -90,7 +90,7 @@ func (s *Service) ProposeBackupTargetUpdatePlan(plan *BackupTargetUpdatePlan, by
 	if bypassRaft {
 		return clusterModels.ApplyBackupTargetUpdateV2Txn(s.DB, &command)
 	}
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 	data, err := json.Marshal(command)
@@ -135,7 +135,7 @@ func (s *Service) PrepareBackupTargetProvisionCreate(
 			return nil, err
 		}
 	} else {
-		if s.Raft == nil {
+		if s.Raft() == nil {
 			return nil, fmt.Errorf("raft_not_initialized")
 		}
 		data, err := json.Marshal(prepare)
@@ -186,7 +186,7 @@ func (s *Service) transitionBackupTargetProvision(
 			return fmt.Errorf("invalid_backup_target_provision_action")
 		}
 	}
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 	data, err := json.Marshal(transition)

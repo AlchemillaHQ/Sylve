@@ -56,10 +56,10 @@ func (s *Service) ResolveCurrentRaftMember(nodeID string) (RaftMembership, error
 	if s != nil && s.raftMembershipForNode != nil {
 		return s.raftMembershipForNode(strings.TrimSpace(nodeID))
 	}
-	if s == nil || s.Raft == nil || s.Raft.State() == raft.Shutdown {
+	if s == nil || s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		return RaftMembership{}, fmt.Errorf("raft_unavailable")
 	}
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return RaftMembership{}, fmt.Errorf("raft_configuration_unavailable: %w", err)
 	}
@@ -70,7 +70,7 @@ func (s *Service) ResolveCurrentRaftMember(nodeID string) (RaftMembership, error
 	if !present {
 		return RaftMembership{}, fmt.Errorf("raft_member_not_found: node_id=%s", strings.TrimSpace(nodeID))
 	}
-	_, leaderID := s.Raft.LeaderWithID()
+	_, leaderID := s.Raft().LeaderWithID()
 	return RaftMembership{
 		NodeID:   strings.TrimSpace(string(server.ID)),
 		Address:  strings.TrimSpace(string(server.Address)),
@@ -90,27 +90,27 @@ func (s *Service) authoritativeMembershipStatusLocked(nodeID string) (Membership
 	if status.NodeID == "" {
 		return status, fmt.Errorf("node_id_required")
 	}
-	if s == nil || s.Raft == nil || s.Raft.State() != raft.Leader {
-		if s != nil && s.Raft != nil {
-			leaderAddress, leaderID := s.Raft.LeaderWithID()
+	if s == nil || s.Raft() == nil || s.Raft().State() != raft.Leader {
+		if s != nil && s.Raft() != nil {
+			leaderAddress, leaderID := s.Raft().LeaderWithID()
 			status.LeaderID = strings.TrimSpace(string(leaderID))
 			status.LeaderAddress = strings.TrimSpace(string(leaderAddress))
 		}
 		return status, fmt.Errorf("not_leader")
 	}
-	leaderAddress, leaderID := s.Raft.LeaderWithID()
+	leaderAddress, leaderID := s.Raft().LeaderWithID()
 	if strings.TrimSpace(string(leaderID)) == "" || strings.TrimSpace(string(leaderAddress)) == "" {
 		return status, fmt.Errorf("leader_identity_unavailable")
 	}
-	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
 		return status, fmt.Errorf("membership_barrier_failed: %w", err)
 	}
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return status, fmt.Errorf("raft_configuration_unavailable: %w", err)
 	}
-	currentLeaderAddress, currentLeaderID := s.Raft.LeaderWithID()
-	if s.Raft.State() != raft.Leader || currentLeaderID != leaderID || currentLeaderAddress != leaderAddress {
+	currentLeaderAddress, currentLeaderID := s.Raft().LeaderWithID()
+	if s.Raft().State() != raft.Leader || currentLeaderID != leaderID || currentLeaderAddress != leaderAddress {
 		return status, fmt.Errorf("leadership_changed")
 	}
 	server, present, err := resolveRaftMember(future.Configuration(), status.NodeID)

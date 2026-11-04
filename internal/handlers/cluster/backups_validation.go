@@ -98,7 +98,7 @@ func InstallBackupTargetHostKeyInternal(cS *cluster.Service) gin.HandlerFunc {
 			c.JSON(http.StatusForbidden, internal.APIResponse[any]{Status: "error", Message: "cluster_member_required", Error: err.Error()})
 			return
 		}
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			writeBackupTargetMutationError(c, "backup_target_host_key_install_failed", raft.ErrNotLeader)
 			return
 		}
@@ -112,8 +112,8 @@ func InstallBackupTargetHostKeyInternal(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 		var index uint64
-		if cS.Raft != nil {
-			index = cS.Raft.AppliedIndex()
+		if cS.Raft() != nil {
+			index = cS.Raft().AppliedIndex()
 		}
 		fingerprint, _ := remoteexec.SSHHostKeyFingerprint(change.PublicKey)
 		c.JSON(http.StatusOK, internal.APIResponse[cluster.BackupTargetHostKeyInstallResult]{

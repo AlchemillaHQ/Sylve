@@ -110,7 +110,7 @@ func (s *Service) applyReplicationRunClaim(
 	if s.Cluster == nil {
 		return fmt.Errorf("cluster_service_unavailable")
 	}
-	if s.Cluster.Raft == nil {
+	if s.Cluster.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 
@@ -122,7 +122,7 @@ func (s *Service) applyReplicationRunClaim(
 		if s.Cluster.LocalNodeIsLeader() {
 			lastErr = s.Cluster.ApplyReplicationPolicyScheduleDecision(decision, false)
 		} else {
-			_, leaderID := s.Cluster.Raft.LeaderWithID()
+			_, leaderID := s.Cluster.Raft().LeaderWithID()
 			leaderNodeID := strings.TrimSpace(string(leaderID))
 			if leaderNodeID == "" {
 				lastErr = fmt.Errorf("leader_not_available")

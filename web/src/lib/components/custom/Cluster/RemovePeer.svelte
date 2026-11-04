@@ -1,13 +1,17 @@
 <script lang="ts">
-	import { refreshClusterAfterLifecycleChange, removePeer } from '$lib/api/cluster/cluster';
+	import {
+		forceRemovePeer,
+		refreshClusterAfterLifecycleChange,
+		removePeer
+	} from '$lib/api/cluster/cluster';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { Row } from '$lib/types/components/tree-table';
 	import { PeerRemovalConflictSchema, type PeerRemovalConflict } from '$lib/types/cluster/cluster';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 	import { watch } from 'runed';
-	import ForceRemovePeer from './ForceRemovePeer.svelte';
 	import SpanWithIcon from '../SpanWithIcon.svelte';
 
 	interface Props {
@@ -22,9 +26,14 @@
 	let conflict: PeerRemovalConflict | null = $state(null);
 	let outcome = $state('');
 	let outcomeDetail = $state('');
-	let forceOpen = $state(false);
+	let force = $state(false);
+	let fenced = $state(false);
 	let retryRetainGuests = $state(false);
 	let guestOnlyConflict = $derived(isGuestOnlyConflict(conflict));
+	let offline = $derived(node?.status !== 'online');
+	// An offline target can't take part in a cooperative removal, whichever
+	// member's failure the error names.
+	let canForce = $derived(outcome === 'cluster_target_unreachable' || (outcome !== '' && offline));
 
 	function isGuestOnlyConflict(value: PeerRemovalConflict | null): boolean {
 		return (
@@ -55,6 +64,8 @@
 				conflict = null;
 				outcome = '';
 				outcomeDetail = '';
+				force = false;
+				fenced = false;
 				retryRetainGuests = false;
 				busy = false;
 			}
@@ -67,6 +78,14 @@
 		if (dep.role) parts.push(dep.role);
 		if (dep.state) parts.push(dep.state);
 		return parts.join(' · ');
+	}
+
+	function startForce() {
+		force = true;
+		fenced = false;
+		conflict = null;
+		outcome = '';
+		outcomeDetail = '';
 	}
 
 	async function confirm(retainGuests: boolean) {
@@ -139,22 +158,104 @@
 			busy = false;
 		}
 	}
+
+	async function confirmForce() {
+		if (!node || !fenced || busy) return;
+		busy = true;
+		conflict = null;
+		try {
+			const response = await forceRemovePeer(String(node.id));
+			if (response.error) {
+				if (response.message === 'peer_removal_blocked') {
+					const parsed = PeerRemovalConflictSchema.safeParse(response.data);
+					conflict = parsed.success ? parsed.data : null;
+					return;
+				}
+				handleAPIError(response);
+				toast.error(
+					response.message === 'cluster_consensus_unavailable'
+						? 'Raft cannot commit removal without quorum'
+						: 'Failed to force remove peer',
+					{ position: 'bottom-center' }
+				);
+				return;
+			}
+			await refreshClusterAfterLifecycleChange();
+			reload = true;
+			open = false;
+			toast.success('Peer membership force removed; target cleanup is not confirmed', {
+				position: 'bottom-center'
+			});
+		} finally {
+			busy = false;
+		}
+	}
 </script>
+
+{#snippet dependencyList(value: PeerRemovalConflict)}
+	<div class="max-h-72 space-y-1 overflow-y-auto rounded-md border p-2">
+		{#if value.dependencies.length === 0}
+			<p class="px-2 py-1.5 text-sm text-muted-foreground">
+				No blocked resources were reported. Retry removal.
+			</p>
+		{:else}
+			{#each value.dependencies as dep (dep.kind + dep.id)}
+				<div
+					class="flex items-center justify-between gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/30"
+				>
+					<span class="font-medium">{dependencyLabels[dep.kind] ?? dep.kind}</span>
+					<span class="text-muted-foreground">{dependencyLine(dep)}</span>
+				</div>
+			{/each}
+		{/if}
+	</div>
+{/snippet}
 
 <Dialog.Root bind:open>
 	<Dialog.Content showCloseButton={true} onClose={() => (conflict = null)}>
 		<Dialog.Header>
 			<Dialog.Title>
-				<SpanWithIcon
-					icon="icon-[mdi--account-remove-outline]"
-					size="h-6 w-6"
-					gap="gap-2"
-					title="Remove Peer"
-				/>
+				{#if force}
+					<SpanWithIcon
+						icon="icon-[mdi--alert-octagon-outline]"
+						size="h-6 w-6"
+						gap="gap-2"
+						title="Force Remove Peer"
+					/>
+				{:else}
+					<SpanWithIcon
+						icon="icon-[mdi--account-remove-outline]"
+						size="h-6 w-6"
+						gap="gap-2"
+						title="Remove Peer"
+					/>
+				{/if}
 			</Dialog.Title>
 		</Dialog.Header>
 
-		{#if busy}
+		{#if force}
+			<div class="grid gap-4 text-sm">
+				<div class="rounded-md border border-red-500/30 bg-red-500/10 p-3">
+					<p class="font-medium text-red-600 dark:text-red-400">
+						This removes only Raft membership for <span class="font-mono break-all">{node?.id}</span
+						>.
+					</p>
+					<p class="mt-1 text-muted-foreground">
+						The target is not contacted or cleaned. Force removal cannot bypass missing Raft quorum.
+					</p>
+				</div>
+
+				{#if conflict}
+					<p class="font-medium">The node still owns cluster resources</p>
+					{@render dependencyList(conflict)}
+				{/if}
+
+				<CustomCheckbox
+					label="The target's power, storage, or network is externally fenced"
+					bind:checked={fenced}
+				/>
+			</div>
+		{:else if busy}
 			<div class="rounded-md border bg-muted/40 p-4 text-sm">
 				<div class="flex items-center gap-2 font-medium">
 					<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
@@ -215,22 +316,7 @@
 							Resolve these resources before removing the peer:
 						</p>
 					</div>
-					<div class="max-h-72 space-y-1 overflow-y-auto rounded-md border p-2">
-						{#if conflict.dependencies.length === 0}
-							<p class="px-2 py-1.5 text-sm text-muted-foreground">
-								No blocked resources were reported. Retry removal.
-							</p>
-						{:else}
-							{#each conflict.dependencies as dep (dep.kind + dep.id)}
-								<div
-									class="flex items-center justify-between gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/30"
-								>
-									<span class="font-medium">{dependencyLabels[dep.kind] ?? dep.kind}</span>
-									<span class="text-muted-foreground">{dependencyLine(dep)}</span>
-								</div>
-							{/each}
-						{/if}
-					</div>
+					{@render dependencyList(conflict)}
 				</div>
 			{/if}
 		{:else}
@@ -259,22 +345,25 @@
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				{#if outcome}
+				{#if force}
+					<Button onclick={() => (open = false)} size="sm" variant="outline" disabled={busy}>
+						Cancel
+					</Button>
+					<Button
+						onclick={confirmForce}
+						size="sm"
+						variant="destructive"
+						disabled={!node || !fenced || busy}
+					>
+						{busy ? 'Removing…' : 'Force Remove Membership'}
+					</Button>
+				{:else if outcome}
 					<Button onclick={() => (open = false)} size="sm" variant="outline">Close</Button>
 					{#if outcome === 'cluster_leave_active_mutations' || outcome === 'cluster_version_check_unavailable'}
 						<Button onclick={() => confirm(retryRetainGuests)} size="sm">Retry</Button>
 					{/if}
-					{#if outcome === 'cluster_target_unreachable'}
-						<Button
-							onclick={() => {
-								open = false;
-								forceOpen = true;
-							}}
-							size="sm"
-							variant="destructive"
-						>
-							Force Remove…
-						</Button>
+					{#if canForce}
+						<Button onclick={startForce} size="sm" variant="destructive">Force Remove…</Button>
 					{/if}
 				{:else if conflict}
 					<Button
@@ -296,6 +385,11 @@
 					<Button onclick={() => (open = false)} size="sm" variant="outline" disabled={busy}>
 						Cancel
 					</Button>
+					{#if offline}
+						<Button onclick={startForce} size="sm" variant="outline" disabled={busy || !node}>
+							Force Remove…
+						</Button>
+					{/if}
 					<Button
 						onclick={() => confirm(false)}
 						size="sm"
@@ -313,5 +407,3 @@
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
-
-<ForceRemovePeer bind:open={forceOpen} bind:reload {node} />

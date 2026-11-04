@@ -1,5 +1,6 @@
 <script lang="ts">
 	import {
+		cancelLeave,
 		getDetails,
 		getJoinStatus,
 		getLeaveStatus,
@@ -135,7 +136,9 @@
 
 	async function refreshJoinStatus() {
 		if (!joinStatusPollingActive) return;
-		if (!datacenter.current.cluster.enabled || datacenter.current.cluster.raftBootstrap === true) {
+		// A join that failed before clustering started leaves the node disabled,
+		// so its status still has to be shown.
+		if (datacenter.current.cluster.raftBootstrap === true) {
 			joinStatus = null;
 			return;
 		}
@@ -193,10 +196,9 @@
 				await Promise.allSettled([datacenter.refetch(), nodes.refetch()]);
 			}
 		}
-		if (
-			leaveStatusPollingActive &&
-			(isAPIResponse(result) || leaveStatus?.phase || datacenter.current.cluster.enabled)
-		) {
+		// Idle nodes don't need polling: any leave or removal rewrites the
+		// cluster record, whose SSE refresh restarts this loop.
+		if (leaveStatusPollingActive && (isAPIResponse(result) || leaveStatus?.phase)) {
 			pendingLeaveTimer = setTimeout(() => {
 				void refreshLeaveStatus();
 			}, 3000);
@@ -264,15 +266,18 @@
 		};
 	});
 
-	let canReset = $derived(datacenter.current.cluster.enabled === true);
+	let canReset = $derived(datacenter.current.cluster.enabled === true || activeJoinStatus !== null);
 	let canCreate = $derived(
 		datacenter.current.cluster.raftBootstrap === null &&
-			datacenter.current.cluster.enabled === false
+			datacenter.current.cluster.enabled === false &&
+			activeJoinStatus === null
 	);
 
+	// A failed join can be replaced by a new one; a running one can't.
 	let canJoin = $derived(
 		datacenter.current.cluster.raftBootstrap !== true &&
-			datacenter.current.cluster.enabled === false
+			datacenter.current.cluster.enabled === false &&
+			!activeJoinStatus?.retrying
 	);
 
 	let isLeaderUi = $derived(datacenter.current.leaderId === datacenter.current.nodeId);
@@ -506,6 +511,20 @@
 			leaveRequestPending = false;
 		}
 	}
+
+	async function cancelLeaveRequest() {
+		const response = await cancelLeave();
+		if (response.error) {
+			handleAPIError(response);
+			toast.error(getClusterLeaveErrorMessage(String(response.message)), {
+				position: 'bottom-center'
+			});
+			return;
+		}
+		if (connection.plannedRestart) connection.plannedRestart = null;
+		reloadFlag = true;
+		toast.success('Cluster leave cancelled', { position: 'bottom-center' });
+	}
 </script>
 
 {#snippet button(type: string, icon: string, title: string, disabled: boolean)}
@@ -552,11 +571,12 @@
 				<LeaveProgress
 					status={leaveStatus}
 					onRetry={() => (modals.reset.open = true)}
+					onCancel={cancelLeaveRequest}
 					onForceReset={() => (modals.forceReset.open = true)}
 				/>
 			{/if}
 
-			{#if !canCreate}
+			{#if datacenter.current.cluster.enabled}
 				<Button onclick={() => (modals.view.open = true)} size="sm" class="h-6  ">
 					<div class="flex items-center">
 						<span class="icon-[mdi--eye] mr-1 h-4 w-4"></span>

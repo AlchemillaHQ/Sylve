@@ -222,7 +222,7 @@ func TestProposeBackupTargetDeleteBlockedWhenJobUsesTarget(t *testing.T) {
 
 func TestProposeBackupTargetRequiresRaftWhenBypassDisabled(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-	s := &Service{DB: db, Raft: nil}
+	s := &Service{DB: db}
 
 	createInput := clusterServiceInterfaces.BackupTargetReq{
 		Name:       "target-one",

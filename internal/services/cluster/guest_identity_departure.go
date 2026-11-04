@@ -20,10 +20,10 @@ import (
 
 // Caller holds clusterJoinMu, which serializes the membership check with joins.
 func (s *Service) releaseDepartedGuestIdentityClaimsLocked(nodeID string) error {
-	if s.Raft == nil || s.Raft.State() != raft.Leader {
+	if s.Raft() == nil || s.Raft().State() != raft.Leader {
 		return fmt.Errorf("not_leader")
 	}
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return err
 	}
@@ -52,7 +52,7 @@ func (s *Service) releaseDepartedGuestIdentityClaimsLocked(nodeID string) error 
 }
 
 func (s *Service) ReconcileGuestIdentityDepartures(ctx context.Context) error {
-	if s == nil || s.DB == nil || s.Raft == nil || s.Raft.State() != raft.Leader {
+	if s == nil || s.DB == nil || s.Raft() == nil || s.Raft().State() != raft.Leader {
 		return nil
 	}
 	if ctx == nil {
@@ -61,12 +61,21 @@ func (s *Service) ReconcileGuestIdentityDepartures(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	s.clusterJoinMu.Lock()
-	defer s.clusterJoinMu.Unlock()
-	if s.Raft.State() != raft.Leader {
+	// Departures are rare. Don't write a Barrier entry every 10s to learn
+	// there are none; one recorded just now is picked up on the next pass.
+	var pending int64
+	if err := s.DB.WithContext(ctx).Model(&clusterModels.GuestIdentityDeparture{}).Count(&pending).Error; err != nil {
+		return err
+	}
+	if pending == 0 {
 		return nil
 	}
-	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
+	if s.Raft().State() != raft.Leader {
+		return nil
+	}
+	if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
 		return err
 	}
 	var departures []clusterModels.GuestIdentityDeparture
@@ -77,7 +86,7 @@ func (s *Service) ReconcileGuestIdentityDepartures(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		future := s.Raft.GetConfiguration()
+		future := s.Raft().GetConfiguration()
 		if err := future.Error(); err != nil {
 			return err
 		}

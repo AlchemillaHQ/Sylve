@@ -43,7 +43,7 @@ func (s *Service) EnforceReplicatedRetention(now time.Time) error {
 	if bypassRaft {
 		return clusterModels.ApplyReplicatedRetentionTxn(s.DB, &decision)
 	}
-	if s.Raft == nil || s.Raft.State() != raft.Leader {
+	if s.Raft() == nil || s.Raft().State() != raft.Leader {
 		return nil
 	}
 

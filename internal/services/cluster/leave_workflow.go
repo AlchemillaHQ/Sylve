@@ -212,10 +212,10 @@ func (s *Service) StartCooperativeLeave(
 	if issuerNodeID == "" || issuerNodeID == localNodeID {
 		return ClusterLeaveResult{}, fmt.Errorf("cluster_leave_issuer_invalid")
 	}
-	if s.Raft == nil || s.Raft.State() == raft.Shutdown {
+	if s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		return ClusterLeaveResult{}, fmt.Errorf("cluster_leave_raft_unavailable")
 	}
-	leaderAddress, leaderID := s.Raft.LeaderWithID()
+	leaderAddress, leaderID := s.Raft().LeaderWithID()
 	if strings.TrimSpace(string(leaderID)) != issuerNodeID {
 		return ClusterLeaveResult{}, fmt.Errorf("cluster_leave_issuer_not_leader")
 	}
@@ -247,10 +247,6 @@ func (s *Service) StartCooperativeLeave(
 	return s.advanceLocalLeave(ctx, true)
 }
 
-func (s *Service) LeaveCluster(ctx context.Context) (ClusterLeaveResult, error) {
-	return s.LeaveClusterWithGuests(ctx, nil)
-}
-
 func (s *Service) LeaveClusterWithGuests(ctx context.Context, requested *bool) (ClusterLeaveResult, error) {
 	status, err := s.LeaveStatus()
 	if err != nil {
@@ -274,7 +270,7 @@ func (s *Service) LeaveClusterWithGuests(ctx context.Context, requested *bool) (
 	localNodeID := strings.TrimSpace(s.LocalNodeID())
 	leaveID := uuid.NewString()
 
-	if s.Raft == nil || s.Raft.State() == raft.Shutdown || s.Raft.Leader() == "" {
+	if s.Raft() == nil || s.Raft().State() == raft.Shutdown || s.Raft().Leader() == "" {
 		allowGuests := retainGuests && status.Enabled
 		if _, err := s.LocalLeavePreflight(ctx, allowGuests); err != nil {
 			return ClusterLeaveResult{}, err
@@ -286,12 +282,12 @@ func (s *Service) LeaveClusterWithGuests(ctx context.Context, requested *bool) (
 		return s.advanceLocalLeave(ctx, true)
 	}
 
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return ClusterLeaveResult{}, fmt.Errorf("failed_to_get_raft_configuration: %w", err)
 	}
 	configuration := future.Configuration()
-	if s.Raft.State() == raft.Leader {
+	if s.Raft().State() == raft.Leader {
 		if len(configuration.Servers) == 1 && strings.TrimSpace(string(configuration.Servers[0].ID)) == localNodeID {
 			if _, err := s.LocalLeavePreflight(ctx, true); err != nil {
 				return ClusterLeaveResult{}, err
@@ -326,19 +322,11 @@ func (s *Service) LeaveClusterWithGuests(ctx context.Context, requested *bool) (
 	if _, err := s.LocalLeavePreflight(ctx, retainGuests); err != nil {
 		return ClusterLeaveResult{}, err
 	}
-	leaderIP := strings.TrimSpace(raftAddressHost(string(s.Raft.Leader())))
+	leaderIP := strings.TrimSpace(raftAddressHost(string(s.Raft().Leader())))
 	if _, err := s.prepareLocalLeaveWithGuests(ctx, leaveID, leaderIP, retainGuests, retainGuests, false); err != nil {
 		return ClusterLeaveResult{}, err
 	}
 	return s.advanceLocalLeave(ctx, true)
-}
-
-func (s *Service) transferLeadershipForLeave(
-	ctx context.Context,
-	configuration raft.Configuration,
-	localNodeID string,
-) (string, error) {
-	return s.transferLeadershipForLeaveWithGuests(ctx, configuration, localNodeID, false)
 }
 
 func (s *Service) transferLeadershipForLeaveWithGuests(
@@ -362,7 +350,7 @@ func (s *Service) transferLeadershipForLeaveWithGuests(
 	sort.Slice(candidates, func(i, j int) bool { return string(candidates[i].ID) < string(candidates[j].ID) })
 
 	s.clusterJoinMu.Lock()
-	if s.Raft == nil || s.Raft.State() != raft.Leader {
+	if s.Raft() == nil || s.Raft().State() != raft.Leader {
 		s.clusterJoinMu.Unlock()
 		return "", fmt.Errorf("not_leader")
 	}
@@ -370,7 +358,7 @@ func (s *Service) transferLeadershipForLeaveWithGuests(
 		s.clusterJoinMu.Unlock()
 		return "", err
 	}
-	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
 		s.clusterJoinMu.Unlock()
 		return "", fmt.Errorf("cluster_leave_leader_barrier_failed: %w", err)
 	}
@@ -389,8 +377,8 @@ func (s *Service) transferLeadershipForLeaveWithGuests(
 	transferred := false
 	var transferErr error
 	for _, candidate := range candidates {
-		if s.Raft.State() != raft.Leader {
-			leaderAddress, leaderID := s.Raft.LeaderWithID()
+		if s.Raft().State() != raft.Leader {
+			leaderAddress, leaderID := s.Raft().LeaderWithID()
 			s.clusterJoinMu.Unlock()
 			if leaderID != "" && strings.TrimSpace(string(leaderID)) != localNodeID && leaderAddress != "" {
 				return strings.TrimSpace(raftAddressHost(string(leaderAddress))), nil
@@ -398,7 +386,7 @@ func (s *Service) transferLeadershipForLeaveWithGuests(
 			return "", fmt.Errorf("cluster_leave_leadership_transfer_unconfirmed")
 		}
 		for attempt := 0; attempt < 3; attempt++ {
-			transferErr = s.Raft.LeadershipTransferToServer(candidate.ID, candidate.Address).Error()
+			transferErr = s.Raft().LeadershipTransferToServer(candidate.ID, candidate.Address).Error()
 			if !errors.Is(transferErr, raft.ErrLeadershipTransferInProgress) {
 				break
 			}
@@ -419,7 +407,7 @@ func (s *Service) transferLeadershipForLeaveWithGuests(
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		leaderAddress, leaderID := s.Raft.LeaderWithID()
+		leaderAddress, leaderID := s.Raft().LeaderWithID()
 		if leaderID != "" && strings.TrimSpace(string(leaderID)) != localNodeID && leaderAddress != "" {
 			return strings.TrimSpace(raftAddressHost(string(leaderAddress))), nil
 		}
@@ -467,8 +455,8 @@ func (s *Service) advanceLocalLeave(ctx context.Context, notify bool) (ClusterLe
 			return ClusterLeaveResult{Status: status}, err
 		}
 	}
-	if s.Raft != nil && s.Raft.State() == raft.Leader {
-		future := s.Raft.GetConfiguration()
+	if s.Raft() != nil && s.Raft().State() == raft.Leader {
+		future := s.Raft().GetConfiguration()
 		if err := future.Error(); err != nil {
 			_ = s.updateLeavePhase(LeavePhaseRemoving, err)
 			return ClusterLeaveResult{Status: status}, err
@@ -728,11 +716,11 @@ func (s *Service) leaveDiscoverySeeds(record clusterModels.Cluster) []string {
 	if record.JoinLeaderIP != "" {
 		seeds = append(seeds, record.JoinLeaderIP)
 	}
-	if s.Raft != nil && s.Raft.State() != raft.Shutdown {
-		if leader := strings.TrimSpace(string(s.Raft.Leader())); leader != "" {
+	if s.Raft() != nil && s.Raft().State() != raft.Shutdown {
+		if leader := strings.TrimSpace(string(s.Raft().Leader())); leader != "" {
 			seeds = append(seeds, leader)
 		}
-		if future := s.Raft.GetConfiguration(); future.Error() == nil {
+		if future := s.Raft().GetConfiguration(); future.Error() == nil {
 			for _, server := range future.Configuration().Servers {
 				seeds = append(seeds, string(server.Address))
 			}
@@ -829,11 +817,11 @@ func (s *Service) OrchestratePeerRemoval(ctx context.Context, nodeID string, ret
 	}
 
 	s.clusterJoinMu.Lock()
-	if s.Raft == nil || s.Raft.State() != raft.Leader {
+	if s.Raft() == nil || s.Raft().State() != raft.Leader {
 		s.clusterJoinMu.Unlock()
 		return ClusterLeaveResult{}, fmt.Errorf("not_leader")
 	}
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		s.clusterJoinMu.Unlock()
 		return ClusterLeaveResult{}, err
@@ -856,7 +844,7 @@ func (s *Service) OrchestratePeerRemoval(ctx context.Context, nodeID string, ret
 		}
 		return ClusterLeaveResult{}, err
 	}
-	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
 		s.clusterJoinMu.Unlock()
 		return ClusterLeaveResult{}, err
 	}
@@ -873,7 +861,7 @@ func (s *Service) OrchestratePeerRemoval(ctx context.Context, nodeID string, ret
 		}}
 	}
 	targetIP := strings.TrimSpace(raftAddressHost(string(server.Address)))
-	leaderIP := strings.TrimSpace(raftAddressHost(string(s.Raft.Leader())))
+	leaderIP := strings.TrimSpace(raftAddressHost(string(s.Raft().Leader())))
 	s.clusterJoinMu.Unlock()
 
 	request := StartLeaveRequest{

@@ -280,13 +280,3 @@ func replicationPolicyTransitionInProgress(state string) bool {
 func CanNodeStartProtectedGuest(db *gorm.DB, guestType string, guestID uint, localNodeID string) (bool, error) {
 	return canNodeMutateProtectedGuest(db, guestType, guestID, localNodeID, "", "start", "")
 }
-
-func CanNodeStartProtectedGuestForTransition(
-	db *gorm.DB,
-	guestType string,
-	guestID uint,
-	localNodeID string,
-	transitionRunID string,
-) (bool, error) {
-	return CanNodeMutateProtectedGuestForTransition(db, guestType, guestID, localNodeID, transitionRunID)
-}

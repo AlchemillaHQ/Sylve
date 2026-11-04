@@ -76,9 +76,9 @@ type nodeHealthResult struct {
 	responseAt   time.Time
 }
 
-func fetchNodeHealth(healthURL string, headers map[string]string) (nodeHealthResult, error) {
+func fetchNodeHealth(ctx context.Context, healthURL string, headers map[string]string) (nodeHealthResult, error) {
 	result := nodeHealthResult{requestStart: time.Now()}
-	body, _, err := utils.HTTPGetJSONRead(healthURL, headers)
+	body, _, err := utils.HTTPGetJSONReadContext(ctx, healthURL, headers)
 	result.responseAt = time.Now()
 	if err != nil {
 		return result, err
@@ -140,6 +140,19 @@ func writeJoinAdmissionError(c *gin.Context, err error) {
 			Message: "guest_identity_inventory_conflict",
 			Error:   err.Error(),
 			Data:    conflict.Report,
+		})
+		return
+	}
+	// Match version errors by type: their text can contain "joining_node",
+	// which the substring checks below would turn into a permanent failure.
+	var versionErr *cluster.ClusterVersionError
+	if errors.As(err, &versionErr) {
+		status := http.StatusConflict
+		if versionErr.Code == "cluster_version_check_unavailable" {
+			status = http.StatusServiceUnavailable
+		}
+		c.JSON(status, internal.APIResponse[any]{
+			Status: "error", Message: versionErr.Code, Error: err.Error(), Data: nil,
 		})
 		return
 	}
@@ -382,7 +395,7 @@ func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.Handl
 			leaderAPIHost,
 		)
 
-		healthResult, err := fetchNodeHealth(healthURL, healthHeaders)
+		healthResult, err := fetchNodeHealth(c.Request.Context(), healthURL, healthHeaders)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
@@ -646,6 +659,7 @@ func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 			}
 			joinerHealthURL := fmt.Sprintf("https://%s/api/health/basic", cluster.ClusterAPIHost(req.NodeIP))
 			joinerHealthResult, err := fetchNodeHealth(
+				c.Request.Context(),
 				joinerHealthURL,
 				map[string]string{auth.ClusterKeyHeader: clusterKey},
 			)
@@ -1198,6 +1212,34 @@ func GetLeaveStatus(cS *cluster.Service) gin.HandlerFunc {
 		}
 		c.JSON(http.StatusOK, internal.APIResponse[cluster.ClusterLeaveStatus]{
 			Status: "success", Message: "cluster_leave_status", Error: "", Data: status,
+		})
+	}
+}
+
+// @Summary Cancel Cluster Leave
+// @Description Abandon an unfinished leave and reopen this node. Refused once the leader has confirmed the removal.
+// @Tags Cluster
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 409 {object} internal.APIResponse[any] "Leader already removed this node"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /cluster/leave/cancel [post]
+func CancelLeave(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := cS.CancelLocalLeave(c.Request.Context()); err != nil {
+			status, message := http.StatusInternalServerError, "cluster_leave_cancel_failed"
+			var leaveErr *cluster.ClusterLeaveError
+			if errors.As(err, &leaveErr) {
+				status, message = http.StatusConflict, leaveErr.Code
+			}
+			c.JSON(status, internal.APIResponse[any]{
+				Status: "error", Message: message, Error: err.Error(), Data: nil,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status: "success", Message: "cluster_leave_cancelled", Error: "", Data: nil,
 		})
 	}
 }

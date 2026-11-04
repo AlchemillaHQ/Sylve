@@ -8,10 +8,11 @@
 	interface Props {
 		status: ClusterLeaveStatus;
 		onRetry: () => void;
+		onCancel: () => void;
 		onForceReset: () => void;
 	}
 
-	let { status, onRetry, onForceReset }: Props = $props();
+	let { status, onRetry, onCancel, onForceReset }: Props = $props();
 	let phase = $derived(getClusterLeavePhaseMeta(status.phase));
 	let friendlyError = $derived(
 		status.lastError ? getClusterLeaveErrorMessage(status.lastError) : ''
@@ -57,7 +58,16 @@
 		{/if}
 
 		{#if friendlyError}
-			<div class="flex justify-end gap-2">
+			{#if status.phase !== 'cleaning'}
+				<p class="text-[11px] text-muted-foreground">
+					Cancel only if the leader is gone. If it already removed this node, reset the node
+					afterwards.
+				</p>
+			{/if}
+			<div class="flex flex-wrap justify-end gap-2">
+				{#if status.phase !== 'cleaning'}
+					<Button size="sm" variant="outline" onclick={onCancel}>Cancel Leave</Button>
+				{/if}
 				<Button size="sm" variant="secondary" onclick={onRetry}>Retry Leave</Button>
 				<Button size="sm" variant="destructive" onclick={onForceReset}>Force Local Reset…</Button>
 			</div>

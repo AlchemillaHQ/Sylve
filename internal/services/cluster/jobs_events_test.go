@@ -256,6 +256,8 @@ func TestPersistCurrentClusterNodes(t *testing.T) {
 	if node.SylveCommit != "def5678" {
 		t.Fatalf("commit = %q, want def5678", node.SylveCommit)
 	}
+	// A failed node-info call leaves the row alone; liveness belongs to the
+	// health check, which retries before marking a node offline.
 	offline := current["node-1"]
 	offline.healthOK = false
 	offline.sylveVersion = ""
@@ -263,11 +265,14 @@ func TestPersistCurrentClusterNodes(t *testing.T) {
 	offline.guestIDs = nil
 	current["node-1"] = offline
 	changed, err = s.persistCurrentClusterNodes(current)
-	if err != nil || !changed {
-		t.Fatalf("offline update: changed=%t error=%v", changed, err)
+	if err != nil || changed {
+		t.Fatalf("failed info probe: changed=%t error=%v", changed, err)
 	}
 	if err := db.Where("node_uuid = ?", "node-1").First(&node).Error; err != nil {
 		t.Fatalf("read offline node: %v", err)
+	}
+	if node.Status != nodeStatusOnline {
+		t.Fatalf("status after failed info probe = %q, want online", node.Status)
 	}
 	if node.SylveVersion != "0.3.2" {
 		t.Fatalf("offline version = %q, want retained 0.3.2", node.SylveVersion)

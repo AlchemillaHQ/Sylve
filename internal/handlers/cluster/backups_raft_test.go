@@ -92,7 +92,7 @@ func setupHandlerRaftCluster(t *testing.T) (*cluster.Service, func()) {
 	})
 
 	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
-	cS.Raft = r
+	cS.SetRaft(r)
 	if err := cS.ReopenMutations(); err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +382,7 @@ func TestValidateBackupTargetRequiresExplicitVoterInCluster(t *testing.T) {
 	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "validation_node_id_required") {
 		t.Fatalf("missing node status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	configuration := cS.Raft.GetConfiguration()
+	configuration := cS.Raft().GetConfiguration()
 	if err := configuration.Error(); err != nil || len(configuration.Configuration().Servers) != 1 {
 		t.Fatalf("configuration err=%v servers=%+v", err, configuration.Configuration().Servers)
 	}

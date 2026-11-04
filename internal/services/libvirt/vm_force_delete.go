@@ -149,7 +149,31 @@ func (s *Service) PurgeVMRegistration(rid uint, cleanUpMacs bool) ([]string, err
 	if err := s.RequireVMDeletionDetached(rid); err != nil {
 		return nil, err
 	}
-	return s.purgeVMRegistrationLocal(rid, cleanUpMacs)
+
+	// Release this node's claim on the ID once the registration is gone.
+	// Retirement skips this: replication has already moved the claim.
+	var identityClaim *clusterServiceInterfaces.GuestIdentityReservation
+	if s.guestIdentityCoordinator != nil {
+		claim, err := s.guestIdentityCoordinator.GuestIdentityClaim(
+			context.Background(), clusterModels.ReplicationGuestTypeVM, rid, "",
+		)
+		if err == nil {
+			identityClaim = &claim
+			defer s.guestIdentityCoordinator.CancelGuestIdentityClaim(claim)
+		}
+	}
+	warnings, err := s.purgeVMRegistrationLocal(rid, cleanUpMacs)
+	if err != nil || identityClaim == nil {
+		return warnings, err
+	}
+	if err := s.DB.Model(&vmModels.VM{}).Where("rid = ?", rid).Count(&registrationCount).Error; err != nil || registrationCount != 0 {
+		appendForceRemoveWarning(&warnings, rid, "guest_identity_release_deferred_cleanup_incomplete", err)
+		return warnings, nil
+	}
+	if err := s.guestIdentityCoordinator.ReleaseGuestIdentities(context.Background(), *identityClaim); err != nil {
+		appendForceRemoveWarning(&warnings, rid, "guest_identity_release_pending", err)
+	}
+	return warnings, nil
 }
 
 func (s *Service) PurgeVMRegistrationForRetirement(rid uint, cleanUpMacs bool) ([]string, error) {

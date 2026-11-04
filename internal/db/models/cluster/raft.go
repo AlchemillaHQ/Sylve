@@ -10,6 +10,7 @@ package clusterModels
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -21,6 +22,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/hashicorp/raft"
 )
 
@@ -86,6 +88,20 @@ func replicatedCommandTime(db *gorm.DB) time.Time {
 
 type HandlerFn func(db *gorm.DB, action string, raw json.RawMessage) error
 
+// FSMState records the last Raft index this node's database reflects. It's
+// node-local and written in the same transaction as each entry, so a restart
+// resumes after it instead of restoring the last snapshot over newer state.
+type FSMState struct {
+	ID           uint   `gorm:"primaryKey;autoIncrement:false"`
+	AppliedIndex uint64 `gorm:"not null"`
+}
+
+func (FSMState) TableName() string { return "raft_fsm_state" }
+
+const fsmStateID = 1
+
+var errEntryAlreadyApplied = errors.New("raft_entry_already_applied")
+
 type FSMDispatcher struct {
 	DB            *gorm.DB
 	mu            sync.RWMutex
@@ -96,10 +112,19 @@ type FSMDispatcher struct {
 }
 
 func NewFSMDispatcher(db *gorm.DB) *FSMDispatcher {
-	return &FSMDispatcher{
+	f := &FSMDispatcher{
 		DB:       db,
 		handlers: make(map[string]HandlerFn),
 	}
+	// The dispatcher owns its bookkeeping row, so it creates the table itself.
+	if err := db.AutoMigrate(&FSMState{}); err != nil {
+		logger.L.Error().Err(err).Msg("raft_fsm_state_migration_failed")
+	}
+	var state FSMState
+	if err := db.Where("id = ?", fsmStateID).Limit(1).Find(&state).Error; err == nil && state.ID != 0 {
+		f.appliedIndex.Store(state.AppliedIndex)
+	}
+	return f
 }
 
 func (f *FSMDispatcher) Register(t string, fn HandlerFn) {
@@ -112,33 +137,97 @@ func (f *FSMDispatcher) Apply(l *raft.Log) any {
 	if l.Type != raft.LogCommand {
 		return nil
 	}
+	f.sm.Lock()
+	defer f.sm.Unlock()
+
+	var cmd Command
+	var rejected error
+	err := f.DB.Transaction(func(tx *gorm.DB) error {
+		var state FSMState
+		if err := tx.Where("id = ?", fsmStateID).Limit(1).Find(&state).Error; err != nil {
+			return err
+		}
+		if state.ID != 0 && l.Index <= state.AppliedIndex {
+			return errEntryAlreadyApplied
+		}
+		cmd, rejected = f.apply(tx, l)
+		return tx.Save(&FSMState{ID: fsmStateID, AppliedIndex: l.Index}).Error
+	})
+	switch {
+	case errors.Is(err, errEntryAlreadyApplied):
+		return nil
+	case err != nil:
+		logger.L.Error().Err(err).Uint64("index", l.Index).Msg("raft_apply_failed")
+		return err
+	}
+	f.recordAppliedIndex(l.Index)
+	if rejected != nil {
+		// Followers drop Apply's result, so log it: every node runs the same
+		// entry, and a rejection is either the same everywhere or the first
+		// sign this node has diverged.
+		logger.L.Warn().Err(rejected).
+			Str("type", cmd.Type).
+			Str("action", cmd.Action).
+			Uint64("index", l.Index).
+			Msg("raft_command_rejected")
+		return rejected
+	}
+	return nil
+}
+
+// HasPersistedAppliedIndex reports whether this node's database records the
+// index it reflects, in which case Raft needn't restore a snapshot on start.
+func (f *FSMDispatcher) HasPersistedAppliedIndex() (bool, error) {
+	var count int64
+	err := f.DB.Model(&FSMState{}).Where("id = ?", fsmStateID).Count(&count).Error
+	return count > 0, err
+}
+
+// ResetAppliedIndex forgets the recorded index. Call it whenever the Raft log
+// this node follows is wiped: the next one restarts from index 1.
+func (f *FSMDispatcher) ResetAppliedIndex() error {
+	f.sm.Lock()
+	defer f.sm.Unlock()
+	if err := f.DB.Where("id = ?", fsmStateID).Delete(&FSMState{}).Error; err != nil {
+		return err
+	}
+	f.resetAppliedIndexLocked()
+	return nil
+}
+
+// apply runs one entry's handler in a savepoint of tx: a handler that fails
+// part-way through leaves nothing behind, while the caller still records the
+// entry as applied, as every other node does.
+func (f *FSMDispatcher) apply(tx *gorm.DB, l *raft.Log) (Command, error) {
 	var cmd Command
 	if err := json.Unmarshal(l.Data, &cmd); err != nil {
-		return fmt.Errorf("unmarshal: %w", err)
+		return cmd, fmt.Errorf("unmarshal: %w", err)
 	}
 
 	f.mu.RLock()
 	h, ok := f.handlers[cmd.Type]
 	f.mu.RUnlock()
 	if !ok {
-		return fmt.Errorf("no handler for %s", cmd.Type)
+		return cmd, fmt.Errorf("no handler for %s", cmd.Type)
 	}
-
-	f.sm.Lock()
-	defer f.sm.Unlock()
-	defer f.recordAppliedIndex(l.Index)
 
 	decidedAt, err := commandApplyTime(cmd, l)
 	if err != nil {
-		return err
+		return cmd, err
 	}
-	commandDB := f.DB.Session(&gorm.Session{
+	commandDB := tx.Session(&gorm.Session{
 		NowFunc: func() time.Time { return decidedAt },
 	})
-	if err := h(commandDB, cmd.Action, cmd.Data); err != nil {
-		return fmt.Errorf("handler: %w", err)
+	if err := commandDB.Transaction(func(tx *gorm.DB) error {
+		return h(tx, cmd.Action, cmd.Data)
+	}); err != nil {
+		return cmd, fmt.Errorf("handler: %w", err)
 	}
-	return nil
+	return cmd, nil
+}
+
+func unsupportedCommandAction(action string) error {
+	return fmt.Errorf("unsupported_raft_command_action_%s", action)
 }
 
 func (f *FSMDispatcher) recordAppliedIndex(index uint64) {
@@ -169,22 +258,16 @@ func (f *FSMDispatcher) resetAppliedIndexLocked() {
 }
 
 func (f *FSMDispatcher) ClearReplicatedState() error {
-	return f.ClearReplicatedStateTxn(nil)
-}
-
-func (f *FSMDispatcher) ClearReplicatedStateTxn(prepare func(tx *gorm.DB) error) error {
 	if f == nil || f.DB == nil {
 		return fmt.Errorf("raft_fsm_unavailable")
 	}
 	f.sm.Lock()
 	defer f.sm.Unlock()
 	if err := f.DB.Transaction(func(tx *gorm.DB) error {
-		if prepare != nil {
-			if err := prepare(tx); err != nil {
-				return err
-			}
+		if err := ClearReplicatedStateTx(tx); err != nil {
+			return err
 		}
-		return ClearReplicatedStateTx(tx)
+		return tx.Where("id = ?", fsmStateID).Delete(&FSMState{}).Error
 	}); err != nil {
 		return err
 	}
@@ -426,7 +509,9 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			}
 		}
 
-		return nil
+		// Raft resumes after the snapshot's index, so record what this
+		// database now reflects in the same transaction as the restore.
+		return tx.Save(&FSMState{ID: fsmStateID, AppliedIndex: snap.AppliedIndex}).Error
 	}); err != nil {
 		return err
 	}
@@ -435,10 +520,14 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 	return nil
 }
 
+// Persist cancels the sink on a failed encode. Closing it instead would
+// commit a truncated snapshot as the latest one.
 func (s *ClusterSnapshot) Persist(sink raft.SnapshotSink) error {
-	defer sink.Close()
-	enc := json.NewEncoder(sink)
-	return enc.Encode(s)
+	if err := json.NewEncoder(sink).Encode(s); err != nil {
+		_ = sink.Cancel()
+		return err
+	}
+	return sink.Close()
 }
 
 func (s *ClusterSnapshot) Release() {}
@@ -504,7 +593,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return nil
 			})
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -517,7 +606,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 		if action == "set" {
 			return upsertOption(db, &opt)
 		}
-		return nil
+		return unsupportedCommandAction(action)
 	})
 
 	fsm.Register("backup_target", func(db *gorm.DB, action string, raw json.RawMessage) error {
@@ -570,7 +659,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return DeleteBackupTargetLegacyTxn(db, payload.ID)
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -612,7 +701,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return FailBackupTargetProvisionOperationTxn(db, &transition)
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -637,7 +726,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return UpsertBackupTargetNodeReadinessBackfillTxn(db, &row)
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -733,7 +822,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return DeleteBackupJobTxn(db, payload.ID)
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -776,7 +865,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return AbortFailedFailoverBackupJobRunnerRebindTxn(db, &payload)
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -816,7 +905,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return ReleaseBackupJobOperationTxn(db, &payload)
 			}
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -864,7 +953,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return ReleaseBackupTargetRestoreOperationTxn(db, &payload)
 			}
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -898,7 +987,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&operation).Error
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -941,7 +1030,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&receipt).Error
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -987,7 +1076,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return db.Model(&BackupJob{}).Where("id = ?", payload.JobID).Updates(updates).Error
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -1029,7 +1118,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 
 			return db.Model(&BackupJob{}).Where("id IN ?", jobIDs).Update("friendly_src", payload.FriendlySrc).Error
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -1088,7 +1177,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return db.Model(&ReplicationPolicy{}).Where("id = ?", payload.ID).Updates(updates).Error
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -1125,7 +1214,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return db.Where("policy_id = ?", payload.PolicyID).Delete(&ReplicationLease{}).Error
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -1156,7 +1245,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return completeReplicationGuestOperation(db, &payload)
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -1178,7 +1267,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return upsertReplicationPolicyTransition(db, payload.PolicyID, &payload.Transition)
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -1197,7 +1286,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return reassignDisabledReplicationPolicyOwner(db, &payload)
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -1210,7 +1299,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return updateReplicationTargetReadiness(db, &payload)
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -1223,7 +1312,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return updateReplicationPolicyProtectionState(db, &payload)
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -1248,7 +1337,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return db.Where("node_uuid = ?", payload.NodeUUID).Delete(&ClusterSSHIdentity{}).Error
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -1273,7 +1362,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return db.Where("uuid = ?", payload.UUID).Delete(&EncryptionKey{}).Error
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -1300,7 +1389,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return upsertReplicationEvent(db, &event)
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -1316,7 +1405,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return upsertReplicationTransitionEvent(db, &event)
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 
@@ -1329,7 +1418,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			return ApplyReplicatedRetentionTxn(db, &decision)
 		default:
-			return nil
+			return unsupportedCommandAction(action)
 		}
 	})
 }

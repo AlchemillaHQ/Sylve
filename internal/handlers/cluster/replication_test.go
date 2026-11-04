@@ -437,7 +437,7 @@ func TestReplicationDeleteCleanupInternalRejectsStaleEpochAfterFence(t *testing.
 		t.Fatalf("seed policy: %v", err)
 	}
 	raftInstance := newSingleNodeReplicationHandlerRaft(t, db)
-	cS := &cluster.Service{DB: db, NodeID: "node-a", Raft: raftInstance}
+	cS := withRaft(&cluster.Service{DB: db, NodeID: "node-a"}, raftInstance)
 	if err := cS.UpdateReplicationPolicyProtectionState(
 		policy.ID,
 		policy.OwnerEpoch,

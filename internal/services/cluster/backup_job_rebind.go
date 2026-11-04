@@ -215,7 +215,7 @@ func (s *Service) prepareBackupJobRunnerRebind(
 		if err := s.requireReplicationRaftLeader(); err != nil {
 			return err
 		}
-		if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+		if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
 			return fmt.Errorf("backup_job_runner_rebind_leader_barrier_failed: %w", err)
 		}
 	}
@@ -348,7 +348,7 @@ func (s *Service) ReadyBackupJobRunnerRebind(operationToken string, bypassRaft b
 		if err := s.requireReplicationRaftLeader(); err != nil {
 			return err
 		}
-		if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+		if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
 			return fmt.Errorf("backup_job_runner_rebind_leader_barrier_failed: %w", err)
 		}
 		var operation clusterModels.BackupJobRunnerRebind
@@ -584,7 +584,7 @@ func (s *Service) ReconcileBackupJobRunnerRebind(ctx context.Context, operationT
 	if err := s.requireReplicationRaftLeader(); err != nil {
 		return err
 	}
-	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
 		return fmt.Errorf("backup_job_runner_rebind_leader_barrier_failed: %w", err)
 	}
 	s.backupJobRebindMu.Lock()
@@ -631,7 +631,7 @@ func (s *Service) ReconcileBackupJobRunnerRebind(ctx context.Context, operationT
 }
 
 func (s *Service) reconcilePendingBackupJobRunnerRebinds(ctx context.Context) error {
-	if s == nil || s.DB == nil || s.Raft == nil || s.Raft.State() != raft.Leader {
+	if s == nil || s.DB == nil || s.Raft() == nil || s.Raft().State() != raft.Leader {
 		return nil
 	}
 	ctx, release, err := s.EnterMutation(ctx)
@@ -639,7 +639,7 @@ func (s *Service) reconcilePendingBackupJobRunnerRebinds(ctx context.Context) er
 		return err
 	}
 	defer release()
-	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
 		return fmt.Errorf("backup_job_runner_rebind_leader_barrier_failed: %w", err)
 	}
 	var operations []clusterModels.BackupJobRunnerRebind

@@ -231,10 +231,10 @@ func (s *Service) ProposeReplicationPolicyStateUpdate(update ReplicationPolicyRu
 		}).Error
 	}
 
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
-	if s.Raft.State() != raft.Leader {
+	if s.Raft().State() != raft.Leader {
 		return fmt.Errorf("not_leader")
 	}
 
@@ -760,10 +760,10 @@ func (s *Service) UpsertReplicationLeasesBatch(leases []clusterModels.Replicatio
 }
 
 func (s *Service) requireReplicationRaftLeader() error {
-	if s == nil || s.Raft == nil {
+	if s == nil || s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
-	if s.Raft.State() != raft.Leader {
+	if s.Raft().State() != raft.Leader {
 		return fmt.Errorf("not_leader")
 	}
 	return nil
@@ -1246,7 +1246,7 @@ func (s *Service) LocalNodeID() string {
 }
 
 func (s *Service) LocalNodeIsLeader() bool {
-	return s.Raft != nil && s.Raft.State() == raft.Leader
+	return s.Raft() != nil && s.Raft().State() == raft.Leader
 }
 
 func resolveOptional[T any](hasExisting bool, existing T, input *T, defaultVal T) T {

@@ -57,14 +57,15 @@ func TestFSMDispatcherOptionsCommands(t *testing.T) {
 		}
 	})
 
-	t.Run("unknown action is no-op", func(t *testing.T) {
+	// A follower that doesn't know an action must say so, not drop it silently.
+	t.Run("unknown action is rejected", func(t *testing.T) {
 		raw, _ := json.Marshal(ClusterOption{
 			KeyboardLayout: "us",
 		})
 		if err := applyFSMCommand(t, fsm, Command{
 			Type: "options", Action: "unknown_action", Data: raw,
-		}); err != nil {
-			t.Fatalf("unknown action should be no-op: %v", err)
+		}); err == nil {
+			t.Fatal("unknown action was accepted")
 		}
 	})
 

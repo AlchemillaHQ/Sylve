@@ -843,7 +843,7 @@ func (s *Service) acquireRestoreGuestFence(
 		Token:     fence.token,
 	}
 	var err error
-	if s.Cluster != nil && s.Cluster.Raft != nil {
+	if s.Cluster != nil && s.Cluster.Raft() != nil {
 		err = s.applyGuestMigrationInterlock(ctx, "acquire", acquire, transition)
 	} else if s.Cluster != nil {
 		err = s.Cluster.AcquireReplicationGuestOperation(acquire, true)
@@ -868,7 +868,7 @@ func (f *restoreGuestFence) release() error {
 	}
 	ctx, cancel := restoreRecoveryContext()
 	defer cancel()
-	if f.service.Cluster != nil && f.service.Cluster.Raft != nil {
+	if f.service.Cluster != nil && f.service.Cluster.Raft() != nil {
 		return f.service.applyGuestMigrationInterlock(ctx, "abort", clusterModels.ReplicationGuestOperationAcquire{}, transition)
 	}
 	if f.service.Cluster != nil {

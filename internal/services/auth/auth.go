@@ -10,6 +10,8 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net/http"
@@ -854,17 +856,19 @@ func (s *Service) GetTokenBySHA256(hash string) (string, error) {
 }
 
 func (s *Service) IsValidClusterKey(clusterKey string) bool {
-	if strings.TrimSpace(clusterKey) == "" {
-		return false
-	}
+	expected, err := s.GetClusterKey()
+	return err == nil && ClusterKeyMatches(clusterKey, expected)
+}
 
-	var count int64
-	if err := s.DB.Model(&clusterModels.Cluster{}).
-		Where("enabled = ? AND key = ?", true, clusterKey).
-		Count(&count).Error; err != nil {
+// ClusterKeyMatches compares keys in constant time. Hashing first keeps the
+// comparison from leaking the expected key's length.
+func ClusterKeyMatches(provided, expected string) bool {
+	if provided == "" || expected == "" {
 		return false
 	}
-	return count > 0
+	a := sha256.Sum256([]byte(provided))
+	b := sha256.Sum256([]byte(expected))
+	return subtle.ConstantTimeCompare(a[:], b[:]) == 1
 }
 
 func (s *Service) GetBasicSettings() (models.BasicSettings, error) {

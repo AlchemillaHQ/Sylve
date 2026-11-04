@@ -581,8 +581,8 @@ func TestIntegrationRaftClusteredCompletionOutboxWaitsForRaftAndThenDrains(t *te
 	service := newTestZeltaService(clusterService.DB)
 	service.Cluster = clusterService
 
-	runtime := clusterService.Raft
-	clusterService.Raft = nil
+	runtime := clusterService.Raft()
+	clusterService.SetRaft(nil)
 	encrypted := true
 	service.updateBackupJobResult(&job, nil, &encrypted)
 
@@ -602,7 +602,7 @@ func TestIntegrationRaftClusteredCompletionOutboxWaitsForRaftAndThenDrains(t *te
 		t.Fatalf("durable operation was removed before terminal delivery: %v", err)
 	}
 
-	clusterService.Raft = runtime
+	clusterService.SetRaft(runtime)
 	if err := service.DrainScheduledRunResultOutbox(); err != nil {
 		t.Fatalf("drain outbox: %v", err)
 	}

@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -53,8 +54,9 @@ func TestPollJoinIntentSurfacesLeaderDeferralWithoutBumpingAttempts(t *testing.T
 	if err != nil {
 		t.Fatalf("marshal failure response: %v", err)
 	}
-	service.joinIntentRequest = func(
+	service.peerRequest = func(
 		context.Context,
+		string,
 		string,
 		[]byte,
 		map[string]string,
@@ -103,8 +105,9 @@ func TestPollJoinIntentSurfacesLeaderDeferralWithoutBumpingAttempts(t *testing.T
 	if err != nil {
 		t.Fatalf("marshal success response: %v", err)
 	}
-	service.joinIntentRequest = func(
+	service.peerRequest = func(
 		context.Context,
+		string,
 		string,
 		[]byte,
 		map[string]string,
@@ -307,7 +310,7 @@ func TestLeaderIPFromNotLeaderError(t *testing.T) {
 func TestSubmitJoinIntentKeepsRetryableTransportFailure(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &vmModels.VM{}, &jailModels.Jail{})
 	if err := db.Create(&clusterModels.Cluster{
-		Enabled: true, RaftPort: ClusterRaftPort,
+		RaftPort: ClusterRaftPort,
 	}).Error; err != nil {
 		t.Fatalf("seed cluster: %v", err)
 	}
@@ -336,5 +339,55 @@ func TestSubmitJoinIntentKeepsRetryableTransportFailure(t *testing.T) {
 	if persisted.JoinAttempts != 1 || persisted.JoinPhase != JoinPhaseStalled ||
 		len(persisted.JoinInventory) == 0 || persisted.JoinLastError == "" {
 		t.Fatalf("retryable failure was not retained: %+v", persisted)
+	}
+}
+
+func TestRecordJoinPromotionFailureIgnoresCatchup(t *testing.T) {
+	service := &Service{}
+	service.recordJoinPromotionFailure("joining-node", errors.New("replicated_state_digest_mismatch"))
+	service.recordJoinPromotionFailure(
+		"joining-node",
+		fmt.Errorf("%w: target=9 applied=4", errJoinCatchupPending),
+	)
+	if reason := service.joinPromotionFailures["joining-node"]; reason != "" {
+		t.Fatalf("catch-up recorded as a promotion deferral: %q", reason)
+	}
+}
+
+func TestIntegrationReconcileLocalJoinIntentClearsCompletedJoin(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 1, &clusterModels.Cluster{})
+	node := nodes[0]
+	if err := node.service.DB.Create(&clusterModels.Cluster{
+		Enabled: true, Key: "cluster-key", RaftIP: "192.0.2.20", RaftPort: ClusterRaftPort,
+		JoinLeaderIP: "192.0.2.10", JoinNodeID: node.id, JoinNodeIP: "192.0.2.20",
+		JoinNodeVersion: "1.2.3", JoinInventory: []byte("{}"), JoinPhase: JoinPhaseStaged,
+		JoinLastError: "stale", JoinAttempts: 3,
+	}).Error; err != nil {
+		t.Fatalf("seed join intent: %v", err)
+	}
+
+	status, err := node.service.JoinStatus()
+	if err != nil || status.Phase != JoinPhaseComplete {
+		t.Fatalf("join status = %+v, %v; want complete", status, err)
+	}
+	var record clusterModels.Cluster
+	if err := node.service.DB.First(&record).Error; err != nil {
+		t.Fatal(err)
+	}
+	if record.JoinPhase != JoinPhaseStaged {
+		t.Fatalf("JoinStatus wrote phase %q", record.JoinPhase)
+	}
+
+	node.service.reconcileLocalJoinIntent(t.Context())
+	if err := node.service.DB.First(&record).Error; err != nil {
+		t.Fatal(err)
+	}
+	if record.JoinLeaderIP != "" || record.JoinNodeID != "" || record.JoinNodeIP != "" ||
+		record.JoinNodeVersion != "" || len(record.JoinInventory) != 0 || record.JoinPhase != "" ||
+		record.JoinLastError != "" || record.JoinAttempts != 0 {
+		t.Fatalf("completed join intent left behind: %+v", record)
+	}
+	if !record.Enabled || record.Key != "cluster-key" || record.RaftIP != "192.0.2.20" {
+		t.Fatalf("clearing the join intent touched cluster state: %+v", record)
 	}
 }

@@ -178,7 +178,9 @@ func TestLocalClusterSSHHost(t *testing.T) {
 	}
 }
 
-func TestEnsureAndPublishLocalSSHIdentity(t *testing.T) {
+// A clustered node whose Raft isn't running must not write the replicated
+// identity table locally: the next snapshot restore would silently drop it.
+func TestEnsureAndPublishLocalSSHIdentityNeedsRaftWhenClustered(t *testing.T) {
 	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
 	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &clusterModels.ClusterSSHIdentity{})
 	service := &Service{DB: db}
@@ -192,22 +194,16 @@ func TestEnsureAndPublishLocalSSHIdentity(t *testing.T) {
 	if err != nil && strings.Contains(err.Error(), "node_id_unavailable") {
 		t.Skipf("Detail() unavailable in test environment: %v", err)
 	}
-	if err != nil {
-		t.Fatalf("EnsureAndPublishLocalSSHIdentity: %v", err)
+	if err == nil {
+		t.Fatal("publish succeeded without Raft on a clustered node")
 	}
 
 	identities, err := service.ListClusterSSHIdentities()
 	if err != nil {
 		t.Fatalf("list identities: %v", err)
 	}
-	if len(identities) != 1 {
-		t.Fatalf("expected 1 identity, got %d", len(identities))
-	}
-	if !strings.HasPrefix(identities[0].PublicKey, "ssh-ed25519 ") {
-		t.Fatalf("expected ssh-ed25519 key, got %q", identities[0].PublicKey)
-	}
-	if identities[0].SSHPort != ClusterEmbeddedSSHPort {
-		t.Fatalf("expected port %d, got %d", ClusterEmbeddedSSHPort, identities[0].SSHPort)
+	if len(identities) != 0 {
+		t.Fatalf("identity written locally: %+v", identities)
 	}
 }
 

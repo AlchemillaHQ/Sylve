@@ -157,7 +157,7 @@ func TestProposeNoteCRUDBypassRaft(t *testing.T) {
 }
 
 func TestProposeNoteRequiresRaftWhenBypassDisabled(t *testing.T) {
-	s := &Service{DB: newClusterNoteTestDB(t), Raft: nil}
+	s := &Service{DB: newClusterNoteTestDB(t)}
 
 	tests := []struct {
 		name string

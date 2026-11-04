@@ -20,7 +20,7 @@ import (
 )
 
 func (s *Service) SyncClusterHealth(payload []clusterServiceInterfaces.NodeHealthSync) error {
-	if s.Raft != nil && s.Raft.State() == raft.Leader {
+	if s.Raft() != nil && s.Raft().State() == raft.Leader {
 		return fmt.Errorf("leader_should_not_receive_syncs")
 	}
 

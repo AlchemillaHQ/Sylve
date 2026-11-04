@@ -458,7 +458,7 @@ func TestGuestIdentityRegistryFSMDoesNotDeadlockSingleConnection(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		response := fsm.Apply(&raft.Log{Type: raft.LogCommand, Data: command})
+		response := fsm.Apply(&raft.Log{Type: raft.LogCommand, Index: fsm.AppliedIndex() + 1, Data: command})
 		if response == nil {
 			done <- nil
 			return

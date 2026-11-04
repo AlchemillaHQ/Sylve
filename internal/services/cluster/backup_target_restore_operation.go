@@ -29,10 +29,10 @@ func (s *Service) AcquireBackupTargetRestoreOperation(
 	if bypassRaft {
 		return clusterModels.AcquireBackupTargetRestoreOperationV2Txn(s.DB, &payload)
 	}
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
-	if s.Raft.State() != raft.Leader {
+	if s.Raft().State() != raft.Leader {
 		return fmt.Errorf("not_leader")
 	}
 	s.clusterJoinMu.Lock()
@@ -79,10 +79,10 @@ func (s *Service) TransitionBackupTargetRestoreOperation(
 			return clusterModels.ReleaseBackupTargetRestoreOperationTxn(s.DB, &payload)
 		}
 	}
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
-	if s.Raft.State() != raft.Leader {
+	if s.Raft().State() != raft.Leader {
 		return fmt.Errorf("not_leader")
 	}
 	if action == "start" || action == "requeue" {

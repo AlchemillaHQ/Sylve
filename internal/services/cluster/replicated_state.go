@@ -96,15 +96,13 @@ func raftSuffrageName(suffrage raft.ServerSuffrage) string {
 		return "voter"
 	case raft.Nonvoter:
 		return "nonvoter"
-	case raft.Staging:
-		return "staging"
 	default:
 		return fmt.Sprintf("unknown_%d", suffrage)
 	}
 }
 
 func (s *Service) waitForReplicatedStateAppliedIndex(ctx context.Context, minimum uint64) (uint64, error) {
-	if s == nil || s.Raft == nil || s.Raft.State() == raft.Shutdown {
+	if s == nil || s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		return 0, fmt.Errorf("replicated_state_raft_unavailable")
 	}
 	if ctx == nil {
@@ -114,7 +112,7 @@ func (s *Service) waitForReplicatedStateAppliedIndex(ctx context.Context, minimu
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		applied := s.Raft.AppliedIndex()
+		applied := s.Raft().AppliedIndex()
 		if applied >= minimum {
 			return applied, nil
 		}
@@ -136,16 +134,16 @@ func (s *Service) replicatedStateFSMIndex() uint64 {
 		}
 		return s.stateFSM.AppliedIndex()
 	}
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return 0
 	}
-	return s.Raft.AppliedIndex()
+	return s.Raft().AppliedIndex()
 }
 
 func (s *Service) WaitForReplicatedStateAppliedIndex(ctx context.Context, minimum uint64) (uint64, error) {
 	if minimum == 0 {
-		if s != nil && s.Raft != nil && s.Raft.State() != raft.Shutdown {
-			return s.Raft.AppliedIndex(), nil
+		if s != nil && s.Raft() != nil && s.Raft().State() != raft.Shutdown {
+			return s.Raft().AppliedIndex(), nil
 		}
 		return 0, nil
 	}
@@ -190,7 +188,7 @@ func (s *Service) LocalReplicatedStateDigest(
 	if err != nil {
 		return result, fmt.Errorf("capture_replicated_state_digest: %w", err)
 	}
-	dispatched := s.Raft.AppliedIndex()
+	dispatched := s.Raft().AppliedIndex()
 	if dispatched < minimumIndex {
 		return result, fmt.Errorf(
 			"replicated_state_applied_index_too_old: minimum=%d actual=%d",
@@ -418,7 +416,7 @@ func (s *Service) ResetReplicatedStateForRepair(expectedNodeID string) error {
 		return fmt.Errorf("replicated_state_repair_raft_ip_unavailable")
 	}
 
-	if err := s.stopRaftRuntime(); err != nil {
+	if err := s.shutdownRaft(); err != nil {
 		return fmt.Errorf("replicated_state_repair_stop_failed: %w", err)
 	}
 	if s.stateFSM != nil {
@@ -455,23 +453,23 @@ func replicatedStateActiveDependencies(
 }
 
 func (s *Service) checkpointAndSnapshotLocked() error {
-	if s == nil || s.Raft == nil {
+	if s == nil || s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 	if err := s.checkpointReplicatedStateLocked(); err != nil {
 		return err
 	}
-	originalConfig := s.Raft.ReloadableConfig()
+	originalConfig := s.Raft().ReloadableConfig()
 	snapshotConfig := originalConfig
 	// The rebuild starts with an empty Raft store. Retaining even the tiny
 	// checkpoint log would let it replay that no-op without installing the
 	// authoritative database image.
 	snapshotConfig.TrailingLogs = 0
-	if err := s.Raft.ReloadConfig(snapshotConfig); err != nil {
+	if err := s.Raft().ReloadConfig(snapshotConfig); err != nil {
 		return fmt.Errorf("replicated_state_snapshot_config_failed: %w", err)
 	}
-	snapshotErr := s.Raft.Snapshot().Error()
-	restoreConfigErr := s.Raft.ReloadConfig(originalConfig)
+	snapshotErr := s.Raft().Snapshot().Error()
+	restoreConfigErr := s.Raft().ReloadConfig(originalConfig)
 	if snapshotErr != nil && !errors.Is(snapshotErr, raft.ErrNothingNewToSnapshot) {
 		return fmt.Errorf("replicated_state_snapshot_failed: %w", snapshotErr)
 	}
@@ -482,7 +480,7 @@ func (s *Service) checkpointAndSnapshotLocked() error {
 }
 
 func (s *Service) appendJoinProgressCheckpoint() error {
-	if s == nil || s.Raft == nil {
+	if s == nil || s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 	s.replicatedStateMu.Lock()
@@ -491,7 +489,7 @@ func (s *Service) appendJoinProgressCheckpoint() error {
 }
 
 func (s *Service) checkpointReplicatedStateLocked() error {
-	if s == nil || s.Raft == nil {
+	if s == nil || s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 	if err := s.applyRaftCommandUnlocked(clusterModels.Command{
@@ -577,7 +575,7 @@ func (s *Service) repairReplicatedStateMemberLocked(
 	if err := s.checkUniformVersionsLocked(ctx, nil, ""); err != nil {
 		return ReplicatedStateDigest{}, err
 	}
-	if err := s.Raft.RemoveServer(server.ID, 0, raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().RemoveServer(server.ID, 0, raftApplyTimeout).Error(); err != nil {
 		return ReplicatedStateDigest{}, fmt.Errorf("replicated_state_repair_remove_failed: %w", err)
 	}
 	removed = true
@@ -590,7 +588,7 @@ func (s *Service) repairReplicatedStateMemberLocked(
 	if err := s.checkUniformVersionsLocked(ctx, &server, ""); err != nil {
 		return ReplicatedStateDigest{}, err
 	}
-	if err := s.Raft.AddNonvoter(server.ID, server.Address, 0, raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().AddNonvoter(server.ID, server.Address, 0, raftApplyTimeout).Error(); err != nil {
 		return ReplicatedStateDigest{}, fmt.Errorf("replicated_state_repair_add_nonvoter_failed: %w", err)
 	}
 	verified, err := s.waitForMemberDigest(ctx, raft.Server{
@@ -604,7 +602,7 @@ func (s *Service) repairReplicatedStateMemberLocked(
 	if err := s.checkUniformVersionsLocked(ctx, nil, ""); err != nil {
 		return verified, err
 	}
-	if err := s.Raft.AddVoter(server.ID, server.Address, 0, raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().AddVoter(server.ID, server.Address, 0, raftApplyTimeout).Error(); err != nil {
 		return verified, fmt.Errorf("replicated_state_repair_promote_failed: %w", err)
 	}
 	if err := s.requestReplicatedStateRepair(ctx, nodeID, server.Address, ReplicatedStateRepairRequest{
@@ -629,7 +627,7 @@ func (s *Service) promoteCaughtUpNonvoterLocked(
 	if err := s.checkUniformVersionsLocked(ctx, nil, ""); err != nil {
 		return verified, err
 	}
-	if err := s.Raft.AddVoter(server.ID, server.Address, 0, raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().AddVoter(server.ID, server.Address, 0, raftApplyTimeout).Error(); err != nil {
 		return verified, fmt.Errorf("replicated_state_promote_nonvoter_failed: %w", err)
 	}
 	if err := s.requestReplicatedStateRepair(
@@ -708,7 +706,7 @@ func (s *Service) promoteVerifiedNonvoterLocked(
 	if err != nil {
 		return verified, err
 	}
-	if err := s.Raft.AddVoter(server.ID, server.Address, 0, raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().AddVoter(server.ID, server.Address, 0, raftApplyTimeout).Error(); err != nil {
 		return verified, fmt.Errorf("replicated_state_promote_nonvoter_failed: %w", err)
 	}
 	if !repairFenced {
@@ -730,11 +728,11 @@ func (s *Service) promoteVerifiedNonvoterLocked(
 
 func (s *Service) resyncClusterStateLocked(ctx context.Context) (ClusterStateResyncResult, error) {
 	result := ClusterStateResyncResult{Members: []ClusterStateMemberResult{}}
-	if s == nil || s.Raft == nil {
+	if s == nil || s.Raft() == nil {
 		return result, fmt.Errorf("raft_not_initialized")
 	}
-	if s.Raft.State() != raft.Leader {
-		address, id := s.Raft.LeaderWithID()
+	if s.Raft().State() != raft.Leader {
+		address, id := s.Raft().LeaderWithID()
 		return result, fmt.Errorf(
 			"not_leader; leader_addr=%s; leader_id=%s",
 			string(address),
@@ -755,7 +753,7 @@ func (s *Service) resyncClusterStateLocked(ctx context.Context) (ClusterStateRes
 	result.ReferenceAppliedIndex = reference.AppliedIndex
 	result.ReferenceDigest = reference.Digest
 
-	configurationFuture := s.Raft.GetConfiguration()
+	configurationFuture := s.Raft().GetConfiguration()
 	if err := configurationFuture.Error(); err != nil {
 		return result, fmt.Errorf("replicated_state_get_configuration_failed: %w", err)
 	}

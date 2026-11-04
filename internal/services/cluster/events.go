@@ -40,7 +40,7 @@ func (s *Service) EmitLeftPanelRefreshClusterWide(reason string) {
 	reason = strings.TrimSpace(reason)
 	s.EmitLeftPanelRefreshLocal(reason)
 
-	if s == nil || s.Raft == nil || s.AuthService == nil {
+	if s == nil || s.Raft() == nil || s.AuthService == nil {
 		return
 	}
 
@@ -61,7 +61,7 @@ func (s *Service) EmitLeftPanelRefreshClusterWide(reason string) {
 		return
 	}
 
-	cfgFuture := s.Raft.GetConfiguration()
+	cfgFuture := s.Raft().GetConfiguration()
 	if err := cfgFuture.Error(); err != nil {
 		logger.L.Warn().
 			Err(err).

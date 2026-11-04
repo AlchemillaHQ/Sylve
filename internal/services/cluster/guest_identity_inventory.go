@@ -13,7 +13,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -315,27 +314,9 @@ func (s *Service) strictGuestIdentityInventoryReport(
 		)
 	}
 
-	var clusterState clusterModels.Cluster
-	err := s.DB.WithContext(ctx).Select("enabled").First(&clusterState).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return GuestIdentityInventoryReport{}, "", fmt.Errorf(
-			"guest_identity_inventory_scan_failed: %w",
-			err,
-		)
-	}
-
+	// Callers only get here when standalone; clustered checks read the
+	// replicated claims instead.
 	localNodeID := s.guestIdentityInventoryLocalNodeID()
-	if err == nil && clusterState.Enabled {
-		_, report, collectErr := s.collectClusterGuestIdentityInventoriesStrict(ctx)
-		if collectErr != nil {
-			return GuestIdentityInventoryReport{}, localNodeID, fmt.Errorf(
-				"guest_identity_inventory_unavailable: %w",
-				collectErr,
-			)
-		}
-		return report, localNodeID, nil
-	}
-
 	if localNodeID == "" {
 		localNodeID = "local"
 	}
@@ -388,11 +369,10 @@ func (s *Service) RequireGuestIDsAvailable(ctx context.Context, guestIDs []uint)
 		return nil
 	}
 
+	// A requested ID that's part of a duplicate is in use and refused below;
+	// duplicates on other IDs must not block this create.
 	report, _, err := s.strictGuestIdentityInventoryReport(ctx)
 	if err != nil {
-		return err
-	}
-	if err := requireCleanGuestIdentityInventory(report); err != nil {
 		return err
 	}
 	for _, entry := range report.Entries {

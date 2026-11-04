@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/raft"
 	"gorm.io/gorm"
 )
 
@@ -207,4 +208,66 @@ func TestFSMDispatcherCommandErrors(t *testing.T) {
 			t.Fatalf("expected handler wrapped error, got: %v", err)
 		}
 	})
+}
+
+// A handler that fails part-way must leave nothing behind on any node.
+func TestFSMDispatcherRollsBackFailedHandler(t *testing.T) {
+	db := newClusterModelTestDB(t, &ClusterNote{})
+	fsm := NewFSMDispatcher(db)
+	fsm.Register("partial", func(tx *gorm.DB, _ string, _ json.RawMessage) error {
+		if err := tx.Create(&ClusterNote{ID: 7, Title: "first write"}).Error; err != nil {
+			return err
+		}
+		return errors.New("second write failed")
+	})
+
+	if err := applyFSMCommand(t, fsm, Command{Type: "partial", Action: "run", Data: json.RawMessage(`{}`)}); err == nil {
+		t.Fatal("failed handler was accepted")
+	}
+	var notes int64
+	if err := db.Model(&ClusterNote{}).Count(&notes).Error; err != nil {
+		t.Fatal(err)
+	}
+	if notes != 0 {
+		t.Fatalf("partial write kept: %d notes", notes)
+	}
+}
+
+// After a restart Raft replays entries the database already holds. Note IDs
+// come from MAX(id)+1, so applying one twice would create a second note.
+func TestFSMDispatcherSkipsEntriesAlreadyApplied(t *testing.T) {
+	db := newClusterModelTestDB(t, &ClusterNote{})
+	note, _ := json.Marshal(ClusterNote{Title: "once", Content: "x"})
+	entry, _ := json.Marshal(Command{Type: "note", Action: "create", Data: note})
+	log := &raft.Log{Type: raft.LogCommand, Index: 7, Data: entry}
+
+	fsm := NewFSMDispatcher(db)
+	RegisterDefaultHandlers(fsm)
+	if resp := fsm.Apply(log); resp != nil {
+		t.Fatalf("apply: %v", resp)
+	}
+
+	restarted := NewFSMDispatcher(db)
+	RegisterDefaultHandlers(restarted)
+	if restarted.AppliedIndex() != 7 {
+		t.Fatalf("applied index after restart = %d, want 7", restarted.AppliedIndex())
+	}
+	if resp := restarted.Apply(log); resp != nil {
+		t.Fatalf("replay: %v", resp)
+	}
+	var notes int64
+	if err := db.Model(&ClusterNote{}).Count(&notes).Error; err != nil {
+		t.Fatal(err)
+	}
+	if notes != 1 {
+		t.Fatalf("notes after replay = %d, want 1", notes)
+	}
+
+	// A wiped log restarts at index 1, so the recorded index must go with it.
+	if err := restarted.ResetAppliedIndex(); err != nil {
+		t.Fatal(err)
+	}
+	if persisted, err := restarted.HasPersistedAppliedIndex(); err != nil || persisted {
+		t.Fatalf("persisted=%v err=%v after reset", persisted, err)
+	}
 }

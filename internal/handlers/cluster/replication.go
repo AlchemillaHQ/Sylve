@@ -245,7 +245,7 @@ func ReplicationPolicies(cS *cluster.Service) gin.HandlerFunc {
 // @Router /cluster/replication/policies [post]
 func CreateReplicationPolicy(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
@@ -256,7 +256,7 @@ func CreateReplicationPolicy(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := cS.ProposeReplicationPolicyCreate(req, cS.Raft == nil); err != nil {
+		if err := cS.ProposeReplicationPolicyCreate(req, cS.Standalone()); err != nil {
 			writeReplicationPolicyError(c, "create_replication_policy_failed", err)
 			return
 		}
@@ -291,7 +291,7 @@ func CreateReplicationPolicy(cS *cluster.Service) gin.HandlerFunc {
 // @Router /cluster/replication/policies/{id} [put]
 func UpdateReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
@@ -323,7 +323,7 @@ func UpdateReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handler
 			return
 		}
 
-		if err := cS.ProposeReplicationPolicyUpdate(uint(id64), req, cS.Raft == nil); err != nil {
+		if err := cS.ProposeReplicationPolicyUpdate(uint(id64), req, cS.Standalone()); err != nil {
 			writeReplicationPolicyError(c, "update_replication_policy_failed", err)
 			return
 		}
@@ -356,7 +356,7 @@ func UpdateReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handler
 // @Router /cluster/replication/policies/{id} [delete]
 func DeleteReplicationPolicy(cS *cluster.Service, zS replicationPolicyDeleteCleanupService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
@@ -405,7 +405,7 @@ func DeleteReplicationPolicy(cS *cluster.Service, zS replicationPolicyDeleteClea
 				policy.ID,
 				policy.OwnerEpoch,
 				clusterModels.ReplicationProtectionStateDeleting,
-				cS.Raft == nil,
+				cS.Standalone(),
 			); err != nil {
 				writeReplicationPolicyError(c, "mark_replication_policy_deleting_failed", err)
 				return
@@ -413,8 +413,8 @@ func DeleteReplicationPolicy(cS *cluster.Service, zS replicationPolicyDeleteClea
 		}
 
 		minimumRaftAppliedIndex := uint64(0)
-		if cS.Raft != nil {
-			minimumRaftAppliedIndex = cS.Raft.AppliedIndex()
+		if cS.Raft() != nil {
+			minimumRaftAppliedIndex = cS.Raft().AppliedIndex()
 			if minimumRaftAppliedIndex == 0 {
 				c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
 					Status:  "error",
@@ -466,7 +466,7 @@ func DeleteReplicationPolicy(cS *cluster.Service, zS replicationPolicyDeleteClea
 			return
 		}
 
-		if err := cS.ProposeReplicationPolicyDelete(uint(id64), cS.Raft == nil); err != nil {
+		if err := cS.ProposeReplicationPolicyDelete(uint(id64), cS.Standalone()); err != nil {
 			writeReplicationPolicyError(c, "delete_replication_policy_failed", err)
 			return
 		}
@@ -544,7 +544,7 @@ func RunReplicationPolicyNow(cS *cluster.Service, zS replicationPolicyRunService
 			return
 		}
 
-		if runNodeID == "" && cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if runNodeID == "" && cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
@@ -602,7 +602,7 @@ func replicationPolicyEnqueueErrorResponse(err error) (int, string) {
 // @Router /cluster/replication/policies/{id}/failover [post]
 func FailoverReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
@@ -933,12 +933,12 @@ func UpsertClusterSSHIdentityInternal(cS *cluster.Service) gin.HandlerFunc {
 			})
 			return
 		}
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
 
-		if err := cS.UpsertClusterSSHIdentity(req, cS.Raft == nil); err != nil {
+		if err := cS.UpsertClusterSSHIdentity(req, cS.Standalone()); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "upsert_cluster_ssh_identity_failed",
@@ -1473,7 +1473,7 @@ func UpdateReplicationTargetReadinessInternal(cS *cluster.Service) gin.HandlerFu
 			return
 		}
 		// Forward before binding so the leader receives the untouched request body.
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
@@ -1489,7 +1489,7 @@ func UpdateReplicationTargetReadinessInternal(cS *cluster.Service) gin.HandlerFu
 			return
 		}
 
-		if err := cS.UpdateReplicationTargetReadiness(req, cS.Raft == nil); err != nil {
+		if err := cS.UpdateReplicationTargetReadiness(req, cS.Standalone()); err != nil {
 			status := http.StatusBadRequest
 			message := "update_replication_target_readiness_failed"
 			lowerErr := strings.ToLower(err.Error())
@@ -1549,7 +1549,7 @@ func CleanupReplicationPolicyDeleteInternal(cS *cluster.Service, zS *zelta.Servi
 			})
 			return
 		}
-		if cS.Raft != nil && req.MinimumRaftAppliedIndex == 0 {
+		if cS.Raft() != nil && req.MinimumRaftAppliedIndex == 0 {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
@@ -1660,7 +1660,7 @@ func EnqueueFailoverInternal(zS *zelta.Service) gin.HandlerFunc {
 
 func UpdateReplicationPolicyStateInternal(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}

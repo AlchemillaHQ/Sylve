@@ -286,10 +286,10 @@ func (s *Service) collectClusterGuestIdentityInventoriesAvailable(
 			err,
 		)
 	}
-	if s.Raft == nil || s.Raft.State() == raft.Shutdown {
+	if s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		return nil, GuestIdentityInventoryReport{}, fmt.Errorf("guest_identity_inventory_raft_unavailable")
 	}
-	configurationFuture := s.Raft.GetConfiguration()
+	configurationFuture := s.Raft().GetConfiguration()
 	if err := configurationFuture.Error(); err != nil {
 		return nil, GuestIdentityInventoryReport{}, fmt.Errorf(
 			"guest_identity_inventory_raft_configuration_failed: %w",
@@ -300,16 +300,6 @@ func (s *Service) collectClusterGuestIdentityInventoriesAvailable(
 		ctx,
 		configurationFuture.Configuration(),
 	)
-}
-
-func (s *Service) collectClusterGuestIdentityInventoriesStrict(
-	ctx context.Context,
-) (map[string]GuestIdentityInventoryReport, GuestIdentityInventoryReport, error) {
-	reports, combined, err := s.collectClusterGuestIdentityInventoriesAvailable(ctx)
-	if err != nil {
-		return nil, GuestIdentityInventoryReport{}, err
-	}
-	return reports, combined, nil
 }
 
 func (s *Service) collectClusterGuestIdentityInventoriesAvailableFromConfiguration(

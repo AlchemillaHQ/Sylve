@@ -72,6 +72,12 @@ export async function getLeaveStatus(): Promise<ClusterLeaveStatus | APIResponse
 	return await apiRequestResult('/cluster/leave-status', ClusterLeaveStatusSchema, 'GET');
 }
 
+export async function cancelLeave(): Promise<APIResponse> {
+	return await apiRequest('/cluster/leave/cancel', APIResponseSchema, 'POST', undefined, {
+		raw: true
+	});
+}
+
 export async function createCluster(ip: string): Promise<APIResponse> {
 	return await apiRequest(
 		'/cluster',

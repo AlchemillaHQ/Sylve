@@ -76,7 +76,7 @@ func (s *Service) initializeGuestIdentityRegistryForFoundingNode(
 	nodeID string,
 	report GuestIdentityInventoryReport,
 ) error {
-	if s == nil || s.Raft == nil || s.Raft.State() != raft.Leader {
+	if s == nil || s.Raft() == nil || s.Raft().State() != raft.Leader {
 		return fmt.Errorf("guest_identity_registry_bootstrap_requires_leader")
 	}
 	if err := s.registerGuestIdentityInventoryReport(nodeID, report); err != nil {
@@ -147,16 +147,16 @@ func (s *Service) guestIdentityInventoryForVoter(
 func (s *Service) activateGuestIdentityRegistryIfReady(ctx context.Context) error {
 	s.membershipLifecycleMu.Lock()
 	defer s.membershipLifecycleMu.Unlock()
-	if s.Raft == nil || s.Raft.State() != raft.Leader {
+	if s.Raft() == nil || s.Raft().State() != raft.Leader {
 		return raft.ErrNotLeader
 	}
-	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
 		return fmt.Errorf("guest_identity_activation_barrier_failed: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	configurationFuture := s.Raft.GetConfiguration()
+	configurationFuture := s.Raft().GetConfiguration()
 	if err := configurationFuture.Error(); err != nil {
 		return fmt.Errorf("guest_identity_activation_configuration_failed: %w", err)
 	}
@@ -187,7 +187,7 @@ func (s *Service) ReconcileGuestIdentityRegistry(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if s == nil || s.DB == nil || s.Raft == nil || s.Raft.State() != raft.Leader {
+	if s == nil || s.DB == nil || s.Raft() == nil || s.Raft().State() != raft.Leader {
 		return nil
 	}
 	if err := ctx.Err(); err != nil {
@@ -210,7 +210,7 @@ func (s *Service) ReconcileGuestIdentityRegistry(ctx context.Context) error {
 		return clusterModels.ErrGuestIdentityRegistryInitializing
 	}
 
-	configurationFuture := s.Raft.GetConfiguration()
+	configurationFuture := s.Raft().GetConfiguration()
 	if err := configurationFuture.Error(); err != nil {
 		return fmt.Errorf("guest_identity_configuration_failed: %w", err)
 	}
@@ -265,14 +265,22 @@ func (s *Service) startGuestIdentityReconciler(ctx context.Context) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	lastRegistryErr := ""
 	run := func() {
 		if err := s.ReconcileGuestIdentityDepartures(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			logger.L.Debug().Err(err).Msg("guest_identity_departure_release_deferred")
 		}
-		if err := s.ReconcileGuestIdentityRegistry(ctx); err != nil &&
-			!errors.Is(err, context.Canceled) &&
-			!errors.Is(err, clusterModels.ErrGuestIdentityRegistryInitializing) {
-			logger.L.Debug().Err(err).Msg("guest_identity_reconciliation_deferred")
+		err := s.ReconcileGuestIdentityRegistry(ctx)
+		if err == nil || errors.Is(err, context.Canceled) ||
+			errors.Is(err, clusterModels.ErrGuestIdentityRegistryInitializing) {
+			lastRegistryErr = ""
+			return
+		}
+		// Until this succeeds, no node can create or delete guests, and an
+		// inventory conflict needs an operator; say so once per change.
+		if err.Error() != lastRegistryErr {
+			lastRegistryErr = err.Error()
+			logger.L.Warn().Err(err).Msg("guest_identity_registry_activation_blocked")
 		}
 	}
 	go func() {

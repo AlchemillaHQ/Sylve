@@ -81,7 +81,7 @@ func TestValidateBackupTargetInternalReturnsNodeBoundReceipt(t *testing.T) {
 	body, _ := json.Marshal(request)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	future := service.Raft.GetConfiguration()
+	future := service.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestInternalHostKeyInstallRequiresMemberAndCannotReplaceTrust(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	configuration := service.Raft.GetConfiguration()
+	configuration := service.Raft().GetConfiguration()
 	if err := configuration.Error(); err != nil {
 		t.Fatal(err)
 	}

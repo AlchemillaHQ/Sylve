@@ -26,7 +26,7 @@ type discoverEncryptionKeyRequest struct {
 
 func DiscoverEncryptionKeyInternal(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
@@ -57,7 +57,7 @@ func DiscoverEncryptionKeyInternal(cS *cluster.Service) gin.HandlerFunc {
 			keyFormat = "passphrase"
 		}
 
-		if err := cS.ProposeEncryptionKeyUpsert(uuid, req.KeyData, keyFormat, cS.Raft == nil); err != nil {
+		if err := cS.ProposeEncryptionKeyUpsert(uuid, req.KeyData, keyFormat, cS.Standalone()); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "upsert_encryption_key_failed",

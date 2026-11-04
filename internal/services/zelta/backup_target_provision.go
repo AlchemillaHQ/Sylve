@@ -76,7 +76,7 @@ func (s *Service) executeBackupTargetProvisionOperation(
 	if err := s.ProvisionBackupTargetRoot(ctx, &target); err != nil {
 		return err
 	}
-	return s.Cluster.CompleteBackupTargetProvision(operation, s.Cluster.Raft == nil)
+	return s.Cluster.CompleteBackupTargetProvision(operation, s.Cluster.Standalone())
 }
 
 // ReconcileBackupTargetProvisionOperations retries only leader-owned pending
@@ -85,11 +85,11 @@ func (s *Service) ReconcileBackupTargetProvisionOperations(ctx context.Context) 
 	if s == nil || s.Cluster == nil {
 		return nil
 	}
-	if s.Cluster.Raft != nil {
-		if s.Cluster.Raft.State() != raft.Leader {
+	if s.Cluster.Raft() != nil {
+		if s.Cluster.Raft().State() != raft.Leader {
 			return nil
 		}
-		if err := s.Cluster.Raft.Barrier(5 * time.Second).Error(); err != nil {
+		if err := s.Cluster.Raft().Barrier(5 * time.Second).Error(); err != nil {
 			return fmt.Errorf("backup_target_provision_barrier_failed: %w", err)
 		}
 	}

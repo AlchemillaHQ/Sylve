@@ -141,15 +141,15 @@ func currentToClusterNode(cur curInfo) clusterModels.ClusterNode {
 }
 
 func currentToClusterNodeUpdates(cur curInfo) map[string]any {
-	status := statusFromHealth(cur.healthOK)
 	updates := map[string]any{
 		"api":        cur.api,
-		"status":     status,
 		"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
 	}
 
-	// Keep the last known inventory when the node-info probe failed.
+	// A failed node-info call says nothing about liveness: keep the status the
+	// health check (with its retry) last set, and the last known inventory.
 	if cur.healthOK {
+		updates["status"] = nodeStatusOnline
 		guestIDs := cur.guestIDs
 		if guestIDs == nil {
 			guestIDs = []uint{}
@@ -194,9 +194,7 @@ func currentToClusterNodeUpdates(cur curInfo) map[string]any {
 }
 
 func hasSignificantChange(cur curInfo, ex clusterModels.ClusterNode) bool {
-	status := statusFromHealth(cur.healthOK)
-
-	if ex.Status != status {
+	if cur.healthOK && ex.Status != nodeStatusOnline {
 		return true
 	}
 
@@ -413,14 +411,14 @@ func (s *Service) persistCurrentClusterNodes(current map[string]curInfo) (bool, 
 }
 
 func (s *Service) PopulateClusterNodes() error {
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return nil
 	}
 
-	if s.Raft.State() != raft.Leader {
+	if s.Raft().State() != raft.Leader {
 		return nil
 	}
-	if err := s.Raft.VerifyLeader().Error(); err != nil {
+	if err := s.Raft().VerifyLeader().Error(); err != nil {
 		return nil
 	}
 
@@ -447,7 +445,7 @@ func (s *Service) PopulateClusterNodes() error {
 		return err
 	}
 
-	cfgFuture := s.Raft.GetConfiguration()
+	cfgFuture := s.Raft().GetConfiguration()
 	if err := cfgFuture.Error(); err != nil {
 		return fmt.Errorf("failed_to_get_raft_configuration: %w", err)
 	}
@@ -668,13 +666,13 @@ func (s *Service) fastStatusCheckLeader(peerIDs []string, peerAddrs map[string]s
 }
 
 func (s *Service) FastStatusCheck() {
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return
 	}
-	if s.Raft.State() != raft.Leader {
+	if s.Raft().State() != raft.Leader {
 		return
 	}
-	if err := s.Raft.VerifyLeader().Error(); err != nil {
+	if err := s.Raft().VerifyLeader().Error(); err != nil {
 		return
 	}
 
@@ -687,7 +685,7 @@ func (s *Service) FastStatusCheck() {
 		publishLeftPanelRefresh()
 	}
 
-	cfgFuture := s.Raft.GetConfiguration()
+	cfgFuture := s.Raft().GetConfiguration()
 	if err := cfgFuture.Error(); err != nil {
 		logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to get raft configuration")
 		return
@@ -705,6 +703,14 @@ func (s *Service) FastStatusCheck() {
 		peerAddrs[id] = string(server.Address)
 	}
 
+	s.peerProbeMu.Lock()
+	for id := range s.peerProbeFailureStreak {
+		if _, member := peerAddrs[id]; !member {
+			delete(s.peerProbeFailureStreak, id)
+		}
+	}
+	s.peerProbeMu.Unlock()
+
 	if len(peerIDs) == 0 {
 		logger.LogWithDeduplication(zerolog.DebugLevel, "FastStatusCheck: no peers in raft configuration")
 		return
@@ -714,7 +720,7 @@ func (s *Service) FastStatusCheck() {
 }
 
 func (s *Service) syncClusterHealthToFollowers() {
-	if s.Raft == nil || s.Raft.State() != raft.Leader || s.AuthService == nil {
+	if s.Raft() == nil || s.Raft().State() != raft.Leader || s.AuthService == nil {
 		return
 	}
 
@@ -752,7 +758,7 @@ func (s *Service) syncClusterHealthToFollowers() {
 		})
 	}
 
-	cfgFuture := s.Raft.GetConfiguration()
+	cfgFuture := s.Raft().GetConfiguration()
 	if err := cfgFuture.Error(); err != nil {
 		return
 	}
@@ -769,7 +775,7 @@ func (s *Service) fanOutHealthSync(payload []clusterServiceInterfaces.NodeHealth
 	}
 
 	for _, server := range cfg.Servers {
-		if server.Address == s.Raft.Leader() {
+		if server.Address == s.Raft().Leader() {
 			continue
 		}
 

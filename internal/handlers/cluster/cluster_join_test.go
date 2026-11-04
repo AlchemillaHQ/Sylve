@@ -224,7 +224,7 @@ func TestJoinLeaderAPIHostUsesClusterHTTPSPort(t *testing.T) {
 func TestJoinProgressInternalReportsIdentityAndIndexes(t *testing.T) {
 	raftNode := setupSingleRaftForTest(t, "node-progress")
 	defer func() { _ = raftNode.Shutdown().Error() }()
-	service := &cluster.Service{Raft: raftNode, NodeID: "node-progress"}
+	service := withRaft(&cluster.Service{NodeID: "node-progress"}, raftNode)
 
 	router := gin.New()
 	router.GET("/intra-cluster/join-progress", JoinProgressInternal(service))
@@ -261,7 +261,7 @@ func TestJoinProgressInternalReportsIdentityAndIndexes(t *testing.T) {
 func TestJoinProgressInternalWaitsForMinimumAppliedIndex(t *testing.T) {
 	raftNode := setupSingleRaftForTest(t, "node-progress-wait")
 	defer func() { _ = raftNode.Shutdown().Error() }()
-	service := &cluster.Service{Raft: raftNode, NodeID: "node-progress-wait"}
+	service := withRaft(&cluster.Service{NodeID: "node-progress-wait"}, raftNode)
 
 	router := gin.New()
 	router.GET("/intra-cluster/join-progress", JoinProgressInternal(service))

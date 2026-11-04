@@ -716,7 +716,7 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 	if err := s.drainScheduledRunResultOutbox(); err != nil {
 		logger.L.Debug().Err(err).Msg("scheduled_run_result_outbox_pending")
 	}
-	if !bypassRaft && (s.Cluster == nil || s.Cluster.Raft == nil || s.Cluster.Raft.State() != raft.Leader) {
+	if !bypassRaft && (s.Cluster == nil || s.Cluster.Raft() == nil || s.Cluster.Raft().State() != raft.Leader) {
 		return nil
 	}
 
@@ -2435,11 +2435,11 @@ func (s *Service) forwardBackupJobStateToLeader(update cluster.BackupJobRuntimeS
 	if s == nil || s.Cluster == nil {
 		return fmt.Errorf("cluster_service_unavailable")
 	}
-	if s.Cluster.Raft == nil {
+	if s.Cluster.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 
-	_, leaderID := s.Cluster.Raft.LeaderWithID()
+	_, leaderID := s.Cluster.Raft().LeaderWithID()
 	leaderNodeID := strings.TrimSpace(string(leaderID))
 	if leaderNodeID == "" {
 		return fmt.Errorf("leader_unknown")
@@ -2978,8 +2978,8 @@ func (s *Service) isLocalBackupJobRunner(job *clusterModels.BackupJob, localNode
 
 	runner := strings.TrimSpace(job.RunnerNodeID)
 	if runner == "" {
-		if s.Cluster != nil && s.Cluster.Raft != nil {
-			return s.Cluster.Raft.State() == raft.Leader
+		if s.Cluster != nil && s.Cluster.Raft() != nil {
+			return s.Cluster.Raft().State() == raft.Leader
 		}
 		return true
 	}

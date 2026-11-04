@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/cmd"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -38,7 +39,7 @@ const (
 	JoinPhaseStalled     = "stalled"
 	JoinPhaseFailed      = "failed"
 
-	joinAdmissionRequestTimeout = 6 * time.Second
+	joinAdmissionRequestTimeout = 30 * time.Second
 	joinAdmissionResponseLimit  = 1 << 20
 )
 
@@ -144,6 +145,11 @@ func (s *Service) SaveJoinIntent(
 	if err := s.DB.First(&record).Error; err != nil {
 		return err
 	}
+	// A clustered node may only resume its own unfinished join. Anything else
+	// would overwrite the key its peers use to reach it.
+	if record.Enabled && (!record.HasIncompleteJoin() || !auth.ClusterKeyMatches(clusterKey, strings.TrimSpace(record.Key))) {
+		return fmt.Errorf("clustered_already")
+	}
 	if err := s.DB.Model(&record).Updates(map[string]any{
 		"key":               clusterKey,
 		"join_leader_ip":    leaderIP,
@@ -187,6 +193,21 @@ func (s *Service) updateJoinIntent(
 	return s.DB.Model(&record).Updates(updates).Error
 }
 
+// finishJoinIntent drops the join intent once this node is a voter, so a stale
+// join leader is never reused as a leave seed or mistaken for a pending join.
+func (s *Service) finishJoinIntent(record clusterModels.Cluster) error {
+	return s.DB.Model(&record).Updates(map[string]any{
+		"join_leader_ip":    "",
+		"join_node_id":      "",
+		"join_node_ip":      "",
+		"join_node_version": "",
+		"join_inventory":    nil,
+		"join_phase":        "",
+		"join_last_error":   "",
+		"join_attempts":     0,
+	}).Error
+}
+
 func (s *Service) MarkJoinIntentPhase(phase string, err error) error {
 	lastError := ""
 	if err != nil {
@@ -196,10 +217,10 @@ func (s *Service) MarkJoinIntentPhase(phase string, err error) error {
 }
 
 func (s *Service) joinServer(nodeID string) (*raft.Server, error) {
-	if s == nil || s.Raft == nil || s.Raft.State() == raft.Shutdown {
+	if s == nil || s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		return nil, nil
 	}
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return nil, err
 	}
@@ -252,11 +273,11 @@ func (s *Service) JoinStatus() (ClusterJoinStatus, error) {
 		status.NodeIP = strings.TrimSpace(record.RaftIP)
 	}
 
-	if s.Raft != nil && s.Raft.State() != raft.Shutdown {
-		status.RaftState = s.Raft.State().String()
+	if s.Raft() != nil && s.Raft().State() != raft.Shutdown {
+		status.RaftState = s.Raft().State().String()
 		status.AppliedIndex = s.replicatedStateFSMIndex()
 		status.TargetIndex = s.joinLeaderTarget()
-		leaderAddress, leaderID := s.Raft.LeaderWithID()
+		leaderAddress, leaderID := s.Raft().LeaderWithID()
 		status.LeaderID = strings.TrimSpace(string(leaderID))
 		status.LeaderAddress = strings.TrimSpace(string(leaderAddress))
 		server, err := s.joinServer(nodeID)
@@ -266,24 +287,11 @@ func (s *Service) JoinStatus() (ClusterJoinStatus, error) {
 			case raft.Voter:
 				status.Phase = JoinPhaseComplete
 				status.LastError = ""
-				if nodeID == localNodeID && strings.TrimSpace(record.JoinNodeID) == localNodeID &&
-					record.JoinPhase != JoinPhaseComplete {
-					_ = s.updateJoinIntent(JoinPhaseComplete, "", false, "")
-				}
-			case raft.Nonvoter, raft.Staging:
+			case raft.Nonvoter:
 				status.Phase = JoinPhaseCatchingUp
 				if status.TargetIndex > 0 && status.AppliedIndex >= status.TargetIndex &&
 					strings.TrimSpace(status.LastError) == "" {
 					status.AwaitingPromotion = true
-				}
-				if nodeID == localNodeID && strings.TrimSpace(record.JoinNodeID) == localNodeID &&
-					record.JoinPhase != JoinPhaseCatchingUp {
-					_ = s.updateJoinIntent(
-						JoinPhaseCatchingUp,
-						strings.TrimSpace(record.JoinLastError),
-						false,
-						"",
-					)
 				}
 			}
 		}
@@ -370,7 +378,7 @@ func (s *Service) LocalJoinProgress(
 	minimumIndex uint64,
 ) (ClusterJoinProgress, error) {
 	progress := ClusterJoinProgress{}
-	if s == nil || s.Raft == nil || s.Raft.State() == raft.Shutdown {
+	if s == nil || s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		return progress, fmt.Errorf("join_progress_raft_unavailable")
 	}
 	progress.NodeID = strings.TrimSpace(s.guestIdentityInventoryLocalNodeID())
@@ -385,13 +393,13 @@ func (s *Service) LocalJoinProgress(
 	if _, err := s.WaitForReplicatedStateAppliedIndex(ctx, minimumIndex); err != nil {
 		return progress, err
 	}
-	progress.RaftState = s.Raft.State().String()
-	progress.AppliedIndex = s.Raft.AppliedIndex()
+	progress.RaftState = s.Raft().State().String()
+	progress.AppliedIndex = s.Raft().AppliedIndex()
 	progress.FSMIndex = s.replicatedStateFSMIndex()
 	progress.FSMIndexKnown = s.stateFSM != nil
-	progress.LastIndex = s.Raft.LastIndex()
+	progress.LastIndex = s.Raft().LastIndex()
 	progress.RepairFenced = s.stateRepair.Load()
-	leaderAddress, leaderID := s.Raft.LeaderWithID()
+	leaderAddress, leaderID := s.Raft().LeaderWithID()
 	progress.LeaderID = strings.TrimSpace(string(leaderID))
 	progress.LeaderAddress = strings.TrimSpace(string(leaderAddress))
 	return progress, nil
@@ -548,10 +556,12 @@ func (s *Service) submitJoinIntent(
 		_ = s.updateJoinIntent(JoinPhaseFailed, result.Err.Error(), false, "")
 		return result
 	}
+	// Send the running version, not the one saved with the intent: after both
+	// nodes upgrade mid-join the saved one never matches the leader again.
 	request := JoinAdmissionRequest{
 		NodeID:      strings.TrimSpace(record.JoinNodeID),
 		NodeIP:      strings.TrimSpace(record.JoinNodeIP),
-		NodeVersion: strings.TrimSpace(record.JoinNodeVersion),
+		NodeVersion: strings.TrimSpace(cmd.Version),
 		Preflight:   false,
 		Inventory:   inventory,
 	}
@@ -676,11 +686,7 @@ func (s *Service) requestJoinAdmission(
 	payload []byte,
 	headers map[string]string,
 ) (utils.HTTPReadResponse, error) {
-	if s != nil && s.joinIntentRequest != nil {
-		statusCode, body, err := s.joinIntentRequest(ctx, url, payload, headers)
-		return utils.HTTPReadResponse{StatusCode: statusCode, Body: body}, err
-	}
-	return utils.HTTPRequestReadContext(
+	return s.peerHTTP(
 		ctx,
 		http.MethodPost,
 		url,
@@ -689,4 +695,21 @@ func (s *Service) requestJoinAdmission(
 		joinAdmissionRequestTimeout,
 		joinAdmissionResponseLimit,
 	)
+}
+
+// peerHTTP sends a request to another node's cluster API.
+func (s *Service) peerHTTP(
+	ctx context.Context,
+	method string,
+	url string,
+	payload []byte,
+	headers map[string]string,
+	timeout time.Duration,
+	responseLimit int64,
+) (utils.HTTPReadResponse, error) {
+	if s.peerRequest != nil {
+		statusCode, body, err := s.peerRequest(ctx, method, url, payload, headers)
+		return utils.HTTPReadResponse{StatusCode: statusCode, Body: body}, err
+	}
+	return utils.HTTPRequestReadContext(ctx, method, url, payload, headers, timeout, responseLimit)
 }

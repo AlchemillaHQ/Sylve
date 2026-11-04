@@ -99,10 +99,10 @@ func (s *Service) RemoveMembership(
 
 	s.clusterJoinMu.Lock()
 	defer s.clusterJoinMu.Unlock()
-	if s.Raft == nil || s.Raft.State() != raft.Leader {
+	if s.Raft() == nil || s.Raft().State() != raft.Leader {
 		return fmt.Errorf("not_leader")
 	}
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return fmt.Errorf("failed_to_get_raft_configuration: %w", err)
 	}
@@ -122,10 +122,10 @@ func (s *Service) RemoveMembership(
 	if err := s.checkUniformVersionsLocked(ctx, nil, ""); err != nil {
 		return err
 	}
-	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
 		return fmt.Errorf("peer_removal_leader_barrier_failed: %w", err)
 	}
-	if s.Raft.State() != raft.Leader {
+	if s.Raft().State() != raft.Leader {
 		return fmt.Errorf("leadership_changed")
 	}
 	if request.RetainGuests {
@@ -150,7 +150,7 @@ func (s *Service) RemoveMembership(
 			return fmt.Errorf("cluster_leave_departure_record_failed: %w", err)
 		}
 	}
-	if err := s.Raft.RemoveServer(server.ID, 0, raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().RemoveServer(server.ID, 0, raftApplyTimeout).Error(); err != nil {
 		return fmt.Errorf("failed_to_remove_peer: %w", err)
 	}
 	if err := s.DeleteClusterSSHIdentity(nodeID, false); err != nil {

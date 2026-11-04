@@ -107,7 +107,7 @@ func rebuildInMemoryReplicatedStateNode(
 	node.addr = address
 	node.transport = transport
 	node.raft = instance
-	node.service.Raft = instance
+	node.service.SetRaft(instance)
 	node.service.Transport = nil
 	node.service.raftFSM = fsm
 	node.service.stateFSM = fsm

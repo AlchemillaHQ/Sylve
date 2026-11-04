@@ -27,20 +27,23 @@ import (
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 )
 
-func (s *Service) initRaftStores(dataDir string, rw io.Writer) (raft.LogStore, raft.StableStore, raft.SnapshotStore, error) {
-	logStore, err := raftboltdb.NewBoltStore(fmt.Sprintf("%s/raft-log.db", dataDir))
+func (s *Service) initRaftStores(dataDir string, rw io.Writer) (*raftboltdb.BoltStore, *raftboltdb.BoltStore, raft.SnapshotStore, error) {
+	logStore, err := raftboltdb.NewBoltStore(filepath.Join(dataDir, "raft-log.db"))
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed_to_create_log_store")
+		return nil, nil, nil, fmt.Errorf("failed_to_create_log_store: %w", err)
 	}
 
-	stableStore, err := raftboltdb.NewBoltStore(fmt.Sprintf("%s/raft-stable.db", dataDir))
+	stableStore, err := raftboltdb.NewBoltStore(filepath.Join(dataDir, "raft-stable.db"))
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed_to_create_stable_store")
+		_ = logStore.Close()
+		return nil, nil, nil, fmt.Errorf("failed_to_create_stable_store: %w", err)
 	}
 
 	snapStore, err := raft.NewFileSnapshotStore(dataDir, 2, rw)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed_to_create_snap_store")
+		_ = logStore.Close()
+		_ = stableStore.Close()
+		return nil, nil, nil, fmt.Errorf("failed_to_create_snap_store: %w", err)
 	}
 
 	return logStore, stableStore, snapStore, nil
@@ -73,10 +76,6 @@ func (s *Service) initRaftTransport(raftIP string) (*raft.NetworkTransport, erro
 	return t, nil
 }
 
-func (s *Service) SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
-	return s.setupRaft(bootstrap, fsm)
-}
-
 func (s *Service) setupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
 	var c clusterModels.Cluster
 	if err := s.DB.First(&c).Error; err != nil {
@@ -101,19 +100,6 @@ func (s *Service) setupRaftAtIP(bootstrap bool, fsm raft.FSM, raftIP string) (*r
 		s.stateFSM = nil
 	}
 
-	if config.ParsedConfig != nil && config.ParsedConfig.Raft.Reset {
-		if err := s.CleanRaftDir(); err != nil {
-			return nil, fmt.Errorf("failed_to_clean_raft_dir: %w", err)
-		}
-
-		err := config.ResetRaftReset()
-		if err != nil {
-			return nil, fmt.Errorf("failed_to_reset_raft: %w", err)
-		}
-
-		bootstrap = true
-	}
-
 	detail := s.Detail()
 	if detail == nil {
 		return nil, fmt.Errorf("unable_to_get_node_detail")
@@ -126,6 +112,17 @@ func (s *Service) setupRaftAtIP(bootstrap bool, fsm raft.FSM, raftIP string) (*r
 	cfg := raft.DefaultConfig()
 	cfg.LocalID = raft.ServerID(detail.NodeID)
 	cfg.SnapshotThreshold = raftSnapshotThreshold
+	// A database that records its applied index already holds everything up to
+	// it; restoring the last snapshot on start would rewind it until a leader
+	// replays the rest. Nodes upgraded from before the index existed restore
+	// once, then record it.
+	if s.stateFSM != nil {
+		persisted, err := s.stateFSM.HasPersistedAppliedIndex()
+		if err != nil {
+			return nil, fmt.Errorf("raft_fsm_state_unavailable: %w", err)
+		}
+		cfg.NoSnapshotRestoreOnStart = persisted
+	}
 
 	raftLog := logger.NewZerologHCLog(logger.L, "raft")
 	raftLog.SetLevel(hclog.Error)
@@ -141,9 +138,14 @@ func (s *Service) setupRaftAtIP(bootstrap bool, fsm raft.FSM, raftIP string) (*r
 	if err != nil {
 		return nil, err
 	}
+	closeStores := func() {
+		_ = logStore.Close()
+		_ = stableStore.Close()
+	}
 
 	t, err := s.initRaftTransport(raftIP)
 	if err != nil {
+		closeStores()
 		return nil, err
 	}
 
@@ -151,6 +153,7 @@ func (s *Service) setupRaftAtIP(bootstrap bool, fsm raft.FSM, raftIP string) (*r
 	r, err := raft.NewRaft(cfg, fsm, logStore, stableStore, snapStore, t)
 	if err != nil {
 		_ = t.Close()
+		closeStores()
 		return nil, fmt.Errorf("failed_to_create_raft: %v", err)
 	}
 
@@ -164,6 +167,7 @@ func (s *Service) setupRaftAtIP(bootstrap bool, fsm raft.FSM, raftIP string) (*r
 		if err := r.BootstrapCluster(bootstrapConfig).Error(); err != nil {
 			_ = r.Shutdown().Error()
 			_ = t.Close()
+			closeStores()
 			return nil, fmt.Errorf("failed_to_bootstrap_raft: %w", err)
 		}
 	}
@@ -171,7 +175,8 @@ func (s *Service) setupRaftAtIP(bootstrap bool, fsm raft.FSM, raftIP string) (*r
 	s.RaftID = &raftAddr
 	s.NodeID = detail.NodeID
 	s.Transport = t
-	s.Raft = r
+	s.raftStores = []io.Closer{logStore, stableStore}
+	s.SetRaft(r)
 
 	return r, nil
 }
@@ -208,34 +213,50 @@ func (s *Service) InitRaft(fsm raft.FSM) error {
 		return err
 	}
 
+	reset := config.ParsedConfig != nil && config.ParsedConfig.Raft.Reset
+	if reset {
+		if err := config.ResetRaftReset(); err != nil {
+			return fmt.Errorf("failed_to_reset_raft: %w", err)
+		}
+	}
+
 	if !c.Enabled {
+		if reset {
+			logger.L.Warn().Msg("Ignoring raft.reset: this node isn't clustered.")
+		}
 		logger.L.Info().Msg("We're not clustered; skipping Raft init (join-ready will start Raft on demand).")
 		return nil
 	}
-
-	raftDir, _ := config.GetRaftPath()
-	if hasExistingRaftState(raftDir) {
-		logger.L.Info().Msg("Found existing Raft state; starting Raft (non-bootstrap restore).")
-		_, err := s.setupRaft(false, fsm)
-		if err != nil {
-			return err
-		}
+	if strings.TrimSpace(c.LeavePhase) == LeavePhaseCleaning {
+		logger.L.Warn().Msg("Skipping Raft init: leave cleanup is still pending.")
 		return nil
 	}
 
-	bootstrap := c.RaftBootstrap != nil && *c.RaftBootstrap
-	if bootstrap {
-		logger.L.Info().Msg("Starting Raft as bootstrap node (first cluster node).")
-	} else {
-		logger.L.Info().Msg("Starting Raft in non-bootstrap mode (clustered follower).")
+	if reset {
+		if err := s.CleanRaftDir(); err != nil {
+			return fmt.Errorf("failed_to_clean_raft_dir: %w", err)
+		}
+		logger.L.Warn().Msg("raft.reset set; bootstrapping a single-node cluster from local state.")
+		if _, err := s.setupRaft(true, fsm); err != nil {
+			return err
+		}
+		if _, _, err := s.waitUntilLeader(raftLeaderWaitTimeout); err != nil {
+			return err
+		}
+		// Snapshot right away so restarts restore this state instead of
+		// replaying the new log onto a database that already holds it.
+		return s.snapshotPreClusterState()
 	}
 
-	_, err := s.setupRaft(bootstrap, fsm)
-	if err != nil {
-		return err
+	raftDir, _ := config.GetRaftPath()
+	if !hasExistingRaftState(raftDir) && c.RaftBootstrap != nil && *c.RaftBootstrap {
+		// Bootstrapping again would start a second cluster beside the one the
+		// other members still run.
+		return fmt.Errorf("raft_state_missing: restore %s or reset this node", raftDir)
 	}
 
-	return nil
+	_, err := s.setupRaft(false, fsm)
+	return err
 }
 
 func (s *Service) ClearClusterNode(id string) error {
@@ -247,27 +268,13 @@ func (s *Service) CleanRaftDir() error {
 	if err != nil {
 		return fmt.Errorf("failed_to_get_raft_dir: %w", err)
 	}
-	raftDir = filepath.Clean(strings.TrimSpace(raftDir))
-	dataPath, err := config.GetDataPath()
-	if err != nil {
-		return fmt.Errorf("failed_to_get_data_dir: %w", err)
-	}
-	expected := filepath.Join(filepath.Clean(dataPath), "raft")
-	if raftDir == "." || raftDir == string(filepath.Separator) || raftDir != expected {
-		return fmt.Errorf("invalid_raft_dir")
-	}
-	info, err := os.Stat(raftDir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("failed_to_stat_raft_dir: %w", err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("raft_path_not_directory")
-	}
-	if err := utils.RemoveDirContents(raftDir); err != nil {
+	if err := utils.RemoveDirContents(raftDir); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("failed_to_clean_raft_dir: %w", err)
+	}
+	// The next log starts again at index 1; a recorded index from the old one
+	// would make this node skip it.
+	if s.stateFSM != nil {
+		return s.stateFSM.ResetAppliedIndex()
 	}
 	return nil
 }

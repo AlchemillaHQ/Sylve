@@ -40,7 +40,7 @@ func (s *Service) backupJobOperationHolder() string {
 	if holder != "" {
 		return holder
 	}
-	if s != nil && s.Cluster != nil && s.Cluster.Raft != nil {
+	if s != nil && s.Cluster != nil && s.Cluster.Raft() != nil {
 		return ""
 	}
 	return "local"
@@ -119,14 +119,14 @@ func (s *Service) applyBackupJobOperation(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if s.Cluster.Raft.State() == raft.Leader {
+		if s.Cluster.Raft().State() == raft.Leader {
 			if action == "acquire" {
 				lastErr = s.Cluster.AcquireBackupJobOperation(acquire, false)
 			} else {
 				lastErr = s.Cluster.TransitionBackupJobOperation(action, transition, false)
 			}
 		} else {
-			_, leaderID := s.Cluster.Raft.LeaderWithID()
+			_, leaderID := s.Cluster.Raft().LeaderWithID()
 			leaderNodeID := strings.TrimSpace(string(leaderID))
 			if leaderNodeID == "" {
 				lastErr = fmt.Errorf("leader_not_available")

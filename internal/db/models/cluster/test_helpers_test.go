@@ -26,8 +26,9 @@ func applyFSMRaftLog(t *testing.T, fsm *FSMDispatcher, cmdBytes []byte) error {
 	t.Helper()
 
 	resp := fsm.Apply(&raft.Log{
-		Type: raft.LogCommand,
-		Data: cmdBytes,
+		Type:  raft.LogCommand,
+		Index: fsm.AppliedIndex() + 1,
+		Data:  cmdBytes,
 	})
 
 	if resp == nil {
@@ -51,4 +52,20 @@ func applyFSMCommand(t *testing.T, fsm *FSMDispatcher, cmd Command) error {
 	}
 
 	return applyFSMRaftLog(t, fsm, payload)
+}
+
+func ReplicatedStateManifest() []ReplicatedStateTable {
+	return append([]ReplicatedStateTable(nil), replicatedStateManifest...)
+}
+
+func CaptureReplicatedStateDigest(db *gorm.DB) (*ClusterSnapshot, string, error) {
+	snapshot, err := captureClusterSnapshot(db)
+	if err != nil {
+		return nil, "", err
+	}
+	digest, err := ClusterSnapshotDigest(snapshot)
+	if err != nil {
+		return nil, "", err
+	}
+	return snapshot, digest, nil
 }

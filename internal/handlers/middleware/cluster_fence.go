@@ -33,6 +33,7 @@ var mutationAdmissionBypass = map[string]map[string]struct{}{
 		"/api/intra-cluster/leave":            {},
 		"/api/intra-cluster/readdress-member": {},
 		"/api/cluster/membership-status":      {},
+		"/api/cluster/leave/cancel":           {},
 	},
 	http.MethodDelete: {
 		"/api/cluster/reset-node":       {},

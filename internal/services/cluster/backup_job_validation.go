@@ -182,12 +182,12 @@ func backupJobPlacementOwner(fence *clusterModels.BackupJobPlacementFence, local
 
 func (s *Service) waitForBackupJobValidationAppliedIndex(ctx context.Context, minimum uint64) (uint64, error) {
 	if minimum == 0 {
-		if s != nil && s.Raft != nil {
-			return s.Raft.AppliedIndex(), nil
+		if s != nil && s.Raft() != nil {
+			return s.Raft().AppliedIndex(), nil
 		}
 		return 0, nil
 	}
-	if s == nil || s.Raft == nil || s.Raft.State() == raft.Shutdown {
+	if s == nil || s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		return 0, fmt.Errorf("backup_runner_raft_unavailable")
 	}
 	if ctx == nil {
@@ -197,7 +197,7 @@ func (s *Service) waitForBackupJobValidationAppliedIndex(ctx context.Context, mi
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		applied := s.Raft.AppliedIndex()
+		applied := s.Raft().AppliedIndex()
 		if applied >= minimum {
 			return applied, nil
 		}
@@ -324,7 +324,7 @@ func (s *Service) backupJobRunnerVoter(nodeID string) (raft.Server, bool, error)
 	if s != nil && s.stateRepair.Load() {
 		return raft.Server{}, false, fmt.Errorf("backup_runner_local_node_repair_fenced")
 	}
-	if s == nil || s.Raft == nil || s.Raft.State() == raft.Shutdown {
+	if s == nil || s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		return raft.Server{}, false, fmt.Errorf("backup_runner_raft_unavailable")
 	}
 	localNodeID := s.guestIdentityInventoryLocalNodeID()
@@ -332,7 +332,7 @@ func (s *Service) backupJobRunnerVoter(nodeID string) (raft.Server, bool, error)
 		return raft.Server{}, false, fmt.Errorf("backup_runner_local_node_id_unavailable")
 	}
 
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return raft.Server{}, false, fmt.Errorf("backup_runner_raft_configuration_failed: %w", err)
 	}
@@ -682,13 +682,13 @@ func (s *Service) validateBackupJobOnRunnerWithTarget(
 		// Failed connectivity prevents a job mutation, so publish that exact
 		// node-scoped outcome separately. Successful receipts are committed
 		// atomically with the job/rebind command and its target fingerprint.
-		if err := s.UpdateBackupTargetNodeReadiness(*result.TargetReadiness, bypassRaft || s.Raft == nil); err != nil {
+		if err := s.UpdateBackupTargetNodeReadiness(*result.TargetReadiness, bypassRaft || s.Standalone()); err != nil {
 			return fmt.Errorf("backup_target_readiness_publish_failed: %w", err)
 		}
 		return receiptErr
 	}
 
-	if bypassRaft || s.Raft == nil {
+	if bypassRaft || s.Raft() == nil {
 		request := backupJobValidationRequest(job, runnerNodeID, 0)
 		if validateTarget {
 			request.TargetID = job.TargetID
@@ -714,7 +714,7 @@ func (s *Service) validateBackupJobOnRunnerWithTarget(
 	}
 
 	for attempt := 0; attempt < 3; attempt++ {
-		minimumIndex := s.Raft.AppliedIndex()
+		minimumIndex := s.Raft().AppliedIndex()
 		request := backupJobValidationRequest(job, runnerNodeID, minimumIndex)
 		if validateTarget {
 			request.TargetID = job.TargetID

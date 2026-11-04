@@ -103,42 +103,54 @@ func recoverOfflineClusterIP(configPath string, requestedIP string, allowDisrupt
 			)
 		}
 	}
-	databasePath := filepath.Join(dataPath, "sylve.db")
-	info, err := os.Stat(databasePath)
-	if err != nil {
-		return offlineClusterIPRecoveryResult{}, fmt.Errorf("cluster_database_unavailable: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return offlineClusterIPRecoveryResult{}, fmt.Errorf("cluster_database_invalid")
-	}
 	nodeID, err := utils.GetSystemUUID()
 	if err != nil || strings.TrimSpace(nodeID) == "" {
 		return offlineClusterIPRecoveryResult{}, fmt.Errorf("local_node_id_unavailable")
+	}
+	database, closeDatabase, err := openOfflineClusterDatabase(dataPath)
+	if err != nil {
+		return offlineClusterIPRecoveryResult{}, err
+	}
+	result, recoveryErr := applyOfflineClusterIPRecovery(database, strings.TrimSpace(nodeID), newIP)
+	closeErr := closeDatabase()
+	if recoveryErr != nil {
+		return offlineClusterIPRecoveryResult{}, recoveryErr
+	}
+	if closeErr != nil {
+		return offlineClusterIPRecoveryResult{}, closeErr
+	}
+	return result, nil
+}
+
+// openOfflineClusterDatabase opens sylve.db for a repair run while the daemon
+// is stopped. The returned close also restores the files' 0600 mode.
+func openOfflineClusterDatabase(dataPath string) (*gorm.DB, func() error, error) {
+	databasePath := filepath.Join(dataPath, "sylve.db")
+	info, err := os.Stat(databasePath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("cluster_database_unavailable: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, nil, fmt.Errorf("cluster_database_invalid")
 	}
 	database, err := gorm.Open(sqlite.Open(databasePath), &gorm.Config{
 		Logger: gormLogger.Default.LogMode(gormLogger.Silent), TranslateError: true,
 	})
 	if err != nil {
-		return offlineClusterIPRecoveryResult{}, fmt.Errorf("cluster_database_open_failed: %w", err)
+		return nil, nil, fmt.Errorf("cluster_database_open_failed: %w", err)
 	}
 	sqlDB, err := database.DB()
 	if err != nil {
-		return offlineClusterIPRecoveryResult{}, err
+		return nil, nil, err
 	}
 	sqlDB.SetMaxOpenConns(1)
-	result, recoveryErr := applyOfflineClusterIPRecovery(database, strings.TrimSpace(nodeID), newIP)
-	closeErr := sqlDB.Close()
-	hardenErr := hardenOfflineDatabaseFiles(databasePath)
-	if recoveryErr != nil {
-		return offlineClusterIPRecoveryResult{}, recoveryErr
+	closeDatabase := func() error {
+		if err := sqlDB.Close(); err != nil {
+			return fmt.Errorf("cluster_database_close_failed: %w", err)
+		}
+		return hardenOfflineDatabaseFiles(databasePath)
 	}
-	if closeErr != nil {
-		return offlineClusterIPRecoveryResult{}, fmt.Errorf("cluster_database_close_failed: %w", closeErr)
-	}
-	if hardenErr != nil {
-		return offlineClusterIPRecoveryResult{}, hardenErr
-	}
-	return result, nil
+	return database, closeDatabase, nil
 }
 
 func applyOfflineClusterIPRecovery(
@@ -254,8 +266,9 @@ func formatOfflineClusterIPRecovery(result offlineClusterIPRecoveryResult) strin
 		"Old IP: " + result.OldIP,
 		"New IP: " + result.NewIP,
 		"Raft state and cluster resources were retained.",
-		"The node will remain mutation-fenced until membership is repaired.",
-		"Run on a surviving member:",
+		"Start Sylve: the node reports its new address to the leader and stays",
+		"mutation-fenced until the membership shows it. If it can't reach the",
+		"leader, run on a surviving member:",
 		result.RepairCommand,
 	}, "\n")
 }

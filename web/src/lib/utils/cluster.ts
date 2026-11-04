@@ -214,6 +214,9 @@ export function getClusterLeaveErrorMessage(error: string): string {
 	if (contains('cluster_leave_membership_unconfirmed', 'cluster_removal_start_uncertain')) {
 		return 'Cluster membership could not be confirmed. Keep the node isolated while Sylve retries.';
 	}
+	if (contains('cluster_leave_already_removed')) {
+		return 'The leader already removed this node, so the leave can’t be cancelled. Sylve is finishing it.';
+	}
 	if (contains('cluster_leave_guest_id_release_pending')) {
 		return 'Membership is removed, but guest ID release is still pending. Sylve will retry automatically.';
 	}

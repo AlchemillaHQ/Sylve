@@ -63,6 +63,7 @@ func applyDeterminismLog(
 
 	response := fsm.Apply(&raft.Log{
 		Type:       raft.LogCommand,
+		Index:      fsm.AppliedIndex() + 1,
 		Data:       payload,
 		AppendedAt: followerLogTime,
 	})

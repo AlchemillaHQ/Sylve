@@ -83,6 +83,11 @@ func TestResolveLeaderAPI(t *testing.T) {
 	})
 }
 
+func withRaft(s *cluster.Service, r *raft.Raft) *cluster.Service {
+	s.SetRaft(r)
+	return s
+}
+
 func setupSingleRaftForTest(t *testing.T, id string) *raft.Raft {
 	t.Helper()
 	cfg := raft.DefaultConfig()
@@ -149,7 +154,7 @@ func TestForwardToLeader(t *testing.T) {
 	r := setupSingleRaftForTest(t, "node-1")
 	defer func() { _ = r.Shutdown().Error() }()
 
-	s := &cluster.Service{DB: db, Raft: r, AuthService: authForwardStub{}}
+	s := withRaft(&cluster.Service{DB: db, AuthService: authForwardStub{}}, r)
 
 	db.Create(&clusterModels.ClusterNode{
 		NodeUUID: "node-1", API: forwardAddr,
@@ -187,7 +192,7 @@ func TestForwardToLeaderBadAPIResolution(t *testing.T) {
 
 	// no ClusterNode matching the raft ID, and raft address has no port
 	// so resolveLeaderAPI returns empty
-	s := &cluster.Service{DB: db, Raft: r}
+	s := withRaft(&cluster.Service{DB: db}, r)
 
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
@@ -222,7 +227,7 @@ func TestForwardToLeaderRejectsOversizedBody(t *testing.T) {
 	)
 	ctx.Request.Body = http.MaxBytesReader(w, ctx.Request.Body, 4)
 
-	forwardToLeader(ctx, &cluster.Service{Raft: r})
+	forwardToLeader(ctx, withRaft(&cluster.Service{}, r))
 
 	if w.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("expected 413, got %d: %s", w.Code, w.Body.String())

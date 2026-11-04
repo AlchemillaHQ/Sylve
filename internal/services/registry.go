@@ -110,9 +110,8 @@ func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
 		systemService := dependencies[5].(systemServiceInterfaces.SystemServiceInterface)
 		sambaService := dependencies[6].(sambaServiceInterfaces.SambaServiceInterface)
 		jailService := dependencies[7].(jailServiceInterfaces.JailServiceInterface)
-		clusterService := dependencies[8].(clusterServiceInterfaces.ClusterServiceInterface)
-		iscsiService := dependencies[9].(iscsiServiceInterfaces.ISCSIServiceInterface)
-		mdnsService := dependencies[10].(mdnsServiceInterfaces.MdnsServiceInterface)
+		iscsiService := dependencies[8].(iscsiServiceInterfaces.ISCSIServiceInterface)
+		mdnsService := dependencies[9].(mdnsServiceInterfaces.MdnsServiceInterface)
 
 		return startup.NewStartupService(db,
 			infoService,
@@ -123,7 +122,6 @@ func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
 			systemService,
 			sambaService,
 			jailService,
-			clusterService,
 			iscsiService,
 			mdnsService)
 	case *disk.Service:
@@ -266,7 +264,6 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 		systemService,
 		sambaService,
 		jailService,
-		clusterService,
 		iscsiService,
 		mdnsService,
 	).(*startup.Service)

@@ -74,16 +74,16 @@ func (s *Service) ApplyNoteMutation(ctx context.Context, request NoteMutation, f
 	if s == nil || s.DB == nil {
 		return fmt.Errorf("cluster_service_not_initialized")
 	}
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return s.applyNoteMutation(request, true)
 	}
-	if s.Raft.State() == raft.Leader {
+	if s.Raft().State() == raft.Leader {
 		return s.applyNoteMutation(request, false)
 	}
 	if !forward {
 		return raft.ErrNotLeader
 	}
-	leaderAddress := strings.TrimSpace(string(s.Raft.Leader()))
+	leaderAddress := strings.TrimSpace(string(s.Raft().Leader()))
 	if leaderAddress == "" {
 		return fmt.Errorf("cluster_consensus_unavailable")
 	}

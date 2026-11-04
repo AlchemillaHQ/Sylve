@@ -162,6 +162,7 @@ func newDatacenterClusterCommand() *cli.Command {
 				},
 			},
 			newDatacenterClusterRecoverIPCommand(),
+			newDatacenterClusterRecoverQuorumCommand(),
 			newDatacenterClusterGuestIDsCommand(),
 		},
 	}

@@ -167,8 +167,18 @@ func (s *Service) EnsureAndPublishLocalSSHIdentity() error {
 		PublicKey: pubKey,
 	}
 
-	if s.Raft != nil && s.Raft.State() != raft.Leader {
-		leaderAddr, _ := s.Raft.LeaderWithID()
+	// Every node republishes every 30s; only an actual change is worth a
+	// Raft entry.
+	var current clusterModels.ClusterSSHIdentity
+	if err := s.DB.Where("node_uuid = ?", identity.NodeUUID).Limit(1).Find(&current).Error; err == nil &&
+		current.SSHUser == identity.SSHUser && current.SSHHost == identity.SSHHost &&
+		current.SSHPort == identity.SSHPort &&
+		strings.TrimSpace(current.PublicKey) == strings.TrimSpace(identity.PublicKey) {
+		return nil
+	}
+
+	if s.Raft() != nil && s.Raft().State() != raft.Leader {
+		leaderAddr, _ := s.Raft().LeaderWithID()
 		if leaderAddr == "" {
 			// Leader not yet known; cluster is still settling after join. Skip silently here? The
 			// scheduler will retry and the identity will be published once a leader is elected.
@@ -178,7 +188,7 @@ func (s *Service) EnsureAndPublishLocalSSHIdentity() error {
 			return err
 		}
 	} else {
-		if err := s.UpsertClusterSSHIdentity(identity, s.Raft == nil); err != nil {
+		if err := s.UpsertClusterSSHIdentity(identity, s.Standalone()); err != nil {
 			return err
 		}
 	}
@@ -195,10 +205,10 @@ func (s *Service) ReconcileOrphanedClusterSSHIdentities(ctx context.Context) err
 
 	s.clusterJoinMu.Lock()
 	defer s.clusterJoinMu.Unlock()
-	if s.Raft == nil || s.Raft.State() != raft.Leader {
+	if s.Raft() == nil || s.Raft().State() != raft.Leader {
 		return nil
 	}
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return err
 	}
@@ -223,11 +233,11 @@ func (s *Service) ReconcileOrphanedClusterSSHIdentities(ctx context.Context) err
 }
 
 func (s *Service) forwardSSHIdentityToLeader(identity clusterModels.ClusterSSHIdentity) error {
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 
-	leaderAddr, _ := s.Raft.LeaderWithID()
+	leaderAddr, _ := s.Raft().LeaderWithID()
 	if leaderAddr == "" {
 		_, electedLeaderAddr, waitErr := s.waitUntilLeader(10 * time.Second)
 		if electedLeaderAddr != "" {

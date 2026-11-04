@@ -129,7 +129,9 @@ func (s *Service) InitializeReaddressRuntime() error {
 	if err != nil {
 		return err
 	}
-	if phase == ReaddressPhaseMembershipCommitted {
+	if phase == ReaddressPhasePrepared || phase == ReaddressPhaseMembershipCommitted {
+		// Phases older builds left behind. This build binds the new IP first
+		// and reports it once Raft runs there.
 		return s.DB.Model(&clusterModels.Cluster{}).Where("id = ?", record.ID).Updates(map[string]any{
 			"raft_ip":         newIP,
 			"readdress_phase": ReaddressPhaseLocalRebound,
@@ -157,25 +159,6 @@ func (s *Service) ReaddressLocal(ctx context.Context, request ReaddressRequest) 
 	if err != nil {
 		return ReaddressResult{}, err
 	}
-	if strings.TrimSpace(record.ReaddressPhase) == "" {
-		if err := s.preflightLocalReaddress(ctx, record, newIP); err != nil {
-			return ReaddressResult{}, err
-		}
-		drainCtx, cancel := context.WithTimeout(ctx, readdressDrainTimeout)
-		err = s.DrainMutations(drainCtx)
-		cancel()
-		if err != nil {
-			_ = s.ReopenMutations()
-			return ReaddressResult{}, fmt.Errorf("cluster_readdress_active_mutations: %w", err)
-		}
-	}
-
-	s.membershipLifecycleMu.Lock()
-	defer s.membershipLifecycleMu.Unlock()
-	record, err = s.loadClusterRecord()
-	if err != nil {
-		return ReaddressResult{}, err
-	}
 	if phase := strings.TrimSpace(record.ReaddressPhase); phase != "" {
 		if !sameReaddressIP(record.ReaddressNewIP, newIP) {
 			return ReaddressResult{}, fmt.Errorf(
@@ -185,31 +168,55 @@ func (s *Service) ReaddressLocal(ctx context.Context, request ReaddressRequest) 
 				phase,
 			)
 		}
-		s.mutationGate.Close()
-		if phase == ReaddressPhasePrepared && !s.localMembershipHasAddress(s.LocalNodeID(), newIP) {
-			if err := s.preflightLocalReaddress(ctx, record, newIP); err != nil {
-				s.persistReaddressError(err)
-				return ReaddressResult{}, err
-			}
-		}
-		return s.advanceLocalReaddress(ctx, record, request.AllowDisruption)
+		s.membershipLifecycleMu.Lock()
+		defer s.membershipLifecycleMu.Unlock()
+		return s.advanceReboundReaddress(ctx)
 	}
 	if err := s.preflightLocalReaddress(ctx, record, newIP); err != nil {
+		return ReaddressResult{}, err
+	}
+	drainCtx, cancel := context.WithTimeout(ctx, readdressDrainTimeout)
+	err = s.DrainMutations(drainCtx)
+	cancel()
+	if err != nil {
+		_ = s.ReopenMutations()
+		return ReaddressResult{}, fmt.Errorf("cluster_readdress_active_mutations: %w", err)
+	}
+
+	s.membershipLifecycleMu.Lock()
+	defer s.membershipLifecycleMu.Unlock()
+	record, err = s.loadClusterRecord()
+	if err == nil {
+		err = s.preflightLocalReaddress(ctx, record, newIP)
+	}
+	if err == nil {
+		// Hand off leadership so the restart doesn't stall the cluster.
+		err = s.transferLeadershipForReaddress(ctx)
+	}
+	if err == nil {
+		// Rebind first. The new address is committed only once this node
+		// listens on it, so the change never needs a quorum without this node
+		// (with two voters there wouldn't be one).
+		err = s.DB.Model(&clusterModels.Cluster{}).Where("id = ?", record.ID).Updates(map[string]any{
+			"raft_ip":              newIP,
+			"readdress_old_ip":     strings.TrimSpace(record.RaftIP),
+			"readdress_new_ip":     newIP,
+			"readdress_phase":      ReaddressPhaseLocalRebound,
+			"readdress_last_error": "",
+		}).Error
+	}
+	if err != nil {
 		if strings.TrimSpace(record.LeavePhase) == "" {
 			_ = s.ReopenMutations()
 		}
 		return ReaddressResult{}, err
 	}
-	if err := s.persistReaddressPrepared(record, newIP); err != nil {
-		_ = s.ReopenMutations()
-		return ReaddressResult{}, err
-	}
 	s.readdressRestart.Store(false)
-	record, err = s.loadClusterRecord()
-	if err != nil {
-		return ReaddressResult{}, err
-	}
-	return s.advanceLocalReaddress(ctx, record, request.AllowDisruption)
+	s.notifyReaddressRestart()
+	return ReaddressResult{
+		NodeID: s.LocalNodeID(), OldIP: strings.TrimSpace(record.RaftIP), NewIP: newIP,
+		Phase: ReaddressPhaseLocalRebound, RestartRequested: true,
+	}, nil
 }
 
 func (s *Service) preflightLocalReaddress(ctx context.Context, record clusterModels.Cluster, newIP string) error {
@@ -231,13 +238,13 @@ func (s *Service) preflightLocalReaddress(ctx context.Context, record clusterMod
 	if err := validateReaddressBind(newIP); err != nil {
 		return err
 	}
-	if s.Raft == nil || s.Raft.State() == raft.Shutdown {
+	if s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		return fmt.Errorf("cluster_readdress_raft_unavailable")
 	}
-	if strings.TrimSpace(string(s.Raft.Leader())) == "" {
+	if strings.TrimSpace(string(s.Raft().Leader())) == "" {
 		return fmt.Errorf("cluster_consensus_unavailable")
 	}
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return fmt.Errorf("raft_configuration_unavailable: %w", err)
 	}
@@ -257,84 +264,74 @@ func (s *Service) preflightLocalReaddress(ctx context.Context, record clusterMod
 	return s.CheckUniformVersions(ctx, nil, "")
 }
 
-func (s *Service) persistReaddressPrepared(record clusterModels.Cluster, newIP string) error {
-	return s.DB.Model(&clusterModels.Cluster{}).Where("id = ?", record.ID).Updates(map[string]any{
-		"readdress_old_ip":     strings.TrimSpace(record.RaftIP),
-		"readdress_new_ip":     newIP,
-		"readdress_phase":      ReaddressPhasePrepared,
-		"readdress_last_error": "",
-	}).Error
-}
-
-func (s *Service) advanceLocalReaddress(
-	ctx context.Context,
-	record clusterModels.Cluster,
-	allowDisruption bool,
-) (ReaddressResult, error) {
+// advanceReboundReaddress gets the new address of a node that already listens
+// on it into the Raft membership, then reopens the node once it shows there.
+func (s *Service) advanceReboundReaddress(ctx context.Context) (ReaddressResult, error) {
+	record, err := s.loadClusterRecord()
+	if err != nil {
+		return ReaddressResult{}, err
+	}
 	result := ReaddressResult{
 		NodeID: s.LocalNodeID(),
 		OldIP:  strings.TrimSpace(record.ReaddressOldIP),
 		NewIP:  strings.TrimSpace(record.ReaddressNewIP),
 		Phase:  strings.TrimSpace(record.ReaddressPhase),
 	}
-	switch result.Phase {
-	case ReaddressPhaseLocalRebound:
-		committed, err := s.completeLocalReaddressIfCommitted()
-		result.MembershipCommitted = committed
-		if committed {
-			result.Phase = ""
-		}
-		return result, err
-	case ReaddressPhaseMembershipCommitted:
-		if err := s.persistMembershipCommitted(record); err != nil {
-			return result, err
-		}
-		result.Phase = ReaddressPhaseMembershipCommitted
-		result.MembershipCommitted = true
-		result.RestartRequested = true
-		s.notifyReaddressRestart()
-		return result, nil
-	case ReaddressPhasePrepared:
-	default:
+	if result.Phase != ReaddressPhaseLocalRebound {
 		return result, fmt.Errorf("cluster_readdress_phase_invalid: %s", result.Phase)
 	}
-
-	if err := s.transferLeadershipForReaddress(ctx); err != nil {
-		s.persistReaddressError(err)
-		return result, err
-	}
-	request := MemberAddressChangeRequest{
-		NodeID:          result.NodeID,
-		OldIP:           result.OldIP,
-		NewIP:           result.NewIP,
-		AllowDisruption: allowDisruption,
-	}
-	if err := s.submitMemberAddressChange(ctx, request); err != nil {
-		if !s.localMembershipHasAddress(result.NodeID, result.NewIP) {
+	if !s.localMembershipHasAddress(result.NodeID, result.NewIP) {
+		if err := s.reportReaddress(ctx, record); err != nil {
 			s.persistReaddressError(err)
-			return result, fmt.Errorf("cluster_readdress_membership_update_uncertain: %w", err)
+			return result, err
 		}
 	}
-	if err := s.persistMembershipCommitted(record); err != nil {
-		return result, err
+	committed, err := s.completeLocalReaddressIfCommitted()
+	result.MembershipCommitted = committed
+	if committed {
+		result.Phase = ""
 	}
-	result.Phase = ReaddressPhaseMembershipCommitted
-	result.MembershipCommitted = true
-	result.RestartRequested = true
-	s.notifyReaddressRestart()
-	return result, nil
+	return result, err
 }
 
-func (s *Service) persistMembershipCommitted(record clusterModels.Cluster) error {
-	newIP, err := normalizeReaddressIP(record.ReaddressNewIP)
-	if err != nil {
-		return err
+// reportReaddress gets this node's new address recorded. When it leads, it
+// commits the change itself. Otherwise peers still send to the old address and
+// may have no leader: with two voters, the one holding the longer log can't
+// reach this node to win an election. So it asks each peer in turn to route
+// this node's ID to the new address, wait for a leader and commit the change.
+func (s *Service) reportReaddress(ctx context.Context, record clusterModels.Cluster) error {
+	r := s.Raft()
+	if r == nil || r.State() == raft.Shutdown {
+		return fmt.Errorf("cluster_readdress_raft_unavailable")
 	}
-	return s.DB.Model(&clusterModels.Cluster{}).Where("id = ?", record.ID).Updates(map[string]any{
-		"raft_ip":              newIP,
-		"readdress_phase":      ReaddressPhaseMembershipCommitted,
-		"readdress_last_error": "",
-	}).Error
+	localNodeID := s.LocalNodeID()
+	request := MemberAddressChangeRequest{
+		NodeID: localNodeID, OldIP: record.ReaddressOldIP, NewIP: record.ReaddressNewIP, AllowDisruption: true,
+	}
+	if r.State() == raft.Leader {
+		return s.commitMemberAddress(ctx, request, localNodeID, false)
+	}
+	future := r.GetConfiguration()
+	if err := future.Error(); err != nil {
+		return fmt.Errorf("raft_configuration_unavailable: %w", err)
+	}
+	// Peers confirm this node's identity at the new address before acting.
+	request.Recovery = true
+	var errs []error
+	for _, server := range future.Configuration().Servers {
+		if string(server.ID) == localNodeID || server.Suffrage != raft.Voter {
+			continue
+		}
+		err := s.forwardMemberAddressChange(ctx, raftAddressHost(string(server.Address)), request)
+		if err == nil {
+			return nil
+		}
+		errs = append(errs, fmt.Errorf("%s: %w", server.ID, err))
+	}
+	if len(errs) == 0 {
+		return fmt.Errorf("cluster_readdress_no_peers")
+	}
+	return errors.Join(errs...)
 }
 
 func (s *Service) persistReaddressError(err error) {
@@ -345,11 +342,11 @@ func (s *Service) persistReaddressError(err error) {
 }
 
 func (s *Service) transferLeadershipForReaddress(ctx context.Context) error {
-	if s.Raft == nil || s.Raft.State() != raft.Leader {
+	if s.Raft() == nil || s.Raft().State() != raft.Leader {
 		return nil
 	}
 	s.clusterJoinMu.Lock()
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		s.clusterJoinMu.Unlock()
 		return err
@@ -366,11 +363,11 @@ func (s *Service) transferLeadershipForReaddress(ctx context.Context) error {
 		s.clusterJoinMu.Unlock()
 		return nil
 	}
-	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
 		s.clusterJoinMu.Unlock()
 		return fmt.Errorf("cluster_readdress_leader_barrier_failed: %w", err)
 	}
-	err := s.Raft.LeadershipTransfer().Error()
+	err := s.Raft().LeadershipTransfer().Error()
 	s.clusterJoinMu.Unlock()
 	if err != nil {
 		return fmt.Errorf("cluster_readdress_leadership_transfer_failed: %w", err)
@@ -380,7 +377,7 @@ func (s *Service) transferLeadershipForReaddress(ctx context.Context) error {
 	ticker := time.NewTicker(raftLeaderPollInterval)
 	defer ticker.Stop()
 	for {
-		_, leaderID := s.Raft.LeaderWithID()
+		_, leaderID := s.Raft().LeaderWithID()
 		if leaderID != "" && leaderID != localID {
 			return nil
 		}
@@ -392,26 +389,11 @@ func (s *Service) transferLeadershipForReaddress(ctx context.Context) error {
 	}
 }
 
-func (s *Service) submitMemberAddressChange(ctx context.Context, request MemberAddressChangeRequest) error {
-	if s.Raft == nil || s.Raft.State() == raft.Shutdown {
-		return fmt.Errorf("cluster_readdress_raft_unavailable")
-	}
-	if s.Raft.State() == raft.Leader {
-		return s.commitMemberAddress(ctx, request, s.LocalNodeID(), false)
-	}
-	leaderAddress, _ := s.Raft.LeaderWithID()
-	leaderIP := raftAddressHost(string(leaderAddress))
-	if strings.TrimSpace(leaderIP) == "" {
-		return fmt.Errorf("cluster_consensus_unavailable")
-	}
-	return s.forwardMemberAddressChange(ctx, leaderIP, request)
-}
-
 func (s *Service) localMembershipHasAddress(nodeID string, ip string) bool {
-	if s == nil || s.Raft == nil || s.Raft.State() == raft.Shutdown {
+	if s == nil || s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		return false
 	}
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if future.Error() != nil {
 		return false
 	}
@@ -449,56 +431,27 @@ func (s *Service) completeLocalReaddressIfCommitted() (bool, error) {
 	return true, nil
 }
 
-func (s *Service) repairSoleMemberReaddress(ctx context.Context, record clusterModels.Cluster) error {
-	if s == nil || s.Raft == nil || s.Raft.State() != raft.Leader {
-		return nil
-	}
-	future := s.Raft.GetConfiguration()
-	if err := future.Error(); err != nil {
-		return err
-	}
-	servers := future.Configuration().Servers
-	if len(servers) != 1 {
-		return nil
-	}
-	server := servers[0]
-	localNodeID := strings.TrimSpace(s.LocalNodeID())
-	if strings.TrimSpace(string(server.ID)) != localNodeID || server.Suffrage != raft.Voter ||
-		!sameReaddressIP(raftAddressHost(string(server.Address)), record.ReaddressOldIP) {
-		return nil
-	}
-	return s.commitMemberAddress(ctx, MemberAddressChangeRequest{
-		NodeID:          localNodeID,
-		OldIP:           record.ReaddressOldIP,
-		NewIP:           record.ReaddressNewIP,
-		AllowDisruption: true,
-	}, localNodeID, false)
-}
-
+// StartReaddressReconciler drives a pending readdress until its phase clears.
+// It's started at boot and again whenever a new readdress begins.
 func (s *Service) StartReaddressReconciler(ctx context.Context) {
-	if s == nil {
+	if s == nil || !s.readdressRunning.CompareAndSwap(false, true) {
 		return
 	}
-	record, err := s.loadClusterRecord()
-	if err != nil || strings.TrimSpace(record.ReaddressPhase) == "" {
-		return
-	}
-	s.readdressOnce.Do(func() {
-		go func() {
-			ticker := time.NewTicker(2 * time.Second)
-			defer ticker.Stop()
-			for {
-				if !s.reconcileReaddress(ctx) {
-					return
-				}
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-				}
+	go func() {
+		defer s.readdressRunning.Store(false)
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for {
+			if !s.reconcileReaddress(ctx) {
+				return
 			}
-		}()
-	})
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
 }
 
 func (s *Service) reconcileReaddress(ctx context.Context) bool {
@@ -506,24 +459,12 @@ func (s *Service) reconcileReaddress(ctx context.Context) bool {
 	if err != nil {
 		return true
 	}
-	switch strings.TrimSpace(record.ReaddressPhase) {
-	case ReaddressPhasePrepared:
-		_, err = s.ReaddressLocal(ctx, ReaddressRequest{NewIP: record.ReaddressNewIP, AllowDisruption: true})
-	case ReaddressPhaseLocalRebound:
-		s.membershipLifecycleMu.Lock()
-		if !s.localMembershipHasAddress(s.LocalNodeID(), record.ReaddressNewIP) {
-			err = s.repairSoleMemberReaddress(ctx, record)
-		}
-		if err == nil {
-			_, err = s.completeLocalReaddressIfCommitted()
-		}
-		s.membershipLifecycleMu.Unlock()
-	default:
+	if strings.TrimSpace(record.ReaddressPhase) != ReaddressPhaseLocalRebound {
 		return false
 	}
-	if err != nil {
-		s.persistReaddressError(err)
-	}
+	s.membershipLifecycleMu.Lock()
+	_, _ = s.advanceReboundReaddress(ctx)
+	s.membershipLifecycleMu.Unlock()
 	return true
 }
 
@@ -551,15 +492,12 @@ func (s *Service) fetchReaddressIdentity(
 	nodeID string,
 	address raft.ServerAddress,
 ) (ReaddressIdentity, error) {
-	if s.readdressIdentityForNode != nil {
-		return s.readdressIdentityForNode(ctx, nodeID, address)
-	}
 	token, err := s.AuthService.CreateInternalClusterJWT(s.LocalNodeID())
 	if err != nil {
 		return ReaddressIdentity{}, fmt.Errorf("cluster_readdress_token_failed: %w", err)
 	}
 	host := raftAddressHost(string(address))
-	response, err := utils.HTTPRequestReadContext(
+	response, err := s.peerHTTP(
 		ctx,
 		http.MethodGet,
 		fmt.Sprintf("https://%s/api/intra-cluster/readdress-identity", ClusterAPIHost(host)),
@@ -682,8 +620,8 @@ func (s *Service) waitForReaddressLeader(
 	ticker := time.NewTicker(raftLeaderPollInterval)
 	defer ticker.Stop()
 	for {
-		if s.Raft != nil && s.Raft.State() != raft.Shutdown {
-			leaderAddress, leaderID := s.Raft.LeaderWithID()
+		if s.Raft() != nil && s.Raft().State() != raft.Shutdown {
+			leaderAddress, leaderID := s.Raft().LeaderWithID()
 			id := strings.TrimSpace(string(leaderID))
 			if id != "" {
 				if id == strings.TrimSpace(targetNodeID) {
@@ -707,6 +645,16 @@ func (s *Service) CommitMemberAddress(
 	request MemberAddressChangeRequest,
 	issuerNodeID string,
 ) error {
+	// A rebound node asks any peer. One that doesn't lead does what an operator
+	// would with repair-address: route the node to its new address, wait for a
+	// leader (possibly itself, once elections reach the node), then commit or
+	// forward the change.
+	if r := s.Raft(); request.Recovery && (r == nil || r.State() != raft.Leader) {
+		_, err := s.RepairMemberAddress(ctx, RepairAddressRequest{
+			NodeID: request.NodeID, NewIP: request.NewIP, AllowDisruption: request.AllowDisruption,
+		})
+		return err
+	}
 	s.membershipLifecycleMu.Lock()
 	defer s.membershipLifecycleMu.Unlock()
 	return s.commitMemberAddress(ctx, request, issuerNodeID, request.Recovery)
@@ -754,10 +702,10 @@ func (s *Service) commitMemberAddress(
 
 	s.clusterJoinMu.Lock()
 	defer s.clusterJoinMu.Unlock()
-	if s.Raft == nil || s.Raft.State() != raft.Leader {
+	if s.Raft() == nil || s.Raft().State() != raft.Leader {
 		return fmt.Errorf("not_leader")
 	}
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return fmt.Errorf("raft_configuration_unavailable: %w", err)
 	}
@@ -787,13 +735,13 @@ func (s *Service) commitMemberAddress(
 	if err := s.checkUniformVersionsLocked(ctx, nil, exemptNodeID); err != nil {
 		return err
 	}
-	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
 		return fmt.Errorf("cluster_readdress_leader_barrier_failed: %w", err)
 	}
-	if err := s.Raft.AddVoter(server.ID, newAddress, 0, raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().AddVoter(server.ID, newAddress, 0, raftApplyTimeout).Error(); err != nil {
 		return fmt.Errorf("cluster_readdress_membership_update_failed: %w", err)
 	}
-	confirmed := s.Raft.GetConfiguration()
+	confirmed := s.Raft().GetConfiguration()
 	if err := confirmed.Error(); err != nil {
 		return fmt.Errorf("cluster_readdress_membership_confirmation_failed: %w", err)
 	}
@@ -818,7 +766,7 @@ func (s *Service) forwardMemberAddressChange(
 	if err != nil {
 		return err
 	}
-	response, err := utils.HTTPRequestReadContext(
+	response, err := s.peerHTTP(
 		ctx,
 		http.MethodPost,
 		fmt.Sprintf("https://%s/api/intra-cluster/readdress-member", ClusterAPIHost(leaderIP)),

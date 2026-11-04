@@ -359,8 +359,8 @@ func TestJoinClusterLeaderConflictPreflightLeavesStandaloneStateUntouched(t *tes
 		persisted.RaftPort != clusterRow.RaftPort {
 		t.Fatalf("rejected join mutated cluster state: got=%+v want=%+v", persisted, clusterRow)
 	}
-	if clusterService.Raft != nil {
-		t.Fatalf("rejected join initialized Raft: %v", clusterService.Raft)
+	if clusterService.Raft() != nil {
+		t.Fatalf("rejected join initialized Raft: %v", clusterService.Raft())
 	}
 	var noteCount int64
 	if err := db.Model(&clusterModels.ClusterNote{}).Where("id = ?", note.ID).Count(&noteCount).Error; err != nil {
@@ -480,8 +480,8 @@ func TestJoinClusterInventoryChangeAfterPreflightLeavesStandaloneStateUntouched(
 		persisted.RaftPort != clusterRow.RaftPort {
 		t.Fatalf("inventory-change rejection mutated cluster state: got=%+v want=%+v", persisted, clusterRow)
 	}
-	if clusterService.Raft != nil {
-		t.Fatalf("inventory-change rejection initialized Raft: %v", clusterService.Raft)
+	if clusterService.Raft() != nil {
+		t.Fatalf("inventory-change rejection initialized Raft: %v", clusterService.Raft())
 	}
 }
 
@@ -508,7 +508,7 @@ func TestAcceptJoinReportsRecordedPromotionDeferral(t *testing.T) {
 	if !ok {
 		t.Fatal("unexpected cluster service implementation")
 	}
-	service.Raft = raftNode
+	service.SetRaft(raftNode)
 	service.NodeID = "leader-node"
 	if err := service.ReopenMutations(); err != nil {
 		t.Fatalf("open mutation gate: %v", err)
@@ -627,7 +627,7 @@ func TestAcceptJoinStepdownDoesNotServeCachedDeferral(t *testing.T) {
 	if !ok {
 		t.Fatal("unexpected cluster service implementation")
 	}
-	service.Raft = first
+	service.SetRaft(first)
 	service.NodeID = "leader-one"
 	if err := service.ReopenMutations(); err != nil {
 		t.Fatalf("open mutation gate: %v", err)

@@ -9,8 +9,6 @@
 package clusterServiceInterfaces
 
 import (
-	"context"
-
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	containerServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/container"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
@@ -55,8 +53,6 @@ type ClusterServiceInterface interface {
 	Detail() *Detail
 	InitRaft(fsm raft.FSM) error
 	CreateCluster(ip string, fsm raft.FSM) error
-	SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error)
 	GetClusterDetails() (*ClusterDetails, error)
 	PopulateClusterNodes() error
-	StartClusterMonitors(ctx context.Context)
 }

@@ -1092,8 +1092,9 @@ func TestIntegrationRaftJoinReportsLeaderPromotionDeferral(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal deferral response: %v", err)
 	}
-	joiner.service.joinIntentRequest = func(
+	joiner.service.peerRequest = func(
 		_ context.Context,
+		_ string,
 		_ string,
 		_ []byte,
 		_ map[string]string,
@@ -1471,20 +1472,14 @@ func TestIntegrationClearClusteredDataWaitsForFSMApply(t *testing.T) {
 		t.Fatal("hold command never reached the FSM")
 	}
 
+	// The held entry owns the database transaction, so only the clear's
+	// completion can be observed until it's released.
 	cleared := make(chan error, 1)
 	go func() { cleared <- leader.service.ClearClusteredData() }()
 	select {
 	case err := <-cleared:
 		t.Fatalf("clear finished while the FSM lock was held: %v", err)
 	case <-time.After(200 * time.Millisecond):
-	}
-	var claims int64
-	if err := leader.service.DB.Model(&clusterModels.GuestIdentityClaim{}).
-		Count(&claims).Error; err != nil {
-		t.Fatalf("count claims: %v", err)
-	}
-	if claims == 0 {
-		t.Fatal("clear ran before the FSM lock was released")
 	}
 
 	releaseFSM()
@@ -1614,74 +1609,5 @@ func TestIntegrationRaftJoinWarnsOnUnavailableMemberVersions(t *testing.T) {
 				t.Fatalf("member warning = %q (set=%t), want %s", reason, warned, testCase.expect)
 			}
 		})
-	}
-}
-
-func TestIntegrationClearClusteredDataPairsRecordUpdateWithClear(t *testing.T) {
-	models := guestIdentityJoinTestModels()
-	nodes := setupClusterRaftTestNodes(t, 1, models...)
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	seedGuestIdentityJoinTestCluster(t, leader)
-	seedGuestIdentityJoinTestClaim(
-		t,
-		leader,
-		leader.id,
-		clusterModels.ReplicationGuestTypeVM,
-		813,
-	)
-
-	var record clusterModels.Cluster
-	if err := leader.service.DB.First(&record).Error; err != nil {
-		t.Fatalf("load cluster record: %v", err)
-	}
-	sentinel := errors.New("paired record update failed")
-	if err := leader.service.clearClusteredData(func(*gorm.DB) error {
-		return sentinel
-	}); !errors.Is(err, sentinel) {
-		t.Fatalf("paired clear error = %v, want the prepare failure", err)
-	}
-	var reloaded clusterModels.Cluster
-	if err := leader.service.DB.First(&reloaded).Error; err != nil {
-		t.Fatalf("reload cluster record: %v", err)
-	}
-	if reloaded.Enabled != record.Enabled || reloaded.Key != record.Key {
-		t.Fatalf("failed clear changed the record: got=%+v want=%+v", reloaded, record)
-	}
-	var claims int64
-	if err := leader.service.DB.Model(&clusterModels.GuestIdentityClaim{}).
-		Count(&claims).Error; err != nil {
-		t.Fatalf("count claims: %v", err)
-	}
-	if claims == 0 {
-		t.Fatal("failed clear removed replicated rows")
-	}
-	if !leader.service.stateFSM.AppliedIndexKnown() || leader.service.stateFSM.AppliedIndex() == 0 {
-		t.Fatalf(
-			"failed clear reset the marker: %d known=%t",
-			leader.service.stateFSM.AppliedIndex(),
-			leader.service.stateFSM.AppliedIndexKnown(),
-		)
-	}
-
-	enabled := record
-	enabled.Enabled = true
-	enabled.Key = "paired-clear-key"
-	if err := leader.service.clearClusteredData(func(tx *gorm.DB) error {
-		return tx.Save(&enabled).Error
-	}); err != nil {
-		t.Fatalf("paired clear: %v", err)
-	}
-	if err := leader.service.DB.First(&reloaded).Error; err != nil {
-		t.Fatalf("reload cluster record: %v", err)
-	}
-	if !reloaded.Enabled || reloaded.Key != "paired-clear-key" {
-		t.Fatalf("paired record update did not commit: %+v", reloaded)
-	}
-	if !leader.service.stateFSM.AppliedIndexKnown() || leader.service.stateFSM.AppliedIndex() != 0 {
-		t.Fatalf(
-			"marker after paired clear = %d known=%t, want known zero",
-			leader.service.stateFSM.AppliedIndex(),
-			leader.service.stateFSM.AppliedIndexKnown(),
-		)
 	}
 }

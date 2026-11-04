@@ -189,12 +189,16 @@ func TestRequireGuestIDAvailableStandaloneUsesSharedLocalNamespace(t *testing.T)
 		!strings.Contains(err.Error(), "guest_id_already_in_use") {
 		t.Fatalf("occupied standalone guest ID error = %v", err)
 	}
+	// A leftover duplicate keeps its own ID taken but mustn't block others.
 	if err := db.Create(&vmModels.VM{RID: 700, Name: "vm-700"}).Error; err != nil {
 		t.Fatalf("seed conflicting VM: %v", err)
 	}
-	if err := service.RequireGuestIDAvailable(t.Context(), 701); err == nil ||
-		!strings.Contains(err.Error(), "guest_identity_inventory_conflict") {
-		t.Fatalf("dirty standalone inventory error = %v", err)
+	if err := service.RequireGuestIDAvailable(t.Context(), 701); err != nil {
+		t.Fatalf("unrelated ID blocked by a duplicate elsewhere: %v", err)
+	}
+	if err := service.RequireGuestIDAvailable(t.Context(), 700); err == nil ||
+		!strings.Contains(err.Error(), "guest_id_already_in_use") {
+		t.Fatalf("duplicated guest ID error = %v", err)
 	}
 }
 

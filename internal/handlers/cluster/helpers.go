@@ -364,15 +364,15 @@ func writeClusterForwardError(c *gin.Context, message string, err error) {
 }
 
 func forwardToLeader(c *gin.Context, cS *cluster.Service) {
-	if cS == nil || cS.Raft == nil {
+	if cS == nil || cS.Raft() == nil {
 		c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
 			Status: "error", Message: "leader_unknown",
 		})
 		return
 	}
-	leaderAddr, leaderID := cS.Raft.LeaderWithID()
+	leaderAddr, leaderID := cS.Raft().LeaderWithID()
 	if leaderAddr == "" {
-		_ = cS.Raft.VerifyLeader().Error()
+		_ = cS.Raft().VerifyLeader().Error()
 		c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
 			Status: "error", Message: "leader_unknown",
 		})

@@ -53,14 +53,13 @@ func newGuestIdentitySnapshotTestNode(
 		addr:      address,
 		transport: transport,
 		raft:      raftNode,
-		service: &Service{
+		service: withRaft(&Service{
 			DB:           database,
-			Raft:         raftNode,
 			NodeID:       nodeID,
 			raftFSM:      fsm,
 			stateFSM:     fsm,
 			mutationGate: newOpenTestMutationGate(t),
-		},
+		}, raftNode),
 	}
 	t.Cleanup(func() { cleanupClusterRaftTestNodes(t, []*clusterRaftTestNode{node}) })
 	return node, logStore

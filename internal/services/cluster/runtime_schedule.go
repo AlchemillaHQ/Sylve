@@ -43,7 +43,7 @@ func (s *Service) RuntimeStateBypassRaft() (bool, error) {
 	if !state.Enabled {
 		return true, nil
 	}
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return false, fmt.Errorf("cluster_enabled_raft_unavailable")
 	}
 	return false, nil
@@ -58,10 +58,10 @@ func (s *Service) requireRuntimeWriteAuthority(bypassRaft bool) error {
 		return fmt.Errorf("cluster_enabled_local_runtime_write_forbidden")
 	}
 	if !bypassRaft {
-		if s.Raft == nil {
+		if s.Raft() == nil {
 			return fmt.Errorf("raft_not_initialized")
 		}
-		if s.Raft.State() != raft.Leader {
+		if s.Raft().State() != raft.Leader {
 			return fmt.Errorf("not_leader")
 		}
 	}

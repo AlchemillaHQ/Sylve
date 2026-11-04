@@ -54,12 +54,6 @@ var replicatedStateManifest = []ReplicatedStateTable{
 	{Table: "cluster_options", Model: &ClusterOption{}, SnapshotField: "Options"},
 }
 
-// ReplicatedStateManifest returns a defensive copy so callers and tests cannot
-// mutate the process-wide replicated-state boundary.
-func ReplicatedStateManifest() []ReplicatedStateTable {
-	return append([]ReplicatedStateTable(nil), replicatedStateManifest...)
-}
-
 // ClearReplicatedStateTx removes only Raft-owned state. Cluster membership
 // metadata, local backup/replication history, and delivery outboxes are
 // intentionally outside this manifest.
@@ -271,16 +265,4 @@ func ClusterSnapshotDigest(snapshot *ClusterSnapshot) (string, error) {
 	}
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:]), nil
-}
-
-func CaptureReplicatedStateDigest(db *gorm.DB) (*ClusterSnapshot, string, error) {
-	snapshot, err := captureClusterSnapshot(db)
-	if err != nil {
-		return nil, "", err
-	}
-	digest, err := ClusterSnapshotDigest(snapshot)
-	if err != nil {
-		return nil, "", err
-	}
-	return snapshot, digest, nil
 }

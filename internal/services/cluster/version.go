@@ -62,12 +62,27 @@ func (s *Service) CheckUniformVersions(ctx context.Context, candidate *raft.Serv
 }
 
 func (s *Service) checkUniformVersionsLocked(ctx context.Context, candidate *raft.Server, exemptNodeID string) error {
+	return s.checkMemberVersionsLocked(ctx, candidate, exemptNodeID, false)
+}
+
+// checkMemberVersionsLocked compares every member's version with ours. With
+// skipUnreachable, members that can't be probed are ignored, which is what
+// force removal needs: some nodes are down, often more than the target.
+func (s *Service) checkMemberVersionsLocked(
+	ctx context.Context,
+	candidate *raft.Server,
+	exemptNodeID string,
+	skipUnreachable bool,
+) error {
 	expected, results, err := s.probeClusterVersions(ctx, candidate, exemptNodeID, nil)
 	if err != nil {
 		return err
 	}
 	for _, result := range results {
 		if result.err != nil {
+			if skipUnreachable {
+				continue
+			}
 			return &ClusterVersionError{
 				Code:   "cluster_version_check_unavailable",
 				NodeID: result.nodeID,
@@ -180,16 +195,6 @@ func (s *Service) recordJoinVersionWarnings(warnings []ClusterVersionWarning) {
 	}
 }
 
-func (s *Service) joinVersionWarningReason(nodeID string) (string, bool) {
-	if s == nil {
-		return "", false
-	}
-	s.joinVersionWarnMu.Lock()
-	defer s.joinVersionWarnMu.Unlock()
-	reason, ok := s.joinVersionWarnings[strings.TrimSpace(nodeID)]
-	return reason, ok
-}
-
 func (s *Service) probeClusterVersions(
 	ctx context.Context,
 	candidate *raft.Server,
@@ -199,10 +204,10 @@ func (s *Service) probeClusterVersions(
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if s == nil || s.Raft == nil || s.Raft.State() == raft.Shutdown {
+	if s == nil || s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		return "", nil, &ClusterVersionError{Code: "cluster_version_check_unavailable", Cause: fmt.Errorf("raft_unavailable")}
 	}
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return "", nil, &ClusterVersionError{Code: "cluster_version_check_unavailable", Cause: err}
 	}

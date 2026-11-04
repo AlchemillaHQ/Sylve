@@ -305,12 +305,13 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		}
 
 		if err := cS.InitRaft(fsm); err != nil {
-			logger.L.Fatal().Err(err).Msg("Failed to initialize RAFT")
+			// Keep the daemon up so the node can be reset from the UI; cluster
+			// writes fail while Raft is down instead of applying locally.
+			logger.L.Error().Err(err).Msg("Failed to initialize RAFT")
 		}
 		if err := lifecycleSvc.PrepareStartup(qCtx); err != nil {
 			logger.L.Error().Err(err).Msg("failed_to_prepare_lifecycle_startup")
 		}
-		clusterSvc.StartMembershipReconcilers(qCtx)
 
 		clusterTLSConfig, err = aS.GetClusterTLSConfig()
 		if err != nil {
@@ -569,8 +570,13 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 				return nil
 			}
 
+			// Bind here so a busy port is returned to the caller instead of
+			// killing the daemon from the serving goroutine.
+			ln, err := net.Listen("tcp", cluster.ClusterAPIHost(clusterIP))
+			if err != nil {
+				return fmt.Errorf("cluster_https_listen_failed: %w", err)
+			}
 			srv := &http.Server{
-				Addr:      fmt.Sprintf("%s:%d", clusterIP, cluster.ClusterEmbeddedHTTPSPort),
 				Handler:   r,
 				TLSConfig: clusterTLSConfig,
 			}
@@ -578,9 +584,12 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				logger.L.Info().Msgf("Intra-cluster HTTPS server started on %s:%d", clusterIP, cluster.ClusterEmbeddedHTTPSPort)
-				if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-					logger.L.Fatal().Err(err).Msg("Failed to start intra-cluster HTTPS server")
+				logger.L.Info().Msgf("Intra-cluster HTTPS server started on %s", ln.Addr())
+				if err := srv.ServeTLS(ln, "", ""); err != nil && err != http.ErrServerClosed {
+					logger.L.Error().Err(err).Msg("intra_cluster_https_server_stopped")
+					clusterHTTPSMu.Lock()
+					activeClusterHTTPS = nil
+					clusterHTTPSMu.Unlock()
 				}
 			}()
 			return nil
@@ -596,6 +605,12 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 				clusterSvc.StartReaddressReconciler(qCtx)
 			}
 		}
+
+		// Start these once Raft is up and the listener hook is set: a join the
+		// reconciler resumes must be able to start this node's listeners, and
+		// the first node refresh needs Raft.
+		clusterSvc.StartClusterMonitors(qCtx)
+		clusterSvc.StartMembershipReconcilers(qCtx)
 	}
 
 	selfRestartRequested := false

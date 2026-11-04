@@ -176,7 +176,7 @@ func TestClearClusteredData(t *testing.T) {
 }
 
 func TestResyncClusterStateRequiresRaft(t *testing.T) {
-	s := &Service{Raft: nil}
+	s := &Service{}
 	if err := s.ResyncClusterState(); err == nil {
 		t.Fatal("expected error when Raft is nil")
 	}

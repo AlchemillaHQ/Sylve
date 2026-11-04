@@ -126,7 +126,7 @@ func (s *Service) applyBackupTargetRestoreOperation(
 	if s.Cluster == nil {
 		return applyLocal()
 	}
-	if s.Cluster.Raft == nil {
+	if s.Cluster.Raft() == nil {
 		if action == "acquire" {
 			return s.Cluster.AcquireBackupTargetRestoreOperation(acquire, true)
 		}
@@ -161,14 +161,14 @@ func (s *Service) applyBackupTargetRestoreOperation(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if s.Cluster.Raft.State() == raft.Leader {
+		if s.Cluster.Raft().State() == raft.Leader {
 			if action == "acquire" {
 				lastErr = s.Cluster.AcquireBackupTargetRestoreOperation(acquire, false)
 			} else {
 				lastErr = s.Cluster.TransitionBackupTargetRestoreOperation(action, transition, false)
 			}
 		} else {
-			_, leaderID := s.Cluster.Raft.LeaderWithID()
+			_, leaderID := s.Cluster.Raft().LeaderWithID()
 			leaderNodeID := strings.TrimSpace(string(leaderID))
 			if leaderNodeID == "" {
 				lastErr = fmt.Errorf("leader_not_available")
@@ -501,10 +501,10 @@ func (s *Service) enqueueRestoreFromTargetOperation(ctx context.Context, payload
 }
 
 func (s *Service) waitForBackupTargetRestoreRaftCatchUp(ctx context.Context) error {
-	if s == nil || s.Cluster == nil || s.Cluster.Raft == nil {
+	if s == nil || s.Cluster == nil || s.Cluster.Raft() == nil {
 		return nil
 	}
-	r := s.Cluster.Raft
+	r := s.Cluster.Raft()
 	stableIndex := ^uint64(0)
 	var stableSince time.Time
 	var lastBarrierErr error

@@ -67,17 +67,17 @@ func (s *Service) ForceRemovePeer(ctx context.Context, request ForceRemovePeerRe
 
 	s.clusterJoinMu.Lock()
 	defer s.clusterJoinMu.Unlock()
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return ClusterLeaveResult{}, &ClusterConsensusError{Cause: fmt.Errorf("raft_unavailable")}
 	}
-	if s.Raft.State() != raft.Leader {
-		leaderAddress, leaderID := s.Raft.LeaderWithID()
+	if s.Raft().State() != raft.Leader {
+		leaderAddress, leaderID := s.Raft().LeaderWithID()
 		if strings.TrimSpace(string(leaderAddress)) == "" && strings.TrimSpace(string(leaderID)) == "" {
 			return ClusterLeaveResult{}, &ClusterConsensusError{Cause: fmt.Errorf("leader_unavailable")}
 		}
 		return ClusterLeaveResult{}, fmt.Errorf("not_leader")
 	}
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return ClusterLeaveResult{}, fmt.Errorf("failed_to_get_raft_configuration: %w", err)
 	}
@@ -88,13 +88,13 @@ func (s *Service) ForceRemovePeer(ctx context.Context, request ForceRemovePeerRe
 	if !present {
 		return ClusterLeaveResult{}, fmt.Errorf("peer_not_found")
 	}
-	if err := s.checkUniformVersionsLocked(ctx, nil, nodeID); err != nil {
+	if err := s.checkMemberVersionsLocked(ctx, nil, nodeID, true); err != nil {
 		return ClusterLeaveResult{}, err
 	}
-	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
 		return ClusterLeaveResult{}, &ClusterConsensusError{Cause: err}
 	}
-	if s.Raft.State() != raft.Leader {
+	if s.Raft().State() != raft.Leader {
 		return ClusterLeaveResult{}, fmt.Errorf("not_leader")
 	}
 	dependencies, err := s.replicatedPeerRemovalDependencies(nodeID)
@@ -114,7 +114,7 @@ func (s *Service) ForceRemovePeer(ctx context.Context, request ForceRemovePeerRe
 			Dependencies: dependencies,
 		}}
 	}
-	if err := s.Raft.RemoveServer(server.ID, 0, raftApplyTimeout).Error(); err != nil {
+	if err := s.Raft().RemoveServer(server.ID, 0, raftApplyTimeout).Error(); err != nil {
 		return ClusterLeaveResult{}, &ClusterConsensusError{Cause: err}
 	}
 	if err := s.DeleteClusterSSHIdentity(nodeID, false); err != nil {

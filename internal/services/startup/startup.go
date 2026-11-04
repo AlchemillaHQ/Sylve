@@ -20,7 +20,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/bootstrap"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
-	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	infoServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/info"
 	iscsiServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/iscsi"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
@@ -53,7 +52,6 @@ type Service struct {
 	System     systemServiceInterfaces.SystemServiceInterface
 	Samba      sambaServiceInterfaces.SambaServiceInterface
 	Jail       jailServiceInterfaces.JailServiceInterface
-	Cluster    clusterServiceInterfaces.ClusterServiceInterface
 	ISCSI      iscsiServiceInterfaces.ISCSIServiceInterface
 	Mdns       mdnsServiceInterfaces.MdnsServiceInterface
 	Bootstrap  BootstrapStartupApplier
@@ -79,7 +77,6 @@ func NewStartupService(db *gorm.DB,
 	system systemServiceInterfaces.SystemServiceInterface,
 	samba sambaServiceInterfaces.SambaServiceInterface,
 	jail jailServiceInterfaces.JailServiceInterface,
-	cluster clusterServiceInterfaces.ClusterServiceInterface,
 	iscsiSvc iscsiServiceInterfaces.ISCSIServiceInterface,
 	mdnsSvc mdnsServiceInterfaces.MdnsServiceInterface,
 ) serviceInterfaces.StartupServiceInterface {
@@ -93,7 +90,6 @@ func NewStartupService(db *gorm.DB,
 		System:    system,
 		Samba:     samba,
 		Jail:      jail,
-		Cluster:   cluster,
 		ISCSI:     iscsiSvc,
 		Mdns:      mdnsSvc,
 	}
@@ -336,8 +332,6 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 			}
 		}()
 	}
-
-	s.Cluster.StartClusterMonitors(dCtx)
 
 	if slices.Contains(basicSettings.Services, models.WoLServer) {
 		go s.Utilities.StartWOLServer()

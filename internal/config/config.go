@@ -228,6 +228,13 @@ func SetupDataPath() error {
 		}
 	}
 
+	// Raft snapshots hold replicated secrets (ZFS keys, backup SSH keys) in
+	// files hashicorp creates world-readable. MkdirAll keeps the mode of an
+	// existing directory, so set it explicitly.
+	if err := os.Chmod(filepath.Join(dataPath, "raft"), 0700); err != nil {
+		return fmt.Errorf("failed to restrict raft directory: %w", err)
+	}
+
 	return nil
 }
 

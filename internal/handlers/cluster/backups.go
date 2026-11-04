@@ -256,7 +256,7 @@ func writeBackupNodeForwardError(
 // @Router /cluster/backups/jobs [get]
 func BackupJobs(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
@@ -331,7 +331,7 @@ func BackupJobs(cS *cluster.Service) gin.HandlerFunc {
 // @Router /cluster/backups/targets/{id}/running-jobs [get]
 func BackupTargetRunningJobIDs(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
@@ -384,7 +384,7 @@ func BackupTargetRunningJobIDs(cS *cluster.Service) gin.HandlerFunc {
 // @Router /cluster/backups/jobs [post]
 func CreateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
@@ -395,7 +395,7 @@ func CreateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		err := cS.ProposeBackupJobCreateContext(c.Request.Context(), req, cS.Raft == nil)
+		err := cS.ProposeBackupJobCreateContext(c.Request.Context(), req, cS.Standalone())
 
 		if err != nil {
 			writeBackupJobError(c, "backup_job_create_failed", err)
@@ -430,7 +430,7 @@ func CreateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 // @Router /cluster/backups/jobs/{id} [put]
 func UpdateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
@@ -456,7 +456,7 @@ func UpdateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 			c.Request.Context(),
 			uint(id64),
 			req,
-			cS.Raft == nil,
+			cS.Standalone(),
 			cluster.BackupJobPlacementAuthorization{},
 		)
 		if err != nil {
@@ -490,7 +490,7 @@ func UpdateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 // @Router /cluster/backups/jobs/{id} [delete]
 func DeleteBackupJob(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
@@ -506,7 +506,7 @@ func DeleteBackupJob(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		err = cS.ProposeBackupJobDelete(uint(id64), cS.Raft == nil)
+		err = cS.ProposeBackupJobDelete(uint(id64), cS.Standalone())
 		if err != nil {
 			writeBackupJobError(c, "backup_job_delete_failed", err)
 			return
@@ -578,7 +578,7 @@ func RunBackupJobNow(cS *cluster.Service, zS backupJobRunService) gin.HandlerFun
 			return
 		}
 
-		if runnerNodeID == "" && cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if runnerNodeID == "" && cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
@@ -625,7 +625,7 @@ func resolveBackupJobRunnerRoute(
 		return route, nil
 	}
 
-	if cS.Raft != nil {
+	if cS.Raft() != nil {
 		route.LocalNodeID = strings.TrimSpace(cS.NodeID)
 		if route.LocalNodeID == "" {
 			return route, fmt.Errorf("backup_runner_local_node_id_unavailable")
@@ -647,7 +647,7 @@ func resolveBackupJobRunnerRoute(
 	if route.Hop >= backupJobForwardMaxHops {
 		return route, fmt.Errorf("backup_job_forward_loop_detected")
 	}
-	if cS.Raft == nil {
+	if cS.Raft() == nil {
 		return route, fmt.Errorf("backup_runner_raft_unavailable")
 	}
 	route.Forward = true
@@ -759,8 +759,8 @@ func resolveClusterNodeAPI(cS *cluster.Service, nodeID string) (string, error) {
 	}
 
 	if targetAPI == "" {
-		if cS.Raft != nil {
-			fut := cS.Raft.GetConfiguration()
+		if cS.Raft() != nil {
+			fut := cS.Raft().GetConfiguration()
 			if err := fut.Error(); err == nil {
 				for _, server := range fut.Configuration().Servers {
 					if string(server.ID) != nodeID {
@@ -968,7 +968,7 @@ func RestoreBackupJob(cS *cluster.Service, zS backupJobRestoreService) gin.Handl
 			return
 		}
 
-		if runnerNodeID == "" && cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if runnerNodeID == "" && cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			body, marshalErr := json.Marshal(req)
 			if marshalErr != nil {
 				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -990,8 +990,8 @@ func RestoreBackupJob(cS *cluster.Service, zS backupJobRestoreService) gin.Handl
 
 			restoreNodeID := runnerNodeID
 			if restoreNodeID == "" {
-				if cS.Raft != nil {
-					_, leaderID := cS.Raft.LeaderWithID()
+				if cS.Raft() != nil {
+					_, leaderID := cS.Raft().LeaderWithID()
 					restoreNodeID = strings.TrimSpace(string(leaderID))
 				}
 				if restoreNodeID == "" {
@@ -1078,7 +1078,7 @@ func RestoreBackupJob(cS *cluster.Service, zS backupJobRestoreService) gin.Handl
 
 func UpdateBackupJobStateInternal(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
@@ -1121,7 +1121,7 @@ func UpdateBackupJobStateInternal(cS *cluster.Service) gin.HandlerFunc {
 
 func UpdateBackupJobFriendlySourceInternal(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
@@ -1137,7 +1137,7 @@ func UpdateBackupJobFriendlySourceInternal(cS *cluster.Service) gin.HandlerFunc 
 			return
 		}
 
-		if err := cS.SyncBackupJobFriendlySourceByGuest(req, cS.Raft == nil); err != nil {
+		if err := cS.SyncBackupJobFriendlySourceByGuest(req, cS.Standalone()); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "backup_job_friendly_source_update_failed",

@@ -1077,6 +1077,7 @@ func RegisterRoutes(r *gin.Engine,
 		clusterLocal.GET("/join-key", clusterHandlers.GetJoinKey(authService))
 		clusterLocal.GET("/join-status", clusterHandlers.GetJoinStatus(clusterService))
 		clusterLocal.GET("/leave-status", clusterHandlers.GetLeaveStatus(clusterService))
+		clusterLocal.POST("/leave/cancel", clusterHandlers.CancelLeave(clusterService))
 		clusterLocal.POST("", clusterHandlers.CreateCluster(clusterService, fsm))
 		clusterLocal.POST("/join", clusterHandlers.JoinCluster(clusterService, zeltaService, fsm))
 		clusterLocal.DELETE("/reset-node", clusterHandlers.ResetRaftNode(clusterService))

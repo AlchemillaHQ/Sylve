@@ -11,14 +11,12 @@ package clusterModels
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"testing"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/hashicorp/raft"
-	"gorm.io/gorm"
 )
 
 func allSnapshotModels() []any {
@@ -727,60 +725,6 @@ func TestFSMDispatcherMarkerLifecycle(t *testing.T) {
 	}
 	if err := fsm.ClearReplicatedState(); err != nil {
 		t.Fatalf("clear replicated state: %v", err)
-	}
-	if !fsm.AppliedIndexKnown() || fsm.AppliedIndex() != 0 {
-		t.Fatalf(
-			"marker after clear = %d known=%t, want known zero",
-			fsm.AppliedIndex(),
-			fsm.AppliedIndexKnown(),
-		)
-	}
-}
-
-func TestFSMDispatcherClearReplicatedStateTxnRollsBack(t *testing.T) {
-	database := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
-	fsm := NewFSMDispatcher(database)
-	RegisterDefaultHandlers(fsm)
-	checkpoint := []byte(`{"version":1,"decidedAt":"2026-09-24T00:00:00Z","type":"cluster_state","action":"checkpoint","data":{}}`)
-	if resp := fsm.Apply(&raft.Log{Type: raft.LogCommand, Index: 9, Data: checkpoint}); resp != nil {
-		t.Fatalf("checkpoint apply response = %v", resp)
-	}
-	if err := database.Create(&GuestIdentityClaim{
-		GuestID: 913, GuestKind: ReplicationGuestTypeVM,
-		OwnerNodeID: "node-a", Token: "rollback-test",
-	}).Error; err != nil {
-		t.Fatalf("seed claim: %v", err)
-	}
-
-	sentinel := errors.New("prepare failed")
-	if err := fsm.ClearReplicatedStateTxn(func(tx *gorm.DB) error {
-		return sentinel
-	}); !errors.Is(err, sentinel) {
-		t.Fatalf("paired clear error = %v, want the prepare failure", err)
-	}
-	var claims int64
-	if err := database.Model(&GuestIdentityClaim{}).Count(&claims).Error; err != nil {
-		t.Fatalf("count claims: %v", err)
-	}
-	if claims != 1 {
-		t.Fatalf("claims after failed clear = %d, want the rolled-back row", claims)
-	}
-	if !fsm.AppliedIndexKnown() || fsm.AppliedIndex() != 9 {
-		t.Fatalf(
-			"marker after failed clear = %d known=%t, want 9 known",
-			fsm.AppliedIndex(),
-			fsm.AppliedIndexKnown(),
-		)
-	}
-
-	if err := fsm.ClearReplicatedStateTxn(nil); err != nil {
-		t.Fatalf("clear replicated state: %v", err)
-	}
-	if err := database.Model(&GuestIdentityClaim{}).Count(&claims).Error; err != nil {
-		t.Fatalf("count claims: %v", err)
-	}
-	if claims != 0 {
-		t.Fatalf("claims after clear = %d, want none", claims)
 	}
 	if !fsm.AppliedIndexKnown() || fsm.AppliedIndex() != 0 {
 		t.Fatalf(

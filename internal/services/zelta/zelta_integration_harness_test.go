@@ -140,9 +140,11 @@ func newZeltaRaftNode(t *testing.T, id string, models ...any) *zeltaRaftNode {
 		t.Fatalf("raft.NewRaft(%s): %v", id, err)
 	}
 
+	cService := &cluster.Service{DB: db}
+	cService.SetRaft(r)
 	node := &zeltaRaftNode{
 		id: id, addr: addr, transport: transport, raft: r, db: db,
-		cService: &cluster.Service{DB: db, Raft: r},
+		cService: cService,
 	}
 	t.Cleanup(func() { cleanupZeltaRaftNode(node) })
 	return node

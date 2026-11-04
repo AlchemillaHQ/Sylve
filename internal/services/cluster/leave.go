@@ -18,6 +18,7 @@ import (
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/hashicorp/raft"
 	"gorm.io/gorm"
 )
@@ -68,7 +69,10 @@ func (s *Service) InitializeLeaveRuntime() error {
 	}
 	if phase == LeavePhaseCleaning {
 		if err := s.FinalizeLocalDecluster(); err != nil {
-			return err
+			// Stay fenced and skip Raft; the leave reconciler retries the
+			// cleanup instead of the daemon crash-looping at boot.
+			logger.L.Error().Err(err).Msg("cluster_leave_cleanup_deferred")
+			return nil
 		}
 		return s.mutationGate.Open()
 	}
@@ -99,10 +103,10 @@ func (s *Service) LeaveStatus() (ClusterLeaveStatus, error) {
 }
 
 func (s *Service) captureLeavePeerAddresses() ([]byte, error) {
-	if s == nil || s.Raft == nil || s.Raft.State() == raft.Shutdown {
+	if s == nil || s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		return json.Marshal([]string{})
 	}
-	future := s.Raft.GetConfiguration()
+	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return nil, fmt.Errorf("leave_peer_capture_failed: %w", err)
 	}
@@ -281,16 +285,44 @@ func (s *Service) clearLeaveIntentAndReopen() error {
 	return s.mutationGate.Open()
 }
 
+// CancelLocalLeave abandons a leave that can't finish, typically because the
+// leader is gone, and reopens the node. It's refused once the leader has
+// confirmed the removal: only local cleanup is left then, and the reconciler
+// finishes it. If the leader is unreachable this can't be confirmed, so a node
+// the cluster did remove has to be reset afterwards.
+func (s *Service) CancelLocalLeave(ctx context.Context) error {
+	s.leaveInitiationMu.Lock()
+	defer s.leaveInitiationMu.Unlock()
+	s.membershipLifecycleMu.Lock()
+	defer s.membershipLifecycleMu.Unlock()
+
+	status, err := s.LeaveStatus()
+	if err != nil {
+		return err
+	}
+	switch status.Phase {
+	case "":
+		return nil
+	case LeavePhaseCleaning:
+		return &ClusterLeaveError{Code: "cluster_leave_already_removed"}
+	}
+	record, err := s.loadClusterRecord()
+	if err != nil {
+		return err
+	}
+	if membership, err := s.leaveMembership(ctx, record, status.LocalNodeID); err == nil && !membership.Present {
+		return &ClusterLeaveError{Code: "cluster_leave_already_removed"}
+	}
+	return s.clearLeaveIntentAndReopen()
+}
+
 func (s *Service) FinalizeLocalDecluster() error {
 	if s == nil || s.DB == nil {
 		return fmt.Errorf("cluster_service_not_initialized")
 	}
 	s.mutationGate.Close()
-	if s.Raft != nil {
-		_ = s.Raft.Shutdown().Error()
-	}
-	if s.Transport != nil {
-		_ = s.Transport.Close()
+	if err := s.stopRaftRuntime(); err != nil {
+		logger.L.Warn().Err(err).Msg("cluster_leave_raft_stop_failed")
 	}
 	if s.DB.Migrator().HasTable(&taskModels.GuestLifecycleTask{}) {
 		now := time.Now()

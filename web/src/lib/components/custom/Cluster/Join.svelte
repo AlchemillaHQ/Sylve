@@ -6,7 +6,7 @@
 	import Input from '$lib/components/ui/input/input.svelte';
 	import { handleAPIError } from '$lib/utils/http';
 	import { getClusterJoinErrorMessage } from '$lib/utils/cluster';
-	import { isValidIPv4, isValidIPv6 } from '$lib/utils/string';
+	import { isValidIPv4 } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
 	import SpanWithIcon from '../SpanWithIcon.svelte';
@@ -18,10 +18,7 @@
 
 	let { open = $bindable(), reload = $bindable() }: Props = $props();
 	let options = {
-		ip:
-			isValidIPv4(window.location.hostname) || isValidIPv6(window.location.hostname)
-				? window.location.hostname
-				: '',
+		ip: isValidIPv4(window.location.hostname) ? window.location.hostname : '',
 		clusterKey: '',
 		leaderIp: ''
 	};
@@ -35,14 +32,13 @@
 	}
 
 	async function join() {
+		// Clustering is IPv4-only; the backend rejects IPv6 addresses.
 		let error = '';
 
-		if (!isValidIPv4(properties.ip) && !isValidIPv6(properties.ip)) {
-			error = 'Invalid IP address';
-		}
-
-		if (!isValidIPv4(properties.leaderIp) && !isValidIPv6(properties.leaderIp)) {
-			error = 'Leader IP is required';
+		if (!isValidIPv4(properties.ip)) {
+			error = 'Node IP must be an IPv4 address';
+		} else if (!isValidIPv4(properties.leaderIp)) {
+			error = 'Leader IP must be an IPv4 address';
 		} else if (!properties.clusterKey) {
 			error = 'Cluster Key is required';
 		}

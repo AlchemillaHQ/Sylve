@@ -1434,8 +1434,28 @@ func (s *Service) CreateVMsFromTemplate(ctx context.Context, templateID uint, re
 		if identityReservation == nil || err == nil {
 			return
 		}
-		if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, *identityReservation); releaseErr != nil {
-			err = errors.Join(err, fmt.Errorf("guest_identity_release_failed: %w", releaseErr))
+		// Release the IDs whose VMs are gone. A VM that failed to clean up
+		// still holds its ID, so finalize that part rather than letting it
+		// block the release of the whole batch.
+		released, kept := *identityReservation, *identityReservation
+		released.Entries, kept.Entries = nil, nil
+		for _, entry := range identityReservation.Entries {
+			var count int64
+			if countErr := s.DB.Model(&vmModels.VM{}).Where("rid = ?", entry.GuestID).Count(&count).Error; countErr == nil && count == 0 {
+				released.Entries = append(released.Entries, entry)
+			} else {
+				kept.Entries = append(kept.Entries, entry)
+			}
+		}
+		if len(released.Entries) > 0 {
+			if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, released); releaseErr != nil {
+				err = errors.Join(err, fmt.Errorf("guest_identity_release_failed: %w", releaseErr))
+			}
+		}
+		if len(kept.Entries) > 0 {
+			if finalizeErr := s.guestIdentityCoordinator.FinalizeGuestIdentities(ctx, kept); finalizeErr != nil {
+				err = errors.Join(err, fmt.Errorf("guest_identity_finalize_failed: %w", finalizeErr))
+			}
 		}
 	}()
 

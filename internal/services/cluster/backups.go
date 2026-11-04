@@ -182,7 +182,7 @@ func (s *Service) ProposeBackupTargetUpdate(input clusterServiceInterfaces.Backu
 	if input.ID == 0 {
 		return fmt.Errorf("invalid_target_id")
 	}
-	if !bypassRaft && s.Raft == nil {
+	if !bypassRaft && s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 	existing, err := s.GetBackupTargetByID(input.ID)
@@ -205,7 +205,7 @@ func (s *Service) ProposeBackupTargetDelete(id uint, bypassRaft bool) error {
 		return clusterModels.DeleteBackupTargetTxn(s.DB, id)
 	}
 
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 
@@ -294,11 +294,11 @@ func (s *Service) RunningJobIDsForTarget(targetID uint) ([]uint, error) {
 	if s == nil || s.DB == nil {
 		return nil, fmt.Errorf("backup_job_database_unavailable")
 	}
-	if s.Raft != nil {
-		if s.Raft.State() != raft.Leader {
+	if s.Raft() != nil {
+		if s.Raft().State() != raft.Leader {
 			return nil, fmt.Errorf("not_leader")
 		}
-		if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+		if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
 			return nil, fmt.Errorf("backup_job_operation_status_barrier_failed: %w", err)
 		}
 	}
@@ -359,10 +359,10 @@ func (s *Service) UpdateBackupJobRuntimeState(update BackupJobRuntimeStateUpdate
 		if bypassRaft {
 			return s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", update.JobID).Update("next_run_at", update.NextRunAt).Error
 		}
-		if s.Raft == nil {
+		if s.Raft() == nil {
 			return fmt.Errorf("raft_not_initialized")
 		}
-		if s.Raft.State() != raft.Leader {
+		if s.Raft().State() != raft.Leader {
 			return fmt.Errorf("not_leader")
 		}
 
@@ -399,10 +399,10 @@ func (s *Service) UpdateBackupJobRuntimeState(update BackupJobRuntimeStateUpdate
 		return s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", update.JobID).Updates(updates).Error
 	}
 
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
-	if s.Raft.State() != raft.Leader {
+	if s.Raft().State() != raft.Leader {
 		return fmt.Errorf("not_leader")
 	}
 
@@ -445,10 +445,10 @@ func (s *Service) SyncBackupJobFriendlySourceByGuest(update BackupJobFriendlySou
 			Update("friendly_src", update.FriendlySrc).Error
 	}
 
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
-	if s.Raft.State() != raft.Leader {
+	if s.Raft().State() != raft.Leader {
 		return fmt.Errorf("not_leader")
 	}
 
@@ -468,12 +468,12 @@ func (s *Service) SyncBackupJobFriendlySourceByGuest(update BackupJobFriendlySou
 }
 
 func (s *Service) SyncBackupJobFriendlySourceByGuestClusterWide(update BackupJobFriendlySourceUpdate) error {
-	err := s.SyncBackupJobFriendlySourceByGuest(update, s.Raft == nil)
+	err := s.SyncBackupJobFriendlySourceByGuest(update, s.Standalone())
 	if err == nil {
 		return nil
 	}
 
-	if s.Raft != nil && strings.Contains(strings.ToLower(err.Error()), "not_leader") {
+	if s.Raft() != nil && strings.Contains(strings.ToLower(err.Error()), "not_leader") {
 		return s.forwardBackupJobFriendlySourceToLeader(update)
 	}
 
@@ -530,11 +530,11 @@ func (s *Service) forwardBackupJobFriendlySourceToLeader(update BackupJobFriendl
 	if s == nil {
 		return fmt.Errorf("cluster_service_unavailable")
 	}
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 
-	_, leaderID := s.Raft.LeaderWithID()
+	_, leaderID := s.Raft().LeaderWithID()
 	leaderNodeID := strings.TrimSpace(string(leaderID))
 	if leaderNodeID == "" {
 		return fmt.Errorf("leader_unknown")
@@ -599,8 +599,8 @@ func (s *Service) resolveClusterNodeAPIByNodeID(nodeID string) (string, error) {
 		}
 	}
 
-	if s.Raft != nil {
-		fut := s.Raft.GetConfiguration()
+	if s.Raft() != nil {
+		fut := s.Raft().GetConfiguration()
 		if err := fut.Error(); err == nil {
 			for _, server := range fut.Configuration().Servers {
 				if strings.TrimSpace(string(server.ID)) != nodeID {
@@ -661,7 +661,7 @@ func (s *Service) ProposeBackupJobCreateContext(
 		})
 	}
 
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 
@@ -769,7 +769,7 @@ func (s *Service) ProposeBackupJobUpdateContext(
 		})
 	}
 
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 
@@ -799,7 +799,7 @@ func (s *Service) ProposeBackupJobDelete(id uint, bypassRaft bool) error {
 		return clusterModels.DeleteBackupJobTxn(s.DB, id)
 	}
 
-	if s.Raft == nil {
+	if s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 
@@ -1106,7 +1106,7 @@ func (s *Service) applyRaftCommand(cmd clusterModels.Command) error {
 }
 
 func (s *Service) applyRaftCommandUnlocked(cmd clusterModels.Command) error {
-	if s == nil || s.Raft == nil {
+	if s == nil || s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 	if err := clusterModels.PrepareCommand(&cmd, time.Now()); err != nil {
@@ -1117,7 +1117,7 @@ func (s *Service) applyRaftCommandUnlocked(cmd clusterModels.Command) error {
 		return fmt.Errorf("failed_to_marshal_command: %w", err)
 	}
 
-	applyFuture := s.Raft.Apply(payload, raftApplyTimeout)
+	applyFuture := s.Raft().Apply(payload, raftApplyTimeout)
 	if err := applyFuture.Error(); err != nil {
 		return fmt.Errorf("raft_apply_failed: %w", err)
 	}
@@ -1138,7 +1138,7 @@ func (s *Service) backupRunnerNodeExists(nodeID string) bool {
 		return false
 	}
 
-	if s.Raft != nil {
+	if s.Raft() != nil {
 		return s.RequireCurrentRaftVoter(nodeID) == nil
 	}
 	bypassRaft, err := s.RuntimeStateBypassRaft()
