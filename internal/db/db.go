@@ -119,7 +119,8 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 	PreMigrationFixups(db)
 
-	err = db.AutoMigrate(
+	// Replicated cluster tables come from the FSM's manifest.
+	err = db.AutoMigrate(append([]any{
 		&models.BasicSettings{},
 		&models.Notification{},
 		&models.NotificationSuppression{},
@@ -239,38 +240,13 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 		&clusterModels.Cluster{},
 		&clusterModels.ClusterNode{},
-		&clusterModels.ClusterOption{},
-		&clusterModels.ClusterNote{},
-		&clusterModels.GuestIdentityRegistry{},
-		&clusterModels.GuestIdentityEnrollment{},
-		&clusterModels.GuestIdentityClaim{},
-		&clusterModels.GuestIdentityDeparture{},
-		&clusterModels.BackupTarget{},
-		&clusterModels.BackupTargetSSHHostTrust{},
-		&clusterModels.BackupTargetProvisionOperation{},
-		&clusterModels.BackupTargetNodeReadiness{},
-		&clusterModels.BackupJob{},
-		&clusterModels.BackupJobOperation{},
-		&clusterModels.ReplicationRunOperation{},
-		&clusterModels.ScheduledRunReceipt{},
 		&clusterModels.ScheduledRunResultOutbox{},
-		&clusterModels.BackupTargetRestoreOperation{},
-		&clusterModels.BackupJobRunnerRebind{},
-		&clusterModels.BackupJobRunnerRebindItem{},
 		&clusterModels.BackupEvent{},
-		&clusterModels.ReplicationPolicy{},
-		&clusterModels.ReplicationPolicyTarget{},
-		&clusterModels.ReplicationLease{},
-		&clusterModels.ReplicationGuestOperation{},
-		&clusterModels.ReplicationGuestOperationReceipt{},
 		&clusterModels.ReplicationEvent{},
-		&clusterModels.ReplicationTransitionEvent{},
-		&clusterModels.ClusterSSHIdentity{},
-		&clusterModels.EncryptionKey{},
 		&taskModels.GuestLifecycleTask{},
 
 		&models.Migrations{},
-	)
+	}, clusterModels.ReplicatedModels()...)...)
 
 	if err != nil {
 		logger.L.Fatal().Msgf("Error migrating database: %v", err)

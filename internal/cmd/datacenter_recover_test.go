@@ -12,18 +12,20 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestApplyOfflineClusterIPRecoveryPreservesStateAndIsIdempotent(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{}, &clusterModels.ClusterNote{})
 	if err := database.Create(&clusterModels.Cluster{
-		Enabled: true, RaftIP: "192.0.2.10", JoinNodeID: "node-2",
-		JoinPhase: clusterModels.JoinPhaseComplete,
+		Enabled: true, RaftIP: "192.0.2.10",
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -62,15 +64,12 @@ func TestApplyOfflineClusterIPRecoveryPreservesStateAndIsIdempotent(t *testing.T
 	if !repeated.AlreadySet || repeated.OldIP != "192.0.2.10" {
 		t.Fatalf("repeated result = %+v", repeated)
 	}
-	if _, err := applyOfflineClusterIPRecovery(database, "node-2", "192.0.2.30"); err == nil {
-		t.Fatal("expected a conflicting pending recovery to fail")
-	}
 }
 
 func TestApplyOfflineClusterIPRecoveryRejectsIncompleteJoin(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{})
 	if err := database.Create(&clusterModels.Cluster{
-		Enabled: true, RaftIP: "192.0.2.10", JoinNodeID: "node-2", JoinPhase: "catching_up",
+		Enabled: true, RaftIP: "192.0.2.10", JoinLeaderIP: "192.0.2.1",
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -118,5 +117,67 @@ func TestNormalizeOfflineClusterIPRejectsIPv6(t *testing.T) {
 	}
 	if got, err := normalizeOfflineClusterIP("192.0.2.20"); err != nil || got != "192.0.2.20" {
 		t.Fatalf("IPv4 = %q, error = %v", got, err)
+	}
+}
+
+func TestOfflineFSMLeavesTheDaemonSchemaAlone(t *testing.T) {
+	dataPath := t.TempDir()
+	daemon, err := gorm.Open(sqlite.Open(filepath.Join(dataPath, "sylve.db")), &gorm.Config{
+		DisableForeignKeyConstraintWhenMigrating: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := daemon.AutoMigrate(append(clusterModels.ReplicatedModels(), &clusterModels.FSMState{})...); err != nil {
+		t.Fatal(err)
+	}
+	schema := func(database *gorm.DB) []string {
+		var statements []string
+		if err := database.Raw("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name").Scan(&statements).Error; err != nil {
+			t.Fatal(err)
+		}
+		return statements
+	}
+	before := schema(daemon)
+	if sqlDB, err := daemon.DB(); err != nil || sqlDB.Close() != nil {
+		t.Fatalf("close daemon database: %v", err)
+	}
+
+	database, closeDatabase, err := openOfflineClusterDatabase(dataPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeDatabase()
+	clusterModels.NewFSMDispatcher(database)
+	if after := schema(database); !slices.Equal(before, after) {
+		t.Fatalf("schema changed:\nbefore %q\nafter  %q", before, after)
+	}
+}
+
+func TestApplyOfflineClusterIPRecoveryRedirectsAPendingReaddress(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{})
+	if err := database.Create(&clusterModels.Cluster{
+		Enabled: true, RaftIP: "192.0.2.30", ReaddressOldIP: "192.0.2.10",
+		ReaddressNewIP: "192.0.2.30", ReaddressPhase: offlineReaddressPhaseLocalRebound,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	result, err := applyOfflineClusterIPRecovery(database, "node-1", "192.0.2.20")
+	if err != nil {
+		t.Fatalf("redirect: %v", err)
+	}
+	if result.OldIP != "192.0.2.10" || result.NewIP != "192.0.2.20" || result.AlreadySet {
+		t.Fatalf("result = %+v", result)
+	}
+	var record clusterModels.Cluster
+	if err := database.First(&record).Error; err != nil {
+		t.Fatal(err)
+	}
+	if record.RaftIP != "192.0.2.20" || record.ReaddressOldIP != "192.0.2.10" ||
+		record.ReaddressNewIP != "192.0.2.20" || record.ReaddressPhase != offlineReaddressPhaseLocalRebound {
+		t.Fatalf("record = %+v", record)
+	}
+	if again, err := applyOfflineClusterIPRecovery(database, "node-1", "192.0.2.20"); err != nil || !again.AlreadySet {
+		t.Fatalf("rerun = %+v, %v", again, err)
 	}
 }

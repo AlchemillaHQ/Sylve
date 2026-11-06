@@ -11,6 +11,7 @@
 		Terminal
 	} from '@battlefieldduck/xterm-svelte';
 	import { onMount, getContext, untrack, type Component } from 'svelte';
+	import { nodePath } from '$lib/api/common';
 	import { getVmByIdResult } from '$lib/api/vm/vm';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import {
@@ -98,10 +99,7 @@
 	);
 
 	function getWSSAuth() {
-		return {
-			hash: data.hash,
-			hostname: data.node
-		};
+		return { hash: data.hash };
 	}
 
 	function consoleStorageKey(suffix: string): string {
@@ -264,7 +262,8 @@
 	let vncPath = $derived.by(() => {
 		if (!vm.current.vncEnabled) return '';
 		const wssAuth = getWSSAuth();
-		return `/api/vnc/${encodeURIComponent(String(vm.current.vncPort))}?auth=${toHex(JSON.stringify(wssAuth))}`;
+		const path = nodePath(`/api/vnc/${encodeURIComponent(String(vm.current.vncPort))}`, data.node);
+		return `${path}?auth=${toHex(JSON.stringify(wssAuth))}`;
 	});
 	let noVNCSource = $derived.by(() => {
 		const params = new URLSearchParams({
@@ -501,7 +500,8 @@
 		resetSerialControlState();
 
 		const wssAuth = getWSSAuth();
-		const url = `/api/vm/${encodeURIComponent(String(data.rid))}/console?auth=${encodeURIComponent(toHex(JSON.stringify(wssAuth)))}`;
+		const path = nodePath(`/api/vm/${encodeURIComponent(String(data.rid))}/console`, data.node);
+		const url = `${path}?auth=${encodeURIComponent(toHex(JSON.stringify(wssAuth)))}`;
 
 		const activeConnectionToken = ++connectionToken;
 		const activeTerminal = terminal;

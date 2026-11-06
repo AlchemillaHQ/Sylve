@@ -42,52 +42,33 @@ func (s *Service) requireNoManagedGuestsWithinRestore(
 	}
 
 	blocking := make([]string, 0)
-	hasJails := s.DB.Migrator().HasTable(&jailModels.Jail{})
-	hasJailStorages := s.DB.Migrator().HasTable(&jailModels.Storage{})
-	if hasJails != hasJailStorages {
-		return fmt.Errorf("restore_jail_inventory_unavailable")
+	var jails []jailModels.Jail
+	if err := s.DB.Preload("Storages").Find(&jails).Error; err != nil {
+		return fmt.Errorf("restore_jail_inventory_failed: %w", err)
 	}
-	if hasJails {
-		var jails []jailModels.Jail
-		if err := s.DB.Preload("Storages").Find(&jails).Error; err != nil {
-			return fmt.Errorf("restore_jail_inventory_failed: %w", err)
-		}
-		for _, jail := range jails {
-			if !restoreDestinationContainsAnyDataset(destination, jailRestoreDatasetRoots(jail)) {
-				continue
-			}
+	for _, jail := range jails {
+		if restoreDestinationContainsAnyDataset(destination, jailRestoreDatasetRoots(jail)) {
 			blocking = append(blocking, "jail:"+strconv.FormatUint(uint64(jail.CTID), 10))
 		}
 	}
 
-	hasVMs := s.DB.Migrator().HasTable(&vmModels.VM{})
-	hasVMStorages := s.DB.Migrator().HasTable(&vmModels.Storage{})
-	hasVMDatasets := s.DB.Migrator().HasTable(&vmModels.VMStorageDataset{})
-	if (hasVMs || hasVMStorages || hasVMDatasets) && !(hasVMs && hasVMStorages && hasVMDatasets) {
-		return fmt.Errorf("restore_vm_inventory_unavailable")
+	var vms []vmModels.VM
+	if err := s.DB.Preload("Storages.Dataset").Find(&vms).Error; err != nil {
+		return fmt.Errorf("restore_vm_inventory_failed: %w", err)
 	}
-	if hasVMs {
-		var vms []vmModels.VM
-		if err := s.DB.Preload("Storages.Dataset").Find(&vms).Error; err != nil {
-			return fmt.Errorf("restore_vm_inventory_failed: %w", err)
-		}
-		for _, vm := range vms {
-			if !restoreDestinationContainsAnyDataset(destination, vmRestoreDatasetRoots(vm)) {
-				continue
-			}
+	for _, vm := range vms {
+		if restoreDestinationContainsAnyDataset(destination, vmRestoreDatasetRoots(vm)) {
 			blocking = append(blocking, "vm:"+strconv.FormatUint(uint64(vm.RID), 10))
 		}
 	}
 
-	if s.DB.Migrator().HasTable(&containerModels.Container{}) {
-		var containers []containerModels.Container
-		if err := s.DB.Find(&containers).Error; err != nil {
-			return fmt.Errorf("restore_container_inventory_failed: %w", err)
-		}
-		for _, container := range containers {
-			if restoreDestinationContainsAnyDataset(destination, container.DatasetRoots()) {
-				blocking = append(blocking, "container:"+strconv.FormatUint(uint64(container.OCID), 10))
-			}
+	var containers []containerModels.Container
+	if err := s.DB.Find(&containers).Error; err != nil {
+		return fmt.Errorf("restore_container_inventory_failed: %w", err)
+	}
+	for _, container := range containers {
+		if restoreDestinationContainsAnyDataset(destination, container.DatasetRoots()) {
+			blocking = append(blocking, "container:"+strconv.FormatUint(uint64(container.OCID), 10))
 		}
 	}
 

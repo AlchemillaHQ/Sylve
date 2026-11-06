@@ -21,7 +21,6 @@ type GuestIdentityReservation struct {
 	Token               string                   `json:"token,omitempty"`
 	LocalOperationToken string                   `json:"-"`
 	Entries             []GuestIdentityReference `json:"entries"`
-	Clustered           bool                     `json:"clustered"`
 }
 
 type GuestIdentityCoordinator interface {

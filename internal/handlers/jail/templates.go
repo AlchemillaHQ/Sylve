@@ -69,9 +69,7 @@ func jailTemplatePreflightStatusCode(err error) int {
 	switch utils.ErrorCode(err) {
 	case "replication_lease_not_owned":
 		return http.StatusForbidden
-	case "guest_identity_inventory_unavailable",
-		"guest_identity_registry_initializing",
-		"guest_identity_cluster_formation_in_progress",
+	case "guest_identity_cluster_formation_in_progress",
 		"cluster_consensus_unavailable",
 		"guest_identity_release_failed",
 		"template_network_service_unavailable":

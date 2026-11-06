@@ -1886,7 +1886,8 @@ func (s *Service) DeleteJailWithWarnings(
 		return result, nil
 	}
 	if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, *identityClaim); releaseErr != nil {
-		return result, fmt.Errorf("guest_identity_release_pending: %w", releaseErr)
+		// The jail is gone; the owner reconcile gives its ID back later.
+		logger.L.Warn().Err(releaseErr).Uint("ctid", ctID).Msg("guest_identity_release_pending")
 	}
 	return result, nil
 }
@@ -2006,11 +2007,6 @@ func (s *Service) deleteJailWithRuntimeOptionsAndIdentity(
 			identityClaim.Entries[0].GuestID != plan.ctID ||
 			strings.TrimSpace(identityClaim.OwnerNodeID) == "" {
 			return result, fmt.Errorf("%w: jail_release_claim_mismatch", clusterModels.ErrGuestIdentityClaimConflict)
-		}
-		if identityClaim.Clustered {
-			if strings.TrimSpace(identityClaim.Token) == "" {
-				return result, fmt.Errorf("%w: jail_release_claim_token_missing", clusterModels.ErrGuestIdentityClaimConflict)
-			}
 		}
 	}
 	if err := ensureJailStoppedForDelete(ctx, ctID, runtime); err != nil {

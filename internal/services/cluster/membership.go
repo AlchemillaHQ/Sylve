@@ -9,11 +9,21 @@
 package cluster
 
 import (
+	"context"
+	"crypto/sha256"
+	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/hashicorp/raft"
+)
+
+var (
+	ErrPeerNotFound = errors.New("peer_not_found")
+	ErrRemoveSelf   = errors.New("peer_removal_target_is_local")
 )
 
 type RaftMembership struct {
@@ -24,13 +34,12 @@ type RaftMembership struct {
 }
 
 type MembershipStatus struct {
-	NodeID              string `json:"nodeId"`
-	Present             bool   `json:"present"`
-	GuestClaimsReleased bool   `json:"guestClaimsReleased"`
-	Address             string `json:"address,omitempty"`
-	Suffrage            string `json:"suffrage,omitempty"`
-	LeaderID            string `json:"leaderId"`
-	LeaderAddress       string `json:"leaderAddress"`
+	NodeID        string `json:"nodeId"`
+	Present       bool   `json:"present"`
+	Address       string `json:"address,omitempty"`
+	Suffrage      string `json:"suffrage,omitempty"`
+	LeaderID      string `json:"leaderId"`
+	LeaderAddress string `json:"leaderAddress"`
 }
 
 func resolveRaftMember(configuration raft.Configuration, nodeID string) (raft.Server, bool, error) {
@@ -79,19 +88,17 @@ func (s *Service) ResolveCurrentRaftMember(nodeID string) (RaftMembership, error
 	}, nil
 }
 
-func (s *Service) AuthoritativeMembershipStatus(nodeID string) (MembershipStatus, error) {
+// A member's status goes only to a caller with its cert, whose pin is
+// callerPin; any caller may learn that a node isn't one.
+func (s *Service) AuthoritativeMembershipStatus(nodeID string, callerPin [sha256.Size]byte) (MembershipStatus, error) {
 	s.clusterJoinMu.Lock()
 	defer s.clusterJoinMu.Unlock()
-	return s.authoritativeMembershipStatusLocked(nodeID)
-}
-
-func (s *Service) authoritativeMembershipStatusLocked(nodeID string) (MembershipStatus, error) {
 	status := MembershipStatus{NodeID: strings.TrimSpace(nodeID)}
 	if status.NodeID == "" {
 		return status, fmt.Errorf("node_id_required")
 	}
-	if s == nil || s.Raft() == nil || s.Raft().State() != raft.Leader {
-		if s != nil && s.Raft() != nil {
+	if s.Raft() == nil || s.Raft().State() != raft.Leader {
+		if s.Raft() != nil {
 			leaderAddress, leaderID := s.Raft().LeaderWithID()
 			status.LeaderID = strings.TrimSpace(string(leaderID))
 			status.LeaderAddress = strings.TrimSpace(string(leaderAddress))
@@ -102,41 +109,123 @@ func (s *Service) authoritativeMembershipStatusLocked(nodeID string) (Membership
 	if strings.TrimSpace(string(leaderID)) == "" || strings.TrimSpace(string(leaderAddress)) == "" {
 		return status, fmt.Errorf("leader_identity_unavailable")
 	}
-	if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
-		return status, fmt.Errorf("membership_barrier_failed: %w", err)
-	}
 	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return status, fmt.Errorf("raft_configuration_unavailable: %w", err)
-	}
-	currentLeaderAddress, currentLeaderID := s.Raft().LeaderWithID()
-	if s.Raft().State() != raft.Leader || currentLeaderID != leaderID || currentLeaderAddress != leaderAddress {
-		return status, fmt.Errorf("leadership_changed")
 	}
 	server, present, err := resolveRaftMember(future.Configuration(), status.NodeID)
 	if err != nil {
 		return status, err
 	}
-	status.Present = present
-	if !present {
-		var claims, pending int64
-		if s.DB.Migrator().HasTable(&clusterModels.GuestIdentityClaim{}) {
-			if err := s.DB.Model(&clusterModels.GuestIdentityClaim{}).Where("owner_node_id = ?", status.NodeID).Count(&claims).Error; err != nil {
-				return status, err
-			}
-		}
-		if s.DB.Migrator().HasTable(&clusterModels.GuestIdentityDeparture{}) {
-			if err := s.DB.Model(&clusterModels.GuestIdentityDeparture{}).Where("node_id = ?", status.NodeID).Count(&pending).Error; err != nil {
-				return status, err
-			}
-		}
-		status.GuestClaimsReleased = claims == 0 && pending == 0
-	}
 	status.LeaderID = strings.TrimSpace(string(leaderID))
 	status.LeaderAddress = strings.TrimSpace(string(leaderAddress))
 	if present {
+		if holder, ok := s.PinNode(callerPin); !ok || holder != status.NodeID {
+			return status, fmt.Errorf("membership_status_cert_mismatch")
+		}
+		status.Present = true
 		status.Address = strings.TrimSpace(string(server.Address))
 		status.Suffrage = raftSuffrageName(server.Suffrage)
+		return status, nil
+	}
+	// Told it's gone, a node resets itself, so only a leader that still leads
+	// says so.
+	if err := s.Raft().VerifyLeader().Error(); err != nil {
+		return status, fmt.Errorf("leadership_unconfirmed: %w", err)
 	}
 	return status, nil
+}
+
+func (s *Service) RemoveMember(ctx context.Context, nodeID string, keepGuests bool) error {
+	ctx, release, err := s.EnterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return fmt.Errorf("peer_node_id_required")
+	}
+	if nodeID == s.LocalNodeID() {
+		return ErrRemoveSelf
+	}
+
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
+	r := s.Raft()
+	if r == nil || r.State() != raft.Leader {
+		return fmt.Errorf("not_leader: %w", raft.ErrNotLeader)
+	}
+	future := r.GetConfiguration()
+	if err := future.Error(); err != nil {
+		return fmt.Errorf("raft_configuration_unavailable: %w", err)
+	}
+	server, present, err := resolveRaftMember(future.Configuration(), nodeID)
+	if err != nil {
+		return err
+	}
+	if !present {
+		return ErrPeerNotFound
+	}
+	// Read the dependencies from a state that has every committed entry.
+	if err := r.Barrier(raftApplyTimeout).Error(); err != nil {
+		return fmt.Errorf("peer_removal_leader_barrier_failed: %w", err)
+	}
+	dependencies, err := s.replicatedPeerRemovalDependencies(ctx, nodeID)
+	if err != nil {
+		return err
+	}
+	if blocked := blockingPeerRemovalDependencies(dependencies, keepGuests); len(blocked) != 0 {
+		return &PeerRemovalBlockedError{Conflict: PeerRemovalConflict{NodeID: nodeID, Dependencies: blocked}}
+	}
+	if err := r.RemoveServer(server.ID, 0, raftApplyTimeout).Error(); err != nil {
+		return fmt.Errorf("failed_to_remove_peer: %w", err)
+	}
+	// The removal stands; the departed-member sweep retries what fails here.
+	if err := s.apply("cluster_member", "remove", clusterModels.ClusterMemberRemoval{NodeID: nodeID}); err != nil {
+		logger.L.Warn().Err(err).Str("node_id", nodeID).Msg("cluster_member_cleanup_deferred")
+	}
+	if err := s.ClearClusterNode(nodeID); err != nil {
+		logger.L.Warn().Err(err).Str("node_id", nodeID).Msg("cluster_node_health_cleanup_deferred")
+	}
+	s.EmitLeftPanelRefreshClusterWide("cluster_membership_changed")
+	return nil
+}
+
+// It runs under the lock join admission claims under.
+func (s *Service) forgetDepartedMembers(ctx context.Context) error {
+	ctx, release, err := s.EnterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
+	r := s.Raft()
+	if r == nil || r.State() != raft.Leader {
+		return nil
+	}
+	future := r.GetConfiguration()
+	if err := future.Error(); err != nil {
+		return fmt.Errorf("raft_configuration_unavailable: %w", err)
+	}
+	var owners, identities []string
+	if err := s.DB.WithContext(ctx).Model(&clusterModels.GuestIdentityClaim{}).Distinct("owner_node_id").Pluck("owner_node_id", &owners).Error; err != nil {
+		return err
+	}
+	if err := s.DB.WithContext(ctx).Model(&clusterModels.ClusterSSHIdentity{}).Pluck("node_uuid", &identities).Error; err != nil {
+		return err
+	}
+	nodeIDs := append(owners, identities...)
+	slices.Sort(nodeIDs)
+	var errs []error
+	for _, nodeID := range slices.Compact(nodeIDs) {
+		if _, present, err := resolveRaftMember(future.Configuration(), nodeID); err != nil || present {
+			continue
+		}
+		if err := s.apply("cluster_member", "remove", clusterModels.ClusterMemberRemoval{NodeID: nodeID}); err != nil {
+			errs = append(errs, fmt.Errorf("node %s: %w", nodeID, err))
+		}
+	}
+	return errors.Join(errs...)
 }

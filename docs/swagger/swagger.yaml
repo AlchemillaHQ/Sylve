@@ -556,6 +556,19 @@ definitions:
       status:
         type: string
     type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_SimpleList
+  : properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.SimpleList'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_UsedPort
   : properties:
       data:
@@ -1817,10 +1830,10 @@ definitions:
       status:
         type: string
     type: object
-  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult:
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterJoinStatus:
     properties:
       data:
-        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveResult'
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterJoinStatus'
       error:
         type: string
       message:
@@ -1828,10 +1841,10 @@ definitions:
       status:
         type: string
     type: object
-  ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterStateResyncResult
-  : properties:
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveStatus:
+    properties:
       data:
-        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterStateResyncResult'
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveStatus'
       error:
         type: string
       message:
@@ -1854,6 +1867,17 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.PeerRemovalConflict'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_RebuildReply:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.RebuildReply'
       error:
         type: string
       message:
@@ -2883,6 +2907,8 @@ definitions:
         type: number
       nodeUUID:
         type: string
+      protocol:
+        type: integer
       status:
         type: string
       sylveCommit:
@@ -3321,6 +3347,8 @@ definitions:
       id:
         type: integer
       node:
+        type: string
+      originNode:
         type: string
       started:
         type: string
@@ -5285,42 +5313,11 @@ definitions:
       partial:
         type: boolean
     type: object
-  github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeHealthSync:
-    properties:
-      api:
-        type: string
-      cpu:
-        type: integer
-      cpuUsage:
-        type: number
-      disk:
-        type: integer
-      diskUsage:
-        type: number
-      guestIds:
-        items:
-          type: integer
-        type: array
-      hostname:
-        type: string
-      memory:
-        type: integer
-      memoryUsage:
-        type: number
-      nodeUuid:
-        type: string
-      status:
-        type: string
-      sylveCommit:
-        type: string
-      sylveVersion:
-        type: string
-    type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeResources:
     properties:
       containers:
         items:
-          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.ListItem'
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.SimpleList'
         type: array
       hostname:
         type: string
@@ -5900,6 +5897,17 @@ definitions:
     - registry
     - username
     type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.SimpleList:
+    properties:
+      name:
+        type: string
+      ocId:
+        type: integer
+      stack:
+        type: string
+      state:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_container.Spec:
     properties:
       annotations:
@@ -6320,6 +6328,8 @@ definitions:
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_info.NodeInfo:
     properties:
+      clusterProtocol:
+        type: integer
       cpuUsage:
         type: number
       diskTotal:
@@ -8808,83 +8818,54 @@ definitions:
       warning:
         type: string
     type: object
-  github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveResult:
+  github_com_alchemillahq_sylve_internal_services_cluster.ClusterJoinStatus:
     properties:
-      cleanupAcknowledged:
-        type: boolean
-      membershipRemoved:
-        type: boolean
-      retainedGuests:
-        items:
-          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.GuestIdentityInventoryEntry'
-        type: array
-      status:
-        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveStatus'
-    type: object
-  github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveStatus:
-    properties:
+      appliedIndex:
+        type: integer
       attempts:
         type: integer
-      enabled:
+      awaitingPromotion:
         type: boolean
       lastError:
         type: string
+      leaderAddress:
+        type: string
+      leaderId:
+        type: string
       leaderIp:
         type: string
-      leaveId:
+      nodeId:
+        type: string
+      nodeIp:
+        type: string
+      phase:
+        type: string
+      pins:
+        additionalProperties:
+          type: string
+        description: |-
+          Pins are the members' cert pins by node ID, which an admitted node trusts
+          until it catches up.
+        type: object
+      raftState:
+        type: string
+      retrying:
+        type: boolean
+      suffrage:
+        type: string
+      targetIndex:
+        type: integer
+    type: object
+  github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveStatus:
+    properties:
+      enabled:
+        type: boolean
+      lastError:
         type: string
       localNodeId:
         type: string
       phase:
         type: string
-      retainGuests:
-        type: boolean
-    type: object
-  github_com_alchemillahq_sylve_internal_services_cluster.ClusterStateMemberResult:
-    properties:
-      address:
-        type: string
-      appliedIndex:
-        type: integer
-      digest:
-        type: string
-      error:
-        type: string
-      nodeId:
-        type: string
-      status:
-        type: string
-      suffrage:
-        type: string
-    type: object
-  github_com_alchemillahq_sylve_internal_services_cluster.ClusterStateResyncResult:
-    properties:
-      leaderNodeId:
-        type: string
-      members:
-        items:
-          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterStateMemberResult'
-        type: array
-      referenceAppliedIndex:
-        type: integer
-      referenceDigest:
-        type: string
-    type: object
-  github_com_alchemillahq_sylve_internal_services_cluster.ForceLocalResetRequest:
-    properties:
-      nodeId:
-        type: string
-      remoteMembershipAcknowledged:
-        type: boolean
-      workloadsExternallyFenced:
-        type: boolean
-    type: object
-  github_com_alchemillahq_sylve_internal_services_cluster.ForceRemovePeerRequest:
-    properties:
-      nodeId:
-        type: string
-      targetExternallyFenced:
-        type: boolean
     type: object
   github_com_alchemillahq_sylve_internal_services_cluster.GuestIdentityInventoryConflict:
     properties:
@@ -8922,10 +8903,6 @@ definitions:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.GuestIdentityInventoryEntry'
         type: array
-      inFlightGuestIds:
-        items:
-          type: integer
-        type: array
     type: object
   github_com_alchemillahq_sylve_internal_services_cluster.PeerRemovalConflict:
     properties:
@@ -8947,6 +8924,34 @@ definitions:
       role:
         type: string
       state:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_cluster.RebuildMessage:
+    properties:
+      candidate:
+        type: boolean
+      joinKey:
+        type: boolean
+      lastIndex:
+        type: integer
+      lastTerm:
+        type: integer
+      nodeId:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_cluster.RebuildReply:
+    properties:
+      founded:
+        type: boolean
+      joinKey:
+        type: string
+      lastIndex:
+        type: integer
+      lastTerm:
+        type: integer
+      nodeId:
+        type: string
+      vote:
         type: string
     type: object
   github_com_alchemillahq_sylve_internal_services_directoryservices.ADInput:
@@ -10810,18 +10815,26 @@ definitions:
     properties:
       inventory:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.GuestIdentityInventoryReport'
+      nodeHostname:
+        description: NodeHostname names the node in requests, so no two members share
+          one.
+        type: string
       nodeId:
         type: string
       nodeIp:
         type: string
       nodeVersion:
         type: string
-      preflight:
-        type: boolean
+      sshPublicKey:
+        description: SSHPublicKey is the joiner's cluster SSH key, recorded with its
+          pin.
+        type: string
     required:
+    - nodeHostname
     - nodeId
     - nodeIp
     - nodeVersion
+    - sshPublicKey
     type: object
   internal_handlers_cluster.CreateClusterRequest:
     properties:
@@ -10829,6 +10842,24 @@ definitions:
         type: string
     required:
     - ip
+    type: object
+  internal_handlers_cluster.ForceRemovePeerRequest:
+    properties:
+      nodeId:
+        type: string
+      targetExternallyFenced:
+        type: boolean
+    required:
+    - nodeId
+    type: object
+  internal_handlers_cluster.ForceResetNodeRequest:
+    properties:
+      nodeId:
+        type: string
+      remoteMembershipAcknowledged:
+        type: boolean
+      workloadsExternallyFenced:
+        type: boolean
     type: object
   internal_handlers_cluster.JoinClusterRequest:
     properties:
@@ -10848,6 +10879,9 @@ definitions:
     type: object
   internal_handlers_cluster.JoinKeyResponse:
     properties:
+      address:
+        description: Address is the node the key joins through.
+        type: string
       key:
         type: string
     type: object
@@ -13836,7 +13870,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Accept a join request from a cluster node
+      description: Admit a node to the cluster as a nonvoter. The leader makes it
+        a voter once it caught up.
       parameters:
       - description: Accept Join Request
         in: body
@@ -13847,6 +13882,10 @@ paths:
       produces:
       - application/json
       responses:
+        "202":
+          description: Admitted
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterJoinStatus'
         "400":
           description: Bad Request
           schema:
@@ -15234,8 +15273,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Join an existing cluster. A returning node uses the same endpoint,
-        and all of its current VM, jail and container IDs must be free in the cluster.
+      description: |-
+        Join an existing cluster. A returning node uses the same endpoint, and all of its current VM, jail and container IDs must be free in the cluster.
+        The leader admits the node first, and a refusal changes nothing on it. Then it starts Raft and catches up; the leader makes it a voter once it has.
       parameters:
       - description: Join Cluster Request
         in: body
@@ -15246,6 +15286,10 @@ paths:
       produces:
       - application/json
       responses:
+        "202":
+          description: Join started
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterJoinStatus'
         "400":
           description: Bad Request
           schema:
@@ -15280,9 +15324,10 @@ paths:
       tags:
       - Cluster
   /cluster/join-key:
-    get:
-      description: Reveal the enabled cluster key to a local administrator for node
-        enrollment
+    post:
+      description: 'Make a key that lets one node join through this node, at the returned
+        address. It replaces any earlier key, and it''s shown only now: the cluster
+        keeps only its hash. Admitting a node or removing one makes it stop working.'
       produces:
       - application/json
       responses:
@@ -15308,7 +15353,31 @@ paths:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
       security:
       - BearerAuth: []
-      summary: Reveal Cluster Join Key
+      summary: Generate Cluster Join Key
+      tags:
+      - Cluster
+  /cluster/leave/cancel:
+    post:
+      description: Abandon an unfinished leave and reopen this node. Refused once
+        the leader has removed it.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Leader already removed this node
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Cancel Cluster Leave
       tags:
       - Cluster
   /cluster/nodes:
@@ -15591,13 +15660,53 @@ paths:
       summary: Bulk Delete Cluster Notes
       tags:
       - Cluster
+  /cluster/rebuild:
+    post:
+      consumes:
+      - application/json
+      description: 'Answers another member upgrading from an older Raft format: how
+        up to date this node is, its vote, and, from the founder, a join key. The
+        message and the answer carry a MAC, with the old cluster key, of the TLS session.'
+      parameters:
+      - description: The member's message
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.RebuildMessage'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Answer
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_RebuildReply'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: No valid MAC
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Not a member of the old cluster
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: No rebuild running
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      summary: Rebuild the cluster from an older Raft format
+      tags:
+      - Cluster
   /cluster/remove-node:
     post:
       consumes:
       - application/json
       description: |-
-        Ask an online peer to fence local work, leave Raft, and clear its cluster state.
-        Registered guests block removal by default. Set retainGuests=true to keep the target's VM and jail registrations and release their cluster ID claims after membership removal. Other dependencies still block.
+        Remove a node from the cluster. It keeps its VMs, jails and containers and clears its cluster state once it learns it was removed.
+        A node with guests is refused with them listed unless retainGuests=true confirms it keeps them. Other dependencies still block.
       parameters:
       - description: Remove Peer Request
         in: body
@@ -15611,11 +15720,7 @@ paths:
         "200":
           description: Success
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult'
-        "202":
-          description: Removal pending
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "400":
           description: Bad Request
           schema:
@@ -15626,6 +15731,10 @@ paths:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "403":
           description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "409":
@@ -15649,22 +15758,22 @@ paths:
     post:
       consumes:
       - application/json
-      description: Remove an externally fenced, unavailable peer without contacting
-        it
+      description: Remove an unavailable peer the operator fenced externally. Its
+        guests stay on it.
       parameters:
       - description: Force Remove Peer Request
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ForceRemovePeerRequest'
+          $ref: '#/definitions/internal_handlers_cluster.ForceRemovePeerRequest'
       produces:
       - application/json
       responses:
         "200":
           description: Success
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "400":
           description: Bad Request
           schema:
@@ -16237,8 +16346,8 @@ paths:
       consumes:
       - application/json
       description: |-
-        Safely remove this node from Raft and clear its local cluster state.
-        Registered guests block a multi-node leave by default. Set retainGuests=true to keep local VM and jail registrations and release their cluster ID claims after membership removal. Other dependencies still block.
+        Remove this node from the cluster and clear its local cluster state. The node keeps its VMs, jails and containers.
+        A node with guests is refused with them listed unless retainGuests=true confirms it keeps them. Other dependencies still block.
       parameters:
       - description: Optional leave options
         in: body
@@ -16251,11 +16360,11 @@ paths:
         "200":
           description: Success
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveStatus'
         "202":
           description: Leave pending
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveStatus'
         "400":
           description: Bad Request
           schema:
@@ -16271,7 +16380,7 @@ paths:
         "409":
           description: Leave conflict
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_PeerRemovalConflict'
         "500":
           description: Internal Server Error
           schema:
@@ -16297,14 +16406,14 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ForceLocalResetRequest'
+          $ref: '#/definitions/internal_handlers_cluster.ForceResetNodeRequest'
       produces:
       - application/json
       responses:
         "200":
           description: Success
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveStatus'
         "400":
           description: Bad Request
           schema:
@@ -16353,40 +16462,6 @@ paths:
       security:
       - BearerAuth: []
       summary: Get Cluster Resources (per node)
-      tags:
-      - Cluster
-  /cluster/resync-state:
-    post:
-      consumes:
-      - application/json
-      description: Audits every Raft member and rebuilds divergent followers one at
-        a time
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Success
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterStateResyncResult'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "409":
-          description: Conflict with partial audit/repair result
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterStateResyncResult'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-      security:
-      - BearerAuth: []
-      summary: Resync Cluster State
       tags:
       - Cluster
   /container:
@@ -17016,6 +17091,22 @@ paths:
       security:
       - BearerAuth: []
       summary: Delete a registry credential
+      tags:
+      - Container
+  /container/simple:
+    get:
+      description: List each container's ID, name and live state for the resource
+        tree
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_SimpleList'
+      security:
+      - BearerAuth: []
+      summary: List containers in brief
       tags:
       - Container
   /container/stack:
@@ -18677,41 +18768,6 @@ paths:
       summary: Open a host terminal WebSocket
       tags:
       - Info
-  /intra-cluster/sync-health:
-    post:
-      consumes:
-      - application/json
-      description: Internal endpoint used by the Raft Leader to broadcast cluster
-        health to followers
-      parameters:
-      - description: Array of node health states
-        in: body
-        name: payload
-        required: true
-        schema:
-          items:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeHealthSync'
-          type: array
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Success
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-      security:
-      - BearerAuth: []
-      summary: Sync Cluster Health
-      tags:
-      - Cluster Internal
   /iscsi/config:
     get:
       produces:
@@ -32366,10 +32422,5 @@ securityDefinitions:
     description: Exact enabled cluster join key.
     in: header
     name: X-Cluster-Key
-    type: apiKey
-  ClusterTokenAuth:
-    description: Short-lived server-issued cluster token.
-    in: header
-    name: X-Cluster-Token
     type: apiKey
 swagger: "2.0"

@@ -12,275 +12,128 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	"slices"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/hashicorp/raft"
-	"gorm.io/gorm"
 )
 
-const guestIdentityReconcileInterval = 10 * time.Second
+const (
+	guestIdentityReconcileInterval = time.Minute
+	guestIdentityReconcileTimeout  = 10 * time.Second
+)
 
-func guestIdentityRegistrationFromReport(
-	nodeID string,
-	report GuestIdentityInventoryReport,
-) (clusterModels.GuestIdentityRegisterNodeInventory, error) {
-	nodeID = strings.TrimSpace(nodeID)
-	if nodeID == "" {
-		return clusterModels.GuestIdentityRegisterNodeInventory{}, fmt.Errorf("guest_identity_inventory_node_id_required")
-	}
-	if err := requireCleanGuestIdentityInventory(report); err != nil {
-		return clusterModels.GuestIdentityRegisterNodeInventory{}, err
-	}
-	entries := make([]clusterModels.GuestIdentityEntry, len(report.Entries))
-	for i, entry := range report.Entries {
-		if strings.TrimSpace(entry.NodeID) != nodeID {
-			return clusterModels.GuestIdentityRegisterNodeInventory{}, fmt.Errorf(
-				"guest_identity_inventory_node_mismatch: expected=%s actual=%s",
-				nodeID,
-				strings.TrimSpace(entry.NodeID),
-			)
-		}
-		entries[i] = clusterModels.GuestIdentityEntry{
-			GuestKind: entry.GuestType,
-			GuestID:   entry.GuestID,
-		}
-	}
-	digest := clusterModels.GuestIdentityInventoryDigest(nodeID, entries)
-	if report.Digest != digest {
-		return clusterModels.GuestIdentityRegisterNodeInventory{}, fmt.Errorf("guest_identity_inventory_digest_mismatch")
-	}
-	return clusterModels.GuestIdentityRegisterNodeInventory{
-		NodeID:          nodeID,
-		InventoryDigest: digest,
-		Entries:         entries,
-	}, nil
-}
+func (s *Service) reconcileOwnGuestIdentityClaims(ctx context.Context) ([]uint, error) {
+	ctx, cancel := context.WithTimeout(ctx, guestIdentityReconcileTimeout)
+	defer cancel()
+	// Hold the lock local creations and deletions take to start and finish, so
+	// a guest is either in flight or fully there while this reads and acts.
+	s.guestIdentityRuntimeMu.Lock()
+	defer s.guestIdentityRuntimeMu.Unlock()
 
-func (s *Service) registerGuestIdentityInventoryReport(
-	nodeID string,
-	report GuestIdentityInventoryReport,
-) error {
-	s.clusterJoinMu.Lock()
-	defer s.clusterJoinMu.Unlock()
-	payload, err := guestIdentityRegistrationFromReport(nodeID, report)
+	inFlight, err := durableGuestIdentityInFlightIDs(s.DB.WithContext(ctx))
 	if err != nil {
-		return err
-	}
-	return s.applyGuestIdentityRaftAction("register_node_inventory", payload)
-}
-
-func (s *Service) initializeGuestIdentityRegistryForFoundingNode(
-	nodeID string,
-	report GuestIdentityInventoryReport,
-) error {
-	if s == nil || s.Raft() == nil || s.Raft().State() != raft.Leader {
-		return fmt.Errorf("guest_identity_registry_bootstrap_requires_leader")
-	}
-	if err := s.registerGuestIdentityInventoryReport(nodeID, report); err != nil {
-		return fmt.Errorf("guest_identity_registry_bootstrap_inventory_failed: %w", err)
-	}
-	if err := s.applyGuestIdentityRaftAction("activate_registry", clusterModels.GuestIdentityActivateRegistry{
-		VoterNodeIDs: []string{strings.TrimSpace(nodeID)},
-	}); err != nil {
-		return fmt.Errorf("guest_identity_registry_bootstrap_activation_failed: %w", err)
-	}
-	return nil
-}
-
-func enrolledGuestIdentityNodes(db *gorm.DB) (map[string]struct{}, error) {
-	var enrollments []clusterModels.GuestIdentityEnrollment
-	if err := db.Order("node_id ASC").Find(&enrollments).Error; err != nil {
 		return nil, err
 	}
-	enrolled := make(map[string]struct{}, len(enrollments))
-	for _, enrollment := range enrollments {
-		enrolled[strings.TrimSpace(enrollment.NodeID)] = struct{}{}
+	for guestID := range s.guestIdentityLocalReservations {
+		inFlight = append(inFlight, guestID)
 	}
-	return enrolled, nil
-}
+	var operating []uint
+	if err := s.DB.WithContext(ctx).Model(&clusterModels.ReplicationGuestOperation{}).Pluck("guest_id", &operating).Error; err != nil {
+		return nil, err
+	}
+	inFlight = append(inFlight, operating...)
 
-func guestIdentityRegistryBootstrapBlockedByCutoverMigration(ctx context.Context, db *gorm.DB) (bool, error) {
-	if db == nil || !db.Migrator().HasTable(&clusterModels.ReplicationGuestOperation{}) {
-		return false, nil
+	var claims []clusterModels.GuestIdentityClaim
+	if err := s.DB.WithContext(ctx).Order("guest_id ASC").Find(&claims).Error; err != nil {
+		return nil, err
 	}
-	var count int64
-	err := db.WithContext(ctx).
-		Model(&clusterModels.ReplicationGuestOperation{}).
-		Where("operation = ? AND state = ?",
-			clusterModels.ReplicationGuestOperationMigration,
-			clusterModels.ReplicationGuestOperationCutover,
-		).
-		Count(&count).Error
-	return count > 0, err
-}
+	owner := s.localGuestIdentityOwner()
+	report, err := ScanLocalGuestIdentityInventory(s.DB.WithContext(ctx), owner)
+	if err != nil {
+		return nil, err
+	}
 
-func (s *Service) guestIdentityInventoryForVoter(
-	ctx context.Context,
-	voter guestIdentityInventoryVoter,
-	clusterToken *string,
-) (GuestIdentityInventoryReport, error) {
-	localNodeID := strings.TrimSpace(s.guestIdentityInventoryLocalNodeID())
-	if voter.nodeID == localNodeID {
-		snapshot, err := s.LocalGuestIdentityInventory(ctx)
-		return snapshot.Report, err
+	skip := make(map[uint]bool, len(inFlight)+len(report.Conflicts))
+	for _, guestID := range inFlight {
+		skip[guestID] = true
 	}
-	if s.AuthService == nil {
-		return GuestIdentityInventoryReport{}, fmt.Errorf("guest_identity_inventory_auth_service_unavailable")
+	for _, conflict := range report.Conflicts {
+		skip[conflict.GuestID] = true
 	}
-	if strings.TrimSpace(*clusterToken) == "" {
-		token, err := s.AuthService.CreateInternalClusterJWT(localNodeID)
-		if err != nil {
-			return GuestIdentityInventoryReport{}, fmt.Errorf("guest_identity_inventory_cluster_token_failed: %w", err)
+	held := make(map[uint]clusterModels.GuestIdentityClaim, len(claims))
+	for _, claim := range claims {
+		held[claim.GuestID] = claim
+	}
+	local := make(map[uint]string, len(report.Entries))
+	var unclaimed []clusterServiceInterfaces.GuestIdentityReference
+	var heldElsewhere []uint
+	for _, entry := range report.Entries {
+		local[entry.GuestID] = entry.GuestType
+		if skip[entry.GuestID] {
+			continue
 		}
-		*clusterToken = token
-	}
-	endpoint, err := s.guestIdentityInventoryRemoteAPI(voter.nodeID, voter.address)
-	if err != nil {
-		return GuestIdentityInventoryReport{}, err
-	}
-	return s.fetchRemoteGuestIdentityInventory(ctx, voter.nodeID, endpoint, *clusterToken)
-}
-
-func (s *Service) activateGuestIdentityRegistryIfReady(ctx context.Context) error {
-	s.membershipLifecycleMu.Lock()
-	defer s.membershipLifecycleMu.Unlock()
-	if s.Raft() == nil || s.Raft().State() != raft.Leader {
-		return raft.ErrNotLeader
-	}
-	if err := s.Raft().Barrier(raftApplyTimeout).Error(); err != nil {
-		return fmt.Errorf("guest_identity_activation_barrier_failed: %w", err)
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	configurationFuture := s.Raft().GetConfiguration()
-	if err := configurationFuture.Error(); err != nil {
-		return fmt.Errorf("guest_identity_activation_configuration_failed: %w", err)
-	}
-	voters, err := strictGuestIdentityInventoryVoters(
-		configurationFuture.Configuration(),
-		s.guestIdentityInventoryLocalNodeID(),
-	)
-	if err != nil {
-		return err
-	}
-	enrolled, err := enrolledGuestIdentityNodes(s.DB.WithContext(ctx))
-	if err != nil {
-		return fmt.Errorf("guest_identity_enrollment_list_failed: %w", err)
-	}
-	voterIDs := make([]string, len(voters))
-	for i, voter := range voters {
-		voterIDs[i] = voter.nodeID
-		if _, exists := enrolled[voter.nodeID]; !exists {
-			return clusterModels.ErrGuestIdentityRegistryInitializing
+		claim, exists := held[entry.GuestID]
+		switch {
+		case !exists:
+			unclaimed = append(unclaimed, clusterServiceInterfaces.GuestIdentityReference{GuestKind: entry.GuestType, GuestID: entry.GuestID})
+		case claim.OwnerNodeID != owner || claim.GuestKind != entry.GuestType:
+			heldElsewhere = append(heldElsewhere, entry.GuestID)
 		}
 	}
-	return s.applyGuestIdentityRaftAction("activate_registry", clusterModels.GuestIdentityActivateRegistry{
-		VoterNodeIDs: voterIDs,
-	})
+	var stale []clusterServiceInterfaces.GuestIdentityReference
+	for _, claim := range claims {
+		if claim.OwnerNodeID != owner || skip[claim.GuestID] || local[claim.GuestID] == claim.GuestKind {
+			continue
+		}
+		stale = append(stale, clusterServiceInterfaces.GuestIdentityReference{GuestKind: claim.GuestKind, GuestID: claim.GuestID})
+	}
+
+	var errs []error
+	if len(unclaimed) != 0 {
+		if err := s.Propose(ctx, "guest_identity", "claim", guestIdentityClaimSet(owner, unclaimed)); err != nil {
+			errs = append(errs, fmt.Errorf("guest_identity_claim_local_guests: %w", err))
+		}
+	}
+	if len(stale) != 0 {
+		if err := s.Propose(ctx, "guest_identity", "release", guestIdentityClaimSet(owner, stale)); err != nil {
+			errs = append(errs, fmt.Errorf("guest_identity_release_stale_claims: %w", err))
+		}
+	}
+	return heldElsewhere, errors.Join(errs...)
 }
 
-func (s *Service) ReconcileGuestIdentityRegistry(ctx context.Context) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if s == nil || s.DB == nil || s.Raft() == nil || s.Raft().State() != raft.Leader {
+// A node leaving or changing address is handing its claims off, so it skips the
+// pass rather than claim them back.
+func (s *Service) reconcileGuestIdentities(ctx context.Context) []uint {
+	ctx, release, err := s.EnterMutation(ctx)
+	if err != nil {
 		return nil
 	}
-	if err := ctx.Err(); err != nil {
-		return err
+	defer release()
+	heldElsewhere, err := s.reconcileOwnGuestIdentityClaims(ctx)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		logger.L.Debug().Err(err).Msg("guest_identity_reconcile_deferred")
 	}
-
-	var registry clusterModels.GuestIdentityRegistry
-	err := s.DB.WithContext(ctx).Where("id = ?", clusterModels.GuestIdentityRegistryID).First(&registry).Error
-	if err == nil && registry.Phase == clusterModels.GuestIdentityRegistryPhaseActive {
-		return nil
-	}
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return fmt.Errorf("guest_identity_registry_read_failed: %w", err)
-	}
-	blocked, err := guestIdentityRegistryBootstrapBlockedByCutoverMigration(ctx, s.DB)
-	if err != nil {
-		return fmt.Errorf("guest_identity_registry_migration_check_failed: %w", err)
-	}
-	if blocked {
-		return clusterModels.ErrGuestIdentityRegistryInitializing
-	}
-
-	configurationFuture := s.Raft().GetConfiguration()
-	if err := configurationFuture.Error(); err != nil {
-		return fmt.Errorf("guest_identity_configuration_failed: %w", err)
-	}
-	voters, err := strictGuestIdentityInventoryVoters(
-		configurationFuture.Configuration(),
-		s.guestIdentityInventoryLocalNodeID(),
-	)
-	if err != nil {
-		return err
-	}
-	enrolled, err := enrolledGuestIdentityNodes(s.DB.WithContext(ctx))
-	if err != nil {
-		return fmt.Errorf("guest_identity_enrollment_list_failed: %w", err)
-	}
-
-	var clusterToken string
-	collectionErrors := make([]error, 0)
-	for _, voter := range voters {
-		if _, exists := enrolled[voter.nodeID]; exists {
-			continue
-		}
-		if err := ctx.Err(); err != nil {
-			return errors.Join(append(collectionErrors, err)...)
-		}
-		report, err := s.guestIdentityInventoryForVoter(ctx, voter, &clusterToken)
-		if err != nil {
-			collectionErrors = append(collectionErrors, fmt.Errorf("node_id=%s: %w", voter.nodeID, err))
-			continue
-		}
-		if err := s.registerGuestIdentityInventoryReport(voter.nodeID, report); err != nil {
-			collectionErrors = append(collectionErrors, fmt.Errorf("node_id=%s: %w", voter.nodeID, err))
-			continue
-		}
-		enrolled[voter.nodeID] = struct{}{}
-	}
-
-	for _, voter := range voters {
-		if _, exists := enrolled[voter.nodeID]; !exists {
-			if len(collectionErrors) == 0 {
-				return clusterModels.ErrGuestIdentityRegistryInitializing
-			}
-			return errors.Join(collectionErrors...)
-		}
-	}
-	if err := s.activateGuestIdentityRegistryIfReady(ctx); err != nil {
-		return errors.Join(append(collectionErrors, err)...)
-	}
-	return errors.Join(collectionErrors...)
+	return heldElsewhere
 }
 
 func (s *Service) startGuestIdentityReconciler(ctx context.Context) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	lastRegistryErr := ""
+	var lastHeldElsewhere []uint
 	run := func() {
-		if err := s.ReconcileGuestIdentityDepartures(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			logger.L.Debug().Err(err).Msg("guest_identity_departure_release_deferred")
-		}
-		err := s.ReconcileGuestIdentityRegistry(ctx)
-		if err == nil || errors.Is(err, context.Canceled) ||
-			errors.Is(err, clusterModels.ErrGuestIdentityRegistryInitializing) {
-			lastRegistryErr = ""
-			return
-		}
-		// Until this succeeds, no node can create or delete guests, and an
-		// inventory conflict needs an operator; say so once per change.
-		if err.Error() != lastRegistryErr {
-			lastRegistryErr = err.Error()
-			logger.L.Warn().Err(err).Msg("guest_identity_registry_activation_blocked")
+		heldElsewhere := s.reconcileGuestIdentities(ctx)
+		// A guest here whose ID another node holds blocks nothing else, but
+		// only an operator can fix it; say so once per change.
+		if !slices.Equal(heldElsewhere, lastHeldElsewhere) {
+			lastHeldElsewhere = heldElsewhere
+			if len(heldElsewhere) != 0 {
+				logger.L.Warn().Uints("guest_ids", heldElsewhere).Msg("guest_identity_ids_held_by_another_node")
+			}
 		}
 	}
 	go func() {

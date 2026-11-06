@@ -62,56 +62,6 @@ type BackupTargetRestoreOperationTransition struct {
 	RequireEnabledTarget bool      `json:"requireEnabledTarget,omitempty"`
 }
 
-func BackfillBackupTargetRestoreOperationTxn(
-	db *gorm.DB,
-	operation *BackupTargetRestoreOperation,
-) error {
-	if db == nil || operation == nil {
-		return fmt.Errorf("backup_target_restore_operation_input_invalid")
-	}
-	token, holderNodeID, destinationDataset, requestPayload, err := normalizeBackupTargetRestoreOperationIdentity(
-		operation.Token,
-		operation.TargetID,
-		operation.HolderNodeID,
-		operation.DestinationDataset,
-		operation.RequestPayload,
-	)
-	if err != nil {
-		return err
-	}
-	switch operation.State {
-	case BackupTargetRestoreOperationQueued,
-		BackupTargetRestoreOperationRunning,
-		BackupTargetRestoreOperationFinishing,
-		BackupTargetRestoreOperationCompleted:
-	default:
-		return fmt.Errorf("invalid_backup_target_restore_operation_state")
-	}
-	if operation.Revision == 0 || operation.AcquiredAt.IsZero() || operation.UpdatedAt.IsZero() {
-		return fmt.Errorf("backup_target_restore_operation_checkpoint_required")
-	}
-	operation.Token = token
-	operation.HolderNodeID = holderNodeID
-	operation.DestinationDataset = destinationDataset
-	operation.RequestPayload = requestPayload
-	operation.AcquiredAt = NormalizeCommandTime(operation.AcquiredAt)
-	operation.UpdatedAt = NormalizeCommandTime(operation.UpdatedAt)
-
-	return db.Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "token"}},
-		DoUpdates: clause.AssignmentColumns([]string{
-			"target_id",
-			"holder_node_id",
-			"destination_dataset",
-			"request_payload",
-			"state",
-			"revision",
-			"acquired_at",
-			"updated_at",
-		}),
-	}).Create(operation).Error
-}
-
 // NormalizeBackupTargetRestoreDestination mirrors the public restore input
 // normalization without consulting ZFS or any node-local state.
 func NormalizeBackupTargetRestoreDestination(dataset string) string {
@@ -470,17 +420,6 @@ func ReleaseBackupTargetRestoreOperationTxn(db *gorm.DB, payload *BackupTargetRe
 // queued/running out-of-band restores. HasTable preserves replay and tests made
 // from schemas that predate durable target-restore reservations.
 func DeleteBackupTargetTxn(db *gorm.DB, targetID uint) error {
-	return deleteBackupTargetTxn(db, targetID, true)
-}
-
-// DeleteBackupTargetLegacyTxn preserves historical backup_target/delete log
-// replay. New requests use DeleteBackupTargetTxn and its disabled/quiescent
-// contract through the versioned delete action.
-func DeleteBackupTargetLegacyTxn(db *gorm.DB, targetID uint) error {
-	return deleteBackupTargetTxn(db, targetID, false)
-}
-
-func deleteBackupTargetTxn(db *gorm.DB, targetID uint, requireDisabled bool) error {
 	if db == nil {
 		return fmt.Errorf("backup_target_database_unavailable")
 	}
@@ -495,24 +434,19 @@ func deleteBackupTargetTxn(db *gorm.DB, targetID uint, requireDisabled bool) err
 			return targetResult.Error
 		}
 		if targetResult.RowsAffected == 0 {
-			if requireDisabled {
-				return fmt.Errorf("backup_target_not_found")
-			}
-			return nil
+			return fmt.Errorf("backup_target_not_found")
 		}
-		if requireDisabled && target.Enabled {
+		if target.Enabled {
 			return fmt.Errorf("backup_target_must_be_disabled_before_delete")
 		}
-		if requireDisabled && tx.Migrator().HasTable(&BackupTargetProvisionOperation{}) {
-			var pendingCount int64
-			if err := tx.Model(&BackupTargetProvisionOperation{}).
-				Where("target_id = ? AND state = ?", targetID, BackupTargetProvisionStatePending).
-				Count(&pendingCount).Error; err != nil {
-				return err
-			}
-			if pendingCount != 0 {
-				return fmt.Errorf("backup_target_provision_pending")
-			}
+		var pendingCount int64
+		if err := tx.Model(&BackupTargetProvisionOperation{}).
+			Where("target_id = ? AND state = ?", targetID, BackupTargetProvisionStatePending).
+			Count(&pendingCount).Error; err != nil {
+			return err
+		}
+		if pendingCount != 0 {
+			return fmt.Errorf("backup_target_provision_pending")
 		}
 
 		var jobCount int64
@@ -523,38 +457,30 @@ func deleteBackupTargetTxn(db *gorm.DB, targetID uint, requireDisabled bool) err
 			return fmt.Errorf("target_in_use_by_backup_jobs: %d", jobCount)
 		}
 
-		if tx.Migrator().HasTable(&BackupTargetRestoreOperation{}) {
-			var restoreCount int64
-			if err := tx.Model(&BackupTargetRestoreOperation{}).
-				Where("target_id = ? AND state <> ?", targetID, BackupTargetRestoreOperationCompleted).
-				Count(&restoreCount).Error; err != nil {
-				return err
-			}
-			if restoreCount > 0 {
-				return fmt.Errorf("target_in_use_by_restore_operations: %d", restoreCount)
-			}
-			if err := tx.Where("target_id = ? AND state = ?", targetID, BackupTargetRestoreOperationCompleted).
-				Delete(&BackupTargetRestoreOperation{}).Error; err != nil {
-				return err
-			}
+		var restoreCount int64
+		if err := tx.Model(&BackupTargetRestoreOperation{}).
+			Where("target_id = ? AND state <> ?", targetID, BackupTargetRestoreOperationCompleted).
+			Count(&restoreCount).Error; err != nil {
+			return err
 		}
-		if tx.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
-			if err := tx.Where("target_id = ?", targetID).
-				Delete(&BackupTargetNodeReadiness{}).Error; err != nil {
-				return err
-			}
+		if restoreCount > 0 {
+			return fmt.Errorf("target_in_use_by_restore_operations: %d", restoreCount)
 		}
-		if tx.Migrator().HasTable(&BackupTargetProvisionOperation{}) {
-			if err := tx.Where("target_id = ?", targetID).
-				Delete(&BackupTargetProvisionOperation{}).Error; err != nil {
-				return err
-			}
+		if err := tx.Where("target_id = ? AND state = ?", targetID, BackupTargetRestoreOperationCompleted).
+			Delete(&BackupTargetRestoreOperation{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("target_id = ?", targetID).
+			Delete(&BackupTargetNodeReadiness{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("target_id = ?", targetID).
+			Delete(&BackupTargetProvisionOperation{}).Error; err != nil {
+			return err
 		}
 
-		if tx.Migrator().HasTable(&BackupTargetSSHHostTrust{}) {
-			if err := tx.Where("target_id = ?", targetID).Delete(&BackupTargetSSHHostTrust{}).Error; err != nil {
-				return err
-			}
+		if err := tx.Where("target_id = ?", targetID).Delete(&BackupTargetSSHHostTrust{}).Error; err != nil {
+			return err
 		}
 		return tx.Delete(&BackupTarget{}, targetID).Error
 	})

@@ -356,7 +356,7 @@ func testReconcileReplicationTransitionEventFinalizesRecoveredPromotion(
 		PolicyID: &policyID, TransitionRunID: policy.TransitionRunID,
 		EventType: "failover", Status: replicationEventStatusPromoting,
 		SourceNodeID: "node-a", TargetNodeID: "node-b", StartedAt: requestedAt,
-	}, false)
+	})
 	if err != nil {
 		t.Fatalf("create transition event: %v", err)
 	}
@@ -707,7 +707,7 @@ func newReplicationAttemptTestFixture(
 		&clusterModels.ReplicationEvent{},
 	)
 	service := newTestZeltaService(database)
-	service.Cluster = &clusterService.Service{DB: database}
+	service.Cluster = clusterService.NewClusterService(database, nil, nil).(*clusterService.Service)
 
 	policy := &clusterModels.ReplicationPolicy{
 		ID:              701,

@@ -11,6 +11,7 @@
 	import type { APIResponse } from '$lib/types/common';
 	import {
 		getFilePondRequestHeaders,
+		getFilePondRequestURL,
 		parseFilePondUploadError,
 		parseFilePondUploadID
 	} from '$lib/utils/filepond';
@@ -94,9 +95,12 @@
 		process: isDemoMode
 			? processDemoUpload
 			: {
-					url: `/api/system/file-explorer/upload?path=${encodeURIComponent(currentPath)}`,
+					url: getFilePondRequestURL(
+						`/api/system/file-explorer/upload?path=${encodeURIComponent(currentPath)}`,
+						hostname
+					),
 					method: 'POST' as const,
-					headers: getFilePondRequestHeaders(hostname),
+					headers: getFilePondRequestHeaders(),
 					onload: (response: string) => parseFilePondUploadID(response),
 					onerror: (response: string) => parseFilePondUploadError(response)
 				},

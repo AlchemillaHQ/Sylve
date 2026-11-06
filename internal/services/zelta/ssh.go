@@ -363,9 +363,6 @@ func (s *Service) acquireBackupTargetSSHKey(target *clusterModels.BackupTarget) 
 }
 
 func (s *Service) ReconcileBackupTargetSSHKeys() error {
-	if s.Cluster == nil {
-		return nil
-	}
 	if err := s.Cluster.InitializeBackupTargetHostTrust(); err != nil {
 		return err
 	}
@@ -1077,11 +1074,6 @@ func (s *Service) EnsureBackupTargetHostKey(ctx context.Context, target *cluster
 		target.SSHHostKey, target.SSHHostKeyRevision = record.PublicKey, record.Revision
 		return nil
 	}
-	if s.Cluster == nil {
-		if _, err := s.runtimeStateBypassRaft(); err != nil {
-			return err
-		}
-	}
 	release, err := s.acquireBackupTargetSSHKey(target)
 	if err != nil {
 		return err
@@ -1093,12 +1085,7 @@ func (s *Service) EnsureBackupTargetHostKey(ctx context.Context, target *cluster
 	}
 	change := clusterModels.BackupTargetSSHHostTrustChange{TargetID: target.ID, EndpointFingerprint: record.EndpointFingerprint,
 		ExpectedRevision: record.Revision, PublicKey: key, OccurredAt: time.Now().UTC()}
-	if s.Cluster != nil {
-		err = s.Cluster.InstallBackupTargetHostKey(ctx, change)
-	} else {
-		err = clusterModels.ApplyBackupTargetSSHHostTrustTxn(s.DB, "install_v1", &change)
-	}
-	if err != nil {
+	if err := s.Cluster.InstallBackupTargetHostKey(ctx, change); err != nil {
 		current, readErr := clusterModels.GetBackupTargetSSHHostTrust(s.DB, target)
 		if readErr != nil || current.PublicKey == "" || current.Revision != record.Revision+1 {
 			return err
@@ -1121,9 +1108,6 @@ func (s *Service) recordBackupTargetHostKeyInstall(target *clusterModels.BackupT
 	}
 	now := time.Now().UTC()
 	actor := s.localNodeID()
-	if actor == "" {
-		actor = "local"
-	}
 	action, err := json.Marshal(map[string]any{"method": "INSTALL", "path": "/api/cluster/backups/targets/" + fmt.Sprint(target.ID) + "/host-key",
 		"response": map[string]any{"targetId": target.ID, "fingerprint": fingerprint, "revision": target.SSHHostKeyRevision}})
 	if err != nil {

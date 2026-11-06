@@ -14,8 +14,7 @@ func TestJailGuestIdentityErrorMappings(t *testing.T) {
 		wantStatus int
 		wantCode   string
 	}{
-		{"guest_identity_registry_initializing", http.StatusServiceUnavailable, "guest_identity_registry_initializing"},
-		{"guest_identity_cluster_formation_in_progress", http.StatusServiceUnavailable, "guest_identity_registry_initializing"},
+		{"guest_identity_cluster_formation_in_progress", http.StatusServiceUnavailable, "guest_identity_cluster_formation_in_progress"},
 		{"cluster_consensus_unavailable: no quorum", http.StatusServiceUnavailable, "cluster_consensus_unavailable"},
 		{"guest_identity_claim_conflict: stale token", http.StatusConflict, "guest_identity_claim_conflict"},
 	}
@@ -31,10 +30,8 @@ func TestJailGuestIdentityErrorMappings(t *testing.T) {
 		wantStatus int
 		wantCode   string
 	}{
-		{"guest_identity_registry_initializing", http.StatusServiceUnavailable, "guest_identity_registry_initializing"},
-		{"guest_identity_cluster_formation_in_progress", http.StatusServiceUnavailable, "guest_identity_registry_initializing"},
+		{"guest_identity_cluster_formation_in_progress", http.StatusServiceUnavailable, "guest_identity_cluster_formation_in_progress"},
 		{"cluster_consensus_unavailable: no leader", http.StatusServiceUnavailable, "cluster_consensus_unavailable"},
-		{"guest_identity_release_pending: raft shutdown", http.StatusServiceUnavailable, "cluster_consensus_unavailable"},
 		{"guest_identity_claim_conflict: wrong owner", http.StatusConflict, "guest_identity_claim_conflict"},
 		{"guest_delete_requires_backup_jobs_removed", http.StatusConflict, "guest_delete_requires_backup_jobs_removed"},
 	}
@@ -46,7 +43,6 @@ func TestJailGuestIdentityErrorMappings(t *testing.T) {
 	}
 
 	for _, errText := range []string{
-		"guest_identity_registry_initializing",
 		"guest_identity_cluster_formation_in_progress",
 		"cluster_consensus_unavailable: no quorum",
 	} {

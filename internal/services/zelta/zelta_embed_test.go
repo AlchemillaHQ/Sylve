@@ -244,6 +244,7 @@ func TestIntegrationRunBackupJobWithEmbeddedZelta(t *testing.T) {
 	db := newZeltaServiceTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
 		DB:                db,
+		Cluster:           newTestClusterService(db, ""),
 		queuedJobs:        make(map[uint]struct{}),
 		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),

@@ -141,9 +141,6 @@ func TestIntegrationDownloadStorageDestructiveEntryPointsRealZFS(t *testing.T) {
 
 func TestIntegrationDownloadStorageFlashVolumeRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	if _, err := exec.LookPath("/usr/sbin/camdd"); err != nil {
-		t.Skip("requires camdd")
-	}
 	if _, err := exec.LookPath("qemu-img"); err != nil {
 		t.Skip("requires qemu-img")
 	}

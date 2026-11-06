@@ -212,7 +212,9 @@ func TestBackupHostTrustUpgradeInitializationRunsOnce(t *testing.T) {
 	if err := database.First(&options, 1).Error; err != nil || !options.SSHHostTrustInitialized || options.KeyboardLayout != "us" {
 		t.Fatalf("upgrade options=%+v err=%v", options, err)
 	}
-	if err := upsertOption(database, &ClusterOption{ID: 1, KeyboardLayout: "de", UpdatedAt: now}); err != nil {
+	if err := database.Model(&ClusterOption{}).Where("id = ?", 1).Updates(map[string]any{
+		"keyboard_layout": "de", "updated_at": now,
+	}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Delete(&BackupTargetSSHHostTrust{}, "target_id = ?", target.ID).Error; err != nil {

@@ -14,11 +14,12 @@ import (
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/services/cluster/raftdir"
 )
 
 func TestHasExistingRaftState(t *testing.T) {
 	dir := t.TempDir()
-	if hasExistingRaftState(dir) {
+	if raftdir.HasState(dir) {
 		t.Fatal("expected false for empty dir")
 	}
 
@@ -26,7 +27,7 @@ func TestHasExistingRaftState(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "raft-log.db"), []byte("x"), 0644); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
-	if !hasExistingRaftState(dir) {
+	if !raftdir.HasState(dir) {
 		t.Fatal("expected true with raft-log.db present")
 	}
 
@@ -35,7 +36,7 @@ func TestHasExistingRaftState(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "snapshots"), 0755); err != nil {
 		t.Fatalf("mkdir snapshots: %v", err)
 	}
-	if !hasExistingRaftState(dir) {
+	if !raftdir.HasState(dir) {
 		t.Fatal("expected true with snapshots dir present")
 	}
 }
@@ -61,7 +62,7 @@ func TestCleanRaftDir(t *testing.T) {
 	}
 
 	db := newClusterServiceTestDB(t)
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	if err := s.CleanRaftDir(); err != nil {
 		t.Fatalf("CleanRaftDir: %v", err)
@@ -81,7 +82,7 @@ func TestCleanRaftDir(t *testing.T) {
 
 func TestClearClusterNode(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.ClusterNode{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	db.Create(&clusterModels.ClusterNode{
 		NodeUUID: "node-to-clear", Hostname: "test", API: "10.0.0.1:8184",

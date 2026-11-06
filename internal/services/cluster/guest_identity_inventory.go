@@ -14,7 +14,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"sort"
 	"strings"
 
@@ -22,6 +21,7 @@ import (
 	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"gorm.io/gorm"
 )
 
@@ -59,18 +59,9 @@ type GuestIdentityInventoryConflict struct {
 // record IDs and names are informational and may change without changing guest
 // identity.
 type GuestIdentityInventoryReport struct {
-	Entries          []GuestIdentityInventoryEntry    `json:"entries"`
-	Conflicts        []GuestIdentityInventoryConflict `json:"conflicts"`
-	Digest           string                           `json:"digest"`
-	InFlightGuestIDs []uint                           `json:"inFlightGuestIds,omitempty"`
-}
-
-// GuestIdentityInventorySnapshot identifies the node that produced a durable
-// inventory report. The node ID is repeated outside the report so callers can
-// bind an authenticated peer endpoint to the Raft voter they intended to read.
-type GuestIdentityInventorySnapshot struct {
-	NodeID string                       `json:"nodeId"`
-	Report GuestIdentityInventoryReport `json:"report"`
+	Entries   []GuestIdentityInventoryEntry    `json:"entries"`
+	Conflicts []GuestIdentityInventoryConflict `json:"conflicts"`
+	Digest    string                           `json:"digest"`
 }
 
 func normalizeGuestIdentityInventoryEntry(entry GuestIdentityInventoryEntry) GuestIdentityInventoryEntry {
@@ -245,159 +236,57 @@ func ScanLocalGuestIdentityInventory(db *gorm.DB, nodeID string) (GuestIdentityI
 	return BuildGuestIdentityInventoryReport(entries), nil
 }
 
-func (s *Service) localGuestIdentityInventoryReport(
-	ctx context.Context,
-	nodeID string,
-) (GuestIdentityInventoryReport, error) {
-	s.guestIdentityRuntimeMu.Lock()
-	defer s.guestIdentityRuntimeMu.Unlock()
-	report, err := ScanLocalGuestIdentityInventory(s.DB.WithContext(ctx), nodeID)
-	if err != nil {
-		return GuestIdentityInventoryReport{}, err
-	}
-	inFlight, err := durableGuestIdentityInFlightIDs(s.DB.WithContext(ctx))
-	if err != nil {
-		return GuestIdentityInventoryReport{}, err
-	}
-	for guestID := range s.guestIdentityLocalReservations {
-		inFlight = append(inFlight, guestID)
-	}
-	slices.Sort(inFlight)
-	report.InFlightGuestIDs = slices.Compact(inFlight)
-	return report, nil
-}
-
-// LocalGuestIdentityInventory scans only durable managed registrations and
-// pairs the canonical report with this node's UUID.
-func (s *Service) LocalGuestIdentityInventory(ctx context.Context) (GuestIdentityInventorySnapshot, error) {
-	if s == nil || s.DB == nil {
-		return GuestIdentityInventorySnapshot{}, fmt.Errorf("guest_identity_inventory_service_not_initialized")
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := ctx.Err(); err != nil {
-		return GuestIdentityInventorySnapshot{}, fmt.Errorf("guest_identity_inventory_collection_canceled: %w", err)
-	}
-
-	nodeID := s.guestIdentityInventoryLocalNodeID()
-	if nodeID == "" {
-		return GuestIdentityInventorySnapshot{}, fmt.Errorf("guest_identity_inventory_local_node_id_unavailable")
-	}
-	report, err := s.localGuestIdentityInventoryReport(ctx, nodeID)
-	if err != nil {
-		return GuestIdentityInventorySnapshot{}, fmt.Errorf("guest_identity_inventory_local_scan_failed: %w", err)
-	}
-
-	return GuestIdentityInventorySnapshot{NodeID: nodeID, Report: report}, nil
-}
-
 func (s *Service) RequireGuestIDAvailable(ctx context.Context, guestID uint) error {
 	return s.RequireGuestIDsAvailable(ctx, []uint{guestID})
 }
 
-func (s *Service) strictGuestIdentityInventoryReport(
-	ctx context.Context,
-) (GuestIdentityInventoryReport, string, error) {
-	if s == nil || s.DB == nil {
-		return GuestIdentityInventoryReport{}, "", fmt.Errorf(
-			"guest_identity_inventory_scan_failed: cluster_service_not_initialized",
-		)
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := ctx.Err(); err != nil {
-		return GuestIdentityInventoryReport{}, "", fmt.Errorf(
-			"guest_identity_inventory_scan_failed: %w",
-			err,
-		)
-	}
-
-	// Callers only get here when standalone; clustered checks read the
-	// replicated claims instead.
-	localNodeID := s.guestIdentityInventoryLocalNodeID()
-	if localNodeID == "" {
-		localNodeID = "local"
-	}
-	report, err := ScanLocalGuestIdentityInventory(s.DB.WithContext(ctx), localNodeID)
-	if err != nil {
-		return GuestIdentityInventoryReport{}, localNodeID, fmt.Errorf(
-			"guest_identity_inventory_scan_failed: %w",
-			err,
-		)
-	}
-	return report, localNodeID, nil
-}
-
-// RequireGuestIDsAvailable performs one inventory read for a batch of IDs.
+// RequireGuestIDsAvailable refuses IDs claimed anywhere in the cluster, used by
+// a guest on this node, or held by a jail creation in progress here.
 func (s *Service) RequireGuestIDsAvailable(ctx context.Context, guestIDs []uint) error {
 	if len(guestIDs) == 0 {
 		return nil
 	}
-	requested := make(map[uint]struct{}, len(guestIDs))
-	for _, guestID := range guestIDs {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	references := make([]clusterServiceInterfaces.GuestIdentityReference, len(guestIDs))
+	for i, guestID := range guestIDs {
 		if guestID == 0 || guestID > guestIdentityInventoryMaxID {
 			return fmt.Errorf("invalid_guest_id")
 		}
-		requested[guestID] = struct{}{}
+		references[i] = clusterServiceInterfaces.GuestIdentityReference{GuestID: guestID}
 	}
 	if err := s.requireGuestCreationIdentityAvailable(ctx, guestIDs, "", ""); err != nil {
 		return err
 	}
-
-	clustered, err := s.guestIdentityClustered(ctx)
-	if err != nil {
-		return err
+	var claims []clusterModels.GuestIdentityClaim
+	if err := s.DB.WithContext(ctx).Where("guest_id IN ?", guestIDs).Order("guest_id ASC").Find(&claims).Error; err != nil {
+		return fmt.Errorf("guest_identity_claim_read_failed: %w", err)
 	}
-	if clustered {
-		claims, err := s.ListGuestIdentityClaims(ctx)
-		if err != nil {
-			return err
-		}
-		for _, claim := range claims {
-			if _, exists := requested[claim.GuestID]; exists {
-				return fmt.Errorf(
-					"%w: guest_id=%d node_id=%s guest_type=%s",
-					clusterModels.ErrGuestIdentityAlreadyInUse,
-					claim.GuestID,
-					claim.OwnerNodeID,
-					claim.GuestKind,
-				)
-			}
-		}
-		return nil
+	if len(claims) != 0 {
+		return fmt.Errorf(
+			"%w: guest_id=%d node_id=%s guest_type=%s",
+			clusterModels.ErrGuestIdentityAlreadyInUse,
+			claims[0].GuestID,
+			claims[0].OwnerNodeID,
+			claims[0].GuestKind,
+		)
 	}
-
-	// A requested ID that's part of a duplicate is in use and refused below;
-	// duplicates on other IDs must not block this create.
-	report, _, err := s.strictGuestIdentityInventoryReport(ctx)
-	if err != nil {
-		return err
-	}
-	for _, entry := range report.Entries {
-		if _, exists := requested[entry.GuestID]; exists {
-			return fmt.Errorf(
-				"guest_id_already_in_use: guest_id=%d node_id=%s guest_type=%s",
-				entry.GuestID,
-				entry.NodeID,
-				entry.GuestType,
-			)
-		}
-	}
-
-	return nil
+	return s.requireNoLocalGuestsWithIDs(ctx, references, clusterModels.ErrGuestIdentityAlreadyInUse)
 }
 
-// RequireGuestPlacement authoritatively verifies that exactly one durable
-// registration exists for the guest, with the expected type on the selected
-// node. ClusterNode.GuestIDs health rows are not used.
+// RequireGuestPlacement checks that expectedNodeID holds the guest's ID as
+// guestType (this node when empty). An ID nobody holds yet passes when that
+// node is this one and has exactly that guest: the owner reconcile claims it.
 func (s *Service) RequireGuestPlacement(
 	ctx context.Context,
 	guestType string,
 	guestID uint,
 	expectedNodeID string,
 ) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	guestType = strings.ToLower(strings.TrimSpace(guestType))
 	if !clusterModels.ValidGuestIdentityKind(guestType) {
 		return fmt.Errorf("invalid_guest_type")
@@ -405,57 +294,51 @@ func (s *Service) RequireGuestPlacement(
 	if guestID == 0 || guestID > guestIdentityInventoryMaxID {
 		return fmt.Errorf("invalid_guest_id")
 	}
-
-	clustered, err := s.guestIdentityClustered(ctx)
-	if err != nil {
-		return err
-	}
-	if clustered {
-		_, err := s.readGuestIdentityClaim(
-			ctx,
-			guestType,
-			guestID,
-			strings.TrimSpace(expectedNodeID),
-		)
-		return err
-	}
-
-	report, localNodeID, err := s.strictGuestIdentityInventoryReport(ctx)
-	if err != nil {
-		return err
-	}
 	expectedNodeID = strings.TrimSpace(expectedNodeID)
 	if expectedNodeID == "" {
-		expectedNodeID = localNodeID
-	}
-	if expectedNodeID == "" {
-		return fmt.Errorf("guest_identity_inventory_scan_failed: restore_node_id_unavailable")
+		expectedNodeID = s.localGuestIdentityOwner()
 	}
 
-	matches := make([]GuestIdentityInventoryEntry, 0, 1)
-	for _, entry := range report.Entries {
-		if entry.GuestID == guestID {
-			matches = append(matches, entry)
+	claim, err := s.guestIdentityClaim(ctx, guestID)
+	if err != nil {
+		return err
+	}
+	if claim != nil {
+		if claim.OwnerNodeID == expectedNodeID && claim.GuestKind == guestType {
+			return nil
+		}
+		return fmt.Errorf(
+			"guest_identity_inventory_conflict: placement guest_id=%d expected_node_id=%s expected_guest_type=%s owner_node_id=%s guest_kind=%s",
+			guestID, expectedNodeID, guestType, claim.OwnerNodeID, claim.GuestKind,
+		)
+	}
+	if expectedNodeID == s.localGuestIdentityOwner() {
+		report, err := ScanLocalGuestIdentityInventory(s.DB.WithContext(ctx), expectedNodeID)
+		if err != nil {
+			return fmt.Errorf("guest_identity_inventory_scan_failed: %w", err)
+		}
+		matches := 0
+		for _, entry := range report.Entries {
+			if entry.GuestID == guestID {
+				if entry.GuestType != guestType {
+					matches = 2
+					break
+				}
+				matches++
+			}
+		}
+		if matches == 1 {
+			return nil
 		}
 	}
-	if len(matches) == 1 &&
-		matches[0].NodeID == expectedNodeID &&
-		matches[0].GuestType == guestType {
-		return nil
-	}
-
-	rawMatches, _ := json.Marshal(matches)
 	return fmt.Errorf(
-		"guest_identity_inventory_conflict: restore_placement guest_id=%d expected_node_id=%s expected_guest_type=%s registrations=%s",
-		guestID,
-		expectedNodeID,
-		guestType,
-		string(rawMatches),
+		"guest_identity_inventory_conflict: placement guest_id=%d expected_node_id=%s expected_guest_type=%s unclaimed",
+		guestID, expectedNodeID, guestType,
 	)
 }
 
 // RequireGuestRestorePlacement keeps restore call sites explicit while sharing
-// the same strict placement rule with other guest placement changes.
+// the same placement rule.
 func (s *Service) RequireGuestRestorePlacement(
 	ctx context.Context,
 	guestType string,
@@ -467,4 +350,30 @@ func (s *Service) RequireGuestRestorePlacement(
 		return fmt.Errorf("invalid_guest_type")
 	}
 	return s.RequireGuestPlacement(ctx, guestType, guestID, expectedNodeID)
+}
+
+// GuestIdentityInventorySnapshot is a node's local guest inventory.
+type GuestIdentityInventorySnapshot struct {
+	NodeID string                       `json:"nodeId"`
+	Report GuestIdentityInventoryReport `json:"report"`
+}
+
+// LocalGuestIdentityInventory scans this node's VM, jail and container rows.
+// Migration asks its target for it, to refuse an ID the target already uses.
+func (s *Service) LocalGuestIdentityInventory(ctx context.Context) (GuestIdentityInventorySnapshot, error) {
+	if s == nil || s.DB == nil {
+		return GuestIdentityInventorySnapshot{}, fmt.Errorf("guest_identity_inventory_service_not_initialized")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	nodeID := s.LocalNodeID()
+	if nodeID == "" {
+		return GuestIdentityInventorySnapshot{}, fmt.Errorf("guest_identity_inventory_local_node_id_unavailable")
+	}
+	report, err := ScanLocalGuestIdentityInventory(s.DB.WithContext(ctx), nodeID)
+	if err != nil {
+		return GuestIdentityInventorySnapshot{}, fmt.Errorf("guest_identity_inventory_local_scan_failed: %w", err)
+	}
+	return GuestIdentityInventorySnapshot{NodeID: nodeID, Report: report}, nil
 }

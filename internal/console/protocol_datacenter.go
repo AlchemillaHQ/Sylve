@@ -67,10 +67,8 @@ type DatacenterClusterGuestIdentityClaim struct {
 }
 
 type DatacenterClusterGuestIDReclaimPayload struct {
-	GuestID      uint   `json:"guestId"`
-	Force        bool   `json:"force"`
-	Confirmation string `json:"confirmation,omitempty"`
-	JSON         bool   `json:"json"`
+	GuestID uint `json:"guestId"`
+	JSON    bool `json:"json"`
 }
 
 type DatacenterClusterGuestIDReclaimResult struct {

@@ -350,11 +350,8 @@ func HasCmd(name string) bool {
 	return err == nil
 }
 
-const (
-	defaultBlockSize  = "1M"
-	defaultQueueDepth = 8
-)
-
+// dd, not camdd: camdd can exit without writing anything when its writer thread
+// starts after the reader has already read the whole image.
 func FlashImageToDiskCtx(ctx context.Context, source, dest string) error {
 	if source == "" || dest == "" {
 		return fmt.Errorf("source and dest must be non-empty")
@@ -371,24 +368,9 @@ func FlashImageToDiskCtx(ctx context.Context, source, dest string) error {
 		return fmt.Errorf("source %q is a directory, expected a file", source)
 	}
 
-	if _, err := exec.LookPath("camdd"); err != nil {
-		return fmt.Errorf("camdd not found in PATH: %w", err)
-	}
-
-	inArg := fmt.Sprintf("file=%s,bs=%s", source, defaultBlockSize)
-
-	var outArg string
 	if strings.HasPrefix(dest, "/dev/") {
 		if _, err := os.Stat(dest); err != nil {
 			return fmt.Errorf("destination device %q not found or not accessible: %w", dest, err)
-		}
-
-		if strings.HasPrefix(dest, "/dev/pass") {
-			// True pass(4) device
-			outArg = fmt.Sprintf("pass=%s,bs=%s,depth=%d", dest, defaultBlockSize, defaultQueueDepth)
-		} else {
-			// zvols, /dev/da0, /dev/nvd0, /dev/md*, etc.
-			outArg = fmt.Sprintf("file=%s,bs=%s", dest, defaultBlockSize)
 		}
 	} else {
 		if info, err := os.Stat(dest); err == nil && info.IsDir() {
@@ -399,22 +381,16 @@ func FlashImageToDiskCtx(ctx context.Context, source, dest string) error {
 				dest = abs
 			}
 		}
-		outArg = fmt.Sprintf("file=%s,bs=%s", dest, defaultBlockSize)
 	}
 
-	args := []string{"-i", inArg, "-o", outArg}
-
-	cmd := exec.CommandContext(ctx, "camdd", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
+	// notrunc keeps a disk file at its size.
+	output, err := exec.CommandContext(ctx, "/bin/dd", "if="+source, "of="+dest, "bs=1m", "conv=notrunc").CombinedOutput()
+	if err != nil {
 		if ctx.Err() != nil {
-			return fmt.Errorf("camdd canceled or timed out: %w", ctx.Err())
+			return fmt.Errorf("dd canceled or timed out: %w", ctx.Err())
 		}
-		return fmt.Errorf("camdd failed: %w", err)
+		return fmt.Errorf("dd failed: %w: %s", err, strings.TrimSpace(string(output)))
 	}
-
 	return nil
 }
 

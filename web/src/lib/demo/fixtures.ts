@@ -871,8 +871,8 @@ function evictVMRuntime(rid: number): void {
 		.catch(() => {});
 }
 
-function hostnameFor(config: DemoRequestConfig): string {
-	const requested = config.headers?.['X-Current-Hostname']?.trim().toLowerCase();
+function hostnameFor(node: string | undefined): string {
+	const requested = node?.trim().toLowerCase();
 	return requested && requested in virtualMachines ? requested : 'leto';
 }
 
@@ -2133,9 +2133,11 @@ export async function handleDemoRequest<T = unknown>(
 	config: DemoRequestConfig
 ): Promise<DemoClientResponse<T>> {
 	const parsed = new URL(config.url, 'https://demo.sylve.invalid');
-	const path = parsed.pathname.startsWith('/api/') ? parsed.pathname.slice(4) : parsed.pathname;
+	const apiPath = parsed.pathname.startsWith('/api/') ? parsed.pathname.slice(4) : parsed.pathname;
+	const [, node, nodeRoute] = apiPath.match(/^\/nodes\/([^/]+)(\/.*)$/) ?? [];
+	const path = nodeRoute ?? apiPath;
 	const method = (config.method || 'GET').toUpperCase();
-	const hostname = hostnameFor(config);
+	const hostname = hostnameFor(node && decodeURIComponent(node));
 	const directoryResponse = handleDemoDirectoryRequest<T>(config, parsed, path, method, hostname);
 	if (directoryResponse) return directoryResponse;
 	const networkResponse = handleDemoNetworkRequest<T>(config, parsed, path, method, hostname);
@@ -2155,17 +2157,17 @@ export async function handleDemoRequest<T = unknown>(
 	if (adminResponse) return adminResponse;
 
 	if (path === '/cluster') return success(clusterDetails) as DemoClientResponse<T>;
-	if (path === '/cluster/join-key' && method === 'GET') {
-		return success({ key: 'sylve-demo-cluster-key-7F4C2A91' }) as DemoClientResponse<T>;
+	if (path === '/cluster/join-key' && method === 'POST') {
+		return success({
+			key: 'c3lsdmUtZGVtby1qb2luLWtleS1zZWNyZXQtN0Y0QzJBOTE.' + '7f4c2a91'.repeat(8),
+			address: clusterDetails.leaderAddress.split(':')[0]
+		}) as DemoClientResponse<T>;
 	}
 	if (path === '/cluster/leave-status' && method === 'GET') {
 		return success({
 			enabled: true,
-			leaveId: '',
 			phase: '',
-			leaderIp: '',
 			lastError: '',
-			attempts: 0,
 			localNodeId: clusterDetails.nodeId
 		}) as DemoClientResponse<T>;
 	}

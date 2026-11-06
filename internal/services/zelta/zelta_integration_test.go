@@ -87,7 +87,7 @@ func TestFailoverControllerLeaderTickUsesControlledHA(t *testing.T) {
 		&clusterModels.ReplicationEvent{},
 		&clusterModels.ClusterNode{},
 	)
-	clusterService := &cluster.Service{DB: database, NodeID: "node-local"}
+	clusterService := newTestClusterService(database, "node-local")
 	service := newTestZeltaService(database)
 	service.Cluster = clusterService
 
@@ -124,7 +124,7 @@ func TestFailoverControllerLeaderTickUsesControlledHA(t *testing.T) {
 		},
 	}
 	for i := range policies {
-		if err := clusterModels.UpsertReplicationPolicyTxn(database, &policies[i], policies[i].Targets); err != nil {
+		if err := seedReplicationPolicy(database, &policies[i], policies[i].Targets); err != nil {
 			t.Fatalf("seed policy %d: %v", policies[i].ID, err)
 		}
 		defer service.replicationCountersDelete(policies[i].ID)

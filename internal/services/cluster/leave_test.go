@@ -14,733 +14,462 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/cmd"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	authService "github.com/alchemillahq/sylve/internal/services/auth"
-	"github.com/google/uuid"
+	"github.com/hashicorp/raft"
 )
 
-func TestInitializeLeaveRuntimeLoadsGateState(t *testing.T) {
-	tests := []struct {
-		name      string
-		phase     string
-		wantFence bool
-	}{
-		{name: "normal", phase: "", wantFence: false},
-		{name: "fenced", phase: LeavePhaseFenced, wantFence: true},
-		{name: "removing", phase: LeavePhaseRemoving, wantFence: true},
+func newLeaveTestService(t *testing.T, record clusterModels.Cluster) *Service {
+	t.Helper()
+	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &clusterModels.ClusterNode{}, &vmModels.VM{}, &jailModels.Jail{}, &taskModels.GuestLifecycleTask{})
+	if err := db.Create(&record).Error; err != nil {
+		t.Fatal(err)
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			db := newClusterServiceTestDB(t, &clusterModels.Cluster{})
-			if err := db.Create(&clusterModels.Cluster{Enabled: true, LeaveID: uuid.NewString(), LeavePhase: test.phase}).Error; err != nil {
-				t.Fatal(err)
-			}
-			service := &Service{DB: db, mutationGate: NewMutationGate()}
-			if err := service.InitializeLeaveRuntime(); err != nil {
-				t.Fatal(err)
-			}
-			_, release, err := service.EnterMutation(context.Background())
-			if test.wantFence {
-				if !errors.Is(err, ErrNodeLeaveFenced) {
-					t.Fatalf("error=%v", err)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			release()
-		})
+	return withFSM(&Service{DB: db, NodeID: "node-1", mutationGate: newOpenTestMutationGate(t)})
+}
+
+func requireLeavePhase(t *testing.T, service *Service, phase string) {
+	t.Helper()
+	status, err := service.LeaveStatus()
+	if err != nil || status.Phase != phase {
+		t.Fatalf("leave status = %+v, %v; want phase %q", status, err, phase)
+	}
+}
+
+func requireAdmitted(t *testing.T, service *Service, admitted bool) {
+	t.Helper()
+	_, release, err := service.EnterMutation(context.Background())
+	if err == nil {
+		release()
+	}
+	if admitted != (err == nil) {
+		t.Fatalf("mutation admission error = %v, want admitted=%v", err, admitted)
+	}
+}
+
+func TestInitializeLeaveRuntimeLoadsGateState(t *testing.T) {
+	for _, test := range []struct {
+		phase    string
+		admitted bool
+	}{{"", true}, {LeavePhaseRemoving, false}} {
+		service := newLeaveTestService(t, clusterModels.Cluster{Enabled: true, LeavePhase: test.phase})
+		service.mutationGate = NewMutationGate()
+		if err := service.InitializeLeaveRuntime(); err != nil {
+			t.Fatal(err)
+		}
+		requireAdmitted(t, service, test.admitted)
 	}
 }
 
 func TestInitializeLeaveRuntimeFailureKeepsGateClosed(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.Cluster{})
-	service := &Service{DB: db, mutationGate: NewMutationGate()}
+	service := withFSM(&Service{DB: db, mutationGate: NewMutationGate()})
 	if err := service.InitializeLeaveRuntime(); err == nil {
 		t.Fatal("expected leave-state load failure")
 	}
-	if _, _, err := service.EnterMutation(context.Background()); !errors.Is(err, ErrNodeLeaveFenced) {
-		t.Fatalf("gate error=%v", err)
-	}
+	requireAdmitted(t, service, false)
 }
 
-func TestPrepareLocalLeavePreflightFailureReopensGate(t *testing.T) {
-	db := newClusterServiceTestDB(
-		t,
-		&clusterModels.Cluster{},
-		&vmModels.VM{},
-		&jailModels.Jail{},
-		&taskModels.GuestLifecycleTask{},
-	)
-	if err := db.Create(&clusterModels.Cluster{Enabled: true}).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Create(&taskModels.GuestLifecycleTask{
-		GuestType: taskModels.GuestTypeVM,
-		GuestID:   10,
-		Action:    "start",
-		Status:    taskModels.LifecycleTaskStatusQueued,
+func TestLeaveBlockedByLocalWorkReopensTheNode(t *testing.T) {
+	service := newLeaveTestService(t, clusterModels.Cluster{Enabled: true})
+	if err := service.DB.Create(&taskModels.GuestLifecycleTask{
+		GuestType: taskModels.GuestTypeVM, GuestID: 10, Action: "start", Status: taskModels.LifecycleTaskStatusQueued,
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
-	service := &Service{DB: db, NodeID: "node-1", mutationGate: newOpenTestMutationGate(t)}
-	if _, err := service.prepareLocalLeave(context.Background(), uuid.NewString(), "", false, false); err == nil {
-		t.Fatal("expected dependency conflict")
+	service.guestIdentityLocalReservations = map[uint]localGuestIdentityReservation{11: {token: "in-flight", kind: clusterModels.ReplicationGuestTypeVM}}
+
+	err := service.Leave(context.Background(), true)
+	var blocked *PeerRemovalBlockedError
+	if !errors.As(err, &blocked) || len(blocked.Conflict.Dependencies) != 2 ||
+		blocked.Conflict.Dependencies[0].Kind != PeerRemovalDependencyGuestOperation ||
+		blocked.Conflict.Dependencies[1].Kind != PeerRemovalDependencyLifecycleTask {
+		t.Fatalf("leave error = %v, conflict = %+v", err, blocked)
 	}
-	_, release, err := service.EnterMutation(context.Background())
-	if err != nil {
-		t.Fatalf("gate remained fenced: %v", err)
-	}
-	release()
+	requireLeavePhase(t, service, "")
+	requireAdmitted(t, service, true)
 }
 
-func TestPrepareLocalLeaveRejectsInFlightGuestIdentity(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &vmModels.VM{}, &jailModels.Jail{})
-	if err := db.Create(&clusterModels.Cluster{Enabled: true}).Error; err != nil {
+func TestLeaveListsGuestsUntilConfirmed(t *testing.T) {
+	service := newLeaveTestService(t, clusterModels.Cluster{Enabled: true})
+	if err := service.DB.Create(&vmModels.VM{RID: 100, Name: "kept-vm"}).Error; err != nil {
 		t.Fatal(err)
 	}
-	service := &Service{
-		DB: db, NodeID: "node-1", mutationGate: newOpenTestMutationGate(t),
-		guestIdentityLocalReservations: map[uint]localGuestIdentityReservation{100: {token: "in-flight", kind: clusterModels.ReplicationGuestTypeVM}},
+	err := service.Leave(context.Background(), false)
+	var blocked *PeerRemovalBlockedError
+	if !errors.As(err, &blocked) || len(blocked.Conflict.Dependencies) != 1 ||
+		blocked.Conflict.Dependencies[0].Kind != PeerRemovalDependencyGuest || blocked.Conflict.Dependencies[0].Name != "kept-vm" {
+		t.Fatalf("leave error = %v, conflict = %+v", err, blocked)
 	}
-	_, err := service.prepareLocalLeaveWithGuests(context.Background(), uuid.NewString(), "", true, true, true)
-	var leaveErr *ClusterLeaveError
-	if !errors.As(err, &leaveErr) || leaveErr.Code != "cluster_leave_active_mutations" {
-		t.Fatalf("in-flight leave error=%v", err)
-	}
-	status, err := service.LeaveStatus()
-	if err != nil || status.Phase != "" {
-		t.Fatalf("unexpected persisted leave=%+v error=%v", status, err)
-	}
-	if service.IsMutationFenced() {
-		t.Fatal("failed preparation did not reopen mutations")
-	}
-}
+	requireLeavePhase(t, service, "")
 
-func TestConcurrentPrepareLocalLeaveKeepsDurableFenceClosed(t *testing.T) {
-	db := newClusterServiceTestDB(
-		t,
-		&clusterModels.Cluster{},
-		&vmModels.VM{},
-		&jailModels.Jail{},
-		&taskModels.GuestLifecycleTask{},
-	)
-	if err := db.Create(&clusterModels.Cluster{Enabled: true}).Error; err != nil {
-		t.Fatal(err)
-	}
-	service := &Service{DB: db, NodeID: "node-1", mutationGate: newOpenTestMutationGate(t)}
-	_, release, err := service.EnterMutation(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	results := make(chan error, 2)
-	for _, leaveID := range []string{uuid.NewString(), uuid.NewString()} {
-		leaveID := leaveID
-		go func() {
-			_, err := service.prepareLocalLeave(context.Background(), leaveID, "", false, true)
-			results <- err
-		}()
-	}
-
-	deadline := time.Now().Add(time.Second)
-	for !service.IsMutationFenced() && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
-	}
-	if !service.IsMutationFenced() {
-		t.Fatal("leave preparation did not start draining")
-	}
-	release()
-
-	successes := 0
-	conflicts := 0
-	for range 2 {
-		select {
-		case result := <-results:
-			if result == nil {
-				successes++
-			} else if strings.Contains(result.Error(), "cluster_leave_already_in_progress") {
-				conflicts++
-			} else {
-				t.Fatalf("unexpected leave result: %v", result)
-			}
-		case <-time.After(time.Second):
-			t.Fatal("timed out waiting for leave preparation")
-		}
-	}
-	if successes != 1 || conflicts != 1 {
-		t.Fatalf("successes=%d conflicts=%d", successes, conflicts)
-	}
-	status, err := service.LeaveStatus()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status.Phase != LeavePhaseFenced || status.LeaveID == "" {
-		t.Fatalf("leave status=%+v", status)
-	}
-	if _, _, err := service.EnterMutation(context.Background()); !errors.Is(err, ErrNodeLeaveFenced) {
-		t.Fatalf("durable leave fence reopened: %v", err)
-	}
-}
-
-func TestPrepareLocalLeaveReportsActiveMutationsAndReopens(t *testing.T) {
-	if leaveDrainTimeout >= leaveRequestTimeout {
-		t.Fatalf("drain timeout %s must be shorter than request timeout %s", leaveDrainTimeout, leaveRequestTimeout)
-	}
-	db := newClusterServiceTestDB(
-		t,
-		&clusterModels.Cluster{},
-		&vmModels.VM{},
-		&jailModels.Jail{},
-		&taskModels.GuestLifecycleTask{},
-	)
-	if err := db.Create(&clusterModels.Cluster{Enabled: true}).Error; err != nil {
-		t.Fatal(err)
-	}
-	service := &Service{DB: db, NodeID: "node-1", mutationGate: newOpenTestMutationGate(t)}
-	_, release, err := service.EnterMutation(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	drainCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	defer cancel()
-	_, err = service.prepareLocalLeave(drainCtx, uuid.NewString(), "", false, true)
-	var leaveErr *ClusterLeaveError
-	if !errors.As(err, &leaveErr) || leaveErr.Code != "cluster_leave_active_mutations" {
-		t.Fatalf("leave error=%v", err)
-	}
-	status, statusErr := service.LeaveStatus()
-	if statusErr != nil {
-		t.Fatal(statusErr)
-	}
-	if status.Phase != "" || status.LeaveID != "" {
-		t.Fatalf("leave intent persisted after drain failure: %+v", status)
-	}
-	release()
-	_, secondRelease, err := service.EnterMutation(context.Background())
-	if err != nil {
-		t.Fatalf("gate did not reopen: %v", err)
-	}
-	secondRelease()
-}
-
-func TestPrepareLocalLeaveRejectsDeclusteredNode(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.Cluster{})
-	if err := db.Create(&clusterModels.Cluster{Enabled: false}).Error; err != nil {
-		t.Fatal(err)
-	}
-	service := &Service{DB: db, NodeID: "node-1", mutationGate: newOpenTestMutationGate(t)}
-	if _, err := service.prepareLocalLeave(context.Background(), uuid.NewString(), "", false, false); err == nil || !strings.Contains(err.Error(), "cluster_not_enabled") {
-		t.Fatalf("prepare error=%v", err)
-	}
-	status, err := service.LeaveStatus()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status.Phase != "" || status.LeaveID != "" {
-		t.Fatalf("leave intent persisted on declustered node: %+v", status)
-	}
-}
-
-func configureLeaveWorkflowTestTransport(
-	t *testing.T,
-	nodes []*clusterRaftTestNode,
-	target *clusterRaftTestNode,
-	loseRemovalResponse bool,
-) {
-	t.Helper()
-	target.service.leaveMembershipForNode = func(
-		_ context.Context,
-		_ clusterModels.Cluster,
-		nodeID string,
-	) (MembershipStatus, error) {
-		leader := findClusterRaftLeader(nodes)
-		if leader == nil {
-			return MembershipStatus{NodeID: nodeID}, errors.New("leader unavailable")
-		}
-		return leader.service.AuthoritativeMembershipStatus(nodeID)
-	}
-	target.service.leaveRemovalForNode = func(
-		ctx context.Context,
-		_ string,
-		request RemoveMembershipRequest,
-	) error {
-		leader := findClusterRaftLeader(nodes)
-		if leader == nil {
-			return errors.New("leader unavailable")
-		}
-		if err := leader.service.RemoveMembership(ctx, request, request.NodeID); err != nil {
-			return err
-		}
-		if loseRemovalResponse {
-			return errors.New("response lost after membership commit")
-		}
-		return nil
-	}
-}
-
-func assertLeaveWorkflowCompleted(t *testing.T, target *clusterRaftTestNode, result ClusterLeaveResult) {
-	t.Helper()
-	if !result.MembershipRemoved || !result.CleanupAcknowledged {
-		t.Fatalf("leave result=%+v", result)
-	}
-	status, err := target.service.LeaveStatus()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status.Enabled || status.Phase != "" || status.LeaveID != "" {
-		t.Fatalf("target leave status=%+v", status)
-	}
-	if _, _, err := target.service.EnterMutation(context.Background()); !errors.Is(err, ErrNodeLeaveFenced) {
-		t.Fatalf("completed target admitted work before restart: %v", err)
-	}
-}
-
-func TestIntegrationCooperativeFollowerLeaveCompletes(t *testing.T) {
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
-	for _, test := range []struct {
-		name      string
-		nodeCount int
-	}{
-		{name: "two voters", nodeCount: 2},
-		{name: "three voters", nodeCount: 3},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			nodes := setupClusterRaftTestNodes(
-				t,
-				test.nodeCount,
-				&clusterModels.Cluster{},
-				&clusterModels.ClusterNode{},
-				&vmModels.VM{},
-				&jailModels.Jail{},
-				&taskModels.GuestLifecycleTask{},
-			)
-			for _, node := range nodes {
-				if err := node.service.DB.Create(&clusterModels.Cluster{
-					Enabled: true, Key: "cluster-key", RaftIP: node.id, RaftPort: ClusterRaftPort,
-				}).Error; err != nil {
-					t.Fatal(err)
-				}
-			}
-			leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-			var target *clusterRaftTestNode
-			for _, node := range nodes {
-				if node.id != leader.id {
-					target = node
-					break
-				}
-			}
-			if target == nil {
-				t.Fatal("follower not found")
-			}
-			configureLeaveWorkflowTestTransport(t, nodes, target, false)
-			result, err := target.service.StartCooperativeLeave(context.Background(), StartLeaveRequest{
-				LeaveID:        uuid.NewString(),
-				ExpectedNodeID: target.id,
-				LeaderIP:       raftAddressHost(string(leader.addr)),
-			}, leader.id)
-			if err != nil {
-				t.Fatalf("cooperative leave: %v", err)
-			}
-			assertLeaveWorkflowCompleted(t, target, result)
-			waitForClusterRaftVoterCount(t, nodes, test.nodeCount-1, 8*time.Second)
-		})
-	}
-}
-
-func TestIntegrationCooperativeFollowerLeaveRetainsGuestsAndReleasesClaims(t *testing.T) {
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
-	nodes := setupClusterRaftTestNodes(t, 3,
-		&clusterModels.Cluster{}, &clusterModels.ClusterNode{},
-		&clusterModels.GuestIdentityRegistry{}, &clusterModels.GuestIdentityEnrollment{}, &clusterModels.GuestIdentityClaim{}, &clusterModels.GuestIdentityDeparture{},
-		&vmModels.VM{}, &jailModels.Jail{}, &taskModels.GuestLifecycleTask{},
-	)
-	for _, node := range nodes {
-		if err := node.service.DB.Create(&clusterModels.Cluster{
-			Enabled: true, Key: "cluster-key", RaftIP: node.id, RaftPort: ClusterRaftPort,
-		}).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	var target *clusterRaftTestNode
-	for _, node := range nodes {
-		if node.id != leader.id {
-			target = node
-			break
-		}
-	}
-	if target == nil {
-		t.Fatal("follower not found")
-	}
-	if err := leader.service.initializeGuestIdentityRegistryForFoundingNode(leader.id, BuildGuestIdentityInventoryReport(nil)); err != nil {
-		t.Fatal(err)
-	}
-	seedGuestIdentityJoinTestClaim(t, leader, target.id, clusterModels.ReplicationGuestTypeVM, 100)
-	seedGuestIdentityJoinTestClaim(t, leader, target.id, clusterModels.ReplicationGuestTypeJail, 120)
-	if err := target.service.DB.Create(&vmModels.VM{RID: 100, Name: "retained-vm"}).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := target.service.DB.Create(&jailModels.Jail{CTID: 120, Name: "retained-jail"}).Error; err != nil {
-		t.Fatal(err)
-	}
-	configureLeaveWorkflowTestTransport(t, nodes, target, false)
-	request := StartLeaveRequest{
-		LeaveID: uuid.NewString(), ExpectedNodeID: target.id,
-		LeaderIP: raftAddressHost(string(leader.addr)),
-	}
-	if _, err := target.service.StartCooperativeLeave(context.Background(), request, leader.id); err == nil {
-		t.Fatal("default leave unexpectedly accepted registered guests")
-	}
-	status, err := target.service.LeaveStatus()
-	if err != nil || status.Phase != "" {
-		t.Fatalf("blocked leave status=%+v error=%v", status, err)
-	}
-	request.RetainGuests = true
-	result, err := target.service.StartCooperativeLeave(context.Background(), request, leader.id)
-	if err != nil {
-		t.Fatalf("retain leave: %v", err)
-	}
-	assertLeaveWorkflowCompleted(t, target, result)
-	if len(result.RetainedGuests) != 2 {
-		t.Fatalf("retained guests=%+v", result.RetainedGuests)
-	}
-	waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
-	var vmCount, jailCount, claimCount int64
-	if err := target.service.DB.Model(&vmModels.VM{}).Where("rid = ?", 100).Count(&vmCount).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := target.service.DB.Model(&jailModels.Jail{}).Where("ct_id = ?", 120).Count(&jailCount).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := leader.service.DB.Model(&clusterModels.GuestIdentityClaim{}).Where("owner_node_id = ?", target.id).Count(&claimCount).Error; err != nil {
-		t.Fatal(err)
-	}
-	if vmCount != 1 || jailCount != 1 || claimCount != 0 {
-		t.Fatalf("post-leave counts: vm=%d jail=%d claims=%d", vmCount, jailCount, claimCount)
-	}
-}
-
-func TestIntegrationActiveLeavingLeaderWithGuestsTransfersAndConfirmsLostResponse(t *testing.T) {
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
-	nodes := setupClusterRaftTestNodes(
-		t,
-		3,
-		&clusterModels.Cluster{},
-		&clusterModels.ClusterNode{},
-		&clusterModels.GuestIdentityRegistry{},
-		&clusterModels.GuestIdentityEnrollment{},
-		&clusterModels.GuestIdentityClaim{},
-		&clusterModels.GuestIdentityDeparture{},
-		&vmModels.VM{},
-		&jailModels.Jail{},
-		&taskModels.GuestLifecycleTask{},
-	)
-	for _, node := range nodes {
-		if err := node.service.DB.Create(&clusterModels.Cluster{
-			Enabled: true, Key: "cluster-key", RaftIP: node.id, RaftPort: ClusterRaftPort,
-		}).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	target := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	if err := target.service.initializeGuestIdentityRegistryForFoundingNode(target.id, BuildGuestIdentityInventoryReport(nil)); err != nil {
-		t.Fatal(err)
-	}
-	seedGuestIdentityJoinTestClaim(t, target, target.id, clusterModels.ReplicationGuestTypeVM, 110)
-	if err := target.service.DB.Create(&vmModels.VM{RID: 110, Name: "leader-vm"}).Error; err != nil {
-		t.Fatal(err)
-	}
-	inventory, err := target.service.LocalGuestIdentityInventory(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	configureLeaveWorkflowTestTransport(t, nodes, target, true)
-	peerAddresses, err := target.service.captureLeavePeerAddresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := target.service.persistLeaveIntentWithGuests(
-		uuid.NewString(),
-		raftAddressHost(string(target.addr)),
-		LeavePhaseRemoving,
-		peerAddresses,
-		true,
-		inventory.Report.Digest,
-	); err != nil {
-		t.Fatal(err)
-	}
-	target.service.mutationGate.Close()
-	result, err := target.service.advanceLocalLeave(context.Background(), false)
-	if err != nil {
-		t.Fatalf("active leader leave: %v", err)
-	}
-	assertLeaveWorkflowCompleted(t, target, result)
-	waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
-	var claims, guests int64
-	if err := target.service.DB.Model(&vmModels.VM{}).Where("rid = ?", 110).Count(&guests).Error; err != nil {
-		t.Fatal(err)
-	}
-	currentLeader := findClusterRaftLeader(nodes)
-	if currentLeader == nil {
-		t.Fatal("no surviving leader")
-	}
-	if err := currentLeader.service.DB.Model(&clusterModels.GuestIdentityClaim{}).Where("guest_id = ?", 110).Count(&claims).Error; err != nil {
-		t.Fatal(err)
-	}
-	if guests != 1 || claims != 0 {
-		t.Fatalf("guests=%d claims=%d after leader leave", guests, claims)
-	}
-}
-
-func TestIntegrationLeaderLeaveTriesAnotherTransferCandidate(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(
-		t,
-		3,
-		&clusterModels.Cluster{},
-		&clusterModels.ClusterNode{},
-		&vmModels.VM{},
-		&jailModels.Jail{},
-		&taskModels.GuestLifecycleTask{},
-	)
-	for _, node := range nodes {
-		if err := node.service.DB.Create(&clusterModels.Cluster{
-			Enabled: true, Key: "cluster-key", RaftIP: node.id, RaftPort: ClusterRaftPort,
-		}).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	candidates := make([]*clusterRaftTestNode, 0, 2)
-	for _, node := range nodes {
-		if node.id != leader.id {
-			candidates = append(candidates, node)
-		}
-	}
-	sort.Slice(candidates, func(i, j int) bool { return candidates[i].id < candidates[j].id })
-	unavailable := candidates[0]
-	expectedLeader := candidates[1]
-	unavailable.transport.DisconnectAll()
-	for _, node := range nodes {
-		node.transport.Disconnect(unavailable.addr)
-	}
-
-	future := leader.raft.GetConfiguration()
-	if err := future.Error(); err != nil {
-		t.Fatal(err)
-	}
-	leaderIP, err := leader.service.transferLeadershipForLeave(context.Background(), future.Configuration(), leader.id)
-	if err != nil {
-		t.Fatalf("transfer leadership: %v", err)
-	}
-	if leaderIP != raftAddressHost(string(expectedLeader.addr)) {
-		t.Fatalf("leader IP = %q, want %q", leaderIP, raftAddressHost(string(expectedLeader.addr)))
-	}
-	if elected := waitForClusterRaftLeader(t, []*clusterRaftTestNode{leader, expectedLeader}, 8*time.Second); elected.id != expectedLeader.id {
-		t.Fatalf("leader = %s, want %s", elected.id, expectedLeader.id)
-	}
-}
-
-func TestIntegrationActiveLeavingLeaderWithoutSuccessorStaysFenced(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 1, &clusterModels.Cluster{})
-	target := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	if err := target.service.DB.Create(&clusterModels.Cluster{
-		Enabled: true, Key: "cluster-key", RaftIP: target.id, RaftPort: ClusterRaftPort,
-	}).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := target.service.persistLeaveIntent(
-		uuid.NewString(),
-		raftAddressHost(string(target.addr)),
-		LeavePhaseRemoving,
-		[]byte(`[]`),
-	); err != nil {
-		t.Fatal(err)
-	}
-	target.service.mutationGate.Close()
-	_, err := target.service.advanceLocalLeave(context.Background(), false)
-	if err == nil || !strings.Contains(err.Error(), "cluster_leave_leadership_transfer_unavailable") {
-		t.Fatalf("leave error=%v", err)
-	}
-	status, statusErr := target.service.LeaveStatus()
-	if statusErr != nil {
-		t.Fatal(statusErr)
-	}
-	if status.Phase != LeavePhaseRemoving || !status.Enabled {
-		t.Fatalf("leave status=%+v", status)
-	}
-	if _, _, gateErr := target.service.EnterMutation(context.Background()); !errors.Is(gateErr, ErrNodeLeaveFenced) {
-		t.Fatalf("leave gate reopened without a successor: %v", gateErr)
-	}
-}
-
-func TestLeaveClusterSupersedesDisabledJoinIntent(t *testing.T) {
-	db := newClusterServiceTestDB(
-		t,
-		&clusterModels.Cluster{},
-		&vmModels.VM{},
-		&jailModels.Jail{},
-		&taskModels.GuestLifecycleTask{},
-	)
-	if err := db.Create(&clusterModels.Cluster{
-		Enabled:      false,
-		Key:          "cluster-key",
-		JoinLeaderIP: "127.0.0.1",
-		JoinNodeID:   "node-1",
-		JoinNodeIP:   "192.0.2.20",
-		JoinPhase:    JoinPhaseIntentSaved,
-	}).Error; err != nil {
-		t.Fatal(err)
-	}
-	service := &Service{
-		DB:           db,
-		NodeID:       "node-1",
-		AuthService:  authService.NewAuthService(db),
-		mutationGate: newOpenTestMutationGate(t),
-	}
-
-	_, err := service.LeaveCluster(context.Background())
+	err = service.Leave(context.Background(), true)
 	var leaveErr *ClusterLeaveError
 	if !errors.As(err, &leaveErr) || leaveErr.Code != "cluster_leave_membership_unconfirmed" {
-		t.Fatalf("leave error=%v", err)
+		t.Fatalf("confirmed leave error = %v", err)
 	}
-	status, statusErr := service.LeaveStatus()
-	if statusErr != nil {
-		t.Fatal(statusErr)
+	requireLeavePhase(t, service, LeavePhaseRemoving)
+	requireAdmitted(t, service, false)
+}
+
+func TestLeaveReportsActiveMutationsAndReopens(t *testing.T) {
+	service := newLeaveTestService(t, clusterModels.Cluster{Enabled: true})
+	_, release, err := service.EnterMutation(context.Background())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if status.Phase != LeavePhaseRemoving || status.LeaderIP != "127.0.0.1" || status.LeaveID == "" {
-		t.Fatalf("leave status=%+v", status)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	err = service.Leave(ctx, true)
+	var leaveErr *ClusterLeaveError
+	if !errors.As(err, &leaveErr) || leaveErr.Code != "cluster_leave_active_mutations" {
+		t.Fatalf("leave error = %v", err)
 	}
-	if _, _, gateErr := service.EnterMutation(context.Background()); !errors.Is(gateErr, ErrNodeLeaveFenced) {
-		t.Fatalf("join reset did not remain fenced: %v", gateErr)
+	requireLeavePhase(t, service, "")
+	release()
+	requireAdmitted(t, service, true)
+}
+
+func TestConcurrentLeavesKeepTheNodeFenced(t *testing.T) {
+	service := newLeaveTestService(t, clusterModels.Cluster{Enabled: true})
+	_, release, err := service.EnterMutation(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := make(chan error, 2)
+	for range 2 {
+		go func() { results <- service.Leave(context.Background(), true) }()
+	}
+	waitForClusterCondition(t, time.Second, "leave to start draining", service.IsMutationFenced)
+	release()
+	for range 2 {
+		var leaveErr *ClusterLeaveError
+		if err := <-results; !errors.As(err, &leaveErr) || leaveErr.Code != "cluster_leave_membership_unconfirmed" {
+			t.Fatalf("leave error = %v", err)
+		}
+	}
+	requireLeavePhase(t, service, LeavePhaseRemoving)
+	requireAdmitted(t, service, false)
+}
+
+func TestLeaveOfAStandaloneNodeDoesNothing(t *testing.T) {
+	service := newLeaveTestService(t, clusterModels.Cluster{})
+	if err := service.Leave(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	requireLeavePhase(t, service, "")
+	requireAdmitted(t, service, true)
+}
+
+func TestLeaveDropsAJoinThatNeverStarted(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	service := newLeaveTestService(t, clusterModels.Cluster{
+		Key: guestIdentityJoinTestKey, JoinLeaderIP: "127.0.0.1", RaftIP: "192.0.2.20",
+	})
+	if err := service.DB.Create(&vmModels.VM{RID: 100, Name: "kept-vm"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Leave(context.Background(), false); err != nil {
+		t.Fatalf("leave: %v", err)
+	}
+	record, err := service.loadClusterRecord()
+	if err != nil || record.HasIncompleteJoin() || record.Key != "" || record.LeavePhase != "" {
+		t.Fatalf("cluster record after reset = %+v, %v", record, err)
+	}
+	var guests int64
+	if err := service.DB.Model(&vmModels.VM{}).Count(&guests).Error; err != nil || guests != 1 {
+		t.Fatalf("guests after reset = %d, %v", guests, err)
 	}
 }
 
 func TestFinalizeLocalDeclusterIsIdempotent(t *testing.T) {
 	dataPath := t.TempDir()
 	t.Setenv("SYLVE_DATA_PATH", dataPath)
-	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &clusterModels.ClusterNode{})
 	bootstrap := true
-	record := clusterModels.Cluster{
+	service := newLeaveTestService(t, clusterModels.Cluster{
 		Enabled: true, Key: "secret", RaftBootstrap: &bootstrap, RaftIP: "192.0.2.1", RaftPort: ClusterRaftPort,
-		JoinLeaderIP: "192.0.2.2", JoinNodeID: "node-1", JoinNodeIP: "192.0.2.1", JoinNodeVersion: "version",
-		JoinPhase: "voter", JoinLastError: "error", JoinAttempts: 2,
-		LeaveID: uuid.NewString(), LeavePhase: LeavePhaseCleaning, LeaveLeaderIP: "192.0.2.2",
-		LeavePeerAddrs: []byte(`["192.0.2.2:8180"]`), LeaveLastError: "error", LeaveAttempts: 3,
-	}
-	if err := db.Create(&record).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Create(&clusterModels.ClusterNode{NodeUUID: "node-2"}).Error; err != nil {
+		JoinLeaderIP: "192.0.2.2", LeavePhase: LeavePhaseCleaning, LeaveLastError: "error",
+	})
+	if err := service.DB.Create(&clusterModels.ClusterNode{NodeUUID: "node-2"}).Error; err != nil {
 		t.Fatal(err)
 	}
 	raftDir := filepath.Join(dataPath, "raft")
 	sshDir := filepath.Join(dataPath, clusterSSHDirName)
-	if err := os.MkdirAll(raftDir, 0o755); err != nil {
-		t.Fatal(err)
+	for _, dir := range []string{raftDir, sshDir} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := os.MkdirAll(sshDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{
+	paths := []string{
 		filepath.Join(raftDir, "raft-log.db"),
 		filepath.Join(sshDir, clusterSSHPrivateFileName),
 		filepath.Join(sshDir, clusterSSHPublicFileName),
-	} {
+	}
+	for _, path := range paths {
 		if err := os.WriteFile(path, []byte("state"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	service := &Service{DB: db, NodeID: "node-1", mutationGate: NewMutationGate()}
-	if err := service.FinalizeLocalDecluster(); err != nil {
-		t.Fatal(err)
+	for range 2 {
+		if err := service.FinalizeLocalDecluster(); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := service.FinalizeLocalDecluster(); err != nil {
-		t.Fatalf("second cleanup: %v", err)
-	}
-	var current clusterModels.Cluster
-	if err := db.First(&current).Error; err != nil {
+	current, err := service.loadClusterRecord()
+	if err != nil {
 		t.Fatal(err)
 	}
 	if current.Enabled || current.Key != "" || current.RaftBootstrap != nil || current.RaftIP != "" ||
-		current.JoinPhase != "" || current.JoinAttempts != 0 || current.LeavePhase != "" ||
-		current.LeaveID != "" || current.LeaveAttempts != 0 {
+		current.JoinLeaderIP != "" || current.LeavePhase != "" || current.LeaveLastError != "" {
 		t.Fatalf("cluster state not cleared: %+v", current)
 	}
-	for _, path := range []string{
-		filepath.Join(raftDir, "raft-log.db"),
-		filepath.Join(sshDir, clusterSSHPrivateFileName),
-		filepath.Join(sshDir, clusterSSHPublicFileName),
-	} {
+	for _, path := range paths {
 		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("path still exists: %s err=%v", path, err)
 		}
 	}
-	if _, _, err := service.EnterMutation(context.Background()); !errors.Is(err, ErrNodeLeaveFenced) {
-		t.Fatalf("cleanup reopened gate: %v", err)
+	requireAdmitted(t, service, false)
+}
+
+func TestCancelLeaveWithoutALeader(t *testing.T) {
+	for _, test := range []struct {
+		phase     string
+		cancelled bool
+	}{{LeavePhaseRemoving, true}, {LeavePhaseCleaning, false}} {
+		service := newLeaveTestService(t, clusterModels.Cluster{Enabled: true, LeavePhase: test.phase})
+		service.mutationGate.Close()
+		err := service.CancelLeave(context.Background())
+		if test.cancelled != (err == nil) || !test.cancelled && !errors.Is(err, ErrLeaveAlreadyRemoved) {
+			t.Fatalf("%s: cancel error = %v", test.phase, err)
+		}
+		if test.cancelled {
+			requireLeavePhase(t, service, "")
+		} else {
+			requireLeavePhase(t, service, test.phase)
+		}
+		requireAdmitted(t, service, test.cancelled)
 	}
 }
 
-// A leave stuck because the leader is gone must be cancellable; one the leader
-// already confirmed must not be, since only local cleanup is left.
-func TestCancelLocalLeave(t *testing.T) {
-	for _, test := range []struct {
-		name       string
-		phase      string
-		membership func() (MembershipStatus, error)
-		cancelled  bool
-	}{
-		{"leader unreachable", LeavePhaseRemoving, func() (MembershipStatus, error) {
-			return MembershipStatus{}, errors.New("leader_unreachable")
-		}, true},
-		{"leader confirms member", LeavePhaseRemoving, func() (MembershipStatus, error) {
-			return MembershipStatus{Present: true}, nil
-		}, true},
-		{"leader confirms removal", LeavePhaseRemoving, func() (MembershipStatus, error) {
-			return MembershipStatus{Present: false}, nil
-		}, false},
-		{"cleanup pending", LeavePhaseCleaning, nil, false},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			database := newClusterServiceTestDB(t, &clusterModels.Cluster{})
-			if err := database.Create(&clusterModels.Cluster{
-				Enabled: true, RaftIP: "192.0.2.10", LeaveID: "leave-1", LeavePhase: test.phase,
-			}).Error; err != nil {
-				t.Fatal(err)
-			}
-			gate := NewMutationGate()
-			gate.Close()
-			service := &Service{DB: database, NodeID: "node-1", mutationGate: gate}
-			service.leaveMembershipForNode = func(context.Context, clusterModels.Cluster, string) (MembershipStatus, error) {
-				return test.membership()
-			}
+func newLeaveTestCluster(t *testing.T, size int) ([]*clusterRaftTestNode, *clusterRaftTestNode, *testPeerNetwork) {
+	t.Helper()
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	nodes := setupClusterRaftTestNodes(t, size, &clusterModels.Cluster{}, &clusterModels.ClusterNode{}, &vmModels.VM{}, &jailModels.Jail{}, &taskModels.GuestLifecycleTask{})
+	for _, node := range nodes {
+		if err := node.service.DB.Create(&clusterModels.Cluster{
+			Enabled: true, Key: guestIdentityJoinTestKey, RaftIP: node.id, RaftPort: ClusterRaftPort,
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	network := routeTestPeerRequests(nodes)
+	return nodes, waitForClusterRaftLeader(t, nodes, 8*time.Second), network
+}
 
-			err := service.CancelLocalLeave(context.Background())
-			if test.cancelled != (err == nil) {
-				t.Fatalf("cancel error = %v, want cancelled=%v", err, test.cancelled)
-			}
-			var record clusterModels.Cluster
-			if err := database.First(&record).Error; err != nil {
-				t.Fatal(err)
-			}
-			_, release, admitErr := service.EnterMutation(context.Background())
-			if admitErr == nil {
-				release()
-			}
-			if test.cancelled && (record.LeavePhase != "" || admitErr != nil) {
-				t.Fatalf("phase=%q admit=%v after cancel", record.LeavePhase, admitErr)
-			}
-			if !test.cancelled && (record.LeavePhase != test.phase || admitErr == nil) {
-				t.Fatalf("phase=%q admit=%v after refused cancel", record.LeavePhase, admitErr)
-			}
-		})
+func leaveTestFollowers(nodes []*clusterRaftTestNode, leader *clusterRaftTestNode) []*clusterRaftTestNode {
+	var followers []*clusterRaftTestNode
+	for _, node := range nodes {
+		if node != leader {
+			followers = append(followers, node)
+		}
+	}
+	sort.Slice(followers, func(i, j int) bool { return followers[i].id < followers[j].id })
+	return followers
+}
+
+func requireLeft(t *testing.T, node *clusterRaftTestNode) {
+	t.Helper()
+	status, err := node.service.LeaveStatus()
+	if err != nil || status.Enabled || status.Phase != "" {
+		t.Fatalf("%s leave status = %+v, %v", node.id, status, err)
+	}
+	requireAdmitted(t, node.service, false)
+}
+
+func TestIntegrationFollowerLeaveCompletes(t *testing.T) {
+	for _, size := range []int{2, 3} {
+		nodes, leader, _ := newLeaveTestCluster(t, size)
+		target := leaveTestFollowers(nodes, leader)[0]
+		if err := target.service.Leave(context.Background(), false); err != nil {
+			t.Fatalf("%d voters: leave: %v", size, err)
+		}
+		requireLeft(t, target)
+		waitForClusterRaftVoterCount(t, []*clusterRaftTestNode{leader}, size-1, 8*time.Second)
+	}
+}
+
+func TestIntegrationFollowerLeaveKeepsGuestsAndReleasesClaims(t *testing.T) {
+	nodes, leader, _ := newLeaveTestCluster(t, 3)
+	target := leaveTestFollowers(nodes, leader)[0]
+	seedGuestIdentityJoinTestClaim(t, leader, target.id, clusterModels.ReplicationGuestTypeVM, 100)
+	seedGuestIdentityJoinTestClaim(t, leader, target.id, clusterModels.ReplicationGuestTypeJail, 120)
+	if err := target.service.DB.Create(&vmModels.VM{RID: 100, Name: "kept-vm"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := target.service.DB.Create(&jailModels.Jail{CTID: 120, Name: "kept-jail"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	var blocked *PeerRemovalBlockedError
+	if err := target.service.Leave(context.Background(), false); !errors.As(err, &blocked) || len(blocked.Conflict.Dependencies) != 2 {
+		t.Fatalf("unconfirmed leave = %v", err)
+	}
+	requireAdmitted(t, target.service, true)
+	if err := target.service.Leave(context.Background(), true); err != nil {
+		t.Fatalf("leave keeping guests: %v", err)
+	}
+	requireLeft(t, target)
+	var guests int64
+	if err := target.service.DB.Model(&vmModels.VM{}).Count(&guests).Error; err != nil || guests != 1 {
+		t.Fatalf("VMs kept = %d, %v", guests, err)
+	}
+	waitForGuestIdentityClaim(t, []*clusterRaftTestNode{leader}, 100, "")
+	waitForGuestIdentityClaim(t, []*clusterRaftTestNode{leader}, 120, "")
+}
+
+func TestIntegrationLeaderLeaveFencesBeforeHandingOff(t *testing.T) {
+	nodes, leader, _ := newLeaveTestCluster(t, 3)
+	_, release, err := leader.service.EnterMutation(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	var leaveErr *ClusterLeaveError
+	if err := leader.service.Leave(ctx, true); !errors.As(err, &leaveErr) || leaveErr.Code != "cluster_leave_active_mutations" {
+		t.Fatalf("leave with running work = %v", err)
+	}
+	release()
+	if leader.raft.State() != raft.Leader {
+		t.Fatal("a leave that couldn't fence handed off leadership")
+	}
+
+	if err := leader.service.Leave(context.Background(), true); err != nil {
+		t.Fatalf("leader leave: %v", err)
+	}
+	requireLeft(t, leader)
+	successor := waitForClusterRaftLeader(t, leaveTestFollowers(nodes, leader), 8*time.Second)
+	waitForClusterRaftVoterCount(t, []*clusterRaftTestNode{successor}, 2, 8*time.Second)
+}
+
+func TestIntegrationLeaderLeaveTriesAnotherTransferCandidate(t *testing.T) {
+	nodes, leader, _ := newLeaveTestCluster(t, 3)
+	followers := leaveTestFollowers(nodes, leader)
+	unavailable, expected := followers[0], followers[1]
+	unavailable.transport.DisconnectAll()
+	for _, node := range nodes {
+		node.transport.Disconnect(unavailable.addr)
+	}
+	future := leader.raft.GetConfiguration()
+	if err := future.Error(); err != nil {
+		t.Fatal(err)
+	}
+	if err := leader.service.transferLeadershipForLeave(context.Background(), future.Configuration()); err != nil {
+		t.Fatalf("transfer leadership: %v", err)
+	}
+	if elected := waitForClusterRaftLeader(t, []*clusterRaftTestNode{leader, expected}, 8*time.Second); elected != expected {
+		t.Fatalf("leader = %s, want %s", elected.id, expected.id)
+	}
+}
+
+func TestIntegrationLeaveWithUnreachableLeaderStaysCancellable(t *testing.T) {
+	nodes, leader, network := newLeaveTestCluster(t, 3)
+	target := leaveTestFollowers(nodes, leader)[0]
+	network.setCut(leader.id, true)
+	var leaveErr *ClusterLeaveError
+	if err := target.service.Leave(context.Background(), true); !errors.As(err, &leaveErr) || leaveErr.Code != "cluster_leave_membership_unconfirmed" {
+		t.Fatalf("leave without the leader = %v", err)
+	}
+	requireLeavePhase(t, target.service, LeavePhaseRemoving)
+	requireAdmitted(t, target.service, false)
+	if err := target.service.CancelLeave(context.Background()); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	requireLeavePhase(t, target.service, "")
+	requireAdmitted(t, target.service, true)
+
+	network.setCut(leader.id, false)
+	if err := target.service.Leave(context.Background(), true); err != nil {
+		t.Fatalf("leave with the leader back: %v", err)
+	}
+	requireLeft(t, target)
+}
+
+func TestIntegrationCancelIsRefusedOnceRemoved(t *testing.T) {
+	nodes, leader, _ := newLeaveTestCluster(t, 3)
+	target := leaveTestFollowers(nodes, leader)[0]
+	if err := target.service.setLeavePhase(LeavePhaseRemoving, nil); err != nil {
+		t.Fatal(err)
+	}
+	target.service.mutationGate.Close()
+	if err := leader.service.RemoveMember(context.Background(), target.id, true); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if err := target.service.CancelLeave(context.Background()); !errors.Is(err, ErrLeaveAlreadyRemoved) {
+		t.Fatalf("cancel after removal = %v", err)
+	}
+	if err := target.service.advanceLeave(context.Background()); err != nil {
+		t.Fatalf("finish the leave: %v", err)
+	}
+	requireLeft(t, target)
+}
+
+func reconcileUntilLeft(t *testing.T, node *clusterRaftTestNode) {
+	t.Helper()
+	waitForClusterCondition(t, 8*time.Second, node.id+" leaves by itself", func() bool {
+		var lastProbe time.Time
+		node.service.reconcileLeave(context.Background(), &lastProbe)
+		status, err := node.service.LeaveStatus()
+		return err == nil && !status.Enabled
+	})
+	requireLeft(t, node)
+}
+
+func TestIntegrationRemovedFollowerLeavesByItself(t *testing.T) {
+	nodes, leader, _ := newLeaveTestCluster(t, 3)
+	target := leaveTestFollowers(nodes, leader)[0]
+	if err := leader.service.RemoveMember(context.Background(), target.id, true); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	reconcileUntilLeft(t, target)
+}
+
+func TestIntegrationNodeRemovedWhilePartitionedLeavesWhenItReturns(t *testing.T) {
+	nodes, leader, network := newLeaveTestCluster(t, 3)
+	target := leaveTestFollowers(nodes, leader)[0]
+	seedGuestIdentityJoinTestClaim(t, leader, target.id, clusterModels.ReplicationGuestTypeVM, 300)
+	if err := target.service.DB.Create(&vmModels.VM{RID: 300, Name: "kept-vm"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	waitForGuestIdentityClaim(t, nodes, 300, target.id)
+	target.transport.DisconnectAll()
+	for _, node := range nodes {
+		node.transport.Disconnect(target.addr)
+	}
+	network.setCut(target.id, true)
+
+	if err := leader.service.RemoveMember(context.Background(), target.id, true); err != nil {
+		t.Fatalf("force remove: %v", err)
+	}
+	waitForGuestIdentityClaim(t, []*clusterRaftTestNode{leader}, 300, "")
+
+	// Raft stays cut, so only the cluster API can tell it.
+	network.setCut(target.id, false)
+	reconcileUntilLeft(t, target)
+	// The removal used up the key.
+	seedJoinKey(t, leader)
+	inventory := BuildGuestIdentityInventoryReport([]GuestIdentityInventoryEntry{{
+		NodeID: target.id, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 300, RecordID: 1, Name: "kept-vm",
+	}})
+	if _, err := leader.service.AdmitJoiner(context.Background(), JoinAdmissionRequest{
+		NodeID: target.id, NodeIP: "127.0.0.9", NodeVersion: cmd.Version, Inventory: inventory, SSHPublicKey: "ssh-ed25519 AAAA",
+	}, guestIdentityJoinTestSecret, testJoinPin); err != nil {
+		t.Fatalf("rejoin admission: %v", err)
 	}
 }

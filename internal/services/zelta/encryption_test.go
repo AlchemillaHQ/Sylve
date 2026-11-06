@@ -32,7 +32,7 @@ func TestReconcileEncryptionKeys(t *testing.T) {
 	setEncryptionKeyDir(t, keyDir)
 
 	db := newZeltaServiceTestDB(t, &clusterModels.EncryptionKey{})
-	clusterSvc := &cluster.Service{DB: db}
+	clusterSvc := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	s := &Service{Cluster: clusterSvc}
 
 	t.Run("empty key store succeeds", func(t *testing.T) {
@@ -42,7 +42,7 @@ func TestReconcileEncryptionKeys(t *testing.T) {
 	})
 
 	t.Run("materializes missing key file", func(t *testing.T) {
-		clusterSvc.UpsertEncryptionKeyLocally("reconcile-uuid", "reconcile-key-data-32bytes-ok", "passphrase")
+		db.Create(&clusterModels.EncryptionKey{UUID: "reconcile-uuid", KeyData: "reconcile-key-data-32bytes-ok", KeyFormat: "passphrase"})
 
 		keyPath := filepath.Join(keyDir, "reconcile-uuid")
 		os.Remove(keyPath)
@@ -61,7 +61,7 @@ func TestReconcileEncryptionKeys(t *testing.T) {
 	})
 
 	t.Run("skips when content matches", func(t *testing.T) {
-		clusterSvc.UpsertEncryptionKeyLocally("skip-uuid", "skip-key-data-32bytes-longer", "passphrase")
+		db.Create(&clusterModels.EncryptionKey{UUID: "skip-uuid", KeyData: "skip-key-data-32bytes-longer", KeyFormat: "passphrase"})
 
 		keyPath := filepath.Join(keyDir, "skip-uuid")
 		os.WriteFile(keyPath, []byte("skip-key-data-32bytes-longer"), 0600)
@@ -77,7 +77,7 @@ func TestReconcileEncryptionKeys(t *testing.T) {
 	})
 
 	t.Run("overwrites when content differs", func(t *testing.T) {
-		clusterSvc.UpsertEncryptionKeyLocally("overwrite-uuid", "db-key-data-32bytes-longer!", "passphrase")
+		db.Create(&clusterModels.EncryptionKey{UUID: "overwrite-uuid", KeyData: "db-key-data-32bytes-longer!", KeyFormat: "passphrase"})
 
 		keyPath := filepath.Join(keyDir, "overwrite-uuid")
 		os.WriteFile(keyPath, []byte("stale-content-32bytes-on-dis"), 0600)
@@ -98,7 +98,7 @@ func TestEnsureEncryptionKeyFile(t *testing.T) {
 	setEncryptionKeyDir(t, keyDir)
 
 	db := newZeltaServiceTestDB(t, &clusterModels.EncryptionKey{})
-	clusterSvc := &cluster.Service{DB: db}
+	clusterSvc := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	s := &Service{Cluster: clusterSvc}
 
 	t.Run("empty uuid errors", func(t *testing.T) {
@@ -118,7 +118,7 @@ func TestEnsureEncryptionKeyFile(t *testing.T) {
 	})
 
 	t.Run("materializes missing key file", func(t *testing.T) {
-		clusterSvc.UpsertEncryptionKeyLocally("ensure-me-uuid", "ensure-key-data-32bytes-long", "passphrase")
+		db.Create(&clusterModels.EncryptionKey{UUID: "ensure-me-uuid", KeyData: "ensure-key-data-32bytes-long", KeyFormat: "passphrase"})
 
 		keyPath := filepath.Join(keyDir, "ensure-me-uuid")
 		os.Remove(keyPath)
@@ -137,7 +137,7 @@ func TestEnsureEncryptionKeyFile(t *testing.T) {
 	})
 
 	t.Run("already existing file is no-op", func(t *testing.T) {
-		clusterSvc.UpsertEncryptionKeyLocally("exists-uuid", "already-there-key-data-32b", "passphrase")
+		db.Create(&clusterModels.EncryptionKey{UUID: "exists-uuid", KeyData: "already-there-key-data-32b", KeyFormat: "passphrase"})
 
 		keyPath := filepath.Join(keyDir, "exists-uuid")
 		os.WriteFile(keyPath, []byte("already-there-key-data-32b"), 0600)
@@ -194,7 +194,7 @@ func TestIntegrationEnsureEncryptionKeyForLoadedPromptDataset(t *testing.T) {
 	}
 
 	db := newZeltaServiceTestDB(t, &clusterModels.EncryptionKey{})
-	s.Cluster = &cluster.Service{DB: db}
+	s.Cluster = cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	err := s.fixRestoredProperties(ctx, root)
 	if err == nil || !strings.Contains(err.Error(), "restore_encryption_key_required_for_") {
 		t.Fatalf("expected locked restore activation to require a key, got: %v", err)
@@ -232,7 +232,7 @@ func TestIntegrationAutoDiscoverAndRegisterExternalFileKey(t *testing.T) {
 	}
 
 	db := newZeltaServiceTestDB(t, &clusterModels.EncryptionKey{})
-	clusterSvc := &cluster.Service{DB: db}
+	clusterSvc := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	s := &Service{GZFS: client, Cluster: clusterSvc}
 	s.AutoDiscoverAndRegisterKeys(context.Background())
 
@@ -247,7 +247,7 @@ func TestIntegrationAutoDiscoverAndRegisterExternalFileKey(t *testing.T) {
 
 func TestRegisterRestoreEncryptionKey(t *testing.T) {
 	db := newZeltaServiceTestDB(t, &clusterModels.EncryptionKey{})
-	clusterSvc := &cluster.Service{DB: db}
+	clusterSvc := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	s := &Service{Cluster: clusterSvc}
 
 	if err := s.RegisterRestoreEncryptionKey("restore-passphrase", "passphrase"); err != nil {

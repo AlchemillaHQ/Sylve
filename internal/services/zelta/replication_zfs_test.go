@@ -20,7 +20,6 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
@@ -241,7 +240,7 @@ func TestIntegrationActivationErrorReconcilesProvenRunningGeneration(t *testing.
 	}
 
 	service := newTestZeltaService(db)
-	service.Cluster = &clusterService.Service{DB: db, NodeID: "node-target"}
+	service.Cluster = newTestClusterService(db, "node-target")
 	service.GZFS = client
 	service.VM = &sequencedRuntimeVMStub{shutOffStates: []bool{true, false}}
 	scopeLocalDatasetsToPool(t, service, pool)
@@ -557,7 +556,7 @@ func TestIntegrationAdoptReturnedForceFailoverSourceAsStandby(t *testing.T) {
 
 	service := &Service{
 		DB:      db,
-		Cluster: &clusterService.Service{DB: db, NodeID: "node-old"},
+		Cluster: newTestClusterService(db, "node-old"),
 		VM:      stubVMService{shutOff: true},
 		GZFS:    client,
 	}

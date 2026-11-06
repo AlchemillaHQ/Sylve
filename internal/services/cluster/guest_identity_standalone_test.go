@@ -20,7 +20,7 @@ func TestGuestIdentityStandaloneConcurrentCrossKindReservation(t *testing.T) {
 		&vmModels.VM{},
 		&jailModels.Jail{},
 	)
-	service := &Service{DB: database, NodeID: "standalone-node"}
+	service := withFSM(&Service{DB: database, NodeID: "standalone-node"})
 
 	type result struct {
 		kind        string
@@ -63,9 +63,6 @@ func TestGuestIdentityStandaloneConcurrentCrossKindReservation(t *testing.T) {
 	}
 	if successes != 1 || conflicts != 1 {
 		t.Fatalf("standalone reservation race successes=%d conflicts=%d", successes, conflicts)
-	}
-	if winner.reservation.Clustered {
-		t.Fatalf("standalone reservation marked clustered: %+v", winner.reservation)
 	}
 	if err := service.ReleaseGuestIdentities(t.Context(), winner.reservation); err != nil {
 		t.Fatalf("release race winner: %v", err)

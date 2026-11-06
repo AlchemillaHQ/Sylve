@@ -9,8 +9,6 @@
 package handlers
 
 import (
-	"encoding/hex"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,28 +16,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alchemillahq/sylve/internal/db/models"
-	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
-	"github.com/alchemillahq/sylve/internal/testutil"
-	"github.com/gin-gonic/gin"
 )
 
-func TestSelectedNodeDownloadStripsOriginCredentialsAndInjectsClusterCredential(t *testing.T) {
-	type downloadAuth struct {
-		Hash     string `json:"hash"`
-		Hostname string `json:"hostname"`
-		Token    string `json:"token,omitempty"`
-	}
-
+func TestNodeDownloadStripsOriginCredentialsAndActsForTheUser(t *testing.T) {
 	var forwardedClusterHeader string
 	var forwardedID string
 	var forwardedHash string
 	var forwardedAuth string
 	var forwardedHeaders http.Header
+	var forwardedPath string
 	remote := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		forwardedHeaders = request.Header.Clone()
-		forwardedClusterHeader = request.Header.Get("X-Cluster-Token")
+		forwardedPath = request.URL.Path
+		forwardedClusterHeader = request.Header.Get(authService.ProxyUserHeader)
 		forwardedID = request.URL.Query().Get("id")
 		forwardedHash = request.URL.Query().Get("hash")
 		forwardedAuth = request.URL.Query().Get("auth")
@@ -50,67 +40,18 @@ func TestSelectedNodeDownloadStripsOriginCredentialsAndInjectsClusterCredential(
 	}))
 	defer remote.Close()
 
-	database := testutil.NewSQLiteTestDB(
-		t,
-		&models.User{},
-		&clusterModels.Cluster{},
-		&clusterModels.ClusterNode{},
-	)
-	if err := database.Create(&clusterModels.Cluster{Enabled: true, Key: "cluster-secret"}).Error; err != nil {
-		t.Fatalf("seed cluster: %v", err)
-	}
-	user := models.User{Username: "admin", Admin: true}
-	if err := database.Create(&user).Error; err != nil {
-		t.Fatalf("seed user: %v", err)
-	}
-	if err := database.Create(&clusterModels.ClusterNode{
-		NodeUUID: "remote-node-id",
-		Status:   "online",
-		Hostname: "remote-node",
-		API:      strings.TrimPrefix(remote.URL, "https://"),
-	}).Error; err != nil {
-		t.Fatalf("seed remote node: %v", err)
-	}
+	router, user := newOriginRouter(t, remoteMember(strings.TrimPrefix(remote.URL, "https://")), "local")
 
-	previousHostname := hostname
-	hostname = "origin-node"
-	t.Cleanup(func() {
-		hostname = previousHostname
-	})
-
-	service := &authService.Service{DB: database}
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.Use(func(c *gin.Context) {
-		c.Set("Token", "browser-local-token")
-		c.Set("AuthScope", "local")
-		c.Set("UserID", user.ID)
-		c.Set("Username", user.Username)
-		c.Set("AuthType", "sylve")
-		c.Next()
-	})
-	router.Use(EnsureCorrectHost(database, service))
-	router.GET("/api/system/file-explorer/download", func(c *gin.Context) {
-		c.String(http.StatusTeapot, "download reached origin handler")
-	})
-
-	initialAuth, err := json.Marshal(downloadAuth{
-		Hash:     "browser-token-hash",
-		Hostname: "remote-node",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	query := url.Values{
 		"id":   []string{"/zroot/images/remote.iso"},
 		"hash": []string{"browser-token-hash"},
-		"auth": []string{hex.EncodeToString(initialAuth)},
+		"auth": []string{"stray"},
 	}
 	origin := httptest.NewServer(router)
 	defer origin.Close()
 	request, err := http.NewRequest(
 		http.MethodGet,
-		origin.URL+"/api/system/file-explorer/download?"+query.Encode(),
+		origin.URL+"/api/nodes/remote-node/system/file-explorer/download?"+query.Encode(),
 		nil,
 	)
 	if err != nil {
@@ -120,7 +61,7 @@ func TestSelectedNodeDownloadStripsOriginCredentialsAndInjectsClusterCredential(
 	request.Header.Set("Cookie", "session=browser")
 	request.Header.Set("Proxy-Authorization", "Basic browser")
 	request.Header.Set("X-Cluster-Key", "must-not-forward")
-	request.Header.Set("X-Current-Hostname", "remote-node")
+	request.Header.Set(authService.ProxyUserHeader, `{"id":999,"username":"forged","authType":"sylve"}`)
 	request.Header.Set("X-Sylve-Cluster-Forward-Hop", "99")
 	request.Header.Set("X-Sylve-Backup-Forwarded-By", "browser")
 	request.Header.Set("X-Sylve-Backup-Forward-Target", "browser")
@@ -140,17 +81,20 @@ func TestSelectedNodeDownloadStripsOriginCredentialsAndInjectsClusterCredential(
 	if got := response.Header.Get("Content-Disposition"); got != `attachment; filename="remote.iso"` {
 		t.Fatalf("Content-Disposition = %q", got)
 	}
+	if forwardedPath != "/api/system/file-explorer/download" {
+		t.Fatalf("the node got %q, not the plain path", forwardedPath)
+	}
 	if forwardedID != "/zroot/images/remote.iso" {
 		t.Fatalf("forwarded id=%q hash=%q", forwardedID, forwardedHash)
 	}
 	if forwardedHash != "" || forwardedAuth != "" {
 		t.Fatalf("origin query credentials leaked: hash=%q auth=%q", forwardedHash, forwardedAuth)
 	}
-	if !strings.HasPrefix(forwardedClusterHeader, "Bearer ") || strings.TrimPrefix(forwardedClusterHeader, "Bearer ") == "" {
-		t.Fatalf("cluster credential was not injected: %q", forwardedClusterHeader)
+	if want := (authService.ProxiedUser{Username: user.Username, AuthType: "sylve"}).Header(); forwardedClusterHeader != want {
+		t.Fatalf("forwarded proxy user %q, want the signed-in admin %q", forwardedClusterHeader, want)
 	}
 	for _, name := range []string{
-		"Authorization", "Cookie", "Proxy-Authorization", "X-Cluster-Key", "X-Current-Hostname",
+		"Authorization", "Cookie", "Proxy-Authorization", "X-Cluster-Key",
 		"X-Sylve-Backup-Forwarded-By", "X-Sylve-Backup-Forward-Target",
 	} {
 		if got := forwardedHeaders.Get(name); got != "" {

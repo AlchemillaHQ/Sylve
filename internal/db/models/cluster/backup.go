@@ -153,91 +153,6 @@ type BackupEvent struct {
 	UpdatedAt      time.Time  `gorm:"autoUpdateTime" json:"updatedAt"`
 }
 
-func UpsertBackupTargetTxn(db *gorm.DB, target *BackupTarget) error {
-	return upsertBackupTarget(db, target)
-}
-
-func upsertBackupTarget(db *gorm.DB, target *BackupTarget) error {
-	if db == nil {
-		return fmt.Errorf("backup_target_database_unavailable")
-	}
-	if target.ID == 0 {
-		return fmt.Errorf("backup_target_id_required")
-	}
-
-	normalized := normalizeBackupTarget(*target)
-	*target = normalized
-
-	return db.Transaction(func(tx *gorm.DB) error {
-		var existingByID BackupTarget
-		queryByID := tx.Where("id = ?", target.ID).Limit(1).Find(&existingByID)
-		if queryByID.Error != nil {
-			return queryByID.Error
-		}
-		hasByID := queryByID.RowsAffected > 0
-
-		var existingByName BackupTarget
-		queryByName := tx.Where("name = ?", target.Name).Limit(1).Find(&existingByName)
-		if queryByName.Error != nil {
-			return queryByName.Error
-		}
-		hasByName := queryByName.RowsAffected > 0
-
-		now := replicatedCommandTime(tx)
-		updates := map[string]any{
-			"name":               target.Name,
-			"ssh_host":           target.SSHHost,
-			"ssh_port":           target.SSHPort,
-			"ssh_key_path":       target.SSHKeyPath,
-			"ssh_key":            target.SSHKey,
-			"backup_root":        target.BackupRoot,
-			"create_backup_root": target.CreateBackupRoot,
-			"description":        target.Description,
-			"enabled":            target.Enabled,
-			"updated_at":         now,
-		}
-
-		invalidateReadiness := func(existing BackupTarget) error {
-			if BackupTargetConnectivityFingerprint(&existing) == BackupTargetConnectivityFingerprint(target) ||
-				!tx.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
-				return nil
-			}
-			return tx.Where("target_id = ?", target.ID).Delete(&BackupTargetNodeReadiness{}).Error
-		}
-
-		switch {
-		case hasByID:
-			if hasByName && existingByName.ID != existingByID.ID {
-				return fmt.Errorf("backup_target_name_conflict_id_mismatch")
-			}
-
-			if backupTargetsEquivalent(existingByID, *target) {
-				return nil
-			}
-			if err := tx.Model(&BackupTarget{}).Where("id = ?", target.ID).Updates(updates).Error; err != nil {
-				return err
-			}
-			return invalidateReadiness(existingByID)
-
-		case hasByName:
-			if existingByName.ID != target.ID {
-				return fmt.Errorf("backup_target_name_conflict_id_mismatch")
-			}
-
-			if backupTargetsEquivalent(existingByName, *target) {
-				return nil
-			}
-			if err := tx.Model(&BackupTarget{}).Where("id = ?", target.ID).Updates(updates).Error; err != nil {
-				return err
-			}
-			return invalidateReadiness(existingByName)
-
-		default:
-			return tx.Create(target).Error
-		}
-	})
-}
-
 func normalizeBackupTarget(target BackupTarget) BackupTarget {
 	target.Name = strings.TrimSpace(target.Name)
 	target.SSHHost = strings.TrimSpace(target.SSHHost)
@@ -256,19 +171,6 @@ func normalizeBackupTarget(target BackupTarget) BackupTarget {
 	}
 
 	return target
-}
-
-func backupTargetsEquivalent(existing BackupTarget, incoming BackupTarget) bool {
-	return existing.ID == incoming.ID &&
-		existing.Name == incoming.Name &&
-		existing.SSHHost == incoming.SSHHost &&
-		existing.SSHPort == incoming.SSHPort &&
-		existing.SSHKeyPath == incoming.SSHKeyPath &&
-		existing.SSHKey == incoming.SSHKey &&
-		existing.BackupRoot == incoming.BackupRoot &&
-		existing.CreateBackupRoot == incoming.CreateBackupRoot &&
-		existing.Description == incoming.Description &&
-		existing.Enabled == incoming.Enabled
 }
 
 func upsertBackupJob(db *gorm.DB, job *BackupJob) error {
@@ -297,30 +199,6 @@ func upsertBackupJob(db *gorm.DB, job *BackupJob) error {
 			"updated_at",
 		}),
 	}).Create(job).Error
-}
-
-// InsertBackupJobTxn is the standalone create guard. Clustered creates retain
-// the legacy upsert FSM action for mixed-version and log replay compatibility;
-// their IDs are collision-checked while the leader's create lock is held.
-func InsertBackupJobTxn(db *gorm.DB, job *BackupJob) error {
-	if db == nil {
-		return fmt.Errorf("backup_job_database_unavailable")
-	}
-	if job == nil || job.ID == 0 {
-		return fmt.Errorf("backup_job_id_required")
-	}
-
-	result := db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "id"}},
-		DoNothing: true,
-	}).Create(job)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		return fmt.Errorf("backup_job_id_conflict")
-	}
-	return nil
 }
 
 // ApplyBackupJobUpdateTxn applies an already validated ordinary job update.

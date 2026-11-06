@@ -10,24 +10,24 @@ package clusterHandlers
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/cmd"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
-	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
-	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"github.com/hashicorp/raft"
 )
 
@@ -46,6 +46,8 @@ type AcceptJoinRequest = cluster.JoinAdmissionRequest
 
 type JoinKeyResponse struct {
 	Key string `json:"key"`
+	// Address is the node the key joins through.
+	Address string `json:"address"`
 }
 
 type RemovePeerRequest struct {
@@ -54,7 +56,18 @@ type RemovePeerRequest struct {
 }
 
 type ResetNodeRequest struct {
-	RetainGuests *bool `json:"retainGuests"`
+	RetainGuests bool `json:"retainGuests"`
+}
+
+type ForceResetNodeRequest struct {
+	NodeID                       string `json:"nodeId"`
+	RemoteMembershipAcknowledged bool   `json:"remoteMembershipAcknowledged"`
+	WorkloadsExternallyFenced    bool   `json:"workloadsExternallyFenced"`
+}
+
+type ForceRemovePeerRequest struct {
+	NodeID                 string `json:"nodeId" binding:"required"`
+	TargetExternallyFenced bool   `json:"targetExternallyFenced"`
 }
 
 type MembershipStatusRequest struct {
@@ -93,115 +106,31 @@ func fetchNodeHealth(ctx context.Context, healthURL string, headers map[string]s
 	return result, nil
 }
 
-func postJoinAdmission(
-	ctx context.Context,
-	url string,
-	payload AcceptJoinRequest,
-	headers map[string]string,
-) (internal.APIResponse[cluster.GuestIdentityInventoryReport], int, error) {
-	var response internal.APIResponse[cluster.GuestIdentityInventoryReport]
-	requestBody, err := json.Marshal(payload)
-	if err != nil {
-		return response, 0, err
-	}
-	httpResponse, err := utils.HTTPRequestReadContext(
-		ctx,
-		http.MethodPost,
-		url,
-		requestBody,
-		headers,
-		30*time.Second,
-		4<<20,
-	)
-	statusCode := httpResponse.StatusCode
-	body := httpResponse.Body
-	if len(body) > 0 {
-		if decodeErr := json.Unmarshal(body, &response); decodeErr != nil && err == nil {
-			return response, statusCode, fmt.Errorf("decode_join_admission_response_failed: %w", decodeErr)
-		}
-	}
-	if err != nil {
-		return response, statusCode, err
-	}
-	if statusCode < 200 || statusCode >= 300 {
-		return response, statusCode, fmt.Errorf("join_admission_http_status_%d", statusCode)
-	}
-	if response.Status != "success" {
-		return response, statusCode, fmt.Errorf("join_admission_rejected: %s", response.Error)
-	}
-	return response, statusCode, nil
-}
-
+// The joining node gives up on a 4xx and asks again on anything else.
 func writeJoinAdmissionError(c *gin.Context, err error) {
 	var conflict *cluster.GuestIdentityInventoryConflictError
 	if errors.As(err, &conflict) {
 		c.JSON(http.StatusConflict, internal.APIResponse[cluster.GuestIdentityInventoryReport]{
-			Status:  "error",
-			Message: "guest_identity_inventory_conflict",
-			Error:   err.Error(),
-			Data:    conflict.Report,
+			Status: "error", Message: "guest_identity_inventory_conflict", Error: err.Error(), Data: conflict.Report,
 		})
 		return
 	}
-	// Match version errors by type: their text can contain "joining_node",
-	// which the substring checks below would turn into a permanent failure.
 	var versionErr *cluster.ClusterVersionError
-	if errors.As(err, &versionErr) {
-		status := http.StatusConflict
-		if versionErr.Code == "cluster_version_check_unavailable" {
-			status = http.StatusServiceUnavailable
-		}
-		c.JSON(status, internal.APIResponse[any]{
-			Status: "error", Message: versionErr.Code, Error: err.Error(), Data: nil,
-		})
-		return
-	}
-	message := "cluster_join_failed"
-	status := http.StatusBadRequest
 	errText := err.Error()
+	status, message := http.StatusServiceUnavailable, "cluster_join_admission_unavailable"
 	switch {
-	case strings.HasPrefix(errText, "not_leader;"):
-		message = "not_leader"
-		status = http.StatusConflict
-	case strings.Contains(errText, "cluster_leave_guest_id_release_pending"):
-		message = "cluster_leave_guest_id_release_pending"
-		status = http.StatusConflict
-	case isUncertainJoinOutcome(errText):
+	case errors.As(err, &versionErr):
+		status, message = http.StatusConflict, versionErr.Code
+	case strings.Contains(errText, "invalid_cluster_key"):
+		status, message = http.StatusForbidden, "invalid_cluster_key"
+	case strings.HasPrefix(errText, "add_nonvoter_failed"), strings.HasPrefix(errText, "joining_guest_identity_claim_failed"):
 		message = "cluster_join_outcome_uncertain"
-		status = http.StatusServiceUnavailable
-	case strings.Contains(errText, "inventory_unavailable") ||
-		strings.Contains(errText, "inventory_auth_service_unavailable") ||
-		strings.Contains(errText, "inventory_remote_") ||
-		strings.Contains(errText, "inventory_cluster_token_failed") ||
-		strings.Contains(errText, "inventory_collection_canceled"):
-		message = "guest_identity_inventory_unavailable"
-		status = http.StatusServiceUnavailable
-	case strings.Contains(errText, "inventory") || strings.Contains(errText, "joining_node"):
-		message = "guest_identity_join_preflight_failed"
-		status = http.StatusConflict
+	case strings.HasPrefix(errText, "joining_node_hostname_taken"):
+		status, message = http.StatusConflict, "joining_node_hostname_taken"
+	case strings.HasPrefix(errText, "invalid_joining_node_ip"), strings.HasPrefix(errText, "joining_"):
+		status, message = http.StatusConflict, "cluster_join_refused"
 	}
-	c.JSON(status, internal.APIResponse[any]{
-		Status:  "error",
-		Message: message,
-		Error:   errText,
-		Data:    nil,
-	})
-}
-
-func isUncertainJoinOutcome(errText string) bool {
-	for _, marker := range []string{
-		"add_nonvoter_failed",
-		"replicated_state_catchup_failed",
-		"replicated_state_verification_failed",
-		"replicated_state_digest_mismatch",
-		"replicated_state_promote_nonvoter_failed",
-		"replicated_state_promote_unfence_failed",
-	} {
-		if strings.Contains(errText, marker) {
-			return true
-		}
-	}
-	return false
+	c.JSON(status, internal.APIResponse[any]{Status: "error", Message: message, Error: errText})
 }
 
 // @Summary Get Cluster
@@ -237,8 +166,8 @@ func GetCluster(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
-// @Summary Reveal Cluster Join Key
-// @Description Reveal the enabled cluster key to a local administrator for node enrollment
+// @Summary Generate Cluster Join Key
+// @Description Make a key that lets one node join through this node, at the returned address. It replaces any earlier key, and it's shown only now: the cluster keeps only its hash. Admitting a node or removing one makes it stop working.
 // @Tags Cluster
 // @Produce json
 // @Security BearerAuth
@@ -247,33 +176,25 @@ func GetCluster(cS *cluster.Service) gin.HandlerFunc {
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 409 {object} internal.APIResponse[any] "Cluster join key unavailable"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /cluster/join-key [get]
-func GetJoinKey(authService *auth.Service) gin.HandlerFunc {
+// @Router /cluster/join-key [post]
+func GenerateJoinKey(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
 		c.Header("Pragma", "no-cache")
 		c.Header("Referrer-Policy", "no-referrer")
 
-		key, err := authService.GetClusterKey()
+		key, address, err := cS.GenerateJoinKey(c.Request.Context())
 		if err != nil {
-			if strings.Contains(err.Error(), "cluster_key_not_found") ||
-				strings.Contains(err.Error(), "cluster_key_not_configured") {
-				c.JSON(http.StatusConflict, internal.APIResponse[any]{
-					Status: "error", Message: "cluster_join_key_unavailable",
-					Error: "cluster_join_key_unavailable", Data: nil,
-				})
-				return
+			status, message := http.StatusInternalServerError, "cluster_join_key_generation_failed"
+			if strings.Contains(err.Error(), "cluster_join_key_unavailable") {
+				status, message = http.StatusConflict, "cluster_join_key_unavailable"
 			}
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status: "error", Message: "cluster_join_key_lookup_failed",
-				Error: "cluster_join_key_lookup_failed", Data: nil,
-			})
+			c.JSON(status, internal.APIResponse[any]{Status: "error", Message: message, Error: err.Error()})
 			return
 		}
-
 		c.JSON(http.StatusOK, internal.APIResponse[JoinKeyResponse]{
-			Status: "success", Message: "cluster_join_key_fetched",
-			Error: "", Data: JoinKeyResponse{Key: key},
+			Status: "success", Message: "cluster_join_key_generated",
+			Data: JoinKeyResponse{Key: key.String(), Address: address},
 		})
 	}
 }
@@ -293,7 +214,7 @@ func GetJoinKey(authService *auth.Service) gin.HandlerFunc {
 // @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /cluster [post]
-func CreateCluster(cS *cluster.Service, fsm raft.FSM) gin.HandlerFunc {
+func CreateCluster(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req CreateClusterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -305,7 +226,7 @@ func CreateCluster(cS *cluster.Service, fsm raft.FSM) gin.HandlerFunc {
 			return
 		}
 
-		if err := cS.CreateCluster(req.IP, fsm); err != nil {
+		if err := cS.CreateCluster(req.IP); err != nil {
 			var conflict *cluster.GuestIdentityInventoryConflictError
 			if errors.As(err, &conflict) {
 				writeJoinAdmissionError(c, err)
@@ -331,11 +252,13 @@ func CreateCluster(cS *cluster.Service, fsm raft.FSM) gin.HandlerFunc {
 
 // @Summary Join Cluster
 // @Description Join an existing cluster. A returning node uses the same endpoint, and all of its current VM, jail and container IDs must be free in the cluster.
+// @Description The leader admits the node first, and a refusal changes nothing on it. Then it starts Raft and catches up; the leader makes it a voter once it has.
 // @Tags Cluster
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param request body JoinClusterRequest true "Join Cluster Request"
+// @Success 202 {object} internal.APIResponse[cluster.ClusterJoinStatus] "Join started"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
@@ -344,21 +267,11 @@ func CreateCluster(cS *cluster.Service, fsm raft.FSM) gin.HandlerFunc {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /cluster/join [post]
-func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.HandlerFunc {
+func JoinCluster(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req JoinClusterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			writeClusterJSONBindError(c, err, "invalid_request_payload")
-			return
-		}
-
-		if !utils.IsValidIP(req.LeaderIP) {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_leader_ip",
-				Error:   "leader_ip_must_be_valid",
-				Data:    nil,
-			})
 			return
 		}
 		if !utils.IsValidIPv4(req.LeaderIP) {
@@ -369,242 +282,81 @@ func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.Handl
 			writeClusterIPv6Unsupported(c, "node_ip")
 			return
 		}
-
-		clusterKey := strings.TrimSpace(req.ClusterKey)
-		if clusterKey == "" {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status: "error", Message: "invalid_cluster_key",
-				Error: "cluster_key_required", Data: nil,
-			})
-			return
-		}
-
-		leaderAPIHost := joinLeaderAPIHost(req.LeaderIP)
-		healthHeaders := map[string]string{
-			"Accept":              "application/json",
-			auth.ClusterKeyHeader: clusterKey,
-		}
-		admissionHeaders := map[string]string{
-			"Accept":              "application/json",
-			"Content-Type":        "application/json",
-			auth.ClusterKeyHeader: clusterKey,
-		}
-
-		healthURL := fmt.Sprintf(
-			"https://%s/api/health/basic",
-			leaderAPIHost,
-		)
-
-		healthResult, err := fetchNodeHealth(c.Request.Context(), healthURL, healthHeaders)
+		key, err := cluster.ParseJoinKey(req.ClusterKey)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "error_pinging_cluster_bad_leader_response",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{Status: "error", Message: "cluster_join_key_invalid", Error: err.Error()})
 			return
 		}
-
-		leaderVersion := strings.TrimSpace(healthResult.health.SylveVersion)
-		localVersion := strings.TrimSpace(cmd.Version)
-		if leaderVersion == "" {
+		if localNodeID := cS.LocalNodeID(); localNodeID == "" || localNodeID != strings.TrimSpace(req.NodeID) {
 			c.JSON(http.StatusConflict, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "cluster_version_mismatch",
-				Error:   "leader_version_unavailable",
-				Data:    nil,
+				Status: "error", Message: "joining_node_id_mismatch",
+				Error: fmt.Sprintf("expected=%s actual=%s", localNodeID, strings.TrimSpace(req.NodeID)),
 			})
 			return
 		}
 
-		if localVersion == "" || leaderVersion != localVersion {
-			c.JSON(http.StatusConflict, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "cluster_version_mismatch",
-				Error:   fmt.Sprintf("leader=%s,node=%s", leaderVersion, localVersion),
-				Data:    nil,
-			})
-			return
-		}
-
-		if offset, known := measureClockOffset(
-			healthResult.health.ServerTime,
-			healthResult.requestStart,
-			healthResult.responseAt,
-		); known && joinClockDriftBlocked(offset) {
-			c.JSON(http.StatusConflict, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "cluster_join_clock_drift",
-				Error:   "leader_offset=" + formatClockOffset(offset),
-				Data:    nil,
-			})
-			return
-		}
-
-		localNodeID := strings.TrimSpace(cS.LocalNodeID())
-		if localNodeID == "" || localNodeID != strings.TrimSpace(req.NodeID) {
-			c.JSON(http.StatusConflict, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "joining_node_id_mismatch",
-				Error:   fmt.Sprintf("expected=%s actual=%s", localNodeID, strings.TrimSpace(req.NodeID)),
-				Data:    nil,
-			})
-			return
-		}
-
-		inventory, err := cluster.ScanLocalGuestIdentityInventory(cS.DB, localNodeID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "guest_identity_inventory_scan_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-		if len(inventory.Conflicts) != 0 {
-			writeJoinAdmissionError(c, &cluster.GuestIdentityInventoryConflictError{Report: inventory})
-			return
-		}
-		acceptURL := fmt.Sprintf("https://%s/api/cluster/accept-join", leaderAPIHost)
-		admission := AcceptJoinRequest{
-			NodeID:      localNodeID,
-			NodeIP:      req.NodeIP,
-			NodeVersion: localVersion,
-			Preflight:   true,
-			Inventory:   inventory,
-		}
-		leaderResponse, statusCode, err := postJoinAdmission(
-			c.Request.Context(), acceptURL, admission, admissionHeaders,
+		health, err := fetchNodeHealth(
+			utils.ForJoin(c.Request.Context(), key.VerifyPin),
+			fmt.Sprintf("https://%s/api/health/basic", joinLeaderAPIHost(req.LeaderIP)),
+			map[string]string{"Accept": "application/json", auth.ClusterKeyHeader: key.Secret},
 		)
 		if err != nil {
-			if leaderResponse.Message != "" {
-				if statusCode < 400 {
-					statusCode = http.StatusConflict
-				}
-				c.JSON(statusCode, leaderResponse)
-				return
+			status, message := http.StatusInternalServerError, "error_pinging_cluster_bad_leader_response"
+			if strings.Contains(err.Error(), "cluster_join_key_node_mismatch") {
+				status, message = http.StatusConflict, "cluster_join_key_node_mismatch"
 			}
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "cluster_join_preflight_failed",
-				Error:   err.Error(),
-				Data:    nil,
+			c.JSON(status, internal.APIResponse[any]{Status: "error", Message: message, Error: err.Error()})
+			return
+		}
+		leaderVersion, localVersion := strings.TrimSpace(health.health.SylveVersion), strings.TrimSpace(cmd.Version)
+		if leaderVersion == "" || leaderVersion != localVersion {
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status: "error", Message: "cluster_version_mismatch",
+				Error: fmt.Sprintf("leader=%s,node=%s", leaderVersion, localVersion),
+			})
+			return
+		}
+		if offset, known := measureClockOffset(health.health.ServerTime, health.requestStart, health.responseAt); known && joinClockDriftBlocked(offset) {
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status: "error", Message: "cluster_join_clock_drift", Error: "leader_offset=" + formatClockOffset(offset),
 			})
 			return
 		}
 
-		latestInventory, err := cluster.ScanLocalGuestIdentityInventory(cS.DB, localNodeID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "guest_identity_inventory_scan_failed",
-				Error:   err.Error(),
-				Data:    nil,
+		status, err := cS.Join(c.Request.Context(), req.LeaderIP, req.NodeIP, key.String())
+		var refused *cluster.JoinAdmissionError
+		switch {
+		case errors.As(err, &refused):
+			c.JSON(refused.StatusCode, internal.APIResponse[json.RawMessage]{
+				Status: "error", Message: refused.Message, Error: refused.Detail, Data: refused.Data,
 			})
-			return
-		}
-		if latestInventory.Digest != inventory.Digest {
-			c.JSON(http.StatusConflict, internal.APIResponse[cluster.GuestIdentityInventoryReport]{
-				Status:  "error",
-				Message: "joining_inventory_changed_before_start",
-				Error:   "joining_inventory_changed_before_start",
-				Data:    latestInventory,
+		case err != nil:
+			statusCode := http.StatusInternalServerError
+			switch {
+			case errors.Is(err, cluster.ErrNodeLeaveFenced):
+				statusCode = http.StatusLocked
+			case strings.HasPrefix(err.Error(), "invalid_"):
+				statusCode = http.StatusBadRequest
+			case err.Error() == "clustered_already", err.Error() == "guest_identity_mutation_in_progress":
+				statusCode = http.StatusConflict
+			}
+			c.JSON(statusCode, internal.APIResponse[any]{Status: "error", Message: "cluster_join_failed", Error: err.Error()})
+		default:
+			c.JSON(http.StatusAccepted, internal.APIResponse[cluster.ClusterJoinStatus]{
+				Status: "success", Message: "cluster_join_started", Data: status,
 			})
-			return
 		}
-
-		admission.Preflight = false
-		if err := cS.SaveJoinIntent(req.LeaderIP, clusterKey, admission); err != nil {
-			var conflict *cluster.GuestIdentityInventoryConflictError
-			if errors.As(err, &conflict) {
-				writeJoinAdmissionError(c, err)
-				return
-			}
-			for _, message := range []string{
-				"joining_inventory_changed_before_start",
-				"guest_identity_mutation_in_progress",
-			} {
-				if strings.Contains(err.Error(), message) {
-					c.JSON(http.StatusConflict, internal.APIResponse[any]{
-						Status:  "error",
-						Message: message,
-						Error:   err.Error(),
-						Data:    nil,
-					})
-					return
-				}
-			}
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "cluster_join_intent_save_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-		_ = cS.MarkJoinIntentPhase(cluster.JoinPhaseStarting, nil)
-		err = cS.StartAsJoiner(fsm, req.NodeIP, clusterKey)
-		if err != nil {
-			_ = cS.MarkJoinIntentPhase(cluster.JoinPhaseFailed, err)
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "error_starting_joiner",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		submission := cS.SubmitJoinIntent(c.Request.Context())
-		if submission.Err != nil && !submission.Retryable {
-			if submission.Response.Message != "" {
-				statusCode = submission.StatusCode
-				if statusCode < 400 {
-					statusCode = http.StatusConflict
-				}
-				c.JSON(statusCode, submission.Response)
-				return
-			}
-			c.JSON(http.StatusConflict, internal.APIResponse[cluster.ClusterJoinStatus]{
-				Status:  "error",
-				Message: "cluster_join_rejected",
-				Error:   submission.Err.Error(),
-				Data:    submission.Status,
-			})
-			return
-		}
-
-		status := submission.Status
-		if strings.TrimSpace(status.NodeID) == "" {
-			status, _ = cS.JoinStatus()
-		}
-		if status.Phase == cluster.JoinPhaseComplete && zS != nil {
-			if err := zS.ReconcileBackupTargetSSHKeys(); err != nil {
-				logger.L.Warn().Err(err).Msg("backup_target_ssh_reconciliation_deferred_after_join")
-			}
-			if err := zS.ReconcileEncryptionKeys(); err != nil {
-				logger.L.Warn().Err(err).Msg("encryption_key_reconciliation_deferred_after_join")
-			}
-		}
-
-		c.JSON(http.StatusAccepted, internal.APIResponse[cluster.ClusterJoinStatus]{
-			Status:  "success",
-			Message: "cluster_join_started",
-			Error:   "",
-			Data:    status,
-		})
 	}
 }
 
 // @Summary Accept Join
-// @Description Accept a join request from a cluster node
+// @Description Admit a node to the cluster as a nonvoter. The leader makes it a voter once it caught up.
 // @Tags Cluster
 // @Accept json
 // @Produce json
 // @Security ClusterKeyAuth
 // @Param request body AcceptJoinRequest true "Accept Join Request"
+// @Success 202 {object} internal.APIResponse[cluster.ClusterJoinStatus] "Admitted"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
@@ -615,9 +367,13 @@ func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.Handl
 // @Router /cluster/accept-join [post]
 func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		clusterKey := c.GetString("ClusterKey")
+		body, err := c.GetRawData()
+		if err != nil {
+			writeClusterJSONBindError(c, err, "invalid_request_payload")
+			return
+		}
 		var req AcceptJoinRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
+		if err := binding.JSON.BindBody(body, &req); err != nil {
 			writeClusterJSONBindError(c, err, "invalid_request_payload")
 			return
 		}
@@ -625,112 +381,50 @@ func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 			writeClusterIPv6Unsupported(c, "node_ip")
 			return
 		}
-
-		localVersion := strings.TrimSpace(cmd.Version)
-		nodeVersion := strings.TrimSpace(req.NodeVersion)
-		if localVersion == "" || nodeVersion == "" || nodeVersion != localVersion {
-			c.JSON(http.StatusConflict, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "cluster_version_mismatch",
-				Error:   fmt.Sprintf("leader=%s,node=%s", localVersion, nodeVersion),
-				Data:    nil,
-			})
+		var pin [sha256.Size]byte
+		// Forwarded by the member the joiner asked. A joiner asking again after it
+		// was admitted is a member too, but sends its own cert, not a pin header.
+		forwarded := cluster.PeerNode(c.Request) != "" && c.GetHeader(cluster.JoinerPinHeader) != ""
+		switch {
+		case forwarded:
+			decoded, decodeErr := hex.DecodeString(c.GetHeader(cluster.JoinerPinHeader))
+			if decodeErr != nil || len(decoded) != len(pin) {
+				writeJoinAdmissionError(c, fmt.Errorf("joining_node_cert_required"))
+				return
+			}
+			copy(pin[:], decoded)
+		case c.Request.TLS == nil || len(c.Request.TLS.PeerCertificates) == 0:
+			writeJoinAdmissionError(c, fmt.Errorf("joining_node_cert_required"))
 			return
+		default:
+			pin = cluster.CertPin(c.Request.TLS.PeerCertificates[0])
 		}
-
-		if !req.Preflight {
-			leaderState := cS.JoinAdmissionLeaderState(req.NodeID)
-			if leaderState.Redirect {
-				writeJoinAdmissionError(c, fmt.Errorf(
-					"not_leader; leader_addr=%s; leader_id=%s",
-					string(leaderState.LeaderAddress),
-					string(leaderState.LeaderID),
-				))
+		if r := cS.Raft(); !forwarded && r != nil && r.State() != raft.Leader {
+			leaderAddress, _ := r.LeaderWithID()
+			leaderAPI := resolveLeaderAPIForForward(cS, "", string(leaderAddress))
+			if leaderAPI == "" {
+				writeJoinAdmissionError(c, fmt.Errorf("not_leader"))
 				return
 			}
-			if leaderState.Deferral != "" {
-				c.JSON(http.StatusConflict, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "cluster_join_promotion_deferred",
-					Error:   leaderState.Deferral,
-					Data:    nil,
-				})
-				return
-			}
-			joinerHealthURL := fmt.Sprintf("https://%s/api/health/basic", cluster.ClusterAPIHost(req.NodeIP))
-			joinerHealthResult, err := fetchNodeHealth(
-				c.Request.Context(),
-				joinerHealthURL,
-				map[string]string{auth.ClusterKeyHeader: clusterKey},
-			)
-			joinerVersion := ""
-			if err == nil {
-				joinerVersion = strings.TrimSpace(joinerHealthResult.health.SylveVersion)
-			}
-			if err != nil || joinerVersion == "" {
-				reason := "joiner_version_unavailable"
-				if err != nil {
-					reason = fmt.Sprintf("joiner_version_unavailable: %v", err)
-				}
-
-				c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "cluster_version_check_unavailable",
-					Error:   reason,
-					Data:    nil,
-				})
-				return
-			}
-
-			if joinerVersion != localVersion || joinerVersion != nodeVersion {
-				c.JSON(http.StatusConflict, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "cluster_version_mismatch",
-					Error:   fmt.Sprintf("leader=%s,node=%s", localVersion, joinerVersion),
-					Data:    nil,
-				})
-				return
-			}
-		}
-
-		if req.Preflight {
-			report, err := cS.PreflightJoinInventory(
-				c.Request.Context(),
-				req.NodeID,
-				req.NodeIP,
-				clusterKey,
-				req.Inventory,
-			)
+			response, err := clusterForwardHTTP(c.Request.Context(), http.MethodPost, leaderAPI+"/api/cluster/accept-join", body,
+				map[string]string{
+					"Accept": "application/json", "Content-Type": "application/json",
+					auth.ClusterKeyHeader: c.GetString("ClusterKey"), cluster.JoinerPinHeader: hex.EncodeToString(pin[:]),
+				}, clusterForwardTimeout)
 			if err != nil {
-				writeJoinAdmissionError(c, err)
+				writeJoinAdmissionError(c, fmt.Errorf("join_forward_failed: %w", err))
 				return
 			}
-			c.JSON(http.StatusOK, internal.APIResponse[cluster.GuestIdentityInventoryReport]{
-				Status:  "success",
-				Message: "cluster_join_preflight_passed",
-				Error:   "",
-				Data:    report,
-			})
+			c.Data(response.StatusCode, "application/json", response.Body)
 			return
 		}
-
-		status, err := cS.StageJoinInventory(
-			c.Request.Context(),
-			req.NodeID,
-			req.NodeIP,
-			clusterKey,
-			req.Inventory,
-		)
+		status, err := cS.AdmitJoiner(c.Request.Context(), req, c.GetString("ClusterKey"), pin)
 		if err != nil {
 			writeJoinAdmissionError(c, err)
 			return
 		}
-
 		c.JSON(http.StatusAccepted, internal.APIResponse[cluster.ClusterJoinStatus]{
-			Status:  "success",
-			Message: "cluster_join_started",
-			Error:   "",
-			Data:    status,
+			Status: "success", Message: "cluster_join_started", Data: status,
 		})
 	}
 }
@@ -750,53 +444,20 @@ func GetJoinStatus(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
-func JoinProgressInternal(cS *cluster.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		minimumIndex, err := strconv.ParseUint(
-			strings.TrimSpace(c.Query("minimumRaftAppliedIndex")),
-			10,
-			64,
-		)
-		if err != nil && strings.TrimSpace(c.Query("minimumRaftAppliedIndex")) != "" {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_minimum_raft_applied_index",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-		progress, err := cS.LocalJoinProgress(
-			c.Request.Context(),
-			c.Query("expectedNodeId"),
-			minimumIndex,
-		)
-		if err != nil {
-			c.JSON(http.StatusConflict, internal.APIResponse[any]{
-				Status: "error", Message: "cluster_join_progress_failed", Error: err.Error(), Data: nil,
-			})
-			return
-		}
-		c.JSON(http.StatusOK, internal.APIResponse[cluster.ClusterJoinProgress]{
-			Status: "success", Message: "cluster_join_progress", Error: "", Data: progress,
-		})
-	}
-}
-
 // @Summary Leave Cluster
-// @Description Safely remove this node from Raft and clear its local cluster state.
-// @Description Registered guests block a multi-node leave by default. Set retainGuests=true to keep local VM and jail registrations and release their cluster ID claims after membership removal. Other dependencies still block.
+// @Description Remove this node from the cluster and clear its local cluster state. The node keeps its VMs, jails and containers.
+// @Description A node with guests is refused with them listed unless retainGuests=true confirms it keeps them. Other dependencies still block.
 // @Tags Cluster
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param request body ResetNodeRequest false "Optional leave options"
-// @Success 200 {object} internal.APIResponse[cluster.ClusterLeaveResult] "Success"
-// @Failure 202 {object} internal.APIResponse[cluster.ClusterLeaveResult] "Leave pending"
+// @Success 200 {object} internal.APIResponse[cluster.ClusterLeaveStatus] "Success"
+// @Failure 202 {object} internal.APIResponse[cluster.ClusterLeaveStatus] "Leave pending"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
-// @Failure 409 {object} internal.APIResponse[any] "Leave conflict"
+// @Failure 409 {object} internal.APIResponse[cluster.PeerRemovalConflict] "Leave conflict"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /cluster/reset-node [delete]
@@ -807,18 +468,11 @@ func ResetRaftNode(cS *cluster.Service) gin.HandlerFunc {
 			writeClusterJSONBindError(c, err, "invalid_request_payload")
 			return
 		}
-		result, err := cS.LeaveClusterWithGuests(c.Request.Context(), request.RetainGuests)
-		if err != nil {
-			writeClusterLeaveError(c, result, err)
+		if err := cS.Leave(c.Request.Context(), request.RetainGuests); err != nil {
+			writeClusterLeaveError(c, cS, err)
 			return
 		}
-
-		c.JSON(http.StatusOK, internal.APIResponse[cluster.ClusterLeaveResult]{
-			Status:  "success",
-			Message: "cluster_leave_completed",
-			Error:   "",
-			Data:    result,
-		})
+		writeClusterLeaveSuccess(c, cS, "cluster_leave_completed")
 	}
 }
 
@@ -828,8 +482,8 @@ func ResetRaftNode(cS *cluster.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body cluster.ForceLocalResetRequest true "Force Local Reset Request"
-// @Success 200 {object} internal.APIResponse[cluster.ClusterLeaveResult] "Success"
+// @Param request body ForceResetNodeRequest true "Force Local Reset Request"
+// @Success 200 {object} internal.APIResponse[cluster.ClusterLeaveStatus] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
@@ -837,196 +491,45 @@ func ResetRaftNode(cS *cluster.Service) gin.HandlerFunc {
 // @Router /cluster/reset-node/force [delete]
 func ForceResetRaftNode(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var request cluster.ForceLocalResetRequest
+		var request ForceResetNodeRequest
 		if err := c.ShouldBindJSON(&request); err != nil {
 			writeClusterJSONBindError(c, err, "invalid_request_payload")
 			return
 		}
-		result, err := cS.ForceLocalReset(c.Request.Context(), request)
-		if err != nil {
-			writeClusterLeaveError(c, result, err)
+		ack := ""
+		switch {
+		case strings.TrimSpace(request.NodeID) == "" || strings.TrimSpace(request.NodeID) != cS.LocalNodeID():
+			ack = "cluster_force_local_node_id_mismatch"
+		case !request.RemoteMembershipAcknowledged:
+			ack = "cluster_force_membership_ack_required"
+		case !request.WorkloadsExternallyFenced:
+			ack = "cluster_force_workload_fence_ack_required"
+		}
+		if ack != "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{Status: "error", Message: ack, Error: ack})
 			return
 		}
-		c.JSON(http.StatusOK, internal.APIResponse[cluster.ClusterLeaveResult]{
-			Status: "success", Message: "cluster_local_reset_forced", Error: "", Data: result,
-		})
-	}
-}
-
-func ReplicatedStateInternal(cS *cluster.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		minimumIndex, err := strconv.ParseUint(
-			strings.TrimSpace(c.Query("minimumRaftAppliedIndex")),
-			10,
-			64,
-		)
-		if err != nil && strings.TrimSpace(c.Query("minimumRaftAppliedIndex")) != "" {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_minimum_raft_applied_index",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if err := cS.ForceLocalReset(c.Request.Context()); err != nil {
+			writeClusterLeaveError(c, cS, err)
 			return
 		}
-		digest, err := cS.LocalReplicatedStateDigest(
-			c.Request.Context(),
-			c.Query("expectedNodeId"),
-			minimumIndex,
-		)
-		if err != nil {
-			c.JSON(http.StatusConflict, internal.APIResponse[cluster.ReplicatedStateDigest]{
-				Status:  "error",
-				Message: "replicated_state_unavailable",
-				Error:   err.Error(),
-				Data:    digest,
-			})
-			return
-		}
-		c.JSON(http.StatusOK, internal.APIResponse[cluster.ReplicatedStateDigest]{
-			Status:  "success",
-			Message: "replicated_state_captured",
-			Error:   "",
-			Data:    digest,
-		})
-	}
-}
-
-func ReplicatedStateRepairInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var request cluster.ReplicatedStateRepairRequest
-		if err := c.ShouldBindJSON(&request); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_payload",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		var err error
-		switch strings.ToLower(strings.TrimSpace(request.Action)) {
-		case cluster.ReplicatedStateRepairFence:
-			err = cS.SetReplicatedStateRepairFence(request.ExpectedNodeID, true)
-		case cluster.ReplicatedStateRepairReset:
-			err = cS.ResetReplicatedStateForRepair(request.ExpectedNodeID)
-		case cluster.ReplicatedStateRepairUnfence:
-			if zS != nil {
-				if reconcileErr := zS.ReconcileBackupTargetSSHKeys(); reconcileErr != nil {
-					err = fmt.Errorf("reconcile_backup_target_ssh_keys: %w", reconcileErr)
-					break
-				}
-				if reconcileErr := zS.ReconcileEncryptionKeys(); reconcileErr != nil {
-					err = fmt.Errorf("reconcile_encryption_keys: %w", reconcileErr)
-					break
-				}
-			}
-			err = cS.SetReplicatedStateRepairFence(request.ExpectedNodeID, false)
-		default:
-			err = fmt.Errorf("unsupported_replicated_state_repair_action")
-		}
-		if err != nil {
-			c.JSON(http.StatusConflict, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "replicated_state_repair_action_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
-			Status:  "success",
-			Message: "replicated_state_repair_action_completed",
-			Error:   "",
-			Data:    nil,
-		})
-	}
-}
-
-// @Summary Resync Cluster State
-// @Description Audits every Raft member and rebuilds divergent followers one at a time
-// @Tags Cluster
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Success 200 {object} internal.APIResponse[cluster.ClusterStateResyncResult] "Success"
-// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
-// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
-// @Failure 409 {object} internal.APIResponse[cluster.ClusterStateResyncResult] "Conflict with partial audit/repair result"
-// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /cluster/resync-state [post]
-func ResyncClusterState(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		result, err := cS.ResyncClusterStateWithResult(c.Request.Context())
-		if err != nil {
-			if strings.HasPrefix(err.Error(), "not_leader;") {
-				c.JSON(http.StatusConflict, internal.APIResponse[cluster.ClusterStateResyncResult]{
-					Status:  "error",
-					Message: "not_leader",
-					Error:   err.Error(),
-					Data:    result,
-				})
-				return
-			}
-
-			statusCode := http.StatusInternalServerError
-			var blocked *cluster.ReplicatedStateRepairBlockedError
-			if errors.As(err, &blocked) {
-				statusCode = http.StatusConflict
-			}
-			c.JSON(statusCode, internal.APIResponse[cluster.ClusterStateResyncResult]{
-				Status:  "error",
-				Message: "error_resyncing_cluster_state",
-				Error:   err.Error(),
-				Data:    result,
-			})
-			return
-		}
-
-		if zS != nil {
-			if err := zS.ReconcileBackupTargetSSHKeys(); err != nil {
-				c.JSON(http.StatusInternalServerError, internal.APIResponse[cluster.ClusterStateResyncResult]{
-					Status:  "error",
-					Message: "error_reconciling_backup_target_ssh_keys",
-					Error:   err.Error(),
-					Data:    result,
-				})
-				return
-			}
-			if err := zS.ReconcileEncryptionKeys(); err != nil {
-				c.JSON(http.StatusInternalServerError, internal.APIResponse[cluster.ClusterStateResyncResult]{
-					Status:  "error",
-					Message: "error_reconciling_encryption_keys",
-					Error:   err.Error(),
-					Data:    result,
-				})
-				return
-			}
-		}
-
-		c.JSON(http.StatusOK, internal.APIResponse[cluster.ClusterStateResyncResult]{
-			Status:  "success",
-			Message: "cluster_state_resynced",
-			Error:   "",
-			Data:    result,
-		})
+		writeClusterLeaveSuccess(c, cS, "cluster_local_reset_forced")
 	}
 }
 
 // @Summary Remove Peer
-// @Description Ask an online peer to fence local work, leave Raft, and clear its cluster state.
-// @Description Registered guests block removal by default. Set retainGuests=true to keep the target's VM and jail registrations and release their cluster ID claims after membership removal. Other dependencies still block.
+// @Description Remove a node from the cluster. It keeps its VMs, jails and containers and clears its cluster state once it learns it was removed.
+// @Description A node with guests is refused with them listed unless retainGuests=true confirms it keeps them. Other dependencies still block.
 // @Tags Cluster
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param request body RemovePeerRequest true "Remove Peer Request"
-// @Success 200 {object} internal.APIResponse[cluster.ClusterLeaveResult] "Success"
-// @Failure 202 {object} internal.APIResponse[cluster.ClusterLeaveResult] "Removal pending"
+// @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 409 {object} internal.APIResponse[cluster.PeerRemovalConflict] "Peer owns cluster resources"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
@@ -1035,48 +538,25 @@ func RemoveNode(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req RemovePeerRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_payload",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeClusterJSONBindError(c, err, "invalid_request_payload")
 			return
 		}
-
-		nodeID := strings.TrimSpace(req.NodeID)
-		if nodeID == "" {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_payload",
-				Error:   "node_id_required",
-				Data:    nil,
-			})
+		if err := cS.RemoveMember(c.Request.Context(), req.NodeID, req.RetainGuests); err != nil {
+			writeClusterLeaveError(c, cS, err)
 			return
 		}
-		result, err := cS.OrchestratePeerRemoval(c.Request.Context(), nodeID, req.RetainGuests)
-		if err != nil {
-			writeClusterLeaveError(c, result, err)
-			return
-		}
-
-		c.JSON(http.StatusOK, internal.APIResponse[cluster.ClusterLeaveResult]{
-			Status:  "success",
-			Message: "peer_removed",
-			Error:   "",
-			Data:    result,
-		})
+		c.JSON(http.StatusOK, internal.APIResponse[any]{Status: "success", Message: "peer_removed"})
 	}
 }
 
 // @Summary Force Remove Peer
-// @Description Remove an externally fenced, unavailable peer without contacting it
+// @Description Remove an unavailable peer the operator fenced externally. Its guests stay on it.
 // @Tags Cluster
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body cluster.ForceRemovePeerRequest true "Force Remove Peer Request"
-// @Success 200 {object} internal.APIResponse[cluster.ClusterLeaveResult] "Success"
+// @Param request body ForceRemovePeerRequest true "Force Remove Peer Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
@@ -1086,58 +566,21 @@ func RemoveNode(cS *cluster.Service) gin.HandlerFunc {
 // @Router /cluster/remove-node/force [post]
 func ForceRemoveNode(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var request cluster.ForceRemovePeerRequest
+		var request ForceRemovePeerRequest
 		if err := c.ShouldBindJSON(&request); err != nil {
 			writeClusterJSONBindError(c, err, "invalid_request_payload")
 			return
 		}
-		result, err := cS.ForceRemovePeer(c.Request.Context(), request)
-		if err != nil {
-			writeClusterLeaveError(c, result, err)
+		if !request.TargetExternallyFenced {
+			const ack = "cluster_force_target_fence_ack_required"
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{Status: "error", Message: ack, Error: ack})
 			return
 		}
-		c.JSON(http.StatusOK, internal.APIResponse[cluster.ClusterLeaveResult]{
-			Status: "success", Message: "peer_force_removed", Error: "", Data: result,
-		})
-	}
-}
-
-func StartLeaveInternal(cS *cluster.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var request cluster.StartLeaveRequest
-		if err := c.ShouldBindJSON(&request); err != nil {
-			writeClusterJSONBindError(c, err, "invalid_request_payload")
+		if err := cS.RemoveMember(c.Request.Context(), request.NodeID, true); err != nil {
+			writeClusterLeaveError(c, cS, err)
 			return
 		}
-		result, err := cS.StartCooperativeLeave(
-			c.Request.Context(),
-			request,
-			c.GetString("IssuerNodeID"),
-		)
-		if err != nil {
-			writeClusterLeaveError(c, result, err)
-			return
-		}
-		c.JSON(http.StatusOK, internal.APIResponse[cluster.ClusterLeaveResult]{
-			Status: "success", Message: "cluster_leave_completed", Error: "", Data: result,
-		})
-	}
-}
-
-func RemoveMembershipInternal(cS *cluster.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var request cluster.RemoveMembershipRequest
-		if err := c.ShouldBindJSON(&request); err != nil {
-			writeClusterJSONBindError(c, err, "invalid_request_payload")
-			return
-		}
-		if err := cS.RemoveMembership(c.Request.Context(), request, c.GetString("IssuerNodeID")); err != nil {
-			writeClusterLeaveError(c, cluster.ClusterLeaveResult{}, err)
-			return
-		}
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
-			Status: "success", Message: "peer_membership_removed", Error: "", Data: nil,
-		})
+		c.JSON(http.StatusOK, internal.APIResponse[any]{Status: "success", Message: "peer_force_removed"})
 	}
 }
 
@@ -1148,13 +591,21 @@ func MembershipStatus(cS *cluster.Service) gin.HandlerFunc {
 			writeClusterJSONBindError(c, err, "invalid_request_payload")
 			return
 		}
-		status, err := cS.AuthoritativeMembershipStatus(request.NodeID)
+		if c.Request.TLS == nil || len(c.Request.TLS.PeerCertificates) == 0 {
+			c.JSON(http.StatusUnauthorized, internal.APIResponse[any]{
+				Status: "error", Message: "cluster_node_cert_required", Error: "cluster_node_cert_required",
+			})
+			return
+		}
+		status, err := cS.AuthoritativeMembershipStatus(request.NodeID, cluster.CertPin(c.Request.TLS.PeerCertificates[0]))
 		if err != nil {
 			code := http.StatusServiceUnavailable
 			message := "cluster_membership_status_unavailable"
-			if strings.Contains(err.Error(), "not_leader") {
-				code = http.StatusConflict
-				message = "not_leader"
+			switch {
+			case strings.Contains(err.Error(), "not_leader"):
+				code, message = http.StatusConflict, "not_leader"
+			case strings.Contains(err.Error(), "membership_status_cert_mismatch"):
+				code, message = http.StatusForbidden, "membership_status_cert_mismatch"
 			}
 			c.JSON(code, internal.APIResponse[cluster.MembershipStatus]{
 				Status: "error", Message: message, Error: err.Error(), Data: status,
@@ -1163,40 +614,6 @@ func MembershipStatus(cS *cluster.Service) gin.HandlerFunc {
 		}
 		c.JSON(http.StatusOK, internal.APIResponse[cluster.MembershipStatus]{
 			Status: "success", Message: "cluster_membership_status", Error: "", Data: status,
-		})
-	}
-}
-
-func ReaddressIdentityInternal(cS *cluster.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		identity, err := cS.LocalReaddressIdentity()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status: "error", Message: "cluster_readdress_identity_unavailable", Error: err.Error(), Data: nil,
-			})
-			return
-		}
-		c.JSON(http.StatusOK, internal.APIResponse[cluster.ReaddressIdentity]{
-			Status: "success", Message: "cluster_readdress_identity", Error: "", Data: identity,
-		})
-	}
-}
-
-func ReaddressMemberInternal(cS *cluster.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var request cluster.MemberAddressChangeRequest
-		if err := c.ShouldBindJSON(&request); err != nil {
-			writeClusterJSONBindError(c, err, "invalid_request_payload")
-			return
-		}
-		if err := cS.CommitMemberAddress(c.Request.Context(), request, c.GetString("IssuerNodeID")); err != nil {
-			c.JSON(http.StatusConflict, internal.APIResponse[any]{
-				Status: "error", Message: "cluster_readdress_failed", Error: err.Error(), Data: nil,
-			})
-			return
-		}
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
-			Status: "success", Message: "cluster_readdress_membership_committed", Error: "", Data: nil,
 		})
 	}
 }
@@ -1217,7 +634,7 @@ func GetLeaveStatus(cS *cluster.Service) gin.HandlerFunc {
 }
 
 // @Summary Cancel Cluster Leave
-// @Description Abandon an unfinished leave and reopen this node. Refused once the leader has confirmed the removal.
+// @Description Abandon an unfinished leave and reopen this node. Refused once the leader has removed it.
 // @Tags Cluster
 // @Produce json
 // @Security BearerAuth
@@ -1227,31 +644,26 @@ func GetLeaveStatus(cS *cluster.Service) gin.HandlerFunc {
 // @Router /cluster/leave/cancel [post]
 func CancelLeave(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := cS.CancelLocalLeave(c.Request.Context()); err != nil {
-			status, message := http.StatusInternalServerError, "cluster_leave_cancel_failed"
-			var leaveErr *cluster.ClusterLeaveError
-			if errors.As(err, &leaveErr) {
-				status, message = http.StatusConflict, leaveErr.Code
-			}
-			c.JSON(status, internal.APIResponse[any]{
-				Status: "error", Message: message, Error: err.Error(), Data: nil,
-			})
+		if err := cS.CancelLeave(c.Request.Context()); err != nil {
+			writeClusterLeaveError(c, cS, err)
 			return
 		}
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
-			Status: "success", Message: "cluster_leave_cancelled", Error: "", Data: nil,
-		})
+		c.JSON(http.StatusOK, internal.APIResponse[any]{Status: "success", Message: "cluster_leave_cancelled"})
 	}
 }
 
-func writeClusterLeaveError(c *gin.Context, result cluster.ClusterLeaveResult, err error) {
-	var consensusErr *cluster.ClusterConsensusError
-	if errors.As(err, &consensusErr) {
-		c.JSON(http.StatusServiceUnavailable, internal.APIResponse[cluster.ClusterLeaveResult]{
-			Status: "error", Message: "cluster_consensus_unavailable", Error: err.Error(), Data: result,
+func writeClusterLeaveSuccess(c *gin.Context, cS *cluster.Service, message string) {
+	status, err := cS.LeaveStatus()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+			Status: "error", Message: "cluster_leave_status_failed", Error: err.Error(),
 		})
 		return
 	}
+	c.JSON(http.StatusOK, internal.APIResponse[cluster.ClusterLeaveStatus]{Status: "success", Message: message, Data: status})
+}
+
+func writeClusterLeaveError(c *gin.Context, cS *cluster.Service, err error) {
 	var blocked *cluster.PeerRemovalBlockedError
 	if errors.As(err, &blocked) {
 		c.JSON(http.StatusConflict, internal.APIResponse[cluster.PeerRemovalConflict]{
@@ -1259,53 +671,27 @@ func writeClusterLeaveError(c *gin.Context, result cluster.ClusterLeaveResult, e
 		})
 		return
 	}
-	var mismatch *cluster.LeaveInventoryMismatchError
-	if errors.As(err, &mismatch) {
-		c.JSON(http.StatusConflict, internal.APIResponse[cluster.LeaveInventoryMismatch]{
-			Status: "error", Message: "cluster_leave_inventory_claim_mismatch", Error: err.Error(), Data: mismatch.Mismatch,
-		})
-		return
-	}
-	var versionErr *cluster.ClusterVersionError
-	if errors.As(err, &versionErr) {
-		status := http.StatusConflict
-		if versionErr.Code == "cluster_version_check_unavailable" {
-			status = http.StatusServiceUnavailable
-		}
-		c.JSON(status, internal.APIResponse[any]{
-			Status: "error", Message: versionErr.Code, Error: err.Error(), Data: nil,
-		})
-		return
-	}
 	var leaveErr *cluster.ClusterLeaveError
-	if errors.As(err, &leaveErr) {
-		status := http.StatusAccepted
-		if leaveErr.Code == "cluster_target_unreachable" {
-			status = http.StatusServiceUnavailable
-		} else if leaveErr.Code == "cluster_leave_active_mutations" || leaveErr.Code == "cluster_leave_inventory_changed" || leaveErr.Code == "cluster_leave_intent_mismatch" {
-			status = http.StatusConflict
-		}
-		c.JSON(status, internal.APIResponse[cluster.ClusterLeaveResult]{
-			Status: "error", Message: leaveErr.Code, Error: err.Error(), Data: result,
+	status, message := http.StatusInternalServerError, "cluster_leave_failed"
+	switch {
+	case errors.As(err, &leaveErr) && leaveErr.Code == "cluster_leave_membership_unconfirmed":
+		leaveStatus, _ := cS.LeaveStatus()
+		c.JSON(http.StatusAccepted, internal.APIResponse[cluster.ClusterLeaveStatus]{
+			Status: "error", Message: leaveErr.Code, Error: err.Error(), Data: leaveStatus,
 		})
 		return
+	case errors.As(err, &leaveErr):
+		status, message = http.StatusConflict, leaveErr.Code
+	case errors.Is(err, cluster.ErrPeerNotFound):
+		status, message = http.StatusNotFound, "peer_not_found"
+	case errors.Is(err, cluster.ErrRemoveSelf):
+		status, message = http.StatusConflict, "peer_removal_target_is_local"
+	case errors.Is(err, raft.ErrNotLeader):
+		status, message = http.StatusConflict, "not_leader"
+	case errors.Is(err, cluster.ErrNodeLeaveFenced):
+		status, message = http.StatusLocked, cluster.ProposalErrorCode(err)
+	case errors.Is(err, raft.ErrRaftShutdown), errors.Is(err, raft.ErrLeadershipLost), errors.Is(err, raft.ErrEnqueueTimeout):
+		status, message = http.StatusServiceUnavailable, "cluster_consensus_unavailable"
 	}
-	status := http.StatusInternalServerError
-	message := "cluster_leave_failed"
-	if strings.Contains(err.Error(), "not_leader") {
-		status = http.StatusConflict
-		message = "not_leader"
-	} else if strings.Contains(err.Error(), "peer_not_found") {
-		status = http.StatusNotFound
-		message = "peer_not_found"
-	} else if strings.Contains(err.Error(), "_ack_required") {
-		status = http.StatusBadRequest
-		message = err.Error()
-	} else if strings.Contains(err.Error(), "mismatch") || strings.Contains(err.Error(), "invalid") ||
-		strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "in_progress") {
-		status = http.StatusConflict
-	}
-	c.JSON(status, internal.APIResponse[cluster.ClusterLeaveResult]{
-		Status: "error", Message: message, Error: err.Error(), Data: result,
-	})
+	c.JSON(status, internal.APIResponse[any]{Status: "error", Message: message, Error: err.Error()})
 }

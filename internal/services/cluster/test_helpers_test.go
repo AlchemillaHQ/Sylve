@@ -10,6 +10,7 @@ package cluster
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"strings"
@@ -19,26 +20,21 @@ import (
 	"github.com/alchemillahq/sylve/internal/cmd"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
 	"gorm.io/gorm"
 )
 
+var testJoinPin = sha256.Sum256([]byte("joining-node"))
+
 func newClusterServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 	t.Helper()
-	migrateModels = append(
-		migrateModels,
-		&clusterModels.BackupJobOperation{},
-		&clusterModels.ReplicationRunOperation{},
-		&clusterModels.ScheduledRunReceipt{},
-		&clusterModels.ScheduledRunResultOutbox{},
-		&clusterModels.ReplicationTransitionEvent{},
-		&clusterModels.BackupTargetRestoreOperation{},
-		&clusterModels.BackupTargetNodeReadiness{},
-		&clusterModels.BackupTargetSSHHostTrust{},
-		&clusterModels.ClusterOption{},
-	)
+	migrateModels = append(migrateModels, &clusterModels.Cluster{}, &clusterModels.ScheduledRunResultOutbox{},
+		&jailModels.Jail{}, &jailModels.JailCreation{})
+	migrateModels = append(migrateModels, clusterModels.ReplicatedModels()...)
 	db := testutil.NewSQLiteTestDB(t, migrateModels...)
 	if err := containerModels.Migrate(db); err != nil {
 		t.Fatal(err)
@@ -62,34 +58,25 @@ func seedBackupTargetHostTrust(t *testing.T, database *gorm.DB, target *clusterM
 	}
 }
 
-func acceptJoinInventoryForTest(
-	t *testing.T,
-	service *Service,
-	ctx context.Context,
-	nodeID, nodeIP, providedKey string,
-	report GuestIdentityInventoryReport,
-) error {
-	t.Helper()
-	if _, err := service.StageJoinInventory(ctx, nodeID, nodeIP, providedKey, report); err != nil {
-		return err
-	}
-	return service.finalizeStagedJoin(ctx, nodeID, nodeIP, providedKey, report)
-}
-
-func waitForStagedJoinerConsumption(t *testing.T, leader, joiner *clusterRaftTestNode) {
-	t.Helper()
-	waitForClusterCondition(t, 8*time.Second, "staged joiner to consume replicated state", func() bool {
-		leaderMarker := leader.service.replicatedStateFSMIndex()
-		return leaderMarker > 0 && joiner.service.replicatedStateFSMIndex() >= leaderMarker
-	})
-}
-
 type clusterRaftTestNode struct {
 	id        string
 	addr      raft.ServerAddress
 	transport *raft.InmemTransport
 	raft      *raft.Raft
 	service   *Service
+}
+
+func newStandaloneTestService(t *testing.T, migrateModels ...any) *Service {
+	t.Helper()
+	return withFSM(&Service{DB: newClusterServiceTestDB(t, migrateModels...), mutationGate: newOpenTestMutationGate(t)})
+}
+
+func withFSM(s *Service) *Service {
+	fsm := clusterModels.NewFSMDispatcher(s.DB)
+	clusterModels.RegisterDefaultHandlers(fsm)
+	s.fsm = fsm
+	s.trackPins(fsm)
+	return s
 }
 
 func newOpenTestMutationGate(t *testing.T) *MutationGate {
@@ -137,10 +124,9 @@ func newClusterRaftTestNode(t *testing.T, id string, migrateModels ...any) *clus
 		service: withRaft(&Service{
 			DB:           db,
 			NodeID:       id,
-			raftFSM:      fsm,
-			stateFSM:     fsm,
+			fsm:          fsm,
 			mutationGate: newOpenTestMutationGate(t),
-			joinVersionForNode: func(context.Context, raft.Server, string) (string, error) {
+			joinVersionForNode: func(context.Context, raft.Server) (string, error) {
 				return cmd.Version, nil
 			},
 			backupTargetValidator: func(context.Context, *clusterModels.BackupTarget) error {
@@ -148,6 +134,7 @@ func newClusterRaftTestNode(t *testing.T, id string, migrateModels ...any) *clus
 			},
 		}, r),
 	}
+	node.service.trackPins(fsm)
 	t.Cleanup(func() {
 		cleanupClusterRaftTestNodes(t, []*clusterRaftTestNode{node})
 	})
@@ -157,6 +144,42 @@ func newClusterRaftTestNode(t *testing.T, id string, migrateModels ...any) *clus
 func withRaft(s *Service, r *raft.Raft) *Service {
 	s.SetRaft(r)
 	return s
+}
+
+func startSoleVoter(t *testing.T, s *Service, address raft.ServerAddress) *raft.Raft {
+	t.Helper()
+	configuration := raft.DefaultConfig()
+	configuration.LocalID = raft.ServerID(s.LocalNodeID())
+	configuration.Logger = hclog.NewNullLogger()
+	configuration.HeartbeatTimeout = 100 * time.Millisecond
+	configuration.ElectionTimeout = 100 * time.Millisecond
+	configuration.LeaderLeaseTimeout = 50 * time.Millisecond
+	configuration.CommitTimeout = 10 * time.Millisecond
+	_, transport := raft.NewInmemTransport(address)
+	instance, err := raft.NewRaft(
+		configuration, s.fsm, raft.NewInmemStore(), raft.NewInmemStore(), raft.NewInmemSnapshotStore(), transport,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = instance.Shutdown().Error()
+		_ = transport.Close()
+	})
+	if err := instance.BootstrapCluster(raft.Configuration{Servers: []raft.Server{{
+		ID: configuration.LocalID, Address: address, Suffrage: raft.Voter,
+	}}}).Error(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for instance.State() != raft.Leader && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if instance.State() != raft.Leader {
+		t.Fatal("single voter did not elect itself")
+	}
+	s.SetRaft(instance)
+	return instance
 }
 
 func connectClusterRaftTestNodes(nodes []*clusterRaftTestNode) {
@@ -336,11 +359,6 @@ func cleanupClusterRaftTestNodes(t *testing.T, nodes []*clusterRaftTestNode) {
 
 // Shorthands the tests use; production code calls the underlying functions.
 
-func (s *Service) ResyncClusterState() error {
-	_, err := s.ResyncClusterStateWithResult(context.Background())
-	return err
-}
-
 func (s *Service) ClearClusteredData() error {
 	return s.clearClusteredData()
 }
@@ -353,38 +371,6 @@ func (s *Service) MarkDeclustered() error {
 	return err
 }
 
-func validateJoinMembership(
-	configuration raft.Configuration,
-	localNodeID, joiningNodeID string,
-	joiningAddress raft.ServerAddress,
-) (bool, error) {
-	server, err := resolveJoinMembership(configuration, localNodeID, joiningNodeID, joiningAddress)
-	if err != nil {
-		return false, err
-	}
-	return server != nil && server.Suffrage == raft.Voter, nil
-}
-
-func (s *Service) finalizeStagedJoin(
-	ctx context.Context,
-	nodeID, nodeIP, providedKey string,
-	submitted GuestIdentityInventoryReport,
-) error {
-	return s.finalizeStagedJoinWithVersionCheck(ctx, nodeID, nodeIP, providedKey, submitted, nil)
-}
-
-func (s *Service) LeaveCluster(ctx context.Context) (ClusterLeaveResult, error) {
-	return s.LeaveClusterWithGuests(ctx, nil)
-}
-
-func (s *Service) transferLeadershipForLeave(
-	ctx context.Context,
-	configuration raft.Configuration,
-	localNodeID string,
-) (string, error) {
-	return s.transferLeadershipForLeaveWithGuests(ctx, configuration, localNodeID, false)
-}
-
 func CanNodeStartProtectedGuestForTransition(
 	db *gorm.DB,
 	guestType string,
@@ -395,9 +381,23 @@ func CanNodeStartProtectedGuestForTransition(
 	return CanNodeMutateProtectedGuestForTransition(db, guestType, guestID, localNodeID, transitionRunID)
 }
 
-func (s *Service) joinVersionWarningReason(nodeID string) (string, bool) {
-	s.joinVersionWarnMu.Lock()
-	defer s.joinVersionWarnMu.Unlock()
-	reason, ok := s.joinVersionWarnings[strings.TrimSpace(nodeID)]
-	return reason, ok
+type guestIdentityInventoryAuthStub struct {
+	serviceInterfaces.AuthServiceInterface
+	err       error
+	usernames []string
+}
+
+func (s *guestIdentityInventoryAuthStub) CreateInternalClusterJWT(username string) (string, error) {
+	s.usernames = append(s.usernames, username)
+	if s.err != nil {
+		return "", s.err
+	}
+	return "inventory-test-token", nil
+}
+
+func (s *guestIdentityInventoryAuthStub) CreateUserProxyJWT(_ uint, _ string, _ string) (string, error) {
+	if s.err != nil {
+		return "", s.err
+	}
+	return "inventory-test-token", nil
 }

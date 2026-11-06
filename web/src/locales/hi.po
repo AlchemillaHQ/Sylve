@@ -1579,11 +1579,6 @@ msgid "Create"
 msgstr "बनाएं"
 
 #: src/lib/components/custom/Cluster/Create.svelte
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Invalid IP address"
-msgstr "अमान्य IP पता"
-
-#: src/lib/components/custom/Cluster/Create.svelte
 msgid "Failed to create cluster"
 msgstr "क्लस्टर बनाने में विफल"
 
@@ -1597,17 +1592,8 @@ msgid "Node IP"
 msgstr "नोड IP"
 
 #: src/lib/components/custom/Cluster/Join.svelte
-msgid "Cluster Key is required"
-msgstr "क्लस्टर कुंजी आवश्यक है"
-
-#: src/lib/components/custom/Cluster/Join.svelte
 msgid "No Node ID available"
 msgstr "कोई नोड ID उपलब्ध नहीं है"
-
-#: src/lib/components/custom/Cluster/Join.svelte
-#: src/lib/components/custom/Cluster/JoinInformation.svelte
-msgid "Cluster Key"
-msgstr "क्लस्टर कुंजी"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Joining"
@@ -1616,10 +1602,6 @@ msgstr "शामिल हो रहे हैं"
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Join"
 msgstr "शामिल हों"
-
-#: src/lib/components/custom/Cluster/JoinInformation.svelte
-msgid "Cluster key copied"
-msgstr "क्लस्टर कुंजी कॉपी की गई"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 msgid "Cluster Information"
@@ -1752,8 +1734,8 @@ msgid "Are you sure?"
 msgstr "क्या आप निश्चित हैं?"
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
-#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
 #: src/lib/components/custom/Cluster/ForceReset.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 #: src/lib/components/custom/Cluster/RemovePeer.svelte
 #: src/lib/components/custom/Cluster/RemovePeer.svelte
 #: src/lib/components/custom/Container/Create.svelte
@@ -7866,14 +7848,6 @@ msgstr ""
 msgid "<0/> Shutdown"
 msgstr ""
 
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Leader IP is required"
-msgstr ""
-
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Leader IP (192.168.1.1)"
-msgstr ""
-
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Templates"
 msgstr ""
@@ -10468,7 +10442,6 @@ msgstr ""
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
-#: src/lib/components/custom/Cluster/JoinInformation.svelte
 msgid "Loading…"
 msgstr ""
 
@@ -11209,10 +11182,6 @@ msgid "Cluster - Accept Join"
 msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Cluster - Resync State"
-msgstr ""
-
-#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "DC Backup Job - Restore"
 msgstr ""
 
@@ -11377,11 +11346,6 @@ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Recursive backup: <0/>"
-msgstr ""
-
-#: src/lib/components/custom/TreeTableRemote.svelte
-#: src/lib/components/custom/TreeTableRemote.svelte
-msgid "X-Current-Hostname"
 msgstr ""
 
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -14394,7 +14358,6 @@ msgstr ""
 msgid "Download Certificate & Key"
 msgstr ""
 
-#: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/lib/components/custom/ZFS/pools/Scrub.svelte
 #: src/routes/[node]/network/global-config/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
@@ -16934,14 +16897,6 @@ msgstr ""
 msgid "View existing passkeys; registration is unavailable for this user"
 msgstr ""
 
-#: src/lib/components/custom/Cluster/JoinInformation.svelte
-msgid "Unable to load cluster key"
-msgstr ""
-
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Cluster - Reveal Join Key"
-msgstr ""
-
 #. 0: token
 #: src/lib/components/custom/TreeTableRemote.svelte
 msgid "Bearer {0}"
@@ -17614,43 +17569,43 @@ msgstr ""
 msgid "Leave / Reset Cluster"
 msgstr ""
 
-#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 msgid "Raft cannot commit removal without quorum"
 msgstr ""
 
-#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 msgid "Failed to force remove peer"
 msgstr ""
 
-#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 msgid "Peer membership force removed; target cleanup is not confirmed"
 msgstr ""
 
-#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 msgid "Force Remove Peer"
 msgstr ""
 
-#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 msgid "This removes only Raft membership for <0/>."
 msgstr ""
 
-#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 msgid "The target is not contacted or cleaned. Force removal cannot bypass missing Raft quorum."
 msgstr ""
 
-#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 msgid "The node still owns cluster resources"
 msgstr ""
 
-#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 msgid "The target's power, storage, or network is externally fenced"
 msgstr ""
 
-#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 msgid "Removing…"
 msgstr ""
 
-#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 msgid "Force Remove Membership"
 msgstr ""
 
@@ -17746,10 +17701,6 @@ msgid "Lifecycle Task"
 msgstr ""
 
 #: src/lib/components/custom/Cluster/RemovePeer.svelte
-msgid "State Repair"
-msgstr ""
-
-#: src/lib/components/custom/Cluster/RemovePeer.svelte
 msgid "<0/> Removing node safely"
 msgstr ""
 
@@ -17805,6 +17756,7 @@ msgstr ""
 msgid "Upgrade the reported member and retry."
 msgstr ""
 
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 #: src/lib/components/custom/Cluster/RemovePeer.svelte
 msgid "Force Remove…"
 msgstr ""
@@ -23433,4 +23385,70 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "SLIRP (internet only, not reachable from outside)"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster - Generate Join Key"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster leave cancelled"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Create.svelte
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Node IP must be an IPv4 address"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Cluster Node IP must be an IPv4 address"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Join Key is required"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Cluster Node IP (192.168.1.1)"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Join.svelte
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+msgid "Join Key"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+msgid "Unable to generate a join key"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+msgid "Join key copied"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+msgid "Join Through"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+msgid "A join key admits one node, which joins through this node. Generating a new key replaces the previous one."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+msgid "Generating"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+msgid "Generate New Key"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+msgid "Generate Join Key"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/LeaveProgress.svelte
+msgid "Cancel only if the leader is gone. If it already removed this node, reset the node afterwards."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/LeaveProgress.svelte
+msgid "Cancel Leave"
 msgstr ""

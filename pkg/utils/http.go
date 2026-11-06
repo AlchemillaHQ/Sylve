@@ -13,7 +13,6 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/tls"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -68,36 +68,6 @@ func GetTokenFromHeader(r http.Header) (string, error) {
 	return "", errors.New("no token provided")
 }
 
-func GetCurrentHostnameFromHeader(r http.Header, rC *http.Request) (string, error) {
-	if v := r.Get("X-Current-Hostname"); v != "" {
-		return RemoveSpaces(v), nil
-	}
-
-	if v := rC.URL.Query().Get("auth"); v != "" {
-		text := RemoveSpaces(v)
-		data, err := hex.DecodeString(text)
-		if err != nil {
-			return "", fmt.Errorf("failed to decode hex: %w", err)
-		}
-
-		var obj struct {
-			Hostname string `json:"hostname"`
-		}
-
-		if err := json.Unmarshal(data, &obj); err != nil {
-			return "", fmt.Errorf("failed to unmarshal json: %w", err)
-		}
-
-		if obj.Hostname == "" {
-			return "", errors.New("no_current_hostname_provided")
-		}
-
-		return obj.Hostname, nil
-	}
-
-	return "", errors.New("no_current_hostname_provided")
-}
-
 func GetIdFromParam(c *gin.Context) (int, error) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
@@ -107,25 +77,63 @@ func GetIdFromParam(c *gin.Context) (int, error) {
 	return id, nil
 }
 
+type intraClusterTLS struct {
+	peer *http.Transport
+	join *tls.Config
+}
+
+var intraClusterTransports atomic.Pointer[intraClusterTLS]
+
+func SetIntraClusterTLS(peer, join *tls.Config) {
+	if old := intraClusterTransports.Swap(&intraClusterTLS{peer: newIntraClusterTransport(peer), join: join}); old != nil {
+		old.peer.CloseIdleConnections()
+	}
+}
+
+func newIntraClusterTransport(config *tls.Config) *http.Transport {
+	return &http.Transport{
+		MaxIdleConns:        200,
+		MaxIdleConnsPerHost: 100,
+		MaxConnsPerHost:     100,
+		IdleConnTimeout:     90 * time.Second,
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		TLSClientConfig:       config,
+	}
+}
+
+type joinRequestKey struct{}
+
+func ForJoin(ctx context.Context, verify func(tls.ConnectionState) error) context.Context {
+	return context.WithValue(ctx, joinRequestKey{}, verify)
+}
+
+type IntraClusterTransport struct{}
+
+func (IntraClusterTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	transports := intraClusterTransports.Load()
+	if transports == nil {
+		return nil, errors.New("intra_cluster_tls_unconfigured")
+	}
+	if verify, ok := request.Context().Value(joinRequestKey{}).(func(tls.ConnectionState) error); ok {
+		config := transports.join.Clone()
+		config.VerifyConnection = verify
+		join := newIntraClusterTransport(config)
+		join.DisableKeepAlives = true
+		return join.RoundTrip(request)
+	}
+	return transports.peer.RoundTrip(request)
+}
+
 func intraClusterClient() *http.Client {
 	once.Do(func() {
-		tr := &http.Transport{
-			MaxIdleConns:        200,
-			MaxIdleConnsPerHost: 100,
-			MaxConnsPerHost:     100,
-			IdleConnTimeout:     90 * time.Second,
-			DisableKeepAlives:   false,
-			DialContext: (&net.Dialer{
-				Timeout:   5 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-			TLSHandshakeTimeout:   5 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
-		}
 		sharedClient = &http.Client{
 			Timeout:   8 * time.Second,
-			Transport: tr,
+			Transport: IntraClusterTransport{},
 		}
 	})
 	return sharedClient

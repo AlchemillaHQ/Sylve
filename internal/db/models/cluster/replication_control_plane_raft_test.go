@@ -76,10 +76,14 @@ func ownershipCommitPayload() ReplicationOwnershipTransitionPayload {
 }
 
 func TestFSMReplicationOwnershipTransitionAtomicCommit(t *testing.T) {
-	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{})
+	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &GuestIdentityClaim{})
 	seedControlPlanePolicy(t, db)
 	fsm := NewFSMDispatcher(db)
 	RegisterDefaultHandlers(fsm)
+	guest := GuestIdentityEntry{GuestKind: ReplicationGuestTypeVM, GuestID: 100}
+	if err := applyGuestIdentityFSMCommand(t, fsm, "claim", claimSet("node-1", guest)); err != nil {
+		t.Fatalf("claim node-1 guest: %v", err)
+	}
 
 	payload := ownershipCommitPayload()
 	raw, _ := json.Marshal(payload)
@@ -87,6 +91,10 @@ func TestFSMReplicationOwnershipTransitionAtomicCommit(t *testing.T) {
 		Type: "replication_ownership_transition", Action: "commit", Data: raw,
 	}); err != nil {
 		t.Fatalf("commit ownership: %v", err)
+	}
+	var claim GuestIdentityClaim
+	if err := db.First(&claim, "guest_id = ?", guest.GuestID).Error; err != nil || claim.OwnerNodeID != "node-2" {
+		t.Fatalf("guest claim after commit = %+v, %v; want owned by node-2", claim, err)
 	}
 
 	var policy ReplicationPolicy
@@ -122,7 +130,7 @@ func TestFSMReplicationOwnershipTransitionAtomicCommit(t *testing.T) {
 }
 
 func TestReplicationOwnershipTransitionRollsBackEveryTable(t *testing.T) {
-	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{})
+	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &GuestIdentityClaim{})
 	seedControlPlanePolicy(t, db)
 	if err := db.Callback().Create().Before("gorm:create").Register("fail_rotated_target", func(tx *gorm.DB) {
 		if tx.Statement != nil && tx.Statement.Schema != nil && tx.Statement.Schema.Name == "ReplicationPolicyTarget" {
@@ -133,7 +141,7 @@ func TestReplicationOwnershipTransitionRollsBackEveryTable(t *testing.T) {
 	}
 
 	payload := ownershipCommitPayload()
-	if err := ApplyReplicationOwnershipTransitionTxn(db, &payload); err == nil || !strings.Contains(err.Error(), "injected_target_write_failure") {
+	if err := applyReplicationOwnershipTransition(db, &payload); err == nil || !strings.Contains(err.Error(), "injected_target_write_failure") {
 		t.Fatalf("expected injected failure, got %v", err)
 	}
 
@@ -157,7 +165,7 @@ func TestReplicationOwnershipTransitionRollsBackEveryTable(t *testing.T) {
 }
 
 func TestReplicationOwnershipTransitionRejectsTerminalOrWrongPredecessor(t *testing.T) {
-	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{})
+	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &GuestIdentityClaim{})
 	seedControlPlanePolicy(t, db)
 	if err := db.Model(&ReplicationPolicy{}).Where("id = ?", 1).Updates(map[string]any{
 		"transition_state": ReplicationTransitionStateFailed,
@@ -167,7 +175,7 @@ func TestReplicationOwnershipTransitionRejectsTerminalOrWrongPredecessor(t *test
 	}
 
 	payload := ownershipCommitPayload()
-	if err := ApplyReplicationOwnershipTransitionTxn(db, &payload); err == nil ||
+	if err := applyReplicationOwnershipTransition(db, &payload); err == nil ||
 		!strings.Contains(err.Error(), "invalid_predecessor_state") {
 		t.Fatalf("late ownership commit should be rejected, got %v", err)
 	}
@@ -180,13 +188,13 @@ func TestReplicationOwnershipTransitionRejectsTerminalOrWrongPredecessor(t *test
 }
 
 func TestReplicationOwnershipTransitionLeaseExpiryPredicateIsAtomic(t *testing.T) {
-	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{})
+	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &GuestIdentityClaim{})
 	seedControlPlanePolicy(t, db)
 	payload := ownershipCommitPayload()
 	cutoff := time.Now().UTC()
 	payload.PreviousLeaseExpiresAtOrBefore = &cutoff
 
-	if err := ApplyReplicationOwnershipTransitionTxn(db, &payload); err == nil ||
+	if err := applyReplicationOwnershipTransition(db, &payload); err == nil ||
 		!strings.Contains(err.Error(), "previous_owner_lease_not_expired") {
 		t.Fatalf("active previous-owner lease should reject cutover, got %v", err)
 	}
@@ -198,7 +206,7 @@ func TestReplicationOwnershipTransitionLeaseExpiryPredicateIsAtomic(t *testing.T
 
 	cutoff = cutoff.Add(2 * time.Hour)
 	payload.PreviousLeaseExpiresAtOrBefore = &cutoff
-	if err := ApplyReplicationOwnershipTransitionTxn(db, &payload); err != nil {
+	if err := applyReplicationOwnershipTransition(db, &payload); err != nil {
 		t.Fatalf("expired previous-owner lease should permit cutover: %v", err)
 	}
 }
@@ -226,26 +234,26 @@ func unsafeOwnershipCommitPayload(t *testing.T, db *gorm.DB) ReplicationOwnershi
 }
 
 func TestReplicationOwnershipTransitionLeaseVersionPredicateIsAtomic(t *testing.T) {
-	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{})
+	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &GuestIdentityClaim{})
 	seedControlPlanePolicy(t, db)
 	payload := unsafeOwnershipCommitPayload(t, db)
 	if err := db.Model(&ReplicationLease{}).Where("policy_id = ?", 1).Update("version", 11).Error; err != nil {
 		t.Fatal(err)
 	}
 
-	if err := ApplyReplicationOwnershipTransitionTxn(db, &payload); err == nil ||
+	if err := applyReplicationOwnershipTransition(db, &payload); err == nil ||
 		!strings.Contains(err.Error(), "previous_owner_lease_version_changed") {
 		t.Fatalf("advanced lease should reject force cutover, got %v", err)
 	}
 	version := uint64(11)
 	payload.ExpectedPreviousLeaseVersion = &version
-	if err := ApplyReplicationOwnershipTransitionTxn(db, &payload); err != nil {
+	if err := applyReplicationOwnershipTransition(db, &payload); err != nil {
 		t.Fatalf("unchanged observed lease should permit force cutover: %v", err)
 	}
 }
 
 func TestReplicationOwnershipTransitionRevalidatesForcedGenerationAtomically(t *testing.T) {
-	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{})
+	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &GuestIdentityClaim{})
 	seedControlPlanePolicy(t, db)
 	payload := unsafeOwnershipCommitPayload(t, db)
 	if err := db.Model(&ReplicationPolicyTarget{}).
@@ -254,7 +262,7 @@ func TestReplicationOwnershipTransitionRevalidatesForcedGenerationAtomically(t *
 		t.Fatal(err)
 	}
 
-	if err := ApplyReplicationOwnershipTransitionTxn(db, &payload); err == nil ||
+	if err := applyReplicationOwnershipTransition(db, &payload); err == nil ||
 		!strings.Contains(err.Error(), "replication_force_target_generation_changed") {
 		t.Fatalf("changed target generation should reject force cutover, got %v", err)
 	}
@@ -352,12 +360,12 @@ func TestReplicationTransitionTerminalCheckpointCannotBeReopened(t *testing.T) {
 		State: ReplicationTransitionStateDemoting, RunID: "run-terminal",
 		SourceNodeID: "node-1", TargetNodeID: "node-2", OwnerEpoch: 5,
 	}
-	if err := UpsertReplicationPolicyTransitionTxn(db, 1, &late); err == nil ||
+	if err := upsertReplicationPolicyTransition(db, 1, &late); err == nil ||
 		!strings.Contains(err.Error(), "invalid_predecessor_state") {
 		t.Fatalf("late in-progress checkpoint reopened terminal run: %v", err)
 	}
 	late.RunID = "other-run"
-	if err := UpsertReplicationPolicyTransitionTxn(db, 1, &late); err == nil ||
+	if err := upsertReplicationPolicyTransition(db, 1, &late); err == nil ||
 		!strings.Contains(err.Error(), "run_mismatch") {
 		t.Fatalf("generic update started a new run without Begin: %v", err)
 	}
@@ -471,7 +479,7 @@ func TestReplicationReadinessRequiresEveryTargetBeforeArming(t *testing.T) {
 		RequiredDatasetCount: 2, CompletedDatasetCount: 2,
 		LastVerifiedAt: &now, ReadyUntil: &readyUntil,
 	}
-	if err := UpdateReplicationTargetReadinessTxn(db, &first); err != nil {
+	if err := updateReplicationTargetReadiness(db, &first); err != nil {
 		t.Fatalf("first readiness: %v", err)
 	}
 	var policy ReplicationPolicy
@@ -484,7 +492,7 @@ func TestReplicationReadinessRequiresEveryTargetBeforeArming(t *testing.T) {
 	second.NodeID = "node-3"
 	second.GenerationID = "gen-b"
 	second.ManifestHash = "hash-b"
-	if err := UpdateReplicationTargetReadinessTxn(db, &second); err != nil {
+	if err := updateReplicationTargetReadiness(db, &second); err != nil {
 		t.Fatalf("second readiness: %v", err)
 	}
 	db.First(&policy, 1)
@@ -557,7 +565,9 @@ func TestReplicationPolicyEditPreservesOnlyUnchangedTargetReadiness(t *testing.T
 	}
 
 	policy.Name = "after"
-	if err := UpsertReplicationPolicyTxn(db, &policy, []ReplicationPolicyTarget{{NodeID: "node-2", Weight: 100}}); err != nil {
+	if err := updateReplicationPolicy(db, &ReplicationPolicyPayload{
+		Policy: policy, Targets: []ReplicationPolicyTarget{{NodeID: "node-2", Weight: 100}}, ExpectedOwnerEpoch: policy.OwnerEpoch,
+	}); err != nil {
 		t.Fatalf("ordinary edit: %v", err)
 	}
 	var target ReplicationPolicyTarget
@@ -573,7 +583,9 @@ func TestReplicationPolicyEditPreservesOnlyUnchangedTargetReadiness(t *testing.T
 		t.Fatalf("metadata-only edit changed protection state: %q", persistedPolicy.ProtectionState)
 	}
 
-	if err := UpsertReplicationPolicyTxn(db, &policy, []ReplicationPolicyTarget{{NodeID: "node-2", Weight: 200}}); err != nil {
+	if err := updateReplicationPolicy(db, &ReplicationPolicyPayload{
+		Policy: policy, Targets: []ReplicationPolicyTarget{{NodeID: "node-2", Weight: 200}}, ExpectedOwnerEpoch: policy.OwnerEpoch,
+	}); err != nil {
 		t.Fatalf("reconfigure target: %v", err)
 	}
 	target = ReplicationPolicyTarget{}
@@ -686,7 +698,7 @@ func TestReplicationPolicyUpdateAtomicallyReflectsTargetReadinessInvalidation(t 
 			updated := policy
 			updated.Name = "after"
 			updated.CronExpr = tt.cronExpr
-			if err := UpdateReplicationPolicyTxn(db, &ReplicationPolicyPayload{
+			if err := updateReplicationPolicy(db, &ReplicationPolicyPayload{
 				Policy:             updated,
 				Targets:            tt.desiredTargets,
 				ExpectedOwnerEpoch: policy.OwnerEpoch,
@@ -746,7 +758,7 @@ func TestReplicationPolicyUpdateCASCannotOverwriteCutoverState(t *testing.T) {
 			ProtectionState: ReplicationProtectionStateArmed,
 		},
 	}
-	if err := UpdateReplicationPolicyTxn(db, &stale); err == nil || !strings.Contains(err.Error(), "cas_conflict") {
+	if err := updateReplicationPolicy(db, &stale); err == nil || !strings.Contains(err.Error(), "cas_conflict") {
 		t.Fatalf("expected stale policy CAS rejection, got %v", err)
 	}
 
@@ -757,7 +769,7 @@ func TestReplicationPolicyUpdateCASCannotOverwriteCutoverState(t *testing.T) {
 	stale.Policy.ProtectionState = ReplicationProtectionStateArmed
 	stale.Policy.TransitionState = ReplicationTransitionStateFailed
 	stale.Policy.TransitionRunID = "other-run"
-	if err := UpdateReplicationPolicyTxn(db, &stale); err != nil {
+	if err := updateReplicationPolicy(db, &stale); err != nil {
 		t.Fatalf("current ordinary config edit: %v", err)
 	}
 
@@ -817,7 +829,7 @@ func TestReplicationLeaseUpsertIsPolicyBoundAndMonotonic(t *testing.T) {
 		OwnerNodeID: "node-old", OwnerEpoch: 1, Version: 999,
 		ExpiresAt: now.Add(2 * time.Hour),
 	}
-	if err := UpsertReplicationLeaseTxn(db, &stale); err != nil {
+	if err := upsertReplicationLease(db, &stale); err != nil {
 		t.Fatalf("stale epoch should be a no-op: %v", err)
 	}
 	olderVersion := ReplicationLease{
@@ -825,20 +837,20 @@ func TestReplicationLeaseUpsertIsPolicyBoundAndMonotonic(t *testing.T) {
 		OwnerNodeID: "node-new", OwnerEpoch: 2, Version: 199,
 		ExpiresAt: now.Add(3 * time.Hour),
 	}
-	if err := UpsertReplicationLeaseTxn(db, &olderVersion); err != nil {
+	if err := upsertReplicationLease(db, &olderVersion); err != nil {
 		t.Fatalf("old version should be a no-op: %v", err)
 	}
 
 	conflict := olderVersion
 	conflict.OwnerNodeID = "node-other"
 	conflict.Version = 201
-	if err := UpsertReplicationLeaseTxn(db, &conflict); err == nil || !strings.Contains(err.Error(), "owner_mismatch") {
+	if err := upsertReplicationLease(db, &conflict); err == nil || !strings.Contains(err.Error(), "owner_mismatch") {
 		t.Fatalf("expected same-epoch owner rejection, got %v", err)
 	}
 	future := olderVersion
 	future.OwnerEpoch = 3
 	future.Version = 300
-	if err := UpsertReplicationLeaseTxn(db, &future); err == nil || !strings.Contains(err.Error(), "future_owner_epoch") {
+	if err := upsertReplicationLease(db, &future); err == nil || !strings.Contains(err.Error(), "future_owner_epoch") {
 		t.Fatalf("expected future epoch rejection, got %v", err)
 	}
 

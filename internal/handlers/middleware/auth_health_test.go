@@ -21,9 +21,9 @@ import (
 func TestHealthClusterKeyAuthentication(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	database := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{})
-	if err := database.Create(&clusterModels.Cluster{Enabled: true, Key: "cluster-secret"}).Error; err != nil {
-		t.Fatalf("failed to seed cluster key: %v", err)
+	database := testutil.NewSQLiteTestDB(t, &clusterModels.ClusterOption{})
+	if err := database.Create(&clusterModels.ClusterOption{ID: 1, JoinKeyHash: clusterModels.JoinKeyHash("cluster-secret")}).Error; err != nil {
+		t.Fatalf("failed to seed join key: %v", err)
 	}
 
 	authService := &authSvc.Service{DB: database}
@@ -47,14 +47,6 @@ func TestHealthClusterKeyAuthentication(t *testing.T) {
 			name:    "invalid key",
 			headers: map[string]string{authSvc.ClusterKeyHeader: "invalid"},
 			want:    http.StatusUnauthorized,
-		},
-		{
-			name: "malformed cluster token overrides valid key",
-			headers: map[string]string{
-				authSvc.ClusterTokenHeader: "not-bearer",
-				authSvc.ClusterKeyHeader:   "cluster-secret",
-			},
-			want: http.StatusUnauthorized,
 		},
 		{name: "missing credentials", want: http.StatusUnauthorized},
 	}

@@ -401,29 +401,25 @@ func (s *Service) restoreOperationState(operationID string) (active bool, comple
 		return false, false, nil
 	}
 
-	if s.DB.Migrator().HasTable(&clusterModels.BackupJobOperation{}) {
-		var count int64
-		if err := s.DB.Model(&clusterModels.BackupJobOperation{}).
-			Where("token = ? AND operation = ?", operationID, clusterModels.BackupJobOperationRestore).
-			Count(&count).Error; err != nil {
-			return false, false, err
-		}
-		if count > 0 {
-			return true, false, nil
-		}
+	var count int64
+	if err := s.DB.Model(&clusterModels.BackupJobOperation{}).
+		Where("token = ? AND operation = ?", operationID, clusterModels.BackupJobOperationRestore).
+		Count(&count).Error; err != nil {
+		return false, false, err
 	}
-	if s.DB.Migrator().HasTable(&clusterModels.BackupTargetRestoreOperation{}) {
-		var operation clusterModels.BackupTargetRestoreOperation
-		result := s.DB.Where("token = ?", operationID).Limit(1).Find(&operation)
-		if result.Error != nil {
-			return false, false, result.Error
+	if count > 0 {
+		return true, false, nil
+	}
+	var operation clusterModels.BackupTargetRestoreOperation
+	result := s.DB.Where("token = ?", operationID).Limit(1).Find(&operation)
+	if result.Error != nil {
+		return false, false, result.Error
+	}
+	if result.RowsAffected > 0 {
+		if operation.State == clusterModels.BackupTargetRestoreOperationCompleted {
+			return false, true, nil
 		}
-		if result.RowsAffected > 0 {
-			if operation.State == clusterModels.BackupTargetRestoreOperationCompleted {
-				return false, true, nil
-			}
-			return true, false, nil
-		}
+		return true, false, nil
 	}
 	return false, false, nil
 }

@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 func replicationGuestOperationPolicy(id, guestID uint, enabled bool) ReplicationPolicy {
@@ -25,9 +23,9 @@ func replicationGuestOperationPolicy(id, guestID uint, enabled bool) Replication
 }
 
 func TestReplicationGuestOperationSerializesMigrationAndPolicyEnable(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t,
+	db := newClusterModelTestDB(t,
 		&ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &ReplicationGuestOperation{},
-		&ReplicationGuestOperationReceipt{}, &ReplicationEvent{},
+		&ReplicationGuestOperationReceipt{}, &ReplicationEvent{}, &GuestIdentityClaim{},
 	)
 	policy := replicationGuestOperationPolicy(1, 101, false)
 	if err := db.Create(&policy).Error; err != nil {
@@ -57,7 +55,7 @@ func TestReplicationGuestOperationSerializesMigrationAndPolicyEnable(t *testing.
 		t.Fatalf("competing migration guard was not rejected: %v", err)
 	}
 
-	if err := UpdateReplicationPolicyTxn(db, &ReplicationPolicyPayload{
+	if err := updateReplicationPolicy(db, &ReplicationPolicyPayload{
 		Policy: staleEnable, ExpectedOwnerEpoch: 1,
 	}); err == nil || !strings.Contains(err.Error(), "guest_operation_in_progress") {
 		t.Fatalf("stale enable payload committed after migration acquire: %v", err)
@@ -71,7 +69,7 @@ func TestReplicationGuestOperationSerializesMigrationAndPolicyEnable(t *testing.
 	}
 
 	newPolicy := replicationGuestOperationPolicy(2, 101, false)
-	if err := UpsertReplicationPolicyTxn(db, &newPolicy, nil); err == nil ||
+	if err := upsertReplicationPolicy(db, &newPolicy, nil); err == nil ||
 		!strings.Contains(err.Error(), "guest_operation_in_progress") {
 		t.Fatalf("policy create committed during migration: %v", err)
 	}
@@ -80,10 +78,10 @@ func TestReplicationGuestOperationSerializesMigrationAndPolicyEnable(t *testing.
 		GuestType: ReplicationGuestTypeVM, GuestID: 101, Operation: ReplicationGuestOperationMigration,
 		Token: acquire.Token, OccurredAt: now.Add(time.Second),
 	}
-	if err := SealReplicationGuestOperationTxn(db, &seal); err != nil {
+	if err := sealReplicationGuestOperation(db, &seal); err != nil {
 		t.Fatalf("seal migration guard: %v", err)
 	}
-	if err := SealReplicationGuestOperationTxn(db, &seal); err != nil {
+	if err := sealReplicationGuestOperation(db, &seal); err != nil {
 		t.Fatalf("seal replay failed: %v", err)
 	}
 	if err := AbortReplicationGuestOperationTxn(db, &seal); err == nil ||
@@ -94,11 +92,11 @@ func TestReplicationGuestOperationSerializesMigrationAndPolicyEnable(t *testing.
 	complete := seal
 	complete.TargetNodeID = "node-b"
 	complete.OccurredAt = now.Add(3 * time.Second)
-	if err := CompleteReplicationGuestOperationTxn(db, &complete); err == nil ||
+	if err := completeReplicationGuestOperation(db, &complete); err == nil ||
 		!strings.Contains(err.Error(), "reassignment_incomplete") {
 		t.Fatalf("guard completed before policy reassignment: %v", err)
 	}
-	if err := ReassignDisabledReplicationPolicyOwnerTxn(db, &ReplicationDisabledOwnerReassignment{
+	if err := reassignDisabledReplicationPolicyOwner(db, &ReplicationDisabledOwnerReassignment{
 		PolicyID: policy.ID, ExpectedActiveNodeID: "node-a", ExpectedOwnerEpoch: 1,
 		ActiveNodeID: "node-b", SourceNodeID: "node-b", OwnerEpoch: 2,
 		Targets: []ReplicationPolicyTarget{{NodeID: "node-a", Weight: 100}},
@@ -108,21 +106,21 @@ func TestReplicationGuestOperationSerializesMigrationAndPolicyEnable(t *testing.
 	}
 	missingTimestamp := complete
 	missingTimestamp.OccurredAt = time.Time{}
-	if err := CompleteReplicationGuestOperationTxn(db, &missingTimestamp); err == nil ||
+	if err := completeReplicationGuestOperation(db, &missingTimestamp); err == nil ||
 		!strings.Contains(err.Error(), "timestamp_required") {
 		t.Fatalf("completion accepted without a deterministic timestamp: %v", err)
 	}
-	if err := CompleteReplicationGuestOperationTxn(db, &complete); err != nil {
+	if err := completeReplicationGuestOperation(db, &complete); err != nil {
 		t.Fatalf("complete migration guard: %v", err)
 	}
 	replay := complete
 	replay.OccurredAt = complete.OccurredAt.Add(time.Second)
-	if err := CompleteReplicationGuestOperationTxn(db, &replay); err != nil {
+	if err := completeReplicationGuestOperation(db, &replay); err != nil {
 		t.Fatalf("complete migration guard replay: %v", err)
 	}
 	wrongTarget := replay
 	wrongTarget.TargetNodeID = "node-c"
-	if err := CompleteReplicationGuestOperationTxn(db, &wrongTarget); err == nil ||
+	if err := completeReplicationGuestOperation(db, &wrongTarget); err == nil ||
 		!strings.Contains(err.Error(), "completion_receipt_mismatch") {
 		t.Fatalf("completion replay accepted a non-matching receipt: %v", err)
 	}
@@ -155,7 +153,7 @@ func TestReplicationGuestOperationSerializesMigrationAndPolicyEnable(t *testing.
 	if err := db.Create(&duplicateReceipt).Error; err == nil {
 		t.Fatal("duplicate migration completion receipt token was accepted")
 	}
-	if err := CompleteReplicationGuestOperationTxn(db, &replay); err != nil {
+	if err := completeReplicationGuestOperation(db, &replay); err != nil {
 		t.Fatalf("duplicate receipt attempt changed the valid replay result: %v", err)
 	}
 	var receiptCount int64
@@ -168,7 +166,7 @@ func TestReplicationGuestOperationSerializesMigrationAndPolicyEnable(t *testing.
 }
 
 func TestReplicationGuestOperationRestoreBlocksMutationsAndReleases(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t,
+	db := newClusterModelTestDB(t,
 		&ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &ReplicationGuestOperation{},
 		&ReplicationGuestOperationReceipt{}, &ReplicationEvent{},
 	)
@@ -192,7 +190,7 @@ func TestReplicationGuestOperationRestoreBlocksMutationsAndReleases(t *testing.T
 	if err := AcquireReplicationGuestOperationTxn(db, &acquire); err != nil {
 		t.Fatalf("acquire restore guard: %v", err)
 	}
-	if err := UpdateReplicationPolicyTxn(db, &ReplicationPolicyPayload{
+	if err := updateReplicationPolicy(db, &ReplicationPolicyPayload{
 		Policy: policy, ExpectedOwnerEpoch: policy.OwnerEpoch,
 	}); err == nil || !strings.Contains(err.Error(), "guest_operation_in_progress") {
 		t.Fatalf("policy update committed during restore: %v", err)
@@ -215,7 +213,7 @@ func TestReplicationGuestOperationRestoreBlocksMutationsAndReleases(t *testing.T
 }
 
 func TestReplicationGuestOperationEnableWinsRaftOrder(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t,
+	db := newClusterModelTestDB(t,
 		&ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &ReplicationGuestOperation{},
 		&ReplicationGuestOperationReceipt{}, &ReplicationEvent{},
 	)
@@ -241,7 +239,7 @@ func TestReplicationGuestOperationEnableWinsRaftOrder(t *testing.T) {
 }
 
 func TestReplicationGuestOperationAcquireRejectsStaleLease(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t,
+	db := newClusterModelTestDB(t,
 		&ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &ReplicationGuestOperation{},
 		&ReplicationGuestOperationReceipt{}, &ReplicationEvent{},
 	)
@@ -266,7 +264,7 @@ func TestReplicationGuestOperationAcquireRejectsStaleLease(t *testing.T) {
 }
 
 func TestReplicationGuestOperationAcquireRejectsDeletingPolicy(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t,
+	db := newClusterModelTestDB(t,
 		&ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &ReplicationGuestOperation{},
 		&ReplicationGuestOperationReceipt{}, &ReplicationEvent{},
 	)
@@ -294,7 +292,7 @@ func TestReplicationGuestOperationAcquireRejectsDeletingPolicy(t *testing.T) {
 }
 
 func TestEmergencyRestoreGuestOperationSerializesWithoutMigrationPrivileges(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t,
+	db := newClusterModelTestDB(t,
 		&ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{}, &ReplicationGuestOperation{},
 		&ReplicationGuestOperationReceipt{}, &ReplicationEvent{},
 	)
@@ -319,7 +317,7 @@ func TestEmergencyRestoreGuestOperationSerializesWithoutMigrationPrivileges(t *t
 	enable := policy
 	enable.Enabled = true
 	enable.ProtectionState = ReplicationProtectionStateInitializing
-	if err := UpdateReplicationPolicyTxn(db, &ReplicationPolicyPayload{
+	if err := updateReplicationPolicy(db, &ReplicationPolicyPayload{
 		Policy: enable, ExpectedOwnerEpoch: policy.OwnerEpoch,
 	}); err == nil || !strings.Contains(err.Error(), "guest_operation_in_progress") {
 		t.Fatalf("policy enabled during emergency restoration: %v", err)
@@ -341,11 +339,11 @@ func TestEmergencyRestoreGuestOperationSerializesWithoutMigrationPrivileges(t *t
 		Operation: ReplicationGuestOperationEmergencyRestore,
 		Token:     acquire.Token, OccurredAt: now.Add(time.Second), TargetNodeID: "node-b",
 	}
-	if err := SealReplicationGuestOperationTxn(db, &transition); err == nil ||
+	if err := sealReplicationGuestOperation(db, &transition); err == nil ||
 		!strings.Contains(err.Error(), "seal_requires_migration") {
 		t.Fatalf("emergency restore guard gained seal privilege: %v", err)
 	}
-	if err := CompleteReplicationGuestOperationTxn(db, &transition); err == nil ||
+	if err := completeReplicationGuestOperation(db, &transition); err == nil ||
 		!strings.Contains(err.Error(), "complete_requires_migration") {
 		t.Fatalf("emergency restore guard gained migration completion privilege: %v", err)
 	}

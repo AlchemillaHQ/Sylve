@@ -75,6 +75,25 @@ func TestRestoreZeltaArgsRespectRecursion(t *testing.T) {
 	}
 }
 
+func TestZeltaRecvMissingErrorNamesTheFailedSend(t *testing.T) {
+	output := strings.Join([]string{
+		"info: checking properties for root@backup:tank/backups/zroot/sylve/jails/105/j-x/active@bk_1",
+		"notice: syncing 1 datasets",
+		"info: warning: cannot send 'tank/backups/zroot/sylve/jails/105/j-x/active@bk_1': permission denied",
+		"info: cannot receive: failed to read from stream",
+		`{"replicationStreamsReceived": 0, "replicationErrorCode": 0}`,
+	}, "\n")
+	err := zeltaRecvMissingError("zroot/sylve/jails/105.restoring", output)
+	if !strings.HasPrefix(err.Error(), "zelta_recv_dataset_missing: ") ||
+		!strings.Contains(err.Error(), "warning: cannot send 'tank/backups/zroot/sylve/jails/105/j-x/active@bk_1': permission denied; cannot receive: failed to read from stream") {
+		t.Fatalf("error = %v", err)
+	}
+	if err := zeltaRecvMissingError("zroot/data.restoring", "notice: syncing 1 datasets"); err.Error() !=
+		"zelta_recv_dataset_missing: zelta exited successfully but 'zroot/data.restoring' does not exist" {
+		t.Fatalf("error without zelta errors = %v", err)
+	}
+}
+
 func TestFilterSnapshotsForRestoreJob(t *testing.T) {
 	job := &clusterModels.BackupJob{
 		Mode:            clusterModels.BackupJobModeJail,
@@ -148,6 +167,7 @@ func TestIntegrationListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 	db := newZeltaServiceTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
 		DB:                db,
+		Cluster:           newTestClusterService(db, ""),
 		queuedJobs:        make(map[uint]struct{}),
 		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),

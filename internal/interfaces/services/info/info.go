@@ -15,16 +15,17 @@ import (
 )
 
 type NodeInfo struct {
-	Hostname     string  `json:"hostname"`
-	SylveVersion string  `json:"sylveVersion"`
-	SylveCommit  string  `json:"sylveCommit"`
-	LogicalCores int16   `json:"logicalCores"`
-	CPUUsage     float64 `json:"cpuUsage"`
-	RAMTotal     uint64  `json:"ramTotal"`
-	RAMUsage     float64 `json:"ramUsage"`
-	DiskTotal    uint64  `json:"diskTotal"`
-	DiskUsage    float64 `json:"diskUsage"`
-	Guests       []uint  `json:"guestIds"`
+	Hostname        string  `json:"hostname"`
+	SylveVersion    string  `json:"sylveVersion"`
+	SylveCommit     string  `json:"sylveCommit"`
+	ClusterProtocol int     `json:"clusterProtocol"`
+	LogicalCores    int16   `json:"logicalCores"`
+	CPUUsage        float64 `json:"cpuUsage"`
+	RAMTotal        uint64  `json:"ramTotal"`
+	RAMUsage        float64 `json:"ramUsage"`
+	DiskTotal       uint64  `json:"diskTotal"`
+	DiskUsage       float64 `json:"diskUsage"`
+	Guests          []uint  `json:"guestIds"`
 }
 
 type InfoServiceInterface interface {

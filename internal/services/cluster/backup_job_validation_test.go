@@ -4,14 +4,10 @@ package cluster
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 )
@@ -65,7 +61,7 @@ func TestValidateBackupJobOnRunnerCanSkipDisabledTargetConnectivity(t *testing.T
 	}
 
 	result, _, err := service.validateBackupJobOnRunnerWithTarget(
-		context.Background(), job, true, BackupJobPlacementAuthorization{}, false,
+		context.Background(), job, BackupJobPlacementAuthorization{}, false,
 	)
 	if err != nil {
 		t.Fatalf("validate disabled job without target connectivity: %v", err)
@@ -75,7 +71,7 @@ func TestValidateBackupJobOnRunnerCanSkipDisabledTargetConnectivity(t *testing.T
 	}
 
 	_, _, err = service.validateBackupJobOnRunner(
-		context.Background(), job, true, BackupJobPlacementAuthorization{},
+		context.Background(), job, BackupJobPlacementAuthorization{},
 	)
 	if err == nil || !strings.Contains(err.Error(), "backup_target_not_found") {
 		t.Fatalf("enabled target validation error = %v", err)
@@ -101,32 +97,6 @@ func TestValidateBackupJobSafetyLocalUsesRunnerManagedInventory(t *testing.T) {
 	}
 }
 
-func registerBackupJobValidationPeer(t *testing.T, sim *clusterPeerSimulator, service *Service) {
-	t.Helper()
-	sim.serveMux.HandleFunc("/api/intra-cluster/backup-job-safety-validation", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		var request BackupJobSafetyValidationRequest
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		result, err := service.ValidateBackupJobSafetyLocal(r.Context(), request)
-		if err != nil {
-			_ = json.NewEncoder(w).Encode(internal.APIResponse[any]{
-				Status: "error", Message: "backup_runner_validation_failed", Error: err.Error(),
-			})
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(internal.APIResponse[BackupJobSafetyValidationResult]{
-			Status: "success", Data: result,
-		})
-	})
-}
-
 func seedRemoteValidationVM(t *testing.T, service *Service, rid uint, pool, name string) {
 	t.Helper()
 	vm := vmModels.VM{RID: rid, Name: name}
@@ -147,66 +117,35 @@ func seedRemoteValidationVM(t *testing.T, service *Service, rid uint, pool, name
 	}
 }
 
-func TestFetchBackupJobSafetyValidationAuthenticatesAndBindsReceipt(t *testing.T) {
+func TestBackupJobSafetyReceiptIsBoundToTheRunner(t *testing.T) {
 	request := BackupJobSafetyValidationRequest{
-		ExpectedNodeID:          "node-runner",
-		MinimumRaftAppliedIndex: 7,
-		Mode:                    clusterModels.BackupJobModeDataset,
-		SourceDataset:           "tank/data",
+		ExpectedNodeID: "node-runner",
+		Mode:           clusterModels.BackupJobModeDataset,
+		SourceDataset:  "tank/data",
 	}
 	result := BackupJobSafetyValidationResult{
-		NodeID: "node-runner", RaftAppliedIndex: 7, Valid: true,
+		NodeID: "node-runner", Valid: true,
 		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/data",
 		Classification: BackupJobSourceClassificationDataset,
 		FriendlySource: "tank/data",
 	}
-
-	sim := newClusterPeerSimulator()
-	defer sim.Close()
-	sim.serveMux.HandleFunc("/api/intra-cluster/backup-job-safety-validation", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(internal.APIResponse[BackupJobSafetyValidationResult]{
-			Status: "success", Data: result,
-		})
-	})
-	service := &Service{NodeID: "node-leader", AuthService: clusterAuthStub{}}
-
-	got, err := service.fetchBackupJobSafetyValidation(t.Context(), "node-runner", sim.Addr(), request)
-	if err != nil {
-		t.Fatalf("fetch validation: %v", err)
-	}
-	if err := validateBackupJobSafetyReceipt(request, got); err != nil {
+	if err := validateBackupJobSafetyReceipt(request, result); err != nil {
 		t.Fatalf("validate receipt: %v", err)
 	}
-	captured := sim.FindRequest("/api/intra-cluster/backup-job-safety-validation")
-	if captured == nil || captured.Header.Get("X-Cluster-Token") != "Bearer test-cluster-token" {
-		t.Fatalf("authenticated request not observed: %+v", captured)
-	}
-
 	result.NodeID = "spoofed-node"
-	got, err = service.fetchBackupJobSafetyValidation(t.Context(), "node-runner", sim.Addr(), request)
-	if err != nil {
-		t.Fatalf("fetch spoofed receipt: %v", err)
-	}
-	if err := validateBackupJobSafetyReceipt(request, got); err == nil ||
+	if err := validateBackupJobSafetyReceipt(request, result); err == nil ||
 		!strings.Contains(err.Error(), "backup_runner_identity_mismatch") {
 		t.Fatalf("spoofed receipt error = %v", err)
 	}
 }
 
-func TestFetchBackupJobSafetyValidationFailsClosedWhenRunnerOffline(t *testing.T) {
+func TestFetchBackupJobSafetyValidationFailsClosedForAnUnknownRunner(t *testing.T) {
 	service := &Service{NodeID: "node-leader", AuthService: clusterAuthStub{}}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	_, err := service.fetchBackupJobSafetyValidation(
-		ctx,
-		"node-offline",
-		"127.0.0.1:1",
-		BackupJobSafetyValidationRequest{
-			ExpectedNodeID: "node-offline", Mode: "dataset", SourceDataset: "tank/data",
-		},
-	)
+	_, err := service.fetchBackupJobSafetyValidation(t.Context(), "node-offline", BackupJobSafetyValidationRequest{
+		ExpectedNodeID: "node-offline", Mode: "dataset", SourceDataset: "tank/data",
+	})
 	if err == nil || !strings.Contains(err.Error(), "backup_runner_validation_request_failed") {
-		t.Fatalf("offline runner error = %v", err)
+		t.Fatalf("unknown runner error = %v", err)
 	}
 }
 

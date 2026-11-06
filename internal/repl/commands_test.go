@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
+	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 func TestExecuteLineExitAndQuitDoNotShutdown(t *testing.T) {
@@ -74,7 +75,7 @@ func TestExecuteLineWritesOutputToContextWriter(t *testing.T) {
 }
 
 func TestExecuteLineFenceAllowsInspectionAndRejectsMutation(t *testing.T) {
-	service := clusterService.NewClusterService(nil, nil, nil).(*clusterService.Service)
+	service := clusterService.NewClusterService(testutil.NewSQLiteTestDB(t), nil, nil).(*clusterService.Service)
 	var out bytes.Buffer
 	ctx := &Context{Cluster: service, Out: &out}
 

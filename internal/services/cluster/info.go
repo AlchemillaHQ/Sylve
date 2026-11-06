@@ -36,6 +36,7 @@ func (s *Service) SyncClusterHealth(payload []clusterServiceInterfaces.NodeHealt
 				Hostname:     node.Hostname,
 				SylveVersion: node.SylveVersion,
 				SylveCommit:  node.SylveCommit,
+				Protocol:     node.Protocol,
 				API:          node.API,
 				Status:       node.Status,
 				CPU:          node.CPU,
@@ -52,7 +53,7 @@ func (s *Service) SyncClusterHealth(payload []clusterServiceInterfaces.NodeHealt
 			if err := tx.Clauses(clause.OnConflict{
 				Columns: []clause.Column{{Name: "node_uuid"}},
 				DoUpdates: clause.AssignmentColumns([]string{
-					"hostname", "sylve_version", "sylve_commit", "api", "status", "cpu", "cpu_usage",
+					"hostname", "sylve_version", "sylve_commit", "protocol", "api", "status", "cpu", "cpu_usage",
 					"memory", "memory_usage", "disk", "disk_usage", "guest_ids", "updated_at",
 				}),
 			}).Create(&insertRows).Error; err != nil {

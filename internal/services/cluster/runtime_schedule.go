@@ -9,12 +9,12 @@
 package cluster
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	"github.com/hashicorp/raft"
 	"gorm.io/gorm"
 )
 
@@ -25,13 +25,15 @@ func (s *Service) RuntimeStateBypassRaft() (bool, error) {
 	if s == nil || s.DB == nil {
 		return false, fmt.Errorf("cluster_service_unavailable")
 	}
-	// Older standalone test/utility databases may not contain cluster metadata.
-	// Production databases always migrate this table; absence therefore has the
-	// same legacy meaning as no configured cluster.
+	// A running Raft means the node is clustered or becoming so, even while
+	// its cluster row isn't enabled yet: writes go through Raft from then on.
+	if s.Raft() != nil {
+		return false, nil
+	}
+	// A database without the cluster table has never been clustered.
 	if !s.DB.Migrator().HasTable(&clusterModels.Cluster{}) {
 		return true, nil
 	}
-
 	var state clusterModels.Cluster
 	err := s.DB.Order("id ASC").Limit(1).First(&state).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -43,119 +45,64 @@ func (s *Service) RuntimeStateBypassRaft() (bool, error) {
 	if !state.Enabled {
 		return true, nil
 	}
-	if s.Raft() == nil {
-		return false, fmt.Errorf("cluster_enabled_raft_unavailable")
-	}
-	return false, nil
+	return false, fmt.Errorf("cluster_enabled_raft_unavailable: %w", errConsensusUnavailable)
 }
 
-func (s *Service) requireRuntimeWriteAuthority(bypassRaft bool) error {
-	actualBypass, err := s.RuntimeStateBypassRaft()
-	if err != nil {
-		return err
-	}
-	if bypassRaft && !actualBypass {
-		return fmt.Errorf("cluster_enabled_local_runtime_write_forbidden")
-	}
-	if !bypassRaft {
-		if s.Raft() == nil {
-			return fmt.Errorf("raft_not_initialized")
-		}
-		if s.Raft().State() != raft.Leader {
-			return fmt.Errorf("not_leader")
-		}
-	}
-	return nil
-}
-
-func (s *Service) applyRuntimeScheduleCommand(
-	commandType, action string,
-	payload any,
-	bypassRaft bool,
-	localApply func() error,
-) error {
-	if err := s.requireRuntimeWriteAuthority(bypassRaft); err != nil {
-		return err
-	}
-	if bypassRaft {
-		return localApply()
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_runtime_schedule_command: %w", err)
-	}
-	return s.applyRaftCommand(clusterModels.Command{
-		Type: commandType, Action: action, Data: data,
-	})
-}
-
-func (s *Service) ApplyBackupJobScheduleDecision(
-	decision clusterModels.BackupJobScheduleDecision,
-	bypassRaft bool,
-) error {
-	if !bypassRaft && decision.ClaimToken != "" {
+func (s *Service) ApplyBackupJobScheduleDecision(decision clusterModels.BackupJobScheduleDecision) error {
+	if !s.Standalone() && decision.ClaimToken != "" {
 		s.clusterJoinMu.Lock()
 		defer s.clusterJoinMu.Unlock()
 		if err := s.RequireCurrentRaftVoter(decision.HolderNodeID); err != nil {
 			return fmt.Errorf("backup_schedule_holder_not_current_voter: %w", err)
 		}
 	}
-	return s.applyRuntimeScheduleCommand(
-		"backup_job_schedule", "decide_v2", decision, bypassRaft,
-		func() error { return clusterModels.ApplyBackupJobScheduleDecisionV2Txn(s.DB, &decision) },
-	)
+	return s.apply("backup_job_schedule", "decide_v2", decision)
 }
 
-func (s *Service) CompleteBackupJobRun(
-	result clusterModels.BackupJobRunResult,
-	bypassRaft bool,
-) error {
-	return s.applyRuntimeScheduleCommand(
-		"backup_job_schedule", "complete", result, bypassRaft,
-		func() error { return clusterModels.CompleteBackupJobRunTxn(s.DB, &result) },
-	)
+func (s *Service) CompleteBackupJobRun(result clusterModels.BackupJobRunResult) error {
+	return s.apply("backup_job_schedule", "complete", result)
 }
 
-func (s *Service) ApplyReplicationPolicyScheduleDecision(
-	decision clusterModels.ReplicationPolicyScheduleDecision,
-	bypassRaft bool,
-) error {
-	if !bypassRaft && decision.ClaimToken != "" {
+func (s *Service) ApplyReplicationPolicyScheduleDecision(decision clusterModels.ReplicationPolicyScheduleDecision) error {
+	if !s.Standalone() && decision.ClaimToken != "" {
 		s.clusterJoinMu.Lock()
 		defer s.clusterJoinMu.Unlock()
 		if err := s.RequireCurrentRaftVoter(decision.HolderNodeID); err != nil {
 			return fmt.Errorf("replication_schedule_holder_not_current_voter: %w", err)
 		}
 	}
-	return s.applyRuntimeScheduleCommand(
-		"replication_policy_schedule", "decide", decision, bypassRaft,
-		func() error { return clusterModels.ApplyReplicationPolicyScheduleDecisionTxn(s.DB, &decision) },
-	)
+	return s.apply("replication_policy_schedule", "decide", decision)
 }
 
-func (s *Service) StartReplicationRun(
-	transition clusterModels.ReplicationRunOperationTransition,
-	bypassRaft bool,
-) error {
-	if !bypassRaft {
+func (s *Service) StartReplicationRun(transition clusterModels.ReplicationRunOperationTransition) error {
+	if !s.Standalone() {
 		s.clusterJoinMu.Lock()
 		defer s.clusterJoinMu.Unlock()
 		if err := s.RequireCurrentRaftVoter(transition.HolderNodeID); err != nil {
 			return fmt.Errorf("replication_run_holder_not_current_voter: %w", err)
 		}
 	}
-	return s.applyRuntimeScheduleCommand(
-		"replication_policy_schedule", "start", transition, bypassRaft,
-		func() error { return clusterModels.StartReplicationRunOperationTxn(s.DB, &transition) },
-	)
+	return s.apply("replication_policy_schedule", "start", transition)
 }
 
-func (s *Service) CompleteReplicationPolicyRun(
-	result clusterModels.ReplicationPolicyRunResult,
-	bypassRaft bool,
-) error {
-	return s.applyRuntimeScheduleCommand(
-		"replication_policy_schedule", "complete", result, bypassRaft,
-		func() error { return clusterModels.CompleteReplicationPolicyRunTxn(s.DB, &result) },
-	)
+func (s *Service) CompleteReplicationPolicyRun(result clusterModels.ReplicationPolicyRunResult) error {
+	return s.apply("replication_policy_schedule", "complete", result)
+}
+
+func ValidReplicationRunClaim(decision clusterModels.ReplicationPolicyScheduleDecision) bool {
+	return decision.PolicyID != 0 && decision.ExpectedOwnerEpoch != 0 && !decision.DecidedAt.IsZero() &&
+		strings.TrimSpace(decision.ClaimToken) != "" && strings.TrimSpace(decision.HolderNodeID) != "" &&
+		decision.OccurrenceAt != nil && !decision.SetRuntime && decision.LastRunAt == nil &&
+		strings.TrimSpace(decision.LastStatus) == "" && strings.TrimSpace(decision.LastError) == ""
+}
+
+func (s *Service) replicationRunClaimCall(
+	_ context.Context,
+	_ string,
+	decision clusterModels.ReplicationPolicyScheduleDecision,
+) (struct{}, error) {
+	if !ValidReplicationRunClaim(decision) {
+		return struct{}{}, fmt.Errorf("replication_run_claim_invalid")
+	}
+	return struct{}{}, s.ApplyReplicationPolicyScheduleDecision(decision)
 }

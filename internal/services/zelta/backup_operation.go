@@ -18,8 +18,8 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/google/uuid"
-	"github.com/hashicorp/raft"
 )
 
 type backupJobOperationHandle struct {
@@ -36,14 +36,7 @@ type restoreOperationRequest struct {
 }
 
 func (s *Service) backupJobOperationHolder() string {
-	holder := strings.TrimSpace(s.localNodeID())
-	if holder != "" {
-		return holder
-	}
-	if s != nil && s.Cluster != nil && s.Cluster.Raft() != nil {
-		return ""
-	}
-	return "local"
+	return s.localNodeID()
 }
 
 func (s *Service) applyBackupJobOperation(
@@ -56,89 +49,17 @@ func (s *Service) applyBackupJobOperation(
 		return fmt.Errorf("backup_job_operation_service_unavailable")
 	}
 	action = strings.ToLower(strings.TrimSpace(action))
-	bypassRaft, authorityErr := s.runtimeStateBypassRaft()
-	if authorityErr != nil {
-		return authorityErr
-	}
-
-	applyLocal := func() error {
-		switch action {
-		case "acquire":
-			return clusterModels.AcquireBackupJobOperationV2Txn(s.DB, &acquire)
-		case "start":
-			return clusterModels.StartBackupJobOperationV2Txn(s.DB, &transition)
-		case "finish":
-			return clusterModels.FinishBackupJobOperationTxn(s.DB, &transition)
-		case "abort":
-			return clusterModels.AbortBackupJobOperationTxn(s.DB, &transition)
-		case "release":
-			return clusterModels.ReleaseBackupJobOperationTxn(s.DB, &transition)
-		default:
-			return fmt.Errorf("invalid_backup_job_operation_action")
-		}
-	}
-
-	if s.Cluster == nil {
-		if !bypassRaft {
-			return fmt.Errorf("cluster_service_unavailable")
-		}
-		return applyLocal()
-	}
-	if bypassRaft {
-		if action == "acquire" {
-			return s.Cluster.AcquireBackupJobOperation(acquire, true)
-		}
-		return s.Cluster.TransitionBackupJobOperation(action, transition, true)
-	}
-
-	payload := map[string]any{
-		"hostKeyRevision": transition.HostKeyRevision,
-		"action":          action,
-		"jobId":           transition.JobID,
-		"token":           transition.Token,
-		"operation":       transition.Operation,
-		"holderNodeId":    transition.HolderNodeID,
-		"occurredAt":      transition.OccurredAt,
-		"requestPayload":  transition.RequestPayload,
-	}
-	if action == "acquire" {
-		payload = map[string]any{
-			"hostKeyRevision": acquire.HostKeyRevision,
-			"action":          action,
-			"jobId":           acquire.JobID,
-			"token":           acquire.Token,
-			"operation":       acquire.Operation,
-			"holderNodeId":    acquire.HolderNodeID,
-			"occurredAt":      acquire.AcquiredAt,
-			"requestPayload":  acquire.RequestPayload,
-		}
-	}
-
+	request := cluster.BackupJobOperationRequest{Action: action, Acquire: acquire, Transition: transition}
 	var lastErr error
 	for attempt := 0; attempt < replicationControlForwardAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if s.Cluster.Raft().State() == raft.Leader {
-			if action == "acquire" {
-				lastErr = s.Cluster.AcquireBackupJobOperation(acquire, false)
-			} else {
-				lastErr = s.Cluster.TransitionBackupJobOperation(action, transition, false)
-			}
-		} else {
-			_, leaderID := s.Cluster.Raft().LeaderWithID()
-			leaderNodeID := strings.TrimSpace(string(leaderID))
-			if leaderNodeID == "" {
-				lastErr = fmt.Errorf("leader_not_available")
-			} else {
-				lastErr = s.forwardReplicationPolicyControl(
-					leaderNodeID,
-					"backup-job-operation",
-					payload,
-					replicationControlDefaultTimeout,
-				)
-			}
-		}
+		callCtx, cancel := context.WithTimeout(ctx, replicationControlDefaultTimeout)
+		_, lastErr = cluster.CallLeader[cluster.BackupJobOperationRequest, struct{}](
+			callCtx, s.Cluster, "backup-job-operation", request,
+		)
+		cancel()
 		if lastErr == nil {
 			return nil
 		}

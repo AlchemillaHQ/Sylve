@@ -747,7 +747,7 @@ func abortBackupJobRunnerRebindItems(db *gorm.DB, operation BackupJobRunnerRebin
 }
 
 func AbortBackupJobRunnerRebindTxn(db *gorm.DB, token string) error {
-	if db == nil || !db.Migrator().HasTable(&BackupJobRunnerRebind{}) {
+	if db == nil {
 		return nil
 	}
 	token = strings.TrimSpace(token)
@@ -820,7 +820,7 @@ func RollbackFailoverBackupJobRunnerRebindTxn(
 	currentRunnerNodeID string,
 	restoredRunnerNodeID string,
 ) error {
-	if db == nil || !db.Migrator().HasTable(&BackupJobRunnerRebind{}) {
+	if db == nil {
 		return nil
 	}
 	token = strings.TrimSpace(token)
@@ -862,7 +862,7 @@ func RollbackFailoverBackupJobRunnerRebindTxn(
 }
 
 func MarkDeletedBackupJobRunnerRebindItemsTxn(db *gorm.DB, jobID uint) error {
-	if db == nil || jobID == 0 || !db.Migrator().HasTable(&BackupJobRunnerRebindItem{}) {
+	if db == nil || jobID == 0 {
 		return nil
 	}
 	var items []BackupJobRunnerRebindItem
@@ -892,7 +892,7 @@ func MarkDeletedBackupJobRunnerRebindItemsTxn(db *gorm.DB, jobID uint) error {
 }
 
 func clearBackupJobRepairRequiredTxn(db *gorm.DB, jobID uint) error {
-	if db == nil || jobID == 0 || !db.Migrator().HasTable(&BackupJobRunnerRebindItem{}) {
+	if db == nil || jobID == 0 {
 		return nil
 	}
 	var items []BackupJobRunnerRebindItem
@@ -928,7 +928,7 @@ func ClearBackupJobRepairRequiredTxn(db *gorm.DB, jobID uint) error {
 }
 
 func BackupJobRepairRequired(db *gorm.DB, jobID uint) (bool, error) {
-	if db == nil || jobID == 0 || !db.Migrator().HasTable(&BackupJobRunnerRebindItem{}) {
+	if db == nil || jobID == 0 {
 		return false, nil
 	}
 	var count int64
@@ -941,8 +941,7 @@ func BackupJobRepairRequired(db *gorm.DB, jobID uint) (bool, error) {
 }
 
 func RequireNoPendingBackupJobRunnerRebindForGuestTxn(db *gorm.DB, guestType string, guestID uint) error {
-	if db == nil || guestID == 0 || !db.Migrator().HasTable(&BackupJobRunnerRebindItem{}) ||
-		!db.Migrator().HasTable(&BackupJobRunnerRebind{}) {
+	if db == nil || guestID == 0 {
 		return nil
 	}
 	guestType = strings.ToLower(strings.TrimSpace(guestType))
@@ -961,8 +960,7 @@ func RequireNoPendingBackupJobRunnerRebindForGuestTxn(db *gorm.DB, guestType str
 }
 
 func BackupJobRunnerRebindPendingForJob(db *gorm.DB, jobID uint) (bool, error) {
-	if db == nil || jobID == 0 || !db.Migrator().HasTable(&BackupJobRunnerRebindItem{}) ||
-		!db.Migrator().HasTable(&BackupJobRunnerRebind{}) {
+	if db == nil || jobID == 0 {
 		return false, nil
 	}
 	var count int64
@@ -977,7 +975,7 @@ func BackupJobRunnerRebindPendingForJob(db *gorm.DB, jobID uint) (bool, error) {
 }
 
 func RequireBackupJobRunnerRebindTerminalTxn(db *gorm.DB, token string) error {
-	if db == nil || !db.Migrator().HasTable(&BackupJobRunnerRebind{}) {
+	if db == nil {
 		return nil
 	}
 	var operation BackupJobRunnerRebind

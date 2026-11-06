@@ -181,7 +181,7 @@ func TestRequireGuestIDAvailableStandaloneUsesSharedLocalNamespace(t *testing.T)
 		t.Fatalf("seed jail: %v", err)
 	}
 
-	service := &Service{DB: db, NodeID: "standalone-node"}
+	service := withFSM(&Service{DB: db, NodeID: "standalone-node"})
 	if err := service.RequireGuestIDAvailable(t.Context(), 701); err != nil {
 		t.Fatalf("free standalone guest ID rejected: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestRequireGuestIDAvailableStandaloneUsesSharedLocalNamespace(t *testing.T)
 	}
 }
 
-func TestRequireGuestIDAvailableClusteredWithoutRaftFailsClosed(t *testing.T) {
+func TestRequireGuestIDAvailableRefusesAnotherNodesClaim(t *testing.T) {
 	db := newClusterServiceTestDB(
 		t,
 		&clusterModels.Cluster{},
@@ -212,11 +212,19 @@ func TestRequireGuestIDAvailableClusteredWithoutRaftFailsClosed(t *testing.T) {
 	if err := db.Create(&clusterModels.Cluster{Enabled: true}).Error; err != nil {
 		t.Fatalf("seed clustered state: %v", err)
 	}
+	service := withFSM(&Service{DB: db, NodeID: "clustered-node"})
+	if err := db.Create(&clusterModels.GuestIdentityClaim{
+		GuestID: 702, GuestKind: clusterModels.ReplicationGuestTypeVM, OwnerNodeID: "other-node",
+	}).Error; err != nil {
+		t.Fatalf("seed claim: %v", err)
+	}
 
-	service := &Service{DB: db, NodeID: "clustered-node"}
-	err := service.RequireGuestIDAvailable(t.Context(), 702)
-	if err == nil || !strings.Contains(err.Error(), "cluster_consensus_unavailable") {
-		t.Fatalf("clustered check without Raft error = %v", err)
+	if err := service.RequireGuestIDAvailable(t.Context(), 702); err == nil ||
+		!strings.Contains(err.Error(), "guest_id_already_in_use") {
+		t.Fatalf("ID claimed elsewhere error = %v", err)
+	}
+	if err := service.RequireGuestIDAvailable(t.Context(), 703); err != nil {
+		t.Fatalf("free ID without Raft: %v", err)
 	}
 }
 
@@ -241,7 +249,7 @@ func TestRequireGuestRestorePlacementIgnoresStaleHealthRows(t *testing.T) {
 		t.Fatalf("seed VM: %v", err)
 	}
 
-	service := &Service{DB: db, NodeID: "current-node"}
+	service := withFSM(&Service{DB: db, NodeID: "current-node"})
 	if err := service.RequireGuestRestorePlacement(
 		t.Context(),
 		clusterModels.ReplicationGuestTypeVM,
@@ -288,7 +296,7 @@ func TestRequireGuestRestorePlacementRequiresOneExpectedRegistration(t *testing.
 				}
 			}
 
-			service := &Service{DB: db, NodeID: "node-a"}
+			service := withFSM(&Service{DB: db, NodeID: "node-a"})
 			err := service.RequireGuestRestorePlacement(
 				t.Context(),
 				clusterModels.ReplicationGuestTypeVM,
@@ -305,5 +313,31 @@ func TestRequireGuestRestorePlacementRequiresOneExpectedRegistration(t *testing.
 				t.Fatalf("valid placement rejected: %v", err)
 			}
 		})
+	}
+}
+
+func TestGuestIdentityInventoryCallReportsDurableRows(t *testing.T) {
+	db := newClusterServiceTestDB(t, &vmModels.VM{}, &jailModels.Jail{})
+	service := NewClusterService(db, nil, nil).(*Service)
+	service.NodeID = "node-a"
+	if err := db.Create(&vmModels.VM{RID: 101, Name: "vm-101"}).Error; err != nil {
+		t.Fatalf("seed VM: %v", err)
+	}
+	if err := db.Create(&jailModels.Jail{CTID: 202, Name: "jail-202"}).Error; err != nil {
+		t.Fatalf("seed jail: %v", err)
+	}
+
+	snapshot, err := CallNode[struct{}, GuestIdentityInventorySnapshot](
+		t.Context(), service, "node-a", "guest-identity-inventory", struct{}{},
+	)
+	if err != nil {
+		t.Fatalf("inventory call: %v", err)
+	}
+	entries := snapshot.Report.Entries
+	if snapshot.NodeID != "node-a" || len(entries) != 2 || entries[0].GuestID != 101 || entries[1].GuestID != 202 {
+		t.Fatalf("inventory = %+v", snapshot)
+	}
+	if snapshot.Report.Digest != BuildGuestIdentityInventoryReport(entries).Digest {
+		t.Fatalf("inventory report is not canonical: %+v", snapshot.Report)
 	}
 }

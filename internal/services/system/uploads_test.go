@@ -24,7 +24,7 @@ func TestFileExplorerUploadIdentityRestrictsDeletionToOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	uploadID, err := service.RegisterFileExplorerUpload(path, 7)
+	uploadID, err := service.RegisterFileExplorerUpload(path, "user:7")
 	if err != nil {
 		t.Fatalf("register upload: %v", err)
 	}
@@ -32,14 +32,14 @@ func TestFileExplorerUploadIdentityRestrictsDeletionToOwner(t *testing.T) {
 		t.Fatal("expected upload ID")
 	}
 
-	if err := service.DeleteFileExplorerUpload(uploadID, 8); !errors.Is(err, ErrFileExplorerUploadNotFound) {
+	if err := service.DeleteFileExplorerUpload(uploadID, "user:8"); !errors.Is(err, ErrFileExplorerUploadNotFound) {
 		t.Fatalf("foreign delete error=%v want=%v", err, ErrFileExplorerUploadNotFound)
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("foreign user affected uploaded file: %v", err)
 	}
 
-	if err := service.DeleteFileExplorerUpload(uploadID, 7); err != nil {
+	if err := service.DeleteFileExplorerUpload(uploadID, "user:7"); err != nil {
 		t.Fatalf("owner delete: %v", err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -61,7 +61,7 @@ func TestFileExplorerUploadIdentityDoesNotFollowReplacementSymlink(t *testing.T)
 		t.Fatal(err)
 	}
 
-	uploadID, err := service.RegisterFileExplorerUpload(path, 7)
+	uploadID, err := service.RegisterFileExplorerUpload(path, "user:7")
 	if err != nil {
 		t.Fatalf("register upload: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestFileExplorerUploadIdentityDoesNotFollowReplacementSymlink(t *testing.T)
 		t.Fatal(err)
 	}
 
-	if err := service.DeleteFileExplorerUpload(uploadID, 7); !errors.Is(err, ErrFileExplorerUploadConflict) {
+	if err := service.DeleteFileExplorerUpload(uploadID, "user:7"); !errors.Is(err, ErrFileExplorerUploadConflict) {
 		t.Fatalf("delete error=%v want=%v", err, ErrFileExplorerUploadConflict)
 	}
 	content, err := os.ReadFile(target)
@@ -93,7 +93,7 @@ func TestFileExplorerUploadIdentityDoesNotDeleteReplacementFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	uploadID, err := service.RegisterFileExplorerUpload(path, 7)
+	uploadID, err := service.RegisterFileExplorerUpload(path, "user:7")
 	if err != nil {
 		t.Fatalf("register upload: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestFileExplorerUploadIdentityDoesNotDeleteReplacementFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := service.DeleteFileExplorerUpload(uploadID, 7); !errors.Is(err, ErrFileExplorerUploadConflict) {
+	if err := service.DeleteFileExplorerUpload(uploadID, "user:7"); !errors.Is(err, ErrFileExplorerUploadConflict) {
 		t.Fatalf("delete error=%v want=%v", err, ErrFileExplorerUploadConflict)
 	}
 	content, err := os.ReadFile(path)
@@ -125,7 +125,7 @@ func TestFileExplorerUploadIdentityDoesNotDeleteReplacementDirectory(t *testing.
 		t.Fatal(err)
 	}
 
-	uploadID, err := service.RegisterFileExplorerUpload(path, 7)
+	uploadID, err := service.RegisterFileExplorerUpload(path, "user:7")
 	if err != nil {
 		t.Fatalf("register upload: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestFileExplorerUploadIdentityDoesNotDeleteReplacementDirectory(t *testing.
 		t.Fatal(err)
 	}
 
-	if err := service.DeleteFileExplorerUpload(uploadID, 7); !errors.Is(err, ErrFileExplorerUploadConflict) {
+	if err := service.DeleteFileExplorerUpload(uploadID, "user:7"); !errors.Is(err, ErrFileExplorerUploadConflict) {
 		t.Fatalf("delete error=%v want=%v", err, ErrFileExplorerUploadConflict)
 	}
 	if info, err := os.Stat(path); err != nil || !info.IsDir() {
@@ -152,7 +152,7 @@ func TestFileExplorerUploadIdentityAllowsPathReuse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	firstID, err := service.RegisterFileExplorerUpload(path, 7)
+	firstID, err := service.RegisterFileExplorerUpload(path, "user:7")
 	if err != nil {
 		t.Fatalf("register first upload: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestFileExplorerUploadIdentityAllowsPathReuse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	secondID, err := service.RegisterFileExplorerUpload(path, 7)
+	secondID, err := service.RegisterFileExplorerUpload(path, "user:7")
 	if err != nil {
 		t.Fatalf("register upload after path reuse: %v", err)
 	}
@@ -188,13 +188,13 @@ func TestFileExplorerUploadIdentityPersistsAcrossServiceRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	uploadID, err := firstService.RegisterFileExplorerUpload(path, 7)
+	uploadID, err := firstService.RegisterFileExplorerUpload(path, "user:7")
 	if err != nil {
 		t.Fatalf("register persistent upload: %v", err)
 	}
 
 	restartedService := &Service{DB: database}
-	if err := restartedService.DeleteFileExplorerUpload(uploadID, 7); err != nil {
+	if err := restartedService.DeleteFileExplorerUpload(uploadID, "user:7"); err != nil {
 		t.Fatalf("delete after service restart: %v", err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -210,7 +210,7 @@ func TestFileExplorerUploadIdentityTreatsMissingFileAsReverted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	uploadID, err := service.RegisterFileExplorerUpload(path, 7)
+	uploadID, err := service.RegisterFileExplorerUpload(path, "user:7")
 	if err != nil {
 		t.Fatalf("register upload: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestFileExplorerUploadIdentityTreatsMissingFileAsReverted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := service.DeleteFileExplorerUpload(uploadID, 7); err != nil {
+	if err := service.DeleteFileExplorerUpload(uploadID, "user:7"); err != nil {
 		t.Fatalf("revert missing file: %v", err)
 	}
 	var count int64
@@ -228,7 +228,7 @@ func TestFileExplorerUploadIdentityTreatsMissingFileAsReverted(t *testing.T) {
 	if count != 0 {
 		t.Fatal("successful idempotent revert left upload identity")
 	}
-	if err := service.DeleteFileExplorerUpload(uploadID, 7); !errors.Is(err, ErrFileExplorerUploadNotFound) {
+	if err := service.DeleteFileExplorerUpload(uploadID, "user:7"); !errors.Is(err, ErrFileExplorerUploadNotFound) {
 		t.Fatalf("second revert error=%v want=%v", err, ErrFileExplorerUploadNotFound)
 	}
 }
@@ -241,7 +241,7 @@ func TestFileExplorerUploadIdentityExpiresWithoutDeletingFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	uploadID, err := service.RegisterFileExplorerUpload(path, 7)
+	uploadID, err := service.RegisterFileExplorerUpload(path, "user:7")
 	if err != nil {
 		t.Fatalf("register upload: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestFileExplorerUploadIdentityExpiresWithoutDeletingFile(t *testing.T) {
 		t.Fatalf("expire upload identity: %v", err)
 	}
 
-	if err := service.DeleteFileExplorerUpload(uploadID, 7); !errors.Is(err, ErrFileExplorerUploadNotFound) {
+	if err := service.DeleteFileExplorerUpload(uploadID, "user:7"); !errors.Is(err, ErrFileExplorerUploadNotFound) {
 		t.Fatalf("expired revert error=%v want=%v", err, ErrFileExplorerUploadNotFound)
 	}
 	if content, err := os.ReadFile(path); err != nil || string(content) != "upload" {
@@ -275,7 +275,7 @@ func TestFileExplorerUploadIdentityIsBoundToNode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	uploadID, err := service.RegisterFileExplorerUpload(path, 7)
+	uploadID, err := service.RegisterFileExplorerUpload(path, "user:7")
 	if err != nil {
 		t.Fatalf("register upload: %v", err)
 	}
@@ -285,7 +285,7 @@ func TestFileExplorerUploadIdentityIsBoundToNode(t *testing.T) {
 		t.Fatalf("change identity node: %v", err)
 	}
 
-	if err := service.DeleteFileExplorerUpload(uploadID, 7); !errors.Is(err, ErrFileExplorerUploadNotFound) {
+	if err := service.DeleteFileExplorerUpload(uploadID, "user:7"); !errors.Is(err, ErrFileExplorerUploadNotFound) {
 		t.Fatalf("foreign-node revert error=%v want=%v", err, ErrFileExplorerUploadNotFound)
 	}
 	if content, err := os.ReadFile(path); err != nil || string(content) != "upload" {

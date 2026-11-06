@@ -78,18 +78,16 @@ func TestRequireLocalAdmin(t *testing.T) {
 	}
 }
 
-func TestRequireLocalAdminUsesSignedForwardedClaim(t *testing.T) {
+func TestRequireLocalAdminTrustsTheAdminAMemberActsFor(t *testing.T) {
 	service := newAuthzTestService(t)
 	gin.SetMode(gin.TestMode)
 
-	request := func(admin bool) int {
+	request := func(caller string) int {
 		router := gin.New()
 		router.Use(func(c *gin.Context) {
 			c.Set("AuthType", "sylve")
-			c.Set("UserID", uint(99))
 			c.Set("AuthScope", "cluster")
-			c.Set("ClusterTokenUse", authSvc.ClusterTokenUseUserProxy)
-			c.Set("ProxyAdmin", admin)
+			c.Set("ClusterCaller", caller)
 			c.Next()
 		})
 		router.Use(RequireLocalAdmin(service))
@@ -97,11 +95,11 @@ func TestRequireLocalAdminUsesSignedForwardedClaim(t *testing.T) {
 		return testutil.PerformRequest(t, router, http.MethodGet, "/secure", nil, nil).Code
 	}
 
-	if status := request(true); status != http.StatusOK {
-		t.Fatalf("signed forwarded admin status=%d", status)
+	if status := request(authSvc.ClusterCallerUser); status != http.StatusOK {
+		t.Fatalf("proxied admin status=%d", status)
 	}
-	if status := request(false); status != http.StatusForbidden {
-		t.Fatalf("forwarded non-admin status=%d", status)
+	if status := request(authSvc.ClusterCallerNode); status != http.StatusForbidden {
+		t.Fatalf("member node status=%d", status)
 	}
 }
 

@@ -39,7 +39,7 @@ func newClusterNotesRouter(cS *cluster.Service) *gin.Engine {
 
 func TestClusterNotesHandlerGetSuccess(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.ClusterNote{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	r := newClusterNotesRouter(cS)
 
 	if err := db.Create(&clusterModels.ClusterNote{Title: "first", Content: "**one**"}).Error; err != nil {
@@ -72,7 +72,7 @@ func TestClusterNotesHandlerGetSuccess(t *testing.T) {
 
 func TestClusterNotesHandlerValidationFailures(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.ClusterNote{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	r := newClusterNotesRouter(cS)
 
 	t.Run("create invalid request", func(t *testing.T) {
@@ -154,7 +154,7 @@ func TestClusterNotesHandlerValidationFailures(t *testing.T) {
 
 func TestClusterNotesHandlerCreateSuccess(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.ClusterNote{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	r := newClusterNotesRouter(cS)
 
 	createBody := []byte(`{"title":"created title","content":"created content"}`)
@@ -174,7 +174,7 @@ func TestClusterNotesHandlerCreateSuccess(t *testing.T) {
 
 func TestClusterNotesHandlerMissingMutationsReturnNotFound(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.ClusterNote{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	r := newClusterNotesRouter(cS)
 	validBody := []byte(`{"title":"updated title","content":"updated content"}`)
 
@@ -209,7 +209,7 @@ func TestClusterNotesHandlerMissingMutationsReturnNotFound(t *testing.T) {
 
 func TestClusterNotesHandlerBulkDeleteIsAllOrNothing(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.ClusterNote{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	r := newClusterNotesRouter(cS)
 
 	notes := []clusterModels.ClusterNote{
@@ -249,7 +249,7 @@ func TestClusterNotesHandlerBulkDeleteIsAllOrNothing(t *testing.T) {
 
 func TestClusterNotesHandlerRejectsOversizedBody(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.ClusterNote{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	r := gin.New()
 	r.Use(middleware.LimitRequestBody(64))
 	r.POST("/cluster/notes", CreateNote(cS))
@@ -307,7 +307,7 @@ func TestWriteNoteMutationErrorMappings(t *testing.T) {
 
 func TestClusterNotesHandlerUpdateSuccess(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.ClusterNote{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	r := newClusterNotesRouter(cS)
 
 	if err := db.Create(&clusterModels.ClusterNote{
@@ -337,7 +337,7 @@ func TestClusterNotesHandlerUpdateSuccess(t *testing.T) {
 
 func TestClusterNotesHandlerDeleteSuccess(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.ClusterNote{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	r := newClusterNotesRouter(cS)
 
 	if err := db.Create(&clusterModels.ClusterNote{
@@ -365,9 +365,11 @@ func TestClusterNotesHandlerDeleteSuccess(t *testing.T) {
 }
 
 func TestClusterNotesHandlerDeleteFailureReturnsSingleErrorResponse(t *testing.T) {
-	// Intentionally skip schema migration to force DB failure in local bypass mode.
 	db := newClusterHandlerTestDB(t)
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
+	if err := db.Migrator().DropTable(&clusterModels.ClusterNote{}); err != nil {
+		t.Fatal(err)
+	}
 	r := newClusterNotesRouter(cS)
 
 	rr := performJSONRequest(t, r, http.MethodDelete, "/cluster/notes/1", nil)

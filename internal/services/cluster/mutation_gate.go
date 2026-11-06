@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
@@ -159,6 +160,33 @@ func (s *Service) EnterMutation(ctx context.Context) (context.Context, func(), e
 		return admittedCtx, release, ErrNodeReaddressFenced
 	}
 	return admittedCtx, release, err
+}
+
+func (s *Service) EnterReadyMutation(ctx context.Context) (context.Context, func(), error) {
+	standalone, err := s.RuntimeStateBypassRaft()
+	if err != nil {
+		return ctx, nil, err
+	}
+	if !standalone {
+		if err := s.RequireCurrentRaftVoter(s.LocalNodeID()); err != nil {
+			return ctx, nil, err
+		}
+	}
+	return s.EnterMutation(ctx)
+}
+
+func (s *Service) EnterMutationWhenReady(ctx context.Context) (context.Context, func(), error) {
+	for {
+		admittedCtx, release, err := s.EnterReadyMutation(ctx)
+		if err == nil {
+			return admittedCtx, release, nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx, nil, ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
 }
 
 func (s *Service) DrainMutations(ctx context.Context) error {

@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -62,7 +63,6 @@ type Service struct {
 	loginMu               sync.Mutex
 	loginAttempts         map[string]*loginAttempt
 	clusterIdentityMu     sync.RWMutex
-	clusterIssuerNodeID   string
 	clusterIssuerVerifier func(string) (ClusterIssuerMembership, error)
 }
 
@@ -87,20 +87,60 @@ type ScopedJWT struct {
 }
 
 const (
-	ClusterTokenUseUserProxy       = "user_proxy"
-	ClusterTokenUseInternalControl = "internal_control"
-	ClusterInternalAuthType        = "internal-cluster"
-	AuthTypeSylvePasskey           = "sylve-passkey"
-	ClusterKeyHeader               = "X-Cluster-Key"
-	ClusterTokenHeader             = "X-Cluster-Token"
-	ClusterTokenTTL                = 5 * time.Minute
-	ClusterTokenFutureSkew         = 30 * time.Second
+	ClusterInternalAuthType = "internal-cluster"
+	AuthTypeSylvePasskey    = "sylve-passkey"
+	ClusterKeyHeader        = "X-Cluster-Key"
+	ClusterCallerNode       = "node"
+	ClusterCallerUser       = "user"
+	ProxyUserHeader         = "X-Sylve-Proxy-User"
 )
 
-var (
-	ErrClusterTokenExpired      = errors.New("jwt_expired")
-	ErrClusterTokenFutureIssued = errors.New("jwt_future_issued")
-)
+type ProxiedUser = serviceInterfaces.ProxiedUser
+
+func ParseProxiedUser(value string) (ProxiedUser, error) {
+	var user ProxiedUser
+	if err := json.Unmarshal([]byte(value), &user); err != nil || strings.TrimSpace(user.Username) == "" {
+		return ProxiedUser{}, fmt.Errorf("invalid_proxy_user")
+	}
+	switch user.AuthType {
+	case "sylve", "pam", AuthTypeSylvePasskey:
+		return user, nil
+	default:
+		return ProxiedUser{}, fmt.Errorf("invalid_proxy_user")
+	}
+}
+
+func (s *Service) ProxiedUser(userID uint, authType string) (ProxiedUser, error) {
+	var user models.User
+	if err := s.DB.Select("username", "admin", "locked", "disable_password").First(&user, userID).Error; err != nil {
+		return ProxiedUser{}, fmt.Errorf("failed_to_load_proxy_user: %w", err)
+	}
+	if user.Locked || !user.Admin {
+		return ProxiedUser{}, fmt.Errorf("proxy_user_not_authorized")
+	}
+	switch authType {
+	case "sylve":
+		if user.DisablePassword {
+			return ProxiedUser{}, fmt.Errorf("proxy_user_not_authorized")
+		}
+	case "pam":
+		if !config.IsPAMEnabled() {
+			return ProxiedUser{}, fmt.Errorf("proxy_user_not_authorized")
+		}
+	case AuthTypeSylvePasskey:
+	default:
+		return ProxiedUser{}, fmt.Errorf("proxy_auth_type_not_supported")
+	}
+	return ProxiedUser{Username: user.Username, AuthType: authType}, nil
+}
+
+func LocalOwner(userID uint) string {
+	return fmt.Sprintf("user:%d", userID)
+}
+
+func ProxiedOwner(originNode string, user ProxiedUser) string {
+	return "node:" + originNode + ":" + user.AuthType + ":" + user.Username
+}
 
 func NewAuthService(db *gorm.DB) serviceInterfaces.AuthServiceInterface {
 	return newAuthService(db, utils.BcryptPasswordHasher{})
@@ -114,63 +154,36 @@ func newAuthService(db *gorm.DB, hasher passwordHasher) *Service {
 	}
 }
 
-func (s *Service) SetClusterIssuerNodeID(nodeID string) error {
-	nodeID = strings.TrimSpace(nodeID)
-	if nodeID == "" {
-		return fmt.Errorf("cluster_issuer_node_id_required")
-	}
-	s.clusterIdentityMu.Lock()
-	s.clusterIssuerNodeID = nodeID
-	s.clusterIdentityMu.Unlock()
-	return nil
-}
-
 func (s *Service) SetClusterIssuerVerifier(verifier func(string) (ClusterIssuerMembership, error)) {
 	s.clusterIdentityMu.Lock()
 	s.clusterIssuerVerifier = verifier
 	s.clusterIdentityMu.Unlock()
 }
 
-func (s *Service) AuthorizeClusterIssuer(
-	claims serviceInterfaces.CustomClaims,
-	method string,
-	path string,
-) error {
-	issuerNodeID := strings.TrimSpace(claims.IssuerNodeID)
-	if issuerNodeID == "" {
-		return fmt.Errorf("cluster_token_issuer_required")
-	}
+// A member must be a voter to act for an admin or make an intra-cluster call,
+// except a nonvoter asking for its own removal.
+func (s *Service) AuthorizeClusterPeer(nodeID, caller, method, path string) error {
 	s.clusterIdentityMu.RLock()
 	verifier := s.clusterIssuerVerifier
 	s.clusterIdentityMu.RUnlock()
 	if verifier == nil {
-		return fmt.Errorf("cluster_token_issuer_verifier_unavailable")
+		return fmt.Errorf("cluster_peer_verifier_unavailable")
 	}
-	membership, err := verifier(issuerNodeID)
+	membership, err := verifier(nodeID)
 	if err != nil {
-		return fmt.Errorf("cluster_token_issuer_not_current: %w", err)
+		return fmt.Errorf("cluster_peer_not_current: %w", err)
 	}
 	suffrage := strings.ToLower(strings.TrimSpace(membership.Suffrage))
-	switch claims.TokenUse {
-	case ClusterTokenUseUserProxy:
-		if claims.UserID == 0 && !claims.Admin {
-			return nil
-		}
-		if suffrage != "voter" {
-			return fmt.Errorf("cluster_token_issuer_not_voter")
-		}
+	switch {
+	case suffrage == "voter":
 		return nil
-	case ClusterTokenUseInternalControl:
-		if suffrage == "voter" {
-			return nil
-		}
-		if (suffrage == "nonvoter" || suffrage == "staging") && method == http.MethodPost &&
-			(path == "/api/intra-cluster/ssh-identity" || path == "/api/intra-cluster/remove-peer") {
-			return nil
-		}
-		return fmt.Errorf("cluster_token_issuer_not_voter")
+	case caller == ClusterCallerNode && !strings.HasPrefix(path, "/api/intra-cluster/"):
+		return nil
+	case caller == ClusterCallerNode && (suffrage == "nonvoter" || suffrage == "staging") &&
+		method == http.MethodPost && path == "/api/intra-cluster/leader/remove-peer":
+		return nil
 	default:
-		return fmt.Errorf("invalid_cluster_token_use")
+		return fmt.Errorf("cluster_peer_not_voter")
 	}
 }
 
@@ -182,27 +195,6 @@ func (s *Service) GetJWTSecret() (string, error) {
 	}
 
 	return secret.Data, nil
-}
-
-func (s *Service) GetClusterKey() (string, error) {
-	var c clusterModels.Cluster
-	if err := s.DB.First(&c).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", fmt.Errorf("cluster_key_not_found")
-		}
-		return "", fmt.Errorf("cluster_key_lookup_failed: %w", err)
-	}
-
-	if !c.Enabled {
-		return "", fmt.Errorf("cluster_key_not_configured")
-	}
-
-	key := strings.TrimSpace(c.Key)
-	if key == "" {
-		return "", fmt.Errorf("cluster_key_not_configured")
-	}
-
-	return key, nil
 }
 
 func (s *Service) getTokenExpiry(remember bool) time.Time {
@@ -438,115 +430,6 @@ func (s *Service) logLoginFailure(username, authType, reason string, attempt log
 	event.Msg("authentication_failed")
 }
 
-func (s *Service) createClusterJWTWithUse(
-	userId uint,
-	username string,
-	authType string,
-	admin bool,
-	tokenUse string,
-) (string, error) {
-	clusterKey, err := s.GetClusterKey()
-	if err != nil {
-		return "", fmt.Errorf("failed_to_get_cluster_key: %w", err)
-	}
-
-	switch tokenUse {
-	case ClusterTokenUseUserProxy, ClusterTokenUseInternalControl:
-	default:
-		return "", fmt.Errorf("invalid_cluster_token_use")
-	}
-	s.clusterIdentityMu.RLock()
-	issuerNodeID := strings.TrimSpace(s.clusterIssuerNodeID)
-	s.clusterIdentityMu.RUnlock()
-	if issuerNodeID == "" {
-		issuerNodeID, err = utils.GetSystemUUID()
-		if err != nil || strings.TrimSpace(issuerNodeID) == "" {
-			return "", fmt.Errorf("cluster_issuer_node_id_unavailable")
-		}
-		issuerNodeID = strings.TrimSpace(issuerNodeID)
-	}
-
-	now := time.Now()
-
-	data := JWT{
-		RegisteredClaims: jwt.RegisteredClaims{
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(ClusterTokenTTL)),
-			ID:        uuid.NewString(),
-		},
-		CustomClaims: serviceInterfaces.CustomClaims{
-			UserID:       userId,
-			Username:     username,
-			AuthType:     authType,
-			TokenUse:     tokenUse,
-			Admin:        admin,
-			IssuerNodeID: issuerNodeID,
-		},
-	}
-
-	token, err := (jwt.NewWithClaims(jwt.SigningMethodHS256, data)).SignedString([]byte(clusterKey))
-	if err != nil {
-		return "", fmt.Errorf("failed_to_sign_jwt: %w", err)
-	}
-
-	return token, nil
-}
-
-func (s *Service) CreateUserProxyJWT(userId uint, username string, authType string) (string, error) {
-	admin := false
-	if userId != 0 {
-		var user models.User
-		if err := s.DB.Select("username", "admin", "locked", "disable_password").First(&user, userId).Error; err != nil {
-			return "", fmt.Errorf("failed_to_load_proxy_user: %w", err)
-		}
-		if user.Locked || !user.Admin {
-			return "", fmt.Errorf("proxy_user_not_authorized")
-		}
-		switch authType {
-		case "sylve":
-			if user.DisablePassword {
-				return "", fmt.Errorf("proxy_user_not_authorized")
-			}
-		case "pam":
-			if !config.IsPAMEnabled() {
-				return "", fmt.Errorf("proxy_user_not_authorized")
-			}
-		case AuthTypeSylvePasskey:
-		default:
-			return "", fmt.Errorf("proxy_auth_type_not_supported")
-		}
-		username = user.Username
-		admin = user.Admin
-	} else {
-		username = strings.TrimSpace(username)
-		if username == "" {
-			username = "cluster"
-		}
-	}
-
-	return s.createClusterJWTWithUse(
-		userId,
-		username,
-		authType,
-		admin,
-		ClusterTokenUseUserProxy,
-	)
-}
-
-func (s *Service) CreateInternalClusterJWT(username string) (string, error) {
-	username = strings.TrimSpace(username)
-	if username == "" {
-		username = "cluster"
-	}
-	return s.createClusterJWTWithUse(
-		0,
-		username,
-		ClusterInternalAuthType,
-		false,
-		ClusterTokenUseInternalControl,
-	)
-}
-
 func (s *Service) CreateScopedJWT(userID uint, username, authType, scope string, expiresInSeconds int64) (string, error) {
 	if scope == "" {
 		return "", fmt.Errorf("scope_required")
@@ -580,54 +463,6 @@ func (s *Service) CreateScopedJWT(userID uint, username, authType, scope string,
 	}
 
 	return token, nil
-}
-
-func (s *Service) VerifyClusterJWT(tokenString string) (serviceInterfaces.CustomClaims, error) {
-	clusterKey, err := s.GetClusterKey()
-	if err != nil {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("failed_to_get_cluster_key: %w", err)
-	}
-
-	token, err := jwt.ParseWithClaims(tokenString, &JWT{}, func(token *jwt.Token) (interface{}, error) {
-		return []byte(clusterKey), nil
-	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithoutClaimsValidation())
-
-	if err != nil {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid: %w", err)
-	}
-
-	claims, ok := token.Claims.(*JWT)
-
-	if !ok || !token.Valid {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
-	}
-
-	if claims.ExpiresAt == nil || claims.IssuedAt == nil {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
-	}
-
-	now := time.Now()
-	if !now.Before(claims.ExpiresAt.Time) {
-		return serviceInterfaces.CustomClaims{}, ErrClusterTokenExpired
-	}
-	if claims.IssuedAt.Time.After(now.Add(ClusterTokenFutureSkew)) {
-		return serviceInterfaces.CustomClaims{}, ErrClusterTokenFutureIssued
-	}
-	if claims.NotBefore != nil && now.Before(claims.NotBefore.Time) {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
-	}
-	if !claims.ExpiresAt.Time.After(claims.IssuedAt.Time) ||
-		claims.ExpiresAt.Time.Sub(claims.IssuedAt.Time) > ClusterTokenTTL {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
-	}
-
-	switch claims.CustomClaims.TokenUse {
-	case ClusterTokenUseUserProxy, ClusterTokenUseInternalControl:
-	default:
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("invalid_cluster_token_use")
-	}
-
-	return claims.CustomClaims, nil
 }
 
 func (s *Service) RevokeJWT(token string) error {
@@ -855,9 +690,8 @@ func (s *Service) GetTokenBySHA256(hash string) (string, error) {
 	return "", fmt.Errorf("token_not_found")
 }
 
-func (s *Service) IsValidClusterKey(clusterKey string) bool {
-	expected, err := s.GetClusterKey()
-	return err == nil && ClusterKeyMatches(clusterKey, expected)
+func (s *Service) IsValidClusterKey(secret string) bool {
+	return clusterModels.JoinKeyMatches(s.DB, secret)
 }
 
 // ClusterKeyMatches compares keys in constant time. Hashing first keeps the

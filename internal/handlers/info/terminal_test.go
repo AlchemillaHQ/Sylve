@@ -9,9 +9,12 @@
 package infoHandlers
 
 import (
+	"net/http/httptest"
 	"os/exec"
 	"syscall"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 )
 
 func TestHostTerminalSessionsAreIndependentPerConnection(t *testing.T) {
@@ -48,5 +51,24 @@ func TestHostTerminalSessionsAreIndependentPerConnection(t *testing.T) {
 	first.Close()
 	if err := second.Cmd.Process.Signal(syscall.Signal(0)); err != nil {
 		t.Fatalf("closing first host terminal affected second process: %v", err)
+	}
+}
+
+func TestHostTerminalUser(t *testing.T) {
+	tests := []struct {
+		scope, username, want string
+	}{
+		{"local", "root", "root"},
+		{"local", "admin", "admin"},
+		{"cluster", "root", ""},
+		{"cluster", "admin", ""},
+	}
+	for _, test := range tests {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Set("AuthScope", test.scope)
+		c.Set("Username", test.username)
+		if got := hostTerminalUser(c); got != test.want {
+			t.Fatalf("%s %s: logs in as %q, want %q", test.scope, test.username, got, test.want)
+		}
 	}
 }

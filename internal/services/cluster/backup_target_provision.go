@@ -9,7 +9,6 @@
 package cluster
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -19,7 +18,6 @@ import (
 
 func (s *Service) ProposeBackupTargetCreateCandidate(
 	candidate *clusterModels.BackupTarget,
-	bypassRaft bool,
 ) (*clusterModels.BackupTarget, error) {
 	if candidate == nil {
 		return nil, fmt.Errorf("backup_target_required")
@@ -53,26 +51,13 @@ func (s *Service) ProposeBackupTargetCreateCandidate(
 		HostKey:    target.SSHHostKey,
 		OccurredAt: time.Now().UTC(),
 	}
-	if bypassRaft {
-		if err := clusterModels.ApplyBackupTargetCreateV3Txn(s.DB, &command); err != nil {
-			return nil, err
-		}
-		return &target, nil
-	}
-	if s.Raft() == nil {
-		return nil, fmt.Errorf("raft_not_initialized")
-	}
-	data, err := json.Marshal(command)
-	if err != nil {
-		return nil, fmt.Errorf("failed_to_marshal_backup_target_payload: %w", err)
-	}
-	if err := s.applyRaftCommand(clusterModels.Command{Type: "backup_target", Action: "create_v3", Data: data}); err != nil {
+	if err := s.apply("backup_target", "create_v3", command); err != nil {
 		return nil, err
 	}
 	return &target, nil
 }
 
-func (s *Service) ProposeBackupTargetUpdatePlan(plan *BackupTargetUpdatePlan, bypassRaft bool) error {
+func (s *Service) ProposeBackupTargetUpdatePlan(plan *BackupTargetUpdatePlan) error {
 	if plan == nil || plan.Candidate == nil {
 		return fmt.Errorf("backup_target_update_plan_required")
 	}
@@ -87,23 +72,12 @@ func (s *Service) ProposeBackupTargetUpdatePlan(plan *BackupTargetUpdatePlan, by
 		Enabled:             candidate.Enabled,
 		SSHKey:              candidate.SSHKey,
 	}
-	if bypassRaft {
-		return clusterModels.ApplyBackupTargetUpdateV2Txn(s.DB, &command)
-	}
-	if s.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-	data, err := json.Marshal(command)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_backup_target_update: %w", err)
-	}
-	return s.applyRaftCommand(clusterModels.Command{Type: "backup_target", Action: "update_v2", Data: data})
+	return s.apply("backup_target", "update_v2", command)
 }
 
 func (s *Service) PrepareBackupTargetProvisionCreate(
 	candidate *clusterModels.BackupTarget,
 	token string,
-	bypassRaft bool,
 ) (*clusterModels.BackupTargetProvisionOperation, error) {
 	if candidate == nil {
 		return nil, fmt.Errorf("backup_target_required")
@@ -130,23 +104,8 @@ func (s *Service) PrepareBackupTargetProvisionCreate(
 		Target:              clusterModels.BackupTargetToReplicationPayload(target),
 		ProposedFingerprint: clusterModels.BackupTargetConfigurationFingerprint(&target),
 	}
-	if bypassRaft {
-		if err := clusterModels.PrepareBackupTargetProvisionOperationV2Txn(s.DB, &prepare); err != nil {
-			return nil, err
-		}
-	} else {
-		if s.Raft() == nil {
-			return nil, fmt.Errorf("raft_not_initialized")
-		}
-		data, err := json.Marshal(prepare)
-		if err != nil {
-			return nil, fmt.Errorf("marshal_backup_target_provision_prepare: %w", err)
-		}
-		if err := s.applyRaftCommand(clusterModels.Command{
-			Type: "backup_target_provision", Action: "prepare_v2", Data: data,
-		}); err != nil {
-			return nil, err
-		}
+	if err := s.apply("backup_target_provision", "prepare_v2", prepare); err != nil {
+		return nil, err
 	}
 	return s.GetBackupTargetProvisionOperation(prepare.Token)
 }
@@ -173,32 +132,16 @@ func (s *Service) ListPendingBackupTargetProvisionOperations() ([]clusterModels.
 func (s *Service) transitionBackupTargetProvision(
 	action string,
 	transition clusterModels.BackupTargetProvisionTransition,
-	bypassRaft bool,
 ) error {
 	action = strings.ToLower(strings.TrimSpace(action))
-	if bypassRaft {
-		switch action {
-		case "complete":
-			return clusterModels.CompleteBackupTargetProvisionOperationTxn(s.DB, &transition)
-		case "fail":
-			return clusterModels.FailBackupTargetProvisionOperationTxn(s.DB, &transition)
-		default:
-			return fmt.Errorf("invalid_backup_target_provision_action")
-		}
+	if action != "complete" && action != "fail" {
+		return fmt.Errorf("invalid_backup_target_provision_action")
 	}
-	if s.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-	data, err := json.Marshal(transition)
-	if err != nil {
-		return fmt.Errorf("marshal_backup_target_provision_transition: %w", err)
-	}
-	return s.applyRaftCommand(clusterModels.Command{Type: "backup_target_provision", Action: action, Data: data})
+	return s.apply("backup_target_provision", action, transition)
 }
 
 func (s *Service) CompleteBackupTargetProvision(
 	operation *clusterModels.BackupTargetProvisionOperation,
-	bypassRaft bool,
 ) error {
 	if operation == nil {
 		return fmt.Errorf("backup_target_provision_operation_required")
@@ -207,13 +150,12 @@ func (s *Service) CompleteBackupTargetProvision(
 		Token:               operation.Token,
 		TargetID:            operation.TargetID,
 		ProposedFingerprint: operation.ProposedFingerprint,
-	}, bypassRaft)
+	})
 }
 
 func (s *Service) FailBackupTargetProvision(
 	operation *clusterModels.BackupTargetProvisionOperation,
 	reason string,
-	bypassRaft bool,
 ) error {
 	if operation == nil {
 		return fmt.Errorf("backup_target_provision_operation_required")
@@ -223,5 +165,5 @@ func (s *Service) FailBackupTargetProvision(
 		TargetID:            operation.TargetID,
 		ProposedFingerprint: operation.ProposedFingerprint,
 		Error:               strings.TrimSpace(reason),
-	}, bypassRaft)
+	})
 }

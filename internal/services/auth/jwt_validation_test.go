@@ -9,12 +9,10 @@
 package auth
 
 import (
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
-	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	"github.com/alchemillahq/sylve/internal/testutil"
 
@@ -40,13 +38,9 @@ func TestJWTParserHardening(t *testing.T) {
 		&models.User{},
 		&models.Token{},
 		&models.SystemSecrets{},
-		&clusterModels.Cluster{},
 	)
 	if err := db.Create(&models.SystemSecrets{Name: "JWTSecret", Data: signingSecret}).Error; err != nil {
 		t.Fatalf("create JWT secret: %v", err)
-	}
-	if err := db.Create(&clusterModels.Cluster{Enabled: true, Key: signingSecret}).Error; err != nil {
-		t.Fatalf("create cluster: %v", err)
 	}
 	user := models.User{Username: "admin", Admin: true}
 	if err := db.Create(&user).Error; err != nil {
@@ -93,26 +87,6 @@ func TestJWTParserHardening(t *testing.T) {
 				return result.CustomClaims, err
 			},
 		},
-		{
-			name: "cluster",
-			claims: func(expiresAt *jwt.NumericDate) jwt.Claims {
-				var issuedAt *jwt.NumericDate
-				if expiresAt != nil {
-					issuedAt = jwt.NewNumericDate(expiresAt.Time.Add(-ClusterTokenTTL))
-				}
-				return JWT{
-					RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: expiresAt, IssuedAt: issuedAt},
-					CustomClaims: serviceInterfaces.CustomClaims{
-						UserID:   user.ID,
-						Username: user.Username,
-						AuthType: "sylve",
-						TokenUse: ClusterTokenUseUserProxy,
-						Admin:    true,
-					},
-				}
-			},
-			validate: service.VerifyClusterJWT,
-		},
 	}
 
 	now := time.Now()
@@ -124,8 +98,8 @@ func TestJWTParserHardening(t *testing.T) {
 		wantError     bool
 		localOnly     bool
 	}{
-		{"valid HS256", jwt.SigningMethodHS256, signingSecret, jwt.NewNumericDate(now.Add(ClusterTokenTTL)), false, false},
-		{"reject HS384", jwt.SigningMethodHS384, signingSecret, jwt.NewNumericDate(now.Add(ClusterTokenTTL)), true, false},
+		{"valid HS256", jwt.SigningMethodHS256, signingSecret, jwt.NewNumericDate(now.Add(time.Hour)), false, false},
+		{"reject HS384", jwt.SigningMethodHS384, signingSecret, jwt.NewNumericDate(now.Add(time.Hour)), true, false},
 		{"reject missing expiry", jwt.SigningMethodHS256, signingSecret, nil, true, false},
 		// Expiry and signature validation are shared library behavior, so one wrapper is sufficient.
 		{"reject expired token", jwt.SigningMethodHS256, signingSecret, jwt.NewNumericDate(now.Add(-time.Hour)), true, true},
@@ -171,84 +145,6 @@ func TestJWTParserHardening(t *testing.T) {
 						t.Fatalf("unexpected user ID: got %d, want %d", claims.UserID, user.ID)
 					}
 				})
-			}
-		})
-	}
-}
-
-func TestClusterJWTClaimBounds(t *testing.T) {
-	const signingSecret = "cluster-secret"
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{})
-	if err := db.Create(&clusterModels.Cluster{Enabled: true, Key: signingSecret}).Error; err != nil {
-		t.Fatalf("create cluster: %v", err)
-	}
-	service := &Service{DB: db}
-	now := time.Now().Truncate(time.Second)
-
-	tests := []struct {
-		name      string
-		issuedAt  *jwt.NumericDate
-		notBefore *jwt.NumericDate
-		expires   *jwt.NumericDate
-		tokenUse  string
-		wantErr   bool
-		wantErrID error
-	}{
-		{
-			name: "valid five minute token", issuedAt: jwt.NewNumericDate(now),
-			expires:  jwt.NewNumericDate(now.Add(ClusterTokenTTL)),
-			tokenUse: ClusterTokenUseUserProxy,
-		},
-		{
-			name: "expired", issuedAt: jwt.NewNumericDate(now.Add(-2 * time.Minute)),
-			expires:  jwt.NewNumericDate(now.Add(-time.Minute)),
-			tokenUse: ClusterTokenUseUserProxy, wantErr: true, wantErrID: ErrClusterTokenExpired,
-		},
-		{
-			name: "missing issued at", expires: jwt.NewNumericDate(now.Add(time.Minute)),
-			tokenUse: ClusterTokenUseUserProxy, wantErr: true,
-		},
-		{
-			name: "lifetime over five minutes", issuedAt: jwt.NewNumericDate(now),
-			expires:  jwt.NewNumericDate(now.Add(ClusterTokenTTL + time.Second)),
-			tokenUse: ClusterTokenUseUserProxy, wantErr: true,
-		},
-		{
-			name: "issued within clock skew", issuedAt: jwt.NewNumericDate(now.Add(ClusterTokenFutureSkew - time.Second)),
-			expires:  jwt.NewNumericDate(now.Add(ClusterTokenFutureSkew + time.Minute)),
-			tokenUse: ClusterTokenUseInternalControl,
-		},
-		{
-			name: "issued too far in future", issuedAt: jwt.NewNumericDate(now.Add(ClusterTokenFutureSkew + time.Second)),
-			expires:  jwt.NewNumericDate(now.Add(ClusterTokenFutureSkew + time.Minute)),
-			tokenUse: ClusterTokenUseInternalControl, wantErr: true, wantErrID: ErrClusterTokenFutureIssued,
-		},
-		{
-			name: "not valid yet", issuedAt: jwt.NewNumericDate(now),
-			notBefore: jwt.NewNumericDate(now.Add(time.Minute)), expires: jwt.NewNumericDate(now.Add(time.Minute)),
-			tokenUse: ClusterTokenUseUserProxy, wantErr: true,
-		},
-		{
-			name: "token use must be exact", issuedAt: jwt.NewNumericDate(now),
-			expires: jwt.NewNumericDate(now.Add(time.Minute)), tokenUse: " user_proxy ", wantErr: true,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			token := signJWTForParserTest(t, jwt.SigningMethodHS256, JWT{
-				RegisteredClaims: jwt.RegisteredClaims{
-					IssuedAt: test.issuedAt, NotBefore: test.notBefore, ExpiresAt: test.expires,
-				},
-				CustomClaims: serviceInterfaces.CustomClaims{TokenUse: test.tokenUse},
-			}, signingSecret)
-
-			_, err := service.VerifyClusterJWT(token)
-			if (err != nil) != test.wantErr {
-				t.Fatalf("error=%v, wantErr=%v", err, test.wantErr)
-			}
-			if test.wantErrID != nil && !errors.Is(err, test.wantErrID) {
-				t.Fatalf("error=%v, want identity %v", err, test.wantErrID)
 			}
 		})
 	}

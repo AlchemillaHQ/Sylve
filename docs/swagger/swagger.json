@@ -2472,7 +2472,7 @@
                         "ClusterKeyAuth": []
                     }
                 ],
-                "description": "Accept a join request from a cluster node",
+                "description": "Admit a node to the cluster as a nonvoter. The leader makes it a voter once it caught up.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2495,6 +2495,12 @@
                     }
                 ],
                 "responses": {
+                    "202": {
+                        "description": "Admitted",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterJoinStatus"
+                        }
+                    },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
@@ -4618,7 +4624,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Join an existing cluster. A returning node uses the same endpoint, and all of its current VM, jail and container IDs must be free in the cluster.",
+                "description": "Join an existing cluster. A returning node uses the same endpoint, and all of its current VM, jail and container IDs must be free in the cluster.\nThe leader admits the node first, and a refusal changes nothing on it. Then it starts Raft and catches up; the leader makes it a voter once it has.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4641,6 +4647,12 @@
                     }
                 ],
                 "responses": {
+                    "202": {
+                        "description": "Join started",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterJoinStatus"
+                        }
+                    },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
@@ -4687,20 +4699,20 @@
             }
         },
         "/cluster/join-key": {
-            "get": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Reveal the enabled cluster key to a local administrator for node enrollment",
+                "description": "Make a key that lets one node join through this node, at the returned address. It replaces any earlier key, and it's shown only now: the cluster keeps only its hash. Admitting a node or removing one makes it stop working.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Cluster"
                 ],
-                "summary": "Reveal Cluster Join Key",
+                "summary": "Generate Cluster Join Key",
                 "responses": {
                     "200": {
                         "description": "Success",
@@ -4722,6 +4734,43 @@
                     },
                     "409": {
                         "description": "Cluster join key unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/cluster/leave/cancel": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Abandon an unfinished leave and reopen this node. Refused once the leader has removed it.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster"
+                ],
+                "summary": "Cancel Cluster Leave",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Leader already removed this node",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -5166,6 +5215,64 @@
                 }
             }
         },
+        "/cluster/rebuild": {
+            "post": {
+                "description": "Answers another member upgrading from an older Raft format: how up to date this node is, its vote, and, from the founder, a join key. The message and the answer carry a MAC, with the old cluster key, of the TLS session.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster"
+                ],
+                "summary": "Rebuild the cluster from an older Raft format",
+                "parameters": [
+                    {
+                        "description": "The member's message",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.RebuildMessage"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Answer",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_RebuildReply"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "No valid MAC",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Not a member of the old cluster",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "No rebuild running",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/cluster/remove-node": {
             "post": {
                 "security": [
@@ -5173,7 +5280,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ask an online peer to fence local work, leave Raft, and clear its cluster state.\nRegistered guests block removal by default. Set retainGuests=true to keep the target's VM and jail registrations and release their cluster ID claims after membership removal. Other dependencies still block.",
+                "description": "Remove a node from the cluster. It keeps its VMs, jails and containers and clears its cluster state once it learns it was removed.\nA node with guests is refused with them listed unless retainGuests=true confirms it keeps them. Other dependencies still block.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5199,13 +5306,7 @@
                     "200": {
                         "description": "Success",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult"
-                        }
-                    },
-                    "202": {
-                        "description": "Removal pending",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult"
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
                     },
                     "400": {
@@ -5222,6 +5323,12 @@
                     },
                     "403": {
                         "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -5254,7 +5361,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Remove an externally fenced, unavailable peer without contacting it",
+                "description": "Remove an unavailable peer the operator fenced externally. Its guests stay on it.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5272,7 +5379,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ForceRemovePeerRequest"
+                            "$ref": "#/definitions/internal_handlers_cluster.ForceRemovePeerRequest"
                         }
                     }
                 ],
@@ -5280,7 +5387,7 @@
                     "200": {
                         "description": "Success",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult"
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
                     },
                     "400": {
@@ -6152,7 +6259,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Safely remove this node from Raft and clear its local cluster state.\nRegistered guests block a multi-node leave by default. Set retainGuests=true to keep local VM and jail registrations and release their cluster ID claims after membership removal. Other dependencies still block.",
+                "description": "Remove this node from the cluster and clear its local cluster state. The node keeps its VMs, jails and containers.\nA node with guests is refused with them listed unless retainGuests=true confirms it keeps them. Other dependencies still block.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6177,13 +6284,13 @@
                     "200": {
                         "description": "Success",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult"
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveStatus"
                         }
                     },
                     "202": {
                         "description": "Leave pending",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult"
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveStatus"
                         }
                     },
                     "400": {
@@ -6207,7 +6314,7 @@
                     "409": {
                         "description": "Leave conflict",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_PeerRemovalConflict"
                         }
                     },
                     "500": {
@@ -6250,7 +6357,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ForceLocalResetRequest"
+                            "$ref": "#/definitions/internal_handlers_cluster.ForceResetNodeRequest"
                         }
                     }
                 ],
@@ -6258,7 +6365,7 @@
                     "200": {
                         "description": "Success",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult"
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveStatus"
                         }
                     },
                     "400": {
@@ -6323,58 +6430,6 @@
                         "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    }
-                }
-            }
-        },
-        "/cluster/resync-state": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Audits every Raft member and rebuilds divergent followers one at a time",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Cluster"
-                ],
-                "summary": "Resync Cluster State",
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterStateResyncResult"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict with partial audit/repair result",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterStateResyncResult"
                         }
                     },
                     "500": {
@@ -6993,6 +7048,31 @@
                         "description": "Success",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/simple": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List each container's ID, name and live state for the resource tree",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "List containers in brief",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_SimpleList"
                         }
                     }
                 }
@@ -9995,60 +10075,6 @@
                             "additionalProperties": {
                                 "type": "string"
                             }
-                        }
-                    }
-                }
-            }
-        },
-        "/intra-cluster/sync-health": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Internal endpoint used by the Raft Leader to broadcast cluster health to followers",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Cluster Internal"
-                ],
-                "summary": "Sync Cluster Health",
-                "parameters": [
-                    {
-                        "description": "Array of node health states",
-                        "name": "payload",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeHealthSync"
-                            }
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
                     }
                 }
@@ -31684,6 +31710,26 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_SimpleList": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.SimpleList"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_container_UsedPort": {
             "type": "object",
             "properties": {
@@ -33630,11 +33676,11 @@
                 }
             }
         },
-        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult": {
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterJoinStatus": {
             "type": "object",
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveResult"
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterJoinStatus"
                 },
                 "error": {
                     "type": "string"
@@ -33647,11 +33693,11 @@
                 }
             }
         },
-        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterStateResyncResult": {
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveStatus": {
             "type": "object",
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterStateResyncResult"
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveStatus"
                 },
                 "error": {
                     "type": "string"
@@ -33686,6 +33732,23 @@
             "properties": {
                 "data": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.PeerRemovalConflict"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_RebuildReply": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.RebuildReply"
                 },
                 "error": {
                     "type": "string"
@@ -35236,6 +35299,9 @@
                 "nodeUUID": {
                     "type": "string"
                 },
+                "protocol": {
+                    "type": "integer"
+                },
                 "status": {
                     "type": "string"
                 },
@@ -35899,6 +35965,9 @@
                     "type": "integer"
                 },
                 "node": {
+                    "type": "string"
+                },
+                "originNode": {
                     "type": "string"
                 },
                 "started": {
@@ -38822,60 +38891,13 @@
                 }
             }
         },
-        "github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeHealthSync": {
-            "type": "object",
-            "properties": {
-                "api": {
-                    "type": "string"
-                },
-                "cpu": {
-                    "type": "integer"
-                },
-                "cpuUsage": {
-                    "type": "number"
-                },
-                "disk": {
-                    "type": "integer"
-                },
-                "diskUsage": {
-                    "type": "number"
-                },
-                "guestIds": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "hostname": {
-                    "type": "string"
-                },
-                "memory": {
-                    "type": "integer"
-                },
-                "memoryUsage": {
-                    "type": "number"
-                },
-                "nodeUuid": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "sylveCommit": {
-                    "type": "string"
-                },
-                "sylveVersion": {
-                    "type": "string"
-                }
-            }
-        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeResources": {
             "type": "object",
             "properties": {
                 "containers": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.ListItem"
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.SimpleList"
                     }
                 },
                 "hostname": {
@@ -39751,6 +39773,23 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.SimpleList": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "ocId": {
+                    "type": "integer"
+                },
+                "stack": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_container.Spec": {
             "type": "object",
             "properties": {
@@ -40378,6 +40417,9 @@
         "github_com_alchemillahq_sylve_internal_interfaces_services_info.NodeInfo": {
             "type": "object",
             "properties": {
+                "clusterProtocol": {
+                    "type": "integer"
+                },
                 "cpuUsage": {
                     "type": "number"
                 },
@@ -44088,42 +44130,67 @@
                 }
             }
         },
-        "github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveResult": {
+        "github_com_alchemillahq_sylve_internal_services_cluster.ClusterJoinStatus": {
             "type": "object",
             "properties": {
-                "cleanupAcknowledged": {
+                "appliedIndex": {
+                    "type": "integer"
+                },
+                "attempts": {
+                    "type": "integer"
+                },
+                "awaitingPromotion": {
                     "type": "boolean"
                 },
-                "membershipRemoved": {
-                    "type": "boolean"
+                "lastError": {
+                    "type": "string"
                 },
-                "retainedGuests": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.GuestIdentityInventoryEntry"
+                "leaderAddress": {
+                    "type": "string"
+                },
+                "leaderId": {
+                    "type": "string"
+                },
+                "leaderIp": {
+                    "type": "string"
+                },
+                "nodeId": {
+                    "type": "string"
+                },
+                "nodeIp": {
+                    "type": "string"
+                },
+                "phase": {
+                    "type": "string"
+                },
+                "pins": {
+                    "description": "Pins are the members' cert pins by node ID, which an admitted node trusts\nuntil it catches up.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
                     }
                 },
-                "status": {
-                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveStatus"
+                "raftState": {
+                    "type": "string"
+                },
+                "retrying": {
+                    "type": "boolean"
+                },
+                "suffrage": {
+                    "type": "string"
+                },
+                "targetIndex": {
+                    "type": "integer"
                 }
             }
         },
         "github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveStatus": {
             "type": "object",
             "properties": {
-                "attempts": {
-                    "type": "integer"
-                },
                 "enabled": {
                     "type": "boolean"
                 },
                 "lastError": {
-                    "type": "string"
-                },
-                "leaderIp": {
-                    "type": "string"
-                },
-                "leaveId": {
                     "type": "string"
                 },
                 "localNodeId": {
@@ -44131,80 +44198,6 @@
                 },
                 "phase": {
                     "type": "string"
-                },
-                "retainGuests": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_internal_services_cluster.ClusterStateMemberResult": {
-            "type": "object",
-            "properties": {
-                "address": {
-                    "type": "string"
-                },
-                "appliedIndex": {
-                    "type": "integer"
-                },
-                "digest": {
-                    "type": "string"
-                },
-                "error": {
-                    "type": "string"
-                },
-                "nodeId": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "suffrage": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_internal_services_cluster.ClusterStateResyncResult": {
-            "type": "object",
-            "properties": {
-                "leaderNodeId": {
-                    "type": "string"
-                },
-                "members": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterStateMemberResult"
-                    }
-                },
-                "referenceAppliedIndex": {
-                    "type": "integer"
-                },
-                "referenceDigest": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_internal_services_cluster.ForceLocalResetRequest": {
-            "type": "object",
-            "properties": {
-                "nodeId": {
-                    "type": "string"
-                },
-                "remoteMembershipAcknowledged": {
-                    "type": "boolean"
-                },
-                "workloadsExternallyFenced": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_internal_services_cluster.ForceRemovePeerRequest": {
-            "type": "object",
-            "properties": {
-                "nodeId": {
-                    "type": "string"
-                },
-                "targetExternallyFenced": {
-                    "type": "boolean"
                 }
             }
         },
@@ -44262,12 +44255,6 @@
                     "items": {
                         "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.GuestIdentityInventoryEntry"
                     }
-                },
-                "inFlightGuestIds": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
                 }
             }
         },
@@ -44301,6 +44288,49 @@
                     "type": "string"
                 },
                 "state": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_cluster.RebuildMessage": {
+            "type": "object",
+            "properties": {
+                "candidate": {
+                    "type": "boolean"
+                },
+                "joinKey": {
+                    "type": "boolean"
+                },
+                "lastIndex": {
+                    "type": "integer"
+                },
+                "lastTerm": {
+                    "type": "integer"
+                },
+                "nodeId": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_cluster.RebuildReply": {
+            "type": "object",
+            "properties": {
+                "founded": {
+                    "type": "boolean"
+                },
+                "joinKey": {
+                    "type": "string"
+                },
+                "lastIndex": {
+                    "type": "integer"
+                },
+                "lastTerm": {
+                    "type": "integer"
+                },
+                "nodeId": {
+                    "type": "string"
+                },
+                "vote": {
                     "type": "string"
                 }
             }
@@ -47092,13 +47122,19 @@
         "internal_handlers_cluster.AcceptJoinRequest": {
             "type": "object",
             "required": [
+                "nodeHostname",
                 "nodeId",
                 "nodeIp",
-                "nodeVersion"
+                "nodeVersion",
+                "sshPublicKey"
             ],
             "properties": {
                 "inventory": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.GuestIdentityInventoryReport"
+                },
+                "nodeHostname": {
+                    "description": "NodeHostname names the node in requests, so no two members share one.",
+                    "type": "string"
                 },
                 "nodeId": {
                     "type": "string"
@@ -47109,8 +47145,9 @@
                 "nodeVersion": {
                     "type": "string"
                 },
-                "preflight": {
-                    "type": "boolean"
+                "sshPublicKey": {
+                    "description": "SSHPublicKey is the joiner's cluster SSH key, recorded with its pin.",
+                    "type": "string"
                 }
             }
         },
@@ -47122,6 +47159,34 @@
             "properties": {
                 "ip": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handlers_cluster.ForceRemovePeerRequest": {
+            "type": "object",
+            "required": [
+                "nodeId"
+            ],
+            "properties": {
+                "nodeId": {
+                    "type": "string"
+                },
+                "targetExternallyFenced": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_handlers_cluster.ForceResetNodeRequest": {
+            "type": "object",
+            "properties": {
+                "nodeId": {
+                    "type": "string"
+                },
+                "remoteMembershipAcknowledged": {
+                    "type": "boolean"
+                },
+                "workloadsExternallyFenced": {
+                    "type": "boolean"
                 }
             }
         },
@@ -47151,6 +47216,10 @@
         "internal_handlers_cluster.JoinKeyResponse": {
             "type": "object",
             "properties": {
+                "address": {
+                    "description": "Address is the node the key joins through.",
+                    "type": "string"
+                },
                 "key": {
                     "type": "string"
                 }
@@ -49224,12 +49293,6 @@
             "description": "Exact enabled cluster join key.",
             "type": "apiKey",
             "name": "X-Cluster-Key",
-            "in": "header"
-        },
-        "ClusterTokenAuth": {
-            "description": "Short-lived server-issued cluster token.",
-            "type": "apiKey",
-            "name": "X-Cluster-Token",
             "in": "header"
         }
     }

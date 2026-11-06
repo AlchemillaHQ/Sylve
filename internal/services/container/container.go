@@ -157,7 +157,6 @@ func (s *Service) Startup(ctx context.Context) error {
 		return err
 	}
 	interrupted := map[string]bool{}
-	var unclaimed []uint
 	for _, record := range records {
 		if !record.CreationPending {
 			if err := applyLimits(ctx, record); err != nil {
@@ -170,7 +169,6 @@ func (s *Service) Startup(ctx context.Context) error {
 		if err := s.DB.WithContext(ctx).Delete(&record).Error; err != nil {
 			return err
 		}
-		unclaimed = append(unclaimed, record.OCID)
 		logger.L.Warn().Uint("oc_id", record.OCID).Msg("removed_interrupted_container_creation")
 		if record.Stack != "" {
 			interrupted[record.Stack] = true
@@ -191,38 +189,7 @@ func (s *Service) Startup(ctx context.Context) error {
 		}
 		logger.L.Warn().Str("stack", stack).Msg("removed_interrupted_container_stack")
 	}
-	if s.identity != nil && len(unclaimed) > 0 {
-		go s.releaseInterruptedIdentities(ctx, unclaimed)
-	}
 	return nil
-}
-
-// releaseInterruptedIdentities frees the IDs of creations a crash cut short.
-// Startup runs before Raft on clustered nodes, so it retries while consensus is
-// unavailable; any other error (no claim, standalone node) ends the attempt.
-func (s *Service) releaseInterruptedIdentities(ctx context.Context, ocids []uint) {
-	for {
-		var pending []uint
-		for _, ocid := range ocids {
-			claim, err := s.identity.GuestIdentityClaim(ctx, clusterModels.GuestIdentityKindContainer, ocid, "")
-			if err == nil {
-				err = s.identity.ReleaseGuestIdentities(ctx, claim)
-				s.identity.CancelGuestIdentityClaim(claim)
-			}
-			if err != nil && strings.Contains(err.Error(), "cluster_consensus_unavailable") {
-				pending = append(pending, ocid)
-			}
-		}
-		if len(pending) == 0 {
-			return
-		}
-		ocids = pending
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(10 * time.Second):
-		}
-	}
 }
 
 func (s *Service) record(ctx context.Context, ocid uint) (containerModels.Container, error) {

@@ -65,8 +65,7 @@ func BackupTargetConfigurationFingerprint(target *BackupTarget) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// BackupTargetCreateV2 is the immutable-identity create command. Legacy raw
-// backup_target/create payloads remain accepted solely for Raft-log replay.
+// BackupTargetCreateV2 is the immutable-identity create command.
 type BackupTargetCreateV2 struct {
 	Target              BackupTargetReplicationPayload `json:"target"`
 	ProposedFingerprint string                         `json:"proposedFingerprint"`
@@ -96,7 +95,7 @@ func normalizeBackupTargetUpdateV2(update BackupTargetUpdateV2) BackupTargetUpda
 }
 
 func backupTargetProvisionPendingForIdentity(tx *gorm.DB, targetID uint, name string) (bool, error) {
-	if tx == nil || !tx.Migrator().HasTable(&BackupTargetProvisionOperation{}) {
+	if tx == nil {
 		return false, nil
 	}
 	var count int64
@@ -164,27 +163,19 @@ func backupTargetActiveOperationCountTxn(tx *gorm.DB, targetID uint) (int64, err
 	if tx == nil || targetID == 0 {
 		return 0, nil
 	}
-	var total int64
-	if tx.Migrator().HasTable(&BackupJobOperation{}) && tx.Migrator().HasTable(&BackupJob{}) {
-		var count int64
-		if err := tx.Table("backup_job_operations AS operations").
-			Joins("JOIN backup_jobs AS jobs ON jobs.id = operations.job_id").
-			Where("jobs.target_id = ?", targetID).
-			Count(&count).Error; err != nil {
-			return 0, err
-		}
-		total += count
+	var jobOperations, restoreOperations int64
+	if err := tx.Table("backup_job_operations AS operations").
+		Joins("JOIN backup_jobs AS jobs ON jobs.id = operations.job_id").
+		Where("jobs.target_id = ?", targetID).
+		Count(&jobOperations).Error; err != nil {
+		return 0, err
 	}
-	if tx.Migrator().HasTable(&BackupTargetRestoreOperation{}) {
-		var count int64
-		if err := tx.Model(&BackupTargetRestoreOperation{}).
-			Where("target_id = ? AND state <> ?", targetID, BackupTargetRestoreOperationCompleted).
-			Count(&count).Error; err != nil {
-			return 0, err
-		}
-		total += count
+	if err := tx.Model(&BackupTargetRestoreOperation{}).
+		Where("target_id = ? AND state <> ?", targetID, BackupTargetRestoreOperationCompleted).
+		Count(&restoreOperations).Error; err != nil {
+		return 0, err
 	}
-	return total, nil
+	return jobOperations + restoreOperations, nil
 }
 
 func BackupTargetActiveOperationCount(db *gorm.DB, targetID uint) (int64, error) {
@@ -391,10 +382,7 @@ func ApplyBackupTargetSSHHostTrustTxn(db *gorm.DB, action string, change *Backup
 		if updated.RowsAffected != 1 {
 			return fmt.Errorf("backup_target_host_key_revision_conflict")
 		}
-		if tx.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
-			return tx.Where("target_id = ?", target.ID).Delete(&BackupTargetNodeReadiness{}).Error
-		}
-		return nil
+		return tx.Where("target_id = ?", target.ID).Delete(&BackupTargetNodeReadiness{}).Error
 	})
 }
 
@@ -543,7 +531,7 @@ func ApplyBackupTargetUpdateV2Txn(db *gorm.DB, command *BackupTargetUpdateV2) er
 		if updated.RowsAffected != 1 {
 			return fmt.Errorf("backup_target_update_conflict")
 		}
-		if update.Kind == BackupTargetUpdateKindRotateKey && tx.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
+		if update.Kind == BackupTargetUpdateKindRotateKey {
 			if err := tx.Where("target_id = ?", existing.ID).Delete(&BackupTargetNodeReadiness{}).Error; err != nil {
 				return err
 			}

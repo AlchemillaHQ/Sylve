@@ -69,8 +69,7 @@ func (s *Service) ForceRemoveVM(rid uint, cleanUpMacs bool, ctx context.Context)
 		if len(claim.Entries) != 1 ||
 			claim.Entries[0].GuestKind != clusterModels.ReplicationGuestTypeVM ||
 			claim.Entries[0].GuestID != rid ||
-			strings.TrimSpace(claim.OwnerNodeID) == "" ||
-			claim.Clustered && strings.TrimSpace(claim.Token) == "" {
+			strings.TrimSpace(claim.OwnerNodeID) == "" {
 			return nil, fmt.Errorf("%w: vm_force_release_claim_invalid", clusterModels.ErrGuestIdentityClaimConflict)
 		}
 		if err := s.guestIdentityCoordinator.ValidateGuestIdentityClaim(ctx, claim); err != nil {
@@ -98,8 +97,7 @@ func (s *Service) ForceRemoveVM(rid uint, cleanUpMacs bool, ctx context.Context)
 		appendForceRemoveWarning(&warnings, rid, "failed_to_verify_vm_registration_removed", registrationErr)
 	}
 	if identityClaim != nil {
-		canRelease := !identityClaim.Clustered ||
-			registrationErr == nil && registrationCount == 0 && len(warnings) == 0
+		canRelease := registrationErr == nil && registrationCount == 0 && len(warnings) == 0
 		if canRelease {
 			if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, *identityClaim); releaseErr != nil {
 				appendForceRemoveWarning(&warnings, rid, "guest_identity_release_pending", releaseErr)

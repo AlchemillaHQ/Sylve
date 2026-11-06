@@ -59,7 +59,7 @@ func TestSignedDownloadRoutesServeHead(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	registerSignedDownloadRoutes(router.Group("/api"), database, service)
+	registerSignedDownloadRoutes(router.Group("/api"), remoteMember(""), service)
 
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodHead, result.URL, nil))

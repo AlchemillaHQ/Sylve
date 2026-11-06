@@ -9,6 +9,8 @@
 package clusterModels
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -330,6 +332,7 @@ type ClusterSSHIdentity struct {
 	SSHHost   string    `gorm:"not null" json:"sshHost"`
 	SSHPort   int       `gorm:"not null;default:8183" json:"sshPort"`
 	PublicKey string    `gorm:"type:text;not null" json:"publicKey"`
+	CertPin   string    `gorm:"not null;default:''" json:"certPin"`
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
 }
@@ -346,12 +349,10 @@ type ReplicationPolicyPayload struct {
 // post-cutover topology. SourceNodeID is optional; nil preserves the current
 // pinned/preferred source.
 type ReplicationOwnershipTransitionPayload struct {
-	PolicyID                uint   `json:"policyId"`
-	ExpectedActiveNodeID    string `json:"expectedActiveNodeId"`
-	ExpectedOwnerEpoch      uint64 `json:"expectedOwnerEpoch"`
-	ExpectedTransitionRunID string `json:"expectedTransitionRunId"`
-	// BackupJobRunnerRebindToken opts new failover commands into the shared
-	// exact-run backup placement protocol. Legacy log entries omit it.
+	PolicyID                   uint   `json:"policyId"`
+	ExpectedActiveNodeID       string `json:"expectedActiveNodeId"`
+	ExpectedOwnerEpoch         uint64 `json:"expectedOwnerEpoch"`
+	ExpectedTransitionRunID    string `json:"expectedTransitionRunId"`
 	BackupJobRunnerRebindToken string `json:"backupJobRunnerRebindToken,omitempty"`
 	// PreviousLeaseExpiresAtOrBefore is an optional force-cutover fence. When
 	// present, the ownership transaction re-reads the previous owner's lease
@@ -368,7 +369,6 @@ type ReplicationOwnershipTransitionPayload struct {
 	Lease                          ReplicationLease            `json:"lease"`
 	Transition                     ReplicationPolicyTransition `json:"transition"`
 	ProtectionState                string                      `json:"protectionState,omitempty"`
-	GuestIdentityMove              *GuestIdentityMoveOwner     `json:"guestIdentityMove,omitempty"`
 }
 
 // ReplicationDisabledOwnerReassignment moves the dormant ownership metadata
@@ -386,7 +386,6 @@ type ReplicationDisabledOwnerReassignment struct {
 	RunID                string                    `json:"runId"`
 	OperationToken       string                    `json:"operationToken"`
 	OccurredAt           time.Time                 `json:"occurredAt"`
-	GuestIdentityMove    *GuestIdentityMoveOwner   `json:"guestIdentityMove,omitempty"`
 }
 
 // ReplicationTargetReadinessUpdate updates one target without rewriting the
@@ -1946,13 +1945,7 @@ func applyReplicationOwnershipTransition(db *gorm.DB, payload *ReplicationOwners
 			return fmt.Errorf("replication_transition_lease_mismatch")
 		}
 
-		if err := moveReplicationPolicyGuestIdentityClaimTxn(
-			tx,
-			&policy,
-			payload.ExpectedActiveNodeID,
-			payload.ActiveNodeID,
-			payload.GuestIdentityMove,
-		); err != nil {
+		if err := moveReplicationPolicyGuestIdentityClaimTxn(tx, &policy, payload.ExpectedActiveNodeID, payload.ActiveNodeID); err != nil {
 			return err
 		}
 
@@ -2082,13 +2075,7 @@ func reassignDisabledReplicationPolicyOwner(
 			return fmt.Errorf("replication_ownership_cas_conflict")
 		}
 
-		if err := moveReplicationPolicyGuestIdentityClaimTxn(
-			tx,
-			&policy,
-			payload.ExpectedActiveNodeID,
-			payload.ActiveNodeID,
-			payload.GuestIdentityMove,
-		); err != nil {
+		if err := moveReplicationPolicyGuestIdentityClaimTxn(tx, &policy, payload.ExpectedActiveNodeID, payload.ActiveNodeID); err != nil {
 			return err
 		}
 
@@ -2434,6 +2421,7 @@ func upsertClusterSSHIdentity(db *gorm.DB, identity *ClusterSSHIdentity) error {
 	identity.SSHUser = strings.TrimSpace(identity.SSHUser)
 	identity.SSHHost = strings.TrimSpace(identity.SSHHost)
 	identity.PublicKey = strings.TrimSpace(identity.PublicKey)
+	identity.CertPin = strings.ToLower(strings.TrimSpace(identity.CertPin))
 	if identity.SSHUser == "" {
 		identity.SSHUser = "root"
 	}
@@ -2450,6 +2438,11 @@ func upsertClusterSSHIdentity(db *gorm.DB, identity *ClusterSSHIdentity) error {
 	if identity.PublicKey == "" {
 		return fmt.Errorf("cluster_ssh_identity_pubkey_required")
 	}
+	if identity.CertPin != "" {
+		if pin, err := hex.DecodeString(identity.CertPin); err != nil || len(pin) != sha256.Size {
+			return fmt.Errorf("cluster_ssh_identity_cert_pin_invalid")
+		}
+	}
 
 	return db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "node_uuid"}},
@@ -2458,31 +2451,10 @@ func upsertClusterSSHIdentity(db *gorm.DB, identity *ClusterSSHIdentity) error {
 			"ssh_host",
 			"ssh_port",
 			"public_key",
+			"cert_pin",
 			"updated_at",
 		}),
 	}).Create(identity).Error
-}
-
-func UpsertReplicationPolicyTxn(db *gorm.DB, policy *ReplicationPolicy, targets []ReplicationPolicyTarget) error {
-	if policy == nil || policy.ID == 0 {
-		return fmt.Errorf("replication_policy_id_required")
-	}
-	var count int64
-	if err := db.Model(&ReplicationPolicy{}).Where("id = ?", policy.ID).Count(&count).Error; err != nil {
-		return err
-	}
-	if count == 0 {
-		return upsertReplicationPolicy(db, policy, targets)
-	}
-	return updateReplicationPolicy(db, &ReplicationPolicyPayload{
-		Policy:             *policy,
-		Targets:            targets,
-		ExpectedOwnerEpoch: policy.OwnerEpoch,
-	})
-}
-
-func UpdateReplicationPolicyTxn(db *gorm.DB, payload *ReplicationPolicyPayload) error {
-	return updateReplicationPolicy(db, payload)
 }
 
 func DeleteReplicationPolicyTxn(db *gorm.DB, policyID uint) error {
@@ -2494,15 +2466,13 @@ func DeleteReplicationPolicyTxn(db *gorm.DB, policyID uint) error {
 		if err := tx.First(&policy, policyID).Error; err != nil {
 			return err
 		}
-		if tx.Migrator().HasTable(&ReplicationRunOperation{}) {
-			var activeRuns int64
-			if err := tx.Model(&ReplicationRunOperation{}).
-				Where("policy_id = ?", policyID).Count(&activeRuns).Error; err != nil {
-				return err
-			}
-			if activeRuns != 0 {
-				return fmt.Errorf("replication_policy_already_running")
-			}
+		var activeRuns int64
+		if err := tx.Model(&ReplicationRunOperation{}).
+			Where("policy_id = ?", policyID).Count(&activeRuns).Error; err != nil {
+			return err
+		}
+		if activeRuns != 0 {
+			return fmt.Errorf("replication_policy_already_running")
 		}
 		if replicationTransitionInProgress(policy.TransitionState) {
 			return fmt.Errorf("replication_policy_transition_in_progress")
@@ -2522,49 +2492,11 @@ func DeleteReplicationPolicyTxn(db *gorm.DB, policyID uint) error {
 		if err := tx.Where("policy_id = ?", policyID).Delete(&ReplicationLease{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("policy_id = ?", policyID).Delete(&ReplicationEvent{}).Error; err != nil {
+		if err := tx.Where("policy_id = ?", policyID).Delete(&ReplicationTransitionEvent{}).Error; err != nil {
 			return err
-		}
-		if tx.Migrator().HasTable(&ReplicationTransitionEvent{}) {
-			if err := tx.Where("policy_id = ?", policyID).Delete(&ReplicationTransitionEvent{}).Error; err != nil {
-				return err
-			}
 		}
 		return tx.Delete(&ReplicationPolicy{}, policyID).Error
 	})
-}
-
-func UpsertReplicationLeaseTxn(db *gorm.DB, lease *ReplicationLease) error {
-	return upsertReplicationLease(db, lease)
-}
-
-func UpsertReplicationPolicyTransitionTxn(
-	db *gorm.DB,
-	policyID uint,
-	transition *ReplicationPolicyTransition,
-) error {
-	return upsertReplicationPolicyTransition(db, policyID, transition)
-}
-
-func BeginReplicationPolicyTransitionTxn(
-	db *gorm.DB,
-	begin *ReplicationPolicyTransitionBegin,
-) error {
-	return beginReplicationPolicyTransition(db, begin)
-}
-
-func ApplyReplicationOwnershipTransitionTxn(
-	db *gorm.DB,
-	payload *ReplicationOwnershipTransitionPayload,
-) error {
-	return applyReplicationOwnershipTransition(db, payload)
-}
-
-func ReassignDisabledReplicationPolicyOwnerTxn(
-	db *gorm.DB,
-	payload *ReplicationDisabledOwnerReassignment,
-) error {
-	return reassignDisabledReplicationPolicyOwner(db, payload)
 }
 
 func AcquireReplicationGuestOperationTxn(
@@ -2574,41 +2506,9 @@ func AcquireReplicationGuestOperationTxn(
 	return acquireReplicationGuestOperation(db, payload)
 }
 
-func SealReplicationGuestOperationTxn(
-	db *gorm.DB,
-	payload *ReplicationGuestOperationTransition,
-) error {
-	return sealReplicationGuestOperation(db, payload)
-}
-
 func AbortReplicationGuestOperationTxn(
 	db *gorm.DB,
 	payload *ReplicationGuestOperationTransition,
 ) error {
 	return abortReplicationGuestOperation(db, payload)
-}
-
-func CompleteReplicationGuestOperationTxn(
-	db *gorm.DB,
-	payload *ReplicationGuestOperationTransition,
-) error {
-	return completeReplicationGuestOperation(db, payload)
-}
-
-func UpdateReplicationTargetReadinessTxn(
-	db *gorm.DB,
-	update *ReplicationTargetReadinessUpdate,
-) error {
-	return updateReplicationTargetReadiness(db, update)
-}
-
-func UpdateReplicationPolicyProtectionStateTxn(
-	db *gorm.DB,
-	update *ReplicationPolicyProtectionStateUpdate,
-) error {
-	return updateReplicationPolicyProtectionState(db, update)
-}
-
-func UpsertClusterSSHIdentityTxn(db *gorm.DB, identity *ClusterSSHIdentity) error {
-	return upsertClusterSSHIdentity(db, identity)
 }

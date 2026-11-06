@@ -16,27 +16,27 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/cmd"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	"github.com/google/uuid"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
 	"gorm.io/gorm"
 )
 
-func TestInitializeReaddressRuntimeNormalizesCommittedBindAndFences(t *testing.T) {
+func TestInitializeReaddressRuntimeFencesAPendingReaddress(t *testing.T) {
 	database := newClusterServiceTestDB(t, &clusterModels.Cluster{})
 	if err := database.Create(&clusterModels.Cluster{
-		Enabled: true, RaftIP: "192.0.2.10", ReaddressOldIP: "192.0.2.10",
-		ReaddressNewIP: "192.0.2.20", ReaddressPhase: ReaddressPhaseMembershipCommitted,
+		Enabled: true, RaftIP: "192.0.2.20", ReaddressOldIP: "192.0.2.10",
+		ReaddressNewIP: "192.0.2.20", ReaddressPhase: ReaddressPhaseLocalRebound,
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
-	service := &Service{DB: database, mutationGate: newOpenTestMutationGate(t)}
+	service := withFSM(&Service{DB: database, mutationGate: newOpenTestMutationGate(t)})
 	if err := service.InitializeReaddressRuntime(); err != nil {
 		t.Fatal(err)
 	}
@@ -94,11 +94,18 @@ func TestLeaveCannotOpenOrReplaceReaddressFence(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
-	service := &Service{DB: database, NodeID: "node-1", mutationGate: NewMutationGate()}
-	if _, err := service.prepareLocalLeave(context.Background(), uuid.NewString(), "", false, true); err == nil ||
-		err.Error() != "cluster_readdress_in_progress" {
+	service := withFSM(&Service{DB: database, NodeID: "node-1", mutationGate: newOpenTestMutationGate(t)})
+	_, release, err := service.EnterMutation(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.mutationGate.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := service.Leave(ctx, false); err == nil || err.Error() != "cluster_readdress_in_progress" {
 		t.Fatalf("leave error = %v", err)
 	}
+	release()
 	if _, _, err := service.EnterMutation(context.Background()); !errors.Is(err, ErrNodeReaddressFenced) {
 		t.Fatalf("gate error = %v", err)
 	}
@@ -109,16 +116,33 @@ func TestValidateRecoveryIdentity(t *testing.T) {
 		NodeID: "node-2", Enabled: true, OldIP: "192.0.2.10", NewIP: "192.0.2.20",
 		RaftIP: "192.0.2.20", Phase: ReaddressPhaseLocalRebound, SylveVersion: cmd.Version,
 	}
-	if err := validateRecoveryIdentity(identity, "node-2", "192.0.2.10", "192.0.2.20"); err != nil {
+	if err := validateRecoveryIdentity(identity, "node-2", "192.0.2.20"); err != nil {
 		t.Fatal(err)
 	}
+	identity.OldIP = "192.0.2.99"
+	if err := validateRecoveryIdentity(identity, "node-2", "192.0.2.20"); err != nil {
+		t.Fatalf("old IP compared: %v", err)
+	}
 	identity.NodeID = "node-3"
-	if err := validateRecoveryIdentity(identity, "node-2", "192.0.2.10", "192.0.2.20"); err == nil {
+	if err := validateRecoveryIdentity(identity, "node-2", "192.0.2.20"); err == nil {
 		t.Fatal("expected identity mismatch")
 	}
 }
 
 func TestReconcileSoleMemberReaddressUpdatesExistingVoterAndReopens(t *testing.T) {
+	instance, service, database := soleMemberReaddress(t, "192.0.2.10:8180")
+	assertSoleMemberReaddressed(t, instance, service, database)
+}
+
+// recover-ip redirected this readdress to .20 after .30 was committed and lost,
+// so the cluster has the node at .30 while its row says it moves from .10.
+func TestReaddressLandsWhenTheClusterHasTheNodeElsewhere(t *testing.T) {
+	instance, service, database := soleMemberReaddress(t, "192.0.2.30:8180")
+	assertSoleMemberReaddressed(t, instance, service, database)
+}
+
+func soleMemberReaddress(t *testing.T, address raft.ServerAddress) (*raft.Raft, *Service, *gorm.DB) {
+	t.Helper()
 	database := newClusterServiceTestDB(t, &clusterModels.Cluster{})
 	if err := database.Create(&clusterModels.Cluster{
 		Enabled: true, RaftIP: "192.0.2.20", ReaddressOldIP: "192.0.2.10",
@@ -126,46 +150,12 @@ func TestReconcileSoleMemberReaddressUpdatesExistingVoterAndReopens(t *testing.T
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
-	fsm := clusterModels.NewFSMDispatcher(database)
-	clusterModels.RegisterDefaultHandlers(fsm)
-	configuration := raft.DefaultConfig()
-	configuration.LocalID = "node-1"
-	configuration.Logger = hclog.NewNullLogger()
-	configuration.HeartbeatTimeout = 100 * time.Millisecond
-	configuration.ElectionTimeout = 100 * time.Millisecond
-	configuration.LeaderLeaseTimeout = 50 * time.Millisecond
-	configuration.CommitTimeout = 10 * time.Millisecond
-	oldAddress := raft.ServerAddress("192.0.2.10:8180")
-	_, transport := raft.NewInmemTransport(oldAddress)
-	instance, err := raft.NewRaft(
-		configuration,
-		fsm,
-		raft.NewInmemStore(),
-		raft.NewInmemStore(),
-		raft.NewInmemSnapshotStore(),
-		transport,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		_ = instance.Shutdown().Error()
-		_ = transport.Close()
-	})
-	if err := instance.BootstrapCluster(raft.Configuration{Servers: []raft.Server{{
-		ID: "node-1", Address: oldAddress, Suffrage: raft.Voter,
-	}}}).Error(); err != nil {
-		t.Fatal(err)
-	}
-	deadline := time.Now().Add(3 * time.Second)
-	for instance.State() != raft.Leader && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if instance.State() != raft.Leader {
-		t.Fatal("single voter did not elect itself")
-	}
+	service := withFSM(&Service{DB: database, NodeID: "node-1", mutationGate: NewMutationGate()})
+	return startSoleVoter(t, service, address), service, database
+}
 
-	service := withRaft(&Service{DB: database, NodeID: "node-1", mutationGate: NewMutationGate()}, instance)
+func assertSoleMemberReaddressed(t *testing.T, instance *raft.Raft, service *Service, database *gorm.DB) {
+	t.Helper()
 	service.reconcileReaddress(context.Background())
 	future := instance.GetConfiguration()
 	if err := future.Error(); err != nil {
@@ -244,7 +234,7 @@ func TestReaddressTwoVotersCommitsAfterRebind(t *testing.T) {
 	gate.Close()
 	service := withRaft(&Service{
 		DB: database, NodeID: "node-1", mutationGate: gate,
-		joinVersionForNode: func(context.Context, raft.Server, string) (string, error) { return cmd.Version, nil },
+		joinVersionForNode: func(context.Context, raft.Server) (string, error) { return cmd.Version, nil },
 	}, moved)
 
 	// Only node-1 can reach both voters, so it's the one that gets elected.
@@ -407,6 +397,12 @@ func TestReaddressTwoVotersRepairedByPeer(t *testing.T) {
 	if err := peer.Barrier(time.Second).Error(); err != nil {
 		t.Fatal(err)
 	}
+	// Both nodes apply a write, so a call that waited would have an index to send.
+	writer := withRaft(&Service{DB: peerDB, NodeID: "node-2", fsm: peerFSM}, peer)
+	if err := writer.ProposeNoteCreate(t.Context(), "before-the-move", "content"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor("node-1 to apply the write", func() bool { return movedFSM.AppliedIndex() != 0 })
 
 	// node-1 goes down to rebind; node-2 appends an entry it can never commit,
 	// leaving node-1 with the shorter log.
@@ -445,15 +441,16 @@ func TestReaddressTwoVotersRepairedByPeer(t *testing.T) {
 	movedGate.Close()
 	movedService := withRaft(&Service{
 		DB: movedDB, NodeID: "node-1", mutationGate: movedGate,
-		AuthService: &guestIdentityInventoryAuthStub{},
+		AuthService: &guestIdentityInventoryAuthStub{}, fsm: movedFSM,
 	}, moved)
 	peerService := withRaft(&Service{
 		DB: peerDB, NodeID: "node-2", mutationGate: newOpenTestMutationGate(t),
 		AuthService: &guestIdentityInventoryAuthStub{}, addressProvider: provider,
+		fsm: peerFSM,
 	}, peer)
 	nodes := map[string]*Service{"192.0.2.21": movedService, "192.0.2.12": peerService}
 	route := func(issuer string) func(context.Context, string, string, []byte, map[string]string) (int, []byte, error) {
-		return func(ctx context.Context, method, rawURL string, payload []byte, _ map[string]string) (int, []byte, error) {
+		return func(ctx context.Context, method, rawURL string, payload []byte, headers map[string]string) (int, []byte, error) {
 			parsed, err := url.Parse(rawURL)
 			if err != nil {
 				return 0, nil, err
@@ -462,24 +459,18 @@ func TestReaddressTwoVotersRepairedByPeer(t *testing.T) {
 			if target == nil {
 				return 0, nil, fmt.Errorf("dial %s: no route to host", parsed.Host)
 			}
-			var data any
-			var callErr error
-			switch parsed.Path {
-			case "/api/intra-cluster/readdress-identity":
-				data, callErr = target.LocalReaddressIdentity()
-			case "/api/intra-cluster/readdress-member":
-				var request MemberAddressChangeRequest
-				if err := json.Unmarshal(payload, &request); err != nil {
-					return 0, nil, err
-				}
-				callErr = target.CommitMemberAddress(ctx, request, issuer)
-			default:
+			name, ok := strings.CutPrefix(parsed.Path, "/api/intra-cluster/node/readdress-")
+			if !ok {
 				return 0, nil, fmt.Errorf("unexpected request %s %s", method, rawURL)
 			}
-			response := internal.APIResponse[any]{Status: "success", Data: data}
+			if index := headers[CallIndexHeader]; index != "0" {
+				t.Errorf("readdress-%s waits for index %s", name, index)
+			}
+			result, callErr := target.ServeNodeCall(ctx, issuer, headers[CallNodeHeader], 0, "readdress-"+name, payload)
+			response := internal.APIResponse[CallResult]{Status: "success", Data: result}
 			status := http.StatusOK
 			if callErr != nil {
-				response = internal.APIResponse[any]{Status: "error", Error: callErr.Error()}
+				response = internal.APIResponse[CallResult]{Status: "error", Error: callErr.Error()}
 				status = http.StatusConflict
 			}
 			body, err := json.Marshal(response)

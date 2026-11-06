@@ -61,9 +61,8 @@ type NamedContract struct {
 }
 
 type TargetResult struct {
-	MissingSwitches             []string `json:"missingSwitches"`
-	IncompatibleSwitches        []string `json:"incompatibleSwitches"`
-	NetworkCompatibilityChecked bool     `json:"networkCompatibilityChecked"`
+	MissingSwitches      []string `json:"missingSwitches"`
+	IncompatibleSwitches []string `json:"incompatibleSwitches"`
 }
 
 func cloneVLAN(value *int) *int {

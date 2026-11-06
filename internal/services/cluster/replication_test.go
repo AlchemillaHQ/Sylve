@@ -64,9 +64,9 @@ func TestRequireReplicationVMStorageEligibility(t *testing.T) {
 	}
 }
 
-func TestUpsertReplicationLeaseBypassRaft(t *testing.T) {
+func TestUpsertReplicationLeaseStandalone(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationLease{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 	if err := db.Create(&clusterModels.ReplicationPolicy{
 		ID: 10, Name: "lease-policy", GuestType: clusterModels.ReplicationGuestTypeVM,
 		GuestID: 1000, ActiveNodeID: "node-1", OwnerEpoch: 1, Enabled: true,
@@ -80,7 +80,7 @@ func TestUpsertReplicationLeaseBypassRaft(t *testing.T) {
 			PolicyID: 10, GuestType: clusterModels.ReplicationGuestTypeVM,
 			GuestID: 1000, OwnerNodeID: "node-1", OwnerEpoch: 1,
 			ExpiresAt: now.Add(time.Hour),
-		}, true)
+		})
 		if err != nil {
 			t.Fatalf("upsert: %v", err)
 		}
@@ -104,7 +104,7 @@ func TestUpsertReplicationLeaseBypassRaft(t *testing.T) {
 			PolicyID: 10, GuestType: clusterModels.ReplicationGuestTypeJail,
 			GuestID: 2000, OwnerNodeID: "node-2", OwnerEpoch: 3,
 			ExpiresAt: now.Add(2 * time.Hour),
-		}, true)
+		})
 		if err != nil {
 			t.Fatalf("upsert update: %v", err)
 		}
@@ -123,7 +123,7 @@ func TestUpsertReplicationLeaseBypassRaft(t *testing.T) {
 
 func TestListReplicationEvents(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.ReplicationEvent{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	now := time.Now()
 	events := []clusterModels.ReplicationEvent{
@@ -178,7 +178,7 @@ func TestListReplicationEvents(t *testing.T) {
 
 func TestGetReplicationEventByID(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.ReplicationEvent{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	db.Create(&clusterModels.ReplicationEvent{
 		ID: 1, EventType: "run", Status: "success",
@@ -208,14 +208,14 @@ func TestGetReplicationEventByID(t *testing.T) {
 	}
 }
 
-func TestCreateOrUpdateReplicationEventBypassRaft(t *testing.T) {
+func TestCreateOrUpdateReplicationEventStandalone(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.ReplicationEvent{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	t.Run("create bypass with assigned ID", func(t *testing.T) {
 		id, err := s.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
 			ID: 100, TransitionRunID: "transition-100", EventType: "run", Status: "running",
-		}, true)
+		})
 		if err != nil {
 			t.Fatalf("create: %v", err)
 		}
@@ -227,14 +227,14 @@ func TestCreateOrUpdateReplicationEventBypassRaft(t *testing.T) {
 	t.Run("update bypass", func(t *testing.T) {
 		id, err := s.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
 			ID: 100, TransitionRunID: "transition-100", EventType: "run", Status: "success", Message: "done",
-		}, true)
+		})
 		if err != nil {
 			t.Fatalf("update: %v", err)
 		}
 		if id != 100 {
 			t.Fatalf("expected id=100, got %d", id)
 		}
-		var event clusterModels.ReplicationEvent
+		var event clusterModels.ReplicationTransitionEvent
 		db.First(&event, 100)
 		if event.Status != "success" || event.Message != "done" || event.TransitionRunID != "transition-100" {
 			t.Fatalf("not updated: status=%q msg=%q", event.Status, event.Message)
@@ -244,7 +244,7 @@ func TestCreateOrUpdateReplicationEventBypassRaft(t *testing.T) {
 
 func TestListClusterSSHIdentities(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.ClusterSSHIdentity{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	db.Create(&clusterModels.ClusterSSHIdentity{
 		NodeUUID: "uuid-a", SSHHost: "10.0.0.1", PublicKey: "key-a",
@@ -262,44 +262,19 @@ func TestListClusterSSHIdentities(t *testing.T) {
 	}
 }
 
-func TestUpsertClusterSSHIdentityBypassRaft(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ClusterSSHIdentity{})
-	s := &Service{DB: db}
+func TestUpsertClusterSSHIdentityStandalone(t *testing.T) {
+	s := newStandaloneTestService(t, &clusterModels.ClusterSSHIdentity{})
+	db := s.DB
 
-	if err := s.UpsertClusterSSHIdentity(clusterModels.ClusterSSHIdentity{
+	if err := s.UpsertClusterSSHIdentity(t.Context(), clusterModels.ClusterSSHIdentity{
 		NodeUUID: "uuid-test", SSHHost: "10.0.0.1", SSHPort: 22,
 		SSHUser: "root", PublicKey: "ssh-ed25519 AAA...",
-	}, true); err != nil {
+	}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
 	var count int64
 	db.Model(&clusterModels.ClusterSSHIdentity{}).Count(&count)
 	if count != 1 {
 		t.Fatalf("expected 1 identity, got %d", count)
-	}
-}
-
-func TestDeleteClusterSSHIdentityBypassRaft(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ClusterSSHIdentity{})
-	s := &Service{DB: db}
-
-	db.Create(&clusterModels.ClusterSSHIdentity{
-		NodeUUID: "to-delete", SSHHost: "host", PublicKey: "key",
-	})
-
-	if err := s.DeleteClusterSSHIdentity("to-delete", true); err != nil {
-		t.Fatalf("delete: %v", err)
-	}
-	var count int64
-	db.Model(&clusterModels.ClusterSSHIdentity{}).Count(&count)
-	if count != 0 {
-		t.Fatalf("expected deleted, got %d", count)
-	}
-
-	if err := s.DeleteClusterSSHIdentity("", true); err != nil {
-		t.Fatalf("empty nodeUUID should be no-op: %v", err)
-	}
-	if err := s.DeleteClusterSSHIdentity("  ", true); err != nil {
-		t.Fatalf("whitespace nodeUUID should be no-op: %v", err)
 	}
 }

@@ -11,14 +11,12 @@ package clusterHandlers
 import (
 	"strings"
 	"time"
-
-	"github.com/alchemillahq/sylve/internal/services/auth"
 )
 
 const (
-	joinClockProbeMaxRTT  = 2 * time.Second
-	joinClockBehindMargin = 10 * time.Second
-	joinClockAheadMargin  = time.Minute
+	joinClockProbeMaxRTT = 2 * time.Second
+	joinClockMaxAhead    = 20 * time.Second
+	joinClockMaxBehind   = 4 * time.Minute
 )
 
 func measureClockOffset(serverTime string, requestStart, responseAt time.Time) (time.Duration, bool) {
@@ -36,8 +34,7 @@ func measureClockOffset(serverTime string, requestStart, responseAt time.Time) (
 }
 
 func joinClockDriftBlocked(offset time.Duration) bool {
-	return offset > auth.ClusterTokenFutureSkew-joinClockBehindMargin ||
-		offset < -(auth.ClusterTokenTTL-joinClockAheadMargin)
+	return offset > joinClockMaxAhead || offset < -joinClockMaxBehind
 }
 
 func formatClockOffset(offset time.Duration) string {

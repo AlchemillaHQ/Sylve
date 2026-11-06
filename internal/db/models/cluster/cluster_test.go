@@ -17,21 +17,8 @@ func TestClusterHasIncompleteJoin(t *testing.T) {
 		want    bool
 	}{
 		{name: "empty"},
-		{name: "intent without phase", cluster: Cluster{JoinNodeID: "node-2"}, want: true},
-		{
-			name:    "active",
-			cluster: Cluster{JoinNodeID: "node-2", JoinPhase: "catching_up"},
-			want:    true,
-		},
-		{
-			name:    "failed",
-			cluster: Cluster{JoinNodeID: "node-2", JoinPhase: "failed"},
-			want:    true,
-		},
-		{
-			name:    "complete",
-			cluster: Cluster{JoinNodeID: "node-2", JoinPhase: JoinPhaseComplete},
-		},
+		{name: "blank leader", cluster: Cluster{JoinLeaderIP: " "}},
+		{name: "joining", cluster: Cluster{JoinLeaderIP: "192.0.2.1"}, want: true},
 	}
 
 	for _, test := range tests {

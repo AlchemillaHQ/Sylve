@@ -219,14 +219,11 @@ func classifyCreateJailError(err error) (int, string) {
 	switch {
 	case strings.Contains(errText, "replication_lease_not_owned"):
 		return http.StatusForbidden, "replication_lease_not_owned"
-	case strings.Contains(errText, "guest_identity_registry_initializing"),
-		strings.Contains(errText, "guest_identity_cluster_formation_in_progress"):
-		return http.StatusServiceUnavailable, "guest_identity_registry_initializing"
+	case strings.Contains(errText, "guest_identity_cluster_formation_in_progress"):
+		return http.StatusServiceUnavailable, "guest_identity_cluster_formation_in_progress"
 	case strings.Contains(errText, "cluster_consensus_unavailable"),
 		strings.Contains(errText, "guest_identity_release_failed"):
 		return http.StatusServiceUnavailable, "cluster_consensus_unavailable"
-	case strings.Contains(errText, "guest_identity_inventory_unavailable"):
-		return http.StatusServiceUnavailable, "guest_identity_inventory_unavailable"
 	case strings.Contains(errText, "guest_identity_inventory_scan_failed"):
 		return http.StatusInternalServerError, "guest_identity_inventory_scan_failed"
 	case strings.Contains(errText, "guest_identity_inventory_conflict"):
@@ -435,11 +432,9 @@ func classifyDeleteJailError(err error) (int, string) {
 		return http.StatusNotFound, "jail_not_found"
 	case strings.Contains(errText, "replication_lease_not_owned"):
 		return http.StatusForbidden, "replication_lease_not_owned"
-	case strings.Contains(errText, "guest_identity_registry_initializing"),
-		strings.Contains(errText, "guest_identity_cluster_formation_in_progress"):
-		return http.StatusServiceUnavailable, "guest_identity_registry_initializing"
-	case strings.Contains(errText, "cluster_consensus_unavailable"),
-		strings.Contains(errText, "guest_identity_release_pending"):
+	case strings.Contains(errText, "guest_identity_cluster_formation_in_progress"):
+		return http.StatusServiceUnavailable, "guest_identity_cluster_formation_in_progress"
+	case strings.Contains(errText, "cluster_consensus_unavailable"):
 		return http.StatusServiceUnavailable, "cluster_consensus_unavailable"
 	case strings.Contains(errText, "guest_identity_claim_conflict"):
 		return http.StatusConflict, "guest_identity_claim_conflict"

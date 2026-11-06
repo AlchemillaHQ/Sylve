@@ -290,9 +290,6 @@ func TestResolverValidateTargetsClassifiesMissingAndIncompatible(t *testing.T) {
 		},
 	})
 
-	if !result.NetworkCompatibilityChecked {
-		t.Fatal("target did not acknowledge network compatibility validation")
-	}
 	if len(result.MissingSwitches) != 1 || result.MissingSwitches[0] != "vtnet1" {
 		t.Fatalf("unexpected missing switches: %#v", result.MissingSwitches)
 	}

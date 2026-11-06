@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getTokenHash } from '$lib/api/auth';
-	import { handleAPIResponse } from '$lib/api/common';
+	import { handleAPIResponse, nodePath } from '$lib/api/common';
 	import {
 		addFileOrFolder,
 		copyOrMoveFilesOrFolders,
@@ -22,7 +22,6 @@
 	import type { FileNode } from '$lib/types/system/file-explorer';
 	import { generateBreadcrumbItems, sortFileItems, type SortBy } from '$lib/utils/explorer';
 	import { isAPIResponse } from '$lib/utils/http';
-	import { toHex } from '$lib/utils/string';
 	import { PersistedState, watch } from 'runed';
 	import { onMount } from 'svelte';
 
@@ -272,13 +271,8 @@
 		const hash = await getTokenHash();
 		if (!hash || node !== data.node) return;
 
-		const auth = toHex(
-			JSON.stringify({
-				hostname: node
-			})
-		);
-		const query = new URLSearchParams({ id: item.id, hash, auth });
-		const downloadUrl = `/api/system/file-explorer/download?${query.toString()}`;
+		const query = new URLSearchParams({ id: item.id, hash });
+		const downloadUrl = `${nodePath('/api/system/file-explorer/download', node)}?${query.toString()}`;
 		const filename = item.id.split('/').pop() || 'download';
 
 		try {

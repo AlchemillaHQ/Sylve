@@ -10,7 +10,7 @@ import (
 func TestGuestIdentityDisabledReplicationOwnerReassignmentAtomicCommit(t *testing.T) {
 	db := newClusterModelTestDB(t,
 		&ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{},
-		&ReplicationGuestOperation{}, &GuestIdentityRegistry{}, &GuestIdentityClaim{},
+		&ReplicationGuestOperation{}, &GuestIdentityClaim{},
 	)
 	now := time.Now().UTC()
 	policy := replicationGuestOperationPolicy(1, 101, false)
@@ -37,15 +37,8 @@ func TestGuestIdentityDisabledReplicationOwnerReassignmentAtomicCommit(t *testin
 	if err := db.Create(&operation).Error; err != nil {
 		t.Fatalf("seed migration operation: %v", err)
 	}
-	if err := db.Create(&GuestIdentityRegistry{
-		ID: GuestIdentityRegistryID, Version: GuestIdentityRegistryVersion,
-		Phase: GuestIdentityRegistryPhaseActive,
-	}).Error; err != nil {
-		t.Fatalf("seed guest identity registry: %v", err)
-	}
 	if err := db.Create(&GuestIdentityClaim{
 		GuestID: policy.GuestID, GuestKind: policy.GuestType, OwnerNodeID: "node-a",
-		Token: "disabled-claim-generation-1",
 	}).Error; err != nil {
 		t.Fatalf("seed guest identity claim: %v", err)
 	}
@@ -55,13 +48,8 @@ func TestGuestIdentityDisabledReplicationOwnerReassignmentAtomicCommit(t *testin
 		ActiveNodeID: "node-b", SourceNodeID: "node-b", OwnerEpoch: 2,
 		Targets: []ReplicationPolicyTarget{{NodeID: "node-a", Weight: 100}},
 		RunID:   "manual-migration-101", OperationToken: operation.Token, OccurredAt: now.Add(time.Second),
-		GuestIdentityMove: &GuestIdentityMoveOwner{
-			GuestKind: policy.GuestType, GuestID: policy.GuestID,
-			OldOwnerNodeID: "node-a", NewOwnerNodeID: "node-b",
-			OldToken: "disabled-claim-generation-1", NewToken: "disabled-claim-generation-2",
-		},
 	}
-	if err := ReassignDisabledReplicationPolicyOwnerTxn(db, &payload); err != nil {
+	if err := reassignDisabledReplicationPolicyOwner(db, &payload); err != nil {
 		t.Fatalf("reassign disabled policy owner: %v", err)
 	}
 
@@ -79,7 +67,7 @@ func TestGuestIdentityDisabledReplicationOwnerReassignmentAtomicCommit(t *testin
 	}
 	if reloadedPolicy.ActiveNodeID != "node-b" || reloadedPolicy.OwnerEpoch != 2 ||
 		len(reloadedPolicy.Targets) != 1 || reloadedPolicy.Targets[0].NodeID != "node-a" ||
-		claim.OwnerNodeID != "node-b" || claim.Token != "disabled-claim-generation-2" || leaseCount != 0 {
+		claim.OwnerNodeID != "node-b" || leaseCount != 0 {
 		t.Fatalf("disabled ownership did not commit atomically: policy=%+v claim=%+v leases=%d", reloadedPolicy, claim, leaseCount)
 	}
 }

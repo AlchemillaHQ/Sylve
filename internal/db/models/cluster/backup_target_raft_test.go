@@ -12,6 +12,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 func TestFSMDispatcherBackupTargetCommands(t *testing.T) {
@@ -19,21 +22,21 @@ func TestFSMDispatcherBackupTargetCommands(t *testing.T) {
 	fsm := NewFSMDispatcher(db)
 	RegisterDefaultHandlers(fsm)
 
-	createPayload, _ := json.Marshal(BackupTargetReplicationPayload{
-		ID:               10,
-		Name:             "target-a",
-		SSHHost:          "user@host-a",
-		SSHPort:          22,
-		SSHKeyPath:       "/tmp/key-a",
-		SSHKey:           "key-a",
-		BackupRoot:       "pool-a/backups",
-		CreateBackupRoot: false,
-		Description:      "first target",
-		Enabled:          true,
+	target := BackupTarget{
+		ID: 10, Name: "target-a", SSHHost: "user@host-a", SSHPort: 22, SSHKey: "key-a",
+		BackupRoot: "pool-a/backups", Description: "first target",
+	}
+	createPayload, _ := json.Marshal(BackupTargetCreateV3{
+		BackupTargetCreateV2: BackupTargetCreateV2{
+			Target:              BackupTargetToReplicationPayload(target),
+			ProposedFingerprint: BackupTargetConfigurationFingerprint(&target),
+		},
+		HostKey:    testutil.SSHHostKey(t),
+		OccurredAt: time.Now().UTC(),
 	})
 	if err := applyFSMCommand(t, fsm, Command{
 		Type:   "backup_target",
-		Action: "create",
+		Action: "create_v3",
 		Data:   createPayload,
 	}); err != nil {
 		t.Fatalf("backup target create apply failed: %v", err)
@@ -48,41 +51,12 @@ func TestFSMDispatcherBackupTargetCommands(t *testing.T) {
 		t.Fatalf("created backup target mismatch: %+v", created)
 	}
 
-	updatePayload, _ := json.Marshal(BackupTargetReplicationPayload{
-		ID:               10,
-		Name:             "target-a-updated",
-		SSHHost:          "user@host-b",
-		SSHPort:          2222,
-		SSHKeyPath:       "/tmp/key-b",
-		SSHKey:           "key-b",
-		BackupRoot:       "pool-b/backups",
-		CreateBackupRoot: true,
-		Description:      "updated target",
-		Enabled:          false,
-	})
-	if err := applyFSMCommand(t, fsm, Command{
-		Type:   "backup_target",
-		Action: "update",
-		Data:   updatePayload,
-	}); err != nil {
-		t.Fatalf("backup target update apply failed: %v", err)
-	}
-
-	var updated BackupTarget
-	if err := db.First(&updated, 10).Error; err != nil {
-		t.Fatalf("failed to fetch updated backup target: %v", err)
-	}
-	if updated.Name != "target-a-updated" || updated.SSHPort != 2222 || updated.Enabled != false ||
-		updated.SSHKeyPath != "" || updated.SSHKey != "key-b" {
-		t.Fatalf("updated backup target mismatch: %+v", updated)
-	}
-
 	deletePayload, _ := json.Marshal(struct {
 		ID uint `json:"id"`
 	}{ID: 10})
 	if err := applyFSMCommand(t, fsm, Command{
 		Type:   "backup_target",
-		Action: "delete",
+		Action: "delete_v2",
 		Data:   deletePayload,
 	}); err != nil {
 		t.Fatalf("backup target delete apply failed: %v", err)
@@ -108,7 +82,6 @@ func TestFSMDispatcherBackupTargetDeleteDeniedWhenInUse(t *testing.T) {
 		SSHHost:    "user@host",
 		SSHPort:    22,
 		BackupRoot: "pool/in-use",
-		Enabled:    true,
 	}).Error; err != nil {
 		t.Fatalf("failed to seed backup target: %v", err)
 	}
@@ -130,7 +103,7 @@ func TestFSMDispatcherBackupTargetDeleteDeniedWhenInUse(t *testing.T) {
 	}{ID: 20})
 	err := applyFSMCommand(t, fsm, Command{
 		Type:   "backup_target",
-		Action: "delete",
+		Action: "delete_v2",
 		Data:   deletePayload,
 	})
 	if err == nil {
@@ -156,7 +129,7 @@ func TestFSMDispatcherBackupTargetMalformedPayload(t *testing.T) {
 
 	err := applyFSMCommand(t, fsm, Command{
 		Type:   "backup_target",
-		Action: "create",
+		Action: "create_v3",
 		Data:   json.RawMessage(`"bad-payload"`),
 	})
 	if err == nil {

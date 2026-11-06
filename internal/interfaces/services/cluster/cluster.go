@@ -13,7 +13,6 @@ import (
 	containerServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/container"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
-	"github.com/hashicorp/raft"
 )
 
 type Detail struct {
@@ -51,8 +50,8 @@ type NodeResources struct {
 
 type ClusterServiceInterface interface {
 	Detail() *Detail
-	InitRaft(fsm raft.FSM) error
-	CreateCluster(ip string, fsm raft.FSM) error
+	InitRaft() error
+	CreateCluster(ip string) error
 	GetClusterDetails() (*ClusterDetails, error)
 	PopulateClusterNodes() error
 }

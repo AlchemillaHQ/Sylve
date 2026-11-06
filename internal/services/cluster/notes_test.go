@@ -21,9 +21,9 @@ func newClusterNoteTestDB(t *testing.T) *gorm.DB {
 	return newClusterServiceTestDB(t, &clusterModels.ClusterNote{})
 }
 
-func TestProposeNoteMissingAndExactBulkBypassRaft(t *testing.T) {
-	db := newClusterNoteTestDB(t)
-	s := &Service{DB: db}
+func TestProposeNoteMissingAndExactBulkStandalone(t *testing.T) {
+	s := newStandaloneTestService(t, &clusterModels.ClusterNote{})
+	db := s.DB
 	notes := []clusterModels.ClusterNote{
 		{Title: "first", Content: "first content"},
 		{Title: "second", Content: "second content"},
@@ -32,15 +32,15 @@ func TestProposeNoteMissingAndExactBulkBypassRaft(t *testing.T) {
 		t.Fatalf("failed to seed notes: %v", err)
 	}
 
-	if err := s.ProposeNoteUpdate(999999, "missing", "missing content", true); !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := s.ProposeNoteUpdate(t.Context(), 999999, "missing", "missing content"); !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("missing update error=%v want=%v", err, gorm.ErrRecordNotFound)
 	}
-	if err := s.ProposeNoteDelete(999999, true); !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := s.ProposeNoteDelete(t.Context(), 999999); !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("missing delete error=%v want=%v", err, gorm.ErrRecordNotFound)
 	}
 
 	partialIDs := []int{int(notes[0].ID), 999999}
-	if err := s.ProposeNoteBulkDelete(partialIDs, true); !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := s.ProposeNoteBulkDelete(t.Context(), partialIDs); !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("partial bulk delete error=%v want=%v", err, gorm.ErrRecordNotFound)
 	}
 
@@ -53,7 +53,7 @@ func TestProposeNoteMissingAndExactBulkBypassRaft(t *testing.T) {
 	}
 
 	exactIDs := []int{int(notes[0].ID), int(notes[1].ID)}
-	if err := s.ProposeNoteBulkDelete(exactIDs, true); err != nil {
+	if err := s.ProposeNoteBulkDelete(t.Context(), exactIDs); err != nil {
 		t.Fatalf("exact bulk delete failed: %v", err)
 	}
 	if err := db.Model(&clusterModels.ClusterNote{}).Count(&count).Error; err != nil {
@@ -66,7 +66,7 @@ func TestProposeNoteMissingAndExactBulkBypassRaft(t *testing.T) {
 
 func TestListNotesOrdersByID(t *testing.T) {
 	db := newClusterNoteTestDB(t)
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	if err := db.Create(&clusterModels.ClusterNote{ID: 2, Title: "second", Content: "two"}).Error; err != nil {
 		t.Fatalf("failed to seed note 2: %v", err)
@@ -87,15 +87,15 @@ func TestListNotesOrdersByID(t *testing.T) {
 	}
 }
 
-func TestProposeNoteCRUDBypassRaft(t *testing.T) {
-	db := newClusterNoteTestDB(t)
-	s := &Service{DB: db}
+func TestProposeNoteCRUDStandalone(t *testing.T) {
+	s := newStandaloneTestService(t, &clusterModels.ClusterNote{})
+	db := s.DB
 
-	if err := s.ProposeNoteCreate("first", "content one", true); err != nil {
-		t.Fatalf("ProposeNoteCreate bypass failed: %v", err)
+	if err := s.ProposeNoteCreate(t.Context(), "first", "content one"); err != nil {
+		t.Fatalf("ProposeNoteCreate: %v", err)
 	}
-	if err := s.ProposeNoteCreate("second", "content two", true); err != nil {
-		t.Fatalf("second ProposeNoteCreate bypass failed: %v", err)
+	if err := s.ProposeNoteCreate(t.Context(), "second", "content two"); err != nil {
+		t.Fatalf("second ProposeNoteCreate: %v", err)
 	}
 
 	var notes []clusterModels.ClusterNote
@@ -109,8 +109,8 @@ func TestProposeNoteCRUDBypassRaft(t *testing.T) {
 	firstID := int(notes[0].ID)
 	secondID := int(notes[1].ID)
 
-	if err := s.ProposeNoteUpdate(firstID, "first-updated", "content one updated", true); err != nil {
-		t.Fatalf("ProposeNoteUpdate bypass failed: %v", err)
+	if err := s.ProposeNoteUpdate(t.Context(), firstID, "first-updated", "content one updated"); err != nil {
+		t.Fatalf("ProposeNoteUpdate: %v", err)
 	}
 
 	var updated clusterModels.ClusterNote
@@ -121,8 +121,8 @@ func TestProposeNoteCRUDBypassRaft(t *testing.T) {
 		t.Fatalf("note update mismatch: got title=%q content=%q", updated.Title, updated.Content)
 	}
 
-	if err := s.ProposeNoteDelete(secondID, true); err != nil {
-		t.Fatalf("ProposeNoteDelete bypass failed: %v", err)
+	if err := s.ProposeNoteDelete(t.Context(), secondID); err != nil {
+		t.Fatalf("ProposeNoteDelete: %v", err)
 	}
 
 	var count int64
@@ -133,8 +133,8 @@ func TestProposeNoteCRUDBypassRaft(t *testing.T) {
 		t.Fatalf("expected deleted note to be removed, still found %d row(s)", count)
 	}
 
-	if err := s.ProposeNoteCreate("third", "content three", true); err != nil {
-		t.Fatalf("third ProposeNoteCreate bypass failed: %v", err)
+	if err := s.ProposeNoteCreate(t.Context(), "third", "content three"); err != nil {
+		t.Fatalf("third ProposeNoteCreate: %v", err)
 	}
 	if err := db.Order("id ASC").Find(&notes).Error; err != nil {
 		t.Fatalf("failed to refresh notes before bulk delete: %v", err)
@@ -144,8 +144,8 @@ func TestProposeNoteCRUDBypassRaft(t *testing.T) {
 	}
 
 	ids := []int{int(notes[0].ID), int(notes[1].ID)}
-	if err := s.ProposeNoteBulkDelete(ids, true); err != nil {
-		t.Fatalf("ProposeNoteBulkDelete bypass failed: %v", err)
+	if err := s.ProposeNoteBulkDelete(t.Context(), ids); err != nil {
+		t.Fatalf("ProposeNoteBulkDelete: %v", err)
 	}
 
 	if err := db.Model(&clusterModels.ClusterNote{}).Count(&count).Error; err != nil {
@@ -156,8 +156,11 @@ func TestProposeNoteCRUDBypassRaft(t *testing.T) {
 	}
 }
 
-func TestProposeNoteRequiresRaftWhenBypassDisabled(t *testing.T) {
-	s := &Service{DB: newClusterNoteTestDB(t)}
+func TestProposeNoteNeedsRaftWhenClustered(t *testing.T) {
+	s := newStandaloneTestService(t, &clusterModels.Cluster{}, &clusterModels.ClusterNote{})
+	if err := s.DB.Create(&clusterModels.Cluster{Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	tests := []struct {
 		name string
@@ -166,25 +169,25 @@ func TestProposeNoteRequiresRaftWhenBypassDisabled(t *testing.T) {
 		{
 			name: "create",
 			call: func() error {
-				return s.ProposeNoteCreate("title", "content", false)
+				return s.ProposeNoteCreate(t.Context(), "title", "content")
 			},
 		},
 		{
 			name: "update",
 			call: func() error {
-				return s.ProposeNoteUpdate(1, "title", "content", false)
+				return s.ProposeNoteUpdate(t.Context(), 1, "title", "content")
 			},
 		},
 		{
 			name: "delete",
 			call: func() error {
-				return s.ProposeNoteDelete(1, false)
+				return s.ProposeNoteDelete(t.Context(), 1)
 			},
 		},
 		{
 			name: "bulk delete",
 			call: func() error {
-				return s.ProposeNoteBulkDelete([]int{1, 2}, false)
+				return s.ProposeNoteBulkDelete(t.Context(), []int{1, 2})
 			},
 		},
 	}
@@ -195,8 +198,8 @@ func TestProposeNoteRequiresRaftWhenBypassDisabled(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
-			if !strings.Contains(err.Error(), "raft_not_initialized") {
-				t.Fatalf("expected raft_not_initialized error, got: %v", err)
+			if !strings.Contains(err.Error(), "cluster_consensus_unavailable") {
+				t.Fatalf("expected cluster_consensus_unavailable, got: %v", err)
 			}
 		})
 	}

@@ -62,7 +62,7 @@ func stageDownloaderUpload(
 	t *testing.T,
 	service *Service,
 	staging string,
-	userID uint,
+	owner string,
 	name string,
 	content string,
 ) utilitiesModels.Upload {
@@ -83,7 +83,7 @@ func stageDownloaderUpload(
 		path,
 		name,
 		info.Size(),
-		userID,
+		owner,
 		info,
 		utilitiesModels.DownloadStorage{},
 	)
@@ -101,7 +101,7 @@ func TestUploadIdentityPersistsSignedHighBitValues(t *testing.T) {
 		Path:   "/tmp/high-bit.upload",
 		Name:   "high-bit.img",
 		Size:   1,
-		UserID: 7,
+		Owner:  "user:7",
 		Node:   "node-a",
 		Status: utilitiesModels.UploadStatusStaged,
 		Device: -1<<63 + 0x1234,
@@ -123,7 +123,7 @@ func TestUploadIdentityPersistsSignedHighBitValues(t *testing.T) {
 
 func TestCompleteDownloaderUploadIsIdempotentAndPreservesOptions(t *testing.T) {
 	service, staging := newDownloaderUploadTestService(t)
-	record := stageDownloaderUpload(t, service, staging, 7, "disk.img.xz", "compressed image")
+	record := stageDownloaderUpload(t, service, staging, "user:7", "disk.img.xz", "compressed image")
 
 	queueCalls := 0
 	service.enqueueDownloadStartFn = func(
@@ -139,11 +139,11 @@ func TestCompleteDownloaderUploadIsIdempotentAndPreservesOptions(t *testing.T) {
 		AutomaticRawConversion: true,
 	}
 
-	first, err := service.CompleteDownloaderUpload(context.Background(), record.ID, 7, request)
+	first, err := service.CompleteDownloaderUpload(context.Background(), record.ID, "user:7", request)
 	if err != nil {
 		t.Fatalf("first completion: %v", err)
 	}
-	second, err := service.CompleteDownloaderUpload(context.Background(), record.ID, 7, request)
+	second, err := service.CompleteDownloaderUpload(context.Background(), record.ID, "user:7", request)
 	if err != nil {
 		t.Fatalf("second completion: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestCompleteDownloaderUploadIsIdempotentAndPreservesOptions(t *testing.T) {
 		t.Fatalf("upload was not completed: %+v", completed)
 	}
 
-	alreadyCompleted, err := service.AbortDownloaderUpload(context.Background(), record.ID, 7)
+	alreadyCompleted, err := service.AbortDownloaderUpload(context.Background(), record.ID, "user:7")
 	if err != nil {
 		t.Fatalf("abort completed upload: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestDownloadOriginsFailOnUploadLookupError(t *testing.T) {
 
 func TestCompleteDownloaderUploadRejectsTarAndRawCombination(t *testing.T) {
 	service, staging := newDownloaderUploadTestService(t)
-	record := stageDownloaderUpload(t, service, staging, 7, "rootfs.txz", "archive")
+	record := stageDownloaderUpload(t, service, staging, "user:7", "rootfs.txz", "archive")
 	queueCalls := 0
 	service.enqueueDownloadStartFn = func(
 		_ context.Context,
@@ -292,7 +292,7 @@ func TestCompleteDownloaderUploadRejectsTarAndRawCombination(t *testing.T) {
 	_, err := service.CompleteDownloaderUpload(
 		context.Background(),
 		record.ID,
-		7,
+		"user:7",
 		utilitiesServiceInterfaces.CompleteDownloaderUploadRequest{
 			DownloadType:           utilitiesModels.DownloadUTypeBase,
 			AutomaticExtraction:    true,
@@ -324,7 +324,7 @@ func TestCompleteDownloaderUploadRejectsTarAndRawCombination(t *testing.T) {
 
 func TestCompleteDownloaderUploadKeepsCompletedRetryIdempotent(t *testing.T) {
 	service, staging := newDownloaderUploadTestService(t)
-	record := stageDownloaderUpload(t, service, staging, 7, "rootfs.txz", "archive")
+	record := stageDownloaderUpload(t, service, staging, "user:7", "rootfs.txz", "archive")
 	service.enqueueDownloadStartFn = func(
 		_ context.Context,
 		_ utilitiesServiceInterfaces.DownloadStartPayload,
@@ -335,7 +335,7 @@ func TestCompleteDownloaderUploadKeepsCompletedRetryIdempotent(t *testing.T) {
 	first, err := service.CompleteDownloaderUpload(
 		context.Background(),
 		record.ID,
-		7,
+		"user:7",
 		utilitiesServiceInterfaces.CompleteDownloaderUploadRequest{
 			DownloadType:        utilitiesModels.DownloadUTypeBase,
 			AutomaticExtraction: true,
@@ -348,7 +348,7 @@ func TestCompleteDownloaderUploadKeepsCompletedRetryIdempotent(t *testing.T) {
 	retry, err := service.CompleteDownloaderUpload(
 		context.Background(),
 		record.ID,
-		7,
+		"user:7",
 		utilitiesServiceInterfaces.CompleteDownloaderUploadRequest{
 			DownloadType:           utilitiesModels.DownloadUTypeBase,
 			AutomaticExtraction:    true,
@@ -365,7 +365,7 @@ func TestCompleteDownloaderUploadKeepsCompletedRetryIdempotent(t *testing.T) {
 
 func TestCompleteDownloaderUploadRetriesQueueWithoutDuplicatingRecord(t *testing.T) {
 	service, staging := newDownloaderUploadTestService(t)
-	record := stageDownloaderUpload(t, service, staging, 7, "disk.img", "image")
+	record := stageDownloaderUpload(t, service, staging, "user:7", "disk.img", "image")
 
 	queueCalls := 0
 	service.enqueueDownloadStartFn = func(
@@ -382,7 +382,7 @@ func TestCompleteDownloaderUploadRetriesQueueWithoutDuplicatingRecord(t *testing
 		DownloadType: utilitiesModels.DownloadUType("uncategorized"),
 	}
 
-	first, err := service.CompleteDownloaderUpload(context.Background(), record.ID, 7, request)
+	first, err := service.CompleteDownloaderUpload(context.Background(), record.ID, "user:7", request)
 	if !errors.Is(err, ErrDownloaderUploadQueue) {
 		t.Fatalf("first completion error=%v want queue failure", err)
 	}
@@ -390,7 +390,7 @@ func TestCompleteDownloaderUploadRetriesQueueWithoutDuplicatingRecord(t *testing
 		t.Fatal("download record was not committed before queue failure")
 	}
 
-	second, err := service.CompleteDownloaderUpload(context.Background(), record.ID, 7, request)
+	second, err := service.CompleteDownloaderUpload(context.Background(), record.ID, "user:7", request)
 	if err != nil {
 		t.Fatalf("retry completion: %v", err)
 	}
@@ -412,7 +412,7 @@ func TestCompleteDownloaderUploadRetriesQueueWithoutDuplicatingRecord(t *testing
 
 func TestCompleteDownloaderUploadRetriesAfterRecordCreationFailure(t *testing.T) {
 	service, staging := newDownloaderUploadTestService(t)
-	record := stageDownloaderUpload(t, service, staging, 7, "disk.img", "image")
+	record := stageDownloaderUpload(t, service, staging, "user:7", "disk.img", "image")
 	service.enqueueDownloadStartFn = func(
 		_ context.Context,
 		_ utilitiesServiceInterfaces.DownloadStartPayload,
@@ -440,7 +440,7 @@ func TestCompleteDownloaderUploadRetriesAfterRecordCreationFailure(t *testing.T)
 	request := utilitiesServiceInterfaces.CompleteDownloaderUploadRequest{
 		DownloadType: utilitiesModels.DownloadUType("uncategorized"),
 	}
-	if _, err := service.CompleteDownloaderUpload(context.Background(), record.ID, 7, request); !errors.Is(
+	if _, err := service.CompleteDownloaderUpload(context.Background(), record.ID, "user:7", request); !errors.Is(
 		err,
 		ErrDownloaderUploadPersistence,
 	) {
@@ -465,7 +465,7 @@ func TestCompleteDownloaderUploadRetriesAfterRecordCreationFailure(t *testing.T)
 	if err := service.DB.Callback().Create().Remove(callbackName); err != nil {
 		t.Fatal(err)
 	}
-	result, err := service.CompleteDownloaderUpload(context.Background(), record.ID, 7, request)
+	result, err := service.CompleteDownloaderUpload(context.Background(), record.ID, "user:7", request)
 	if err != nil {
 		t.Fatalf("retry completion: %v", err)
 	}
@@ -476,7 +476,7 @@ func TestCompleteDownloaderUploadRetriesAfterRecordCreationFailure(t *testing.T)
 
 func TestCompleteDownloaderUploadDoesNotOverwriteDownloaderDestination(t *testing.T) {
 	service, staging := newDownloaderUploadTestService(t)
-	record := stageDownloaderUpload(t, service, staging, 7, "disk.img", "new")
+	record := stageDownloaderUpload(t, service, staging, "user:7", "disk.img", "new")
 	destination := filepath.Join(filepath.Dir(filepath.Dir(staging)), "downloads", "path", "disk.img")
 	if err := os.WriteFile(destination, []byte("existing"), 0o600); err != nil {
 		t.Fatal(err)
@@ -485,7 +485,7 @@ func TestCompleteDownloaderUploadDoesNotOverwriteDownloaderDestination(t *testin
 	_, err := service.CompleteDownloaderUpload(
 		context.Background(),
 		record.ID,
-		7,
+		"user:7",
 		utilitiesServiceInterfaces.CompleteDownloaderUploadRequest{
 			DownloadType: utilitiesModels.DownloadUType("uncategorized"),
 		},
@@ -504,9 +504,9 @@ func TestCompleteDownloaderUploadDoesNotOverwriteDownloaderDestination(t *testin
 
 func TestAbortDownloaderUploadIsIdempotent(t *testing.T) {
 	service, staging := newDownloaderUploadTestService(t)
-	record := stageDownloaderUpload(t, service, staging, 7, "disk.img", "image")
+	record := stageDownloaderUpload(t, service, staging, "user:7", "disk.img", "image")
 
-	completed, err := service.AbortDownloaderUpload(context.Background(), record.ID, 7)
+	completed, err := service.AbortDownloaderUpload(context.Background(), record.ID, "user:7")
 	if err != nil {
 		t.Fatalf("first abort: %v", err)
 	}
@@ -517,15 +517,40 @@ func TestAbortDownloaderUploadIsIdempotent(t *testing.T) {
 		t.Fatalf("staged file still exists: %v", err)
 	}
 
-	completed, err = service.AbortDownloaderUpload(context.Background(), record.ID, 7)
+	completed, err = service.AbortDownloaderUpload(context.Background(), record.ID, "user:7")
 	if err != nil || completed {
 		t.Fatalf("second abort completed=%v err=%v", completed, err)
 	}
 }
 
+func TestDownloaderUploadIsItsOwners(t *testing.T) {
+	service, staging := newDownloaderUploadTestService(t)
+	const owner = "node:node-1:sylve:admin"
+	record := stageDownloaderUpload(t, service, staging, owner, "disk.img", "image")
+	request := utilitiesServiceInterfaces.CompleteDownloaderUploadRequest{DownloadType: utilitiesModels.DownloadUTypeOther}
+
+	for _, other := range []string{"user:1", "node:node-2:sylve:admin", "node:node-1:pam:admin"} {
+		if _, err := service.CompleteDownloaderUpload(context.Background(), record.ID, other, request); !errors.Is(err, ErrDownloaderUploadNotFound) {
+			t.Fatalf("%s completed it: %v", other, err)
+		}
+		if _, err := service.AbortDownloaderUpload(context.Background(), record.ID, other); err != nil {
+			t.Fatalf("%s abort: %v", other, err)
+		}
+		if _, err := os.Stat(record.Path); err != nil {
+			t.Fatalf("%s aborted it: %v", other, err)
+		}
+	}
+	if _, err := service.AbortDownloaderUpload(context.Background(), record.ID, owner); err != nil {
+		t.Fatalf("owner abort: %v", err)
+	}
+	if _, err := os.Stat(record.Path); !os.IsNotExist(err) {
+		t.Fatalf("owner's abort left the file: %v", err)
+	}
+}
+
 func TestCompletedDownloaderUploadMovesThroughExistingPathDownloadLifecycle(t *testing.T) {
 	service, staging := newDownloaderUploadTestService(t)
-	record := stageDownloaderUpload(t, service, staging, 7, "disk.img", "image")
+	record := stageDownloaderUpload(t, service, staging, "user:7", "disk.img", "image")
 	sourceInfo, err := os.Stat(record.Path)
 	if err != nil {
 		t.Fatal(err)
@@ -544,7 +569,7 @@ func TestCompletedDownloaderUploadMovesThroughExistingPathDownloadLifecycle(t *t
 	completion, err := service.CompleteDownloaderUpload(
 		context.Background(),
 		record.ID,
-		7,
+		"user:7",
 		utilitiesServiceInterfaces.CompleteDownloaderUploadRequest{
 			DownloadType: utilitiesModels.DownloadUType("uncategorized"),
 		},
@@ -595,7 +620,7 @@ func TestCompletedDownloaderUploadMovesThroughExistingPathDownloadLifecycle(t *t
 	retry, err := service.CompleteDownloaderUpload(
 		context.Background(),
 		record.ID,
-		7,
+		"user:7",
 		utilitiesServiceInterfaces.CompleteDownloaderUploadRequest{
 			DownloadType: utilitiesModels.DownloadUType("uncategorized"),
 		},
@@ -610,7 +635,7 @@ func TestCompletedDownloaderUploadMovesThroughExistingPathDownloadLifecycle(t *t
 
 func TestCompletedDownloaderUploadPublishDoesNotReplaceLateDestination(t *testing.T) {
 	service, staging := newDownloaderUploadTestService(t)
-	record := stageDownloaderUpload(t, service, staging, 7, "disk.img", "uploaded")
+	record := stageDownloaderUpload(t, service, staging, "user:7", "disk.img", "uploaded")
 	service.enqueueDownloadStartFn = func(
 		_ context.Context,
 		_ utilitiesServiceInterfaces.DownloadStartPayload,
@@ -621,7 +646,7 @@ func TestCompletedDownloaderUploadPublishDoesNotReplaceLateDestination(t *testin
 	completion, err := service.CompleteDownloaderUpload(
 		context.Background(),
 		record.ID,
-		7,
+		"user:7",
 		utilitiesServiceInterfaces.CompleteDownloaderUploadRequest{
 			DownloadType: utilitiesModels.DownloadUType("uncategorized"),
 		},
@@ -675,7 +700,7 @@ func TestCompletedDownloaderUploadPublishDoesNotReplaceLateDestination(t *testin
 
 func TestCompletedDownloaderUploadRecoversInterruptedPublish(t *testing.T) {
 	service, staging := newDownloaderUploadTestService(t)
-	record := stageDownloaderUpload(t, service, staging, 7, "disk.img", "uploaded")
+	record := stageDownloaderUpload(t, service, staging, "user:7", "disk.img", "uploaded")
 	service.enqueueDownloadStartFn = func(
 		_ context.Context,
 		_ utilitiesServiceInterfaces.DownloadStartPayload,
@@ -686,7 +711,7 @@ func TestCompletedDownloaderUploadRecoversInterruptedPublish(t *testing.T) {
 	completion, err := service.CompleteDownloaderUpload(
 		context.Background(),
 		record.ID,
-		7,
+		"user:7",
 		utilitiesServiceInterfaces.CompleteDownloaderUploadRequest{
 			DownloadType: utilitiesModels.DownloadUType("uncategorized"),
 		},
@@ -755,9 +780,9 @@ func TestCleanupExpiredUploadsSkipsActiveAndCompleted(t *testing.T) {
 	now := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
 	service.uploadNowFn = func() time.Time { return now }
 
-	expired := stageDownloaderUpload(t, service, staging, 7, "expired.img", "expired")
-	active := stageDownloaderUpload(t, service, staging, 7, "active.img", "active")
-	completed := stageDownloaderUpload(t, service, staging, 7, "completed.img", "completed")
+	expired := stageDownloaderUpload(t, service, staging, "user:7", "expired.img", "expired")
+	active := stageDownloaderUpload(t, service, staging, "user:7", "active.img", "active")
+	completed := stageDownloaderUpload(t, service, staging, "user:7", "completed.img", "completed")
 	old := now.Add(-DownloaderUploadTTL - time.Minute)
 	for _, id := range []string{expired.ID, active.ID, completed.ID} {
 		if err := service.DB.Model(&utilitiesModels.Upload{}).
@@ -824,7 +849,7 @@ func TestCleanupExpiredUploadsSkipsActiveAndCompleted(t *testing.T) {
 		Path:      explorerFile,
 		Name:      filepath.Base(explorerFile),
 		Size:      explorerInfo.Size(),
-		UserID:    7,
+		Owner:     "user:7",
 		Node:      "node-a",
 		Status:    utilitiesModels.UploadStatusStaged,
 		Device:    explorerIdentity.Device,

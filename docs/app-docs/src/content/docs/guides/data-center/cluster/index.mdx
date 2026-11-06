@@ -4,7 +4,6 @@ description: Connect Sylve nodes into a shared Data Center.
 ---
 
 import QuorumCalculator from '../../../../../components/QuorumCalculator.astro';
-import clusterJoinWalkthrough from './cluster-join.mp4';
 import clusterOverview from './clustering-overview-v031.png';
 
 A Sylve cluster gives you one Data Center view for its member nodes. Cluster state backs shared features such as backup targets and jobs, while each node continues to run its own workloads and services.
@@ -34,6 +33,13 @@ Cluster communication is foundational infrastructure. Do not expose its internal
 - Keep the system clock synchronized on every node; a node whose clock differs from the leader by more than about 30 seconds is rejected with `cluster_join_clock_drift`. See [Keep the system clock accurate](/getting-started/) for NTP setup.
 - Plan the voter count before adding production workloads. Three voters allow one voter failure without losing quorum.
 - Ensure the nodes can communicate over the cluster network on `8180/TCP` for Raft, `8183/TCP` for Sylve's embedded SSH service, and `8184/TCP` for the internal cluster API.
+- Give every node its own hostname. Requests for a node can name it by hostname, so a cluster refuses a node whose hostname a member already has. Fresh FreeBSD installations often share a default name; rename such a node before joining it.
+
+### Encrypted cluster traffic
+
+Members talk to each other over mutual TLS. Raft on `8180/TCP` and the internal cluster API on `8184/TCP` are encrypted, and each member proves its identity with its own certificate. The cluster records each member's certificate when the member joins, and only admitted members can take part. Encryption is always on and needs no configuration.
+
+A member whose certificate changes is no longer recognized. This happens when a node is reinstalled, when its `sylve.db` is restored onto another machine, or when its cluster TLS files are deleted. Remove such a member and join it again.
 
 ## Create the first cluster node
 
@@ -41,7 +47,7 @@ Open **Data Center → Cluster** on the first node and select **Create Cluster**
 
 ![Create Cluster dialog with the initial node's cluster IP address](./clustering-create-cluster.png)
 
-After creation, return to the Cluster page to see its member table. The leader is marked in the table, and **View Join Information** provides the values needed by another node.
+After creation, return to the Cluster page to see its member table. The leader is marked in the table, and **View Join Information** generates the join key another node needs.
 
 <img
   src={clusterOverview.src}
@@ -50,31 +56,39 @@ After creation, return to the Cluster page to see its member table. The leader i
 
 ## Join another node
 
-On the cluster leader, select **View Join Information** and copy the cluster key. Treat this key as a credential: a node that has it and can reach the leader can request admission to the cluster.
+On any member, select **View Join Information**, then **Generate Join Key**. The dialog shows the key and the address to join through, which is that member's cluster address. Copy the key before closing the dialog. It isn't shown again; generate a new one if you lose it.
+
+A join key admits one node. Generating a new key replaces the previous one, and a completed join or any member removal spends it, so generate a key for each node you add. Treat an unused key as a credential: a node that has it and can reach that member can request admission to the cluster.
 
 On the node to add, open **Data Center → Cluster**, select **Join Cluster**, and provide the following values.
 
 | Field | What to enter |
 | --- | --- |
 | **Node IP** | The joining node's own cluster IP address. |
-| **Leader IP** | The current leader's cluster IP address. Enter only the address, not a URL or port. |
-| **Cluster Key** | The key copied from the leader's join information. |
+| **Cluster Node IP** | The **Join Through** address shown with the key: the cluster IP of the member that generated it. Enter only the address, not a URL or port. |
+| **Join Key** | The key generated on that member. |
 
-If this is the same node returning after a leave with guests, select **Join**. Sylve checks all of its current guest IDs against the surviving cluster before saving the join intent and again while the node is staged. A VM RID and a jail CTID with the same number conflict, even when the guest types differ.
+The key only works with the member that generated it. Joining through another member is refused.
 
-![Cluster join information dialog showing the node ID, leader node, and copyable cluster key](./clustering-join-information.png)
+![Cluster Information dialog showing the node ID, leader node, join-through address, and a generated join key](./clustering-join-information.png)
 
-![Join Cluster dialog with the joining node address, leader address, and cluster key fields](./clustering-join-cluster.png)
+![Join Cluster dialog with the joining node address, the member's cluster address, and the join key fields](./clustering-join-cluster.png)
 
-The join process verifies the cluster key, exact Sylve version, member identity, clock offset, and VM and Jail identities across the cluster. The node is first added as a staged non-voter. It synchronizes and verifies replicated state before promotion to voter, so it does not affect quorum while it is catching up.
+Before anything changes on the joining node, Sylve checks:
 
-The **Cluster Join** progress control shows the current phase, synchronized Raft entries, automatic retry attempts, and technical details when an error occurs. Temporary leader changes and connection failures can resume automatically. Do not reset the joining node merely because a retry is in progress. Resolve the reported version, identity, connectivity, storage, or quorum problem and allow the workflow to continue.
+- the join key;
+- that both nodes run exactly the same Sylve version;
+- that their clocks agree;
+- that no member already has the joining node's hostname;
+- that none of the joining node's VM RIDs or Jail CTIDs is claimed by another member. A VM RID and a Jail CTID with the same number conflict, even though the guest types differ.
+
+A refused join leaves the node exactly as it was. Fix the reported problem and join again with a new key.
+
+Once admitted, the node replaces its local copy of clustered state, such as notes, backup targets and jobs, with the cluster's. It joins as a **Non Voter**, catches up with the cluster, and the leader then promotes it to **Voter**. It doesn't affect quorum while it catches up. VMs and Jails can't be created or deleted on the joining node until it votes.
+
+The **Cluster Join** progress control shows **Contacting Leader**, **Catching Up** and then **Awaiting Promotion**. If the cluster can't be reached, Sylve keeps the join and retries it automatically, including after a restart. The control then shows **Retrying Automatically**, with the last error under **Technical Details**. Don't reset the joining node merely because a retry is in progress. If a joining node makes no progress for 10 minutes, for example because it is switched off, the leader removes it, and the node asks to join again when it's back.
 
 On cooperative leave, the surviving cluster releases the departing node's guest ID claims after its membership is removed. Remaining members can then use those numbers. The departed node keeps its local guests and can rejoin with any current guest set whose numeric IDs are all free in the cluster. If another node reused one of its IDs, the entire join is rejected until the conflicting local guest ID is changed or the cluster conflict is otherwise resolved. A guest deleted while standalone needs no separate release when the node returns.
-
-<video class="docs-walkthrough-video" autoplay muted loop playsinline controls aria-label="Cluster join walkthrough showing the joining node details, masked cluster key, and the node appearing as an online voter">
-  <source src={clusterJoinWalkthrough} type="video/mp4" />
-</video>
 
 ## Read the member table
 
@@ -84,8 +98,8 @@ On cooperative leave, the surviving cluster releases the departing node's guest 
 | **Node ID** | Sylve's stable identifier for the member. |
 | **Address** | The Raft address used for cluster consensus. |
 | **Status** | Whether Sylve can currently see the member as online or offline. |
-| **Suffrage** | The member's Raft role. A **Voter** participates in quorum; a **Non Voter** does not; **Staging** is a temporary joining state. |
-| **Sylve Version** | Version and build commit reported by the member. The commit is shown when available. A join requires the joining node to report exactly the leader's version; a third-party member that reports a different version or cannot be reached is reported as a warning rather than failing the version check, although the membership change itself still requires Raft quorum. Removals require every participating member to report the same version. |
+| **Suffrage** | The member's Raft role. A **Voter** participates in quorum; a **Non Voter** does not. A joining node is a **Non Voter** until it has caught up. |
+| **Sylve Version** | Version and build commit reported by the member. The commit is shown when available. A join requires the joining node to run exactly the version of the member it joins through. |
 | **Guests** | Number of guests currently associated with that member. |
 | **CPU**, **RAM**, **Disk** | The member's current reported resource usage. Use these indicators when deciding where work can move before planned maintenance. |
 
@@ -97,23 +111,23 @@ Only the current cluster leader can remove another member. Select a non-leader r
 
 ![Remove Peer confirmation for an offline cluster member, warning that the node will no longer participate in quorum](./cluster-remove-peer-warning-v031.png)
 
-Normal removal contacts the target, fences new work there, waits for active operations to drain, removes its Raft membership, cleans its local clustered state, and restarts it as a standalone node. Every participating member must run the same Sylve version. The dialog reports an unreachable target, a version-check failure, an uncertain outcome, or cleanup that could not be confirmed instead of pretending the removal completed cleanly.
+The leader removes the member from Raft without contacting it first, so an offline member is removed the same way. The removed node notices within about 30 seconds, clears its clustered state, and restarts as a standalone node that keeps its guests. A node that is offline does this when it comes back.
 
-Sylve checks cluster-owned dependencies before changing Raft membership. Removal is blocked if the node still owns or is involved in resources such as guests, backup jobs or operations, replication policies or leases, restore operations, guest operations, runner rebinds, lifecycle tasks, or state repairs. The dialog lists blockers that must be resolved. If all blockers are guests, it offers **Leave and keep guests** instead of a resource list. This runs the cooperative leave while those guests stay on the target. Their numeric IDs become reusable by other members after the leave completes.
+Sylve checks cluster-owned dependencies before changing Raft membership. Removal is blocked if the node still owns or is involved in resources such as guests, backup jobs or operations, replication policies or leases, restore operations, guest operations, runner rebinds, or lifecycle tasks. The dialog lists blockers that must be resolved. If all blockers are guests, it offers **Leave and keep guests** instead of a resource list. The node is then removed and its guests stay on it. Their numeric IDs become reusable by other members once it is removed.
 
-Removing a peer does not erase its workloads or storage. If leadership changes while the dialog is open, refresh the Cluster page and retry on the new leader.
+Removing a peer does not erase its workloads or storage. It also spends the current join key. If leadership changes while the dialog is open, refresh the Cluster page and retry on the new leader.
 
-If the target is unreachable before removal begins, the dialog can open **Force Remove Peer**. Use it only after externally fencing the target's power, storage, or network. Force removal changes Raft membership without contacting or cleaning the target, cannot bypass missing quorum, and remains blocked by cluster-owned dependencies. Before the target is used again, reset its stale local cluster state while it remains isolated.
-
-If Sylve reports that the outcome is uncertain, do not immediately retry or force remove the peer. Inspect the target's leave status and the authoritative membership first. Repeating a membership operation without knowing whether the first one committed can make recovery harder.
+If a removal fails while the target is offline, the dialog offers **Force Remove…**. Use it only after externally fencing the target's power, storage, or network. Force removal removes the member and keeps its guests on it. It cannot bypass missing quorum, and other cluster-owned dependencies still block it. If the target comes back, it notices that it was removed and resets itself to a standalone node.
 
 ## Leave or reset the current node
 
-Select **Leave / Reset Cluster** on the member that should leave. The normal workflow fences new work, waits for active mutations to finish, transfers leadership when necessary, removes the member from Raft, cleans local clustered state, and restarts Sylve as a standalone node. The confirmation warns that local copies of clustered notes, backup targets, jobs, and events are cleared.
+Select **Leave / Reset Cluster** on the member that should leave. The node waits for its active changes to finish and checks that nothing in the cluster still depends on it. If it is the leader, it hands leadership to another voter. It then asks the leader to remove it, clears its local clustered state, and restarts Sylve as a standalone node. The confirmation warns that local copies of clustered notes, backup targets, jobs, and events are cleared.
 
-The **Cluster Leave** progress control identifies whether the node is fencing work, removing membership, or cleaning local state. If active consoles or operations prevent the node from draining, close or finish them and select **Retry Leave**. If a leader cannot transfer leadership, restore connectivity to another voter before retrying.
+The **Cluster Leave** progress control shows **Removing Membership** and then **Cleaning Local State**. If the leader can't be reached or hasn't confirmed the removal yet, the leave stays pending and is retried every few seconds. The control shows the reason. Until the leader has removed the node, **Cancel Leave** returns it to normal cluster operation. If the leave reports a problem you can fix, such as an active console or operation, resolve it and select **Retry Leave**. If a leader cannot transfer leadership, restore connectivity to another voter before retrying.
 
-If the normal leave is blocked only by local guests, the page offers **Leave and keep guests**. The node keeps its VM and jail registrations while its clustered configuration is cleared and Sylve restarts. The surviving cluster releases those guest IDs for reuse after membership removal. The node waits for release confirmation before local cleanup. Backup jobs, replication state, active operations, lifecycle tasks, and state repairs still block a cooperative leave.
+If the normal leave is blocked only by local guests, the page offers **Leave and keep guests**. The node keeps its VM and jail registrations while its clustered configuration is cleared and Sylve restarts. The surviving cluster releases those guest IDs for reuse when it removes the node. Backup jobs, replication policies and leases, active operations, and lifecycle tasks still block a leave.
+
+A reset on a node whose join hasn't finished just resets that node.
 
 ![Leave or reset confirmation warning that clustered notes, backup targets, jobs, and events on this node will be cleared](./clustering-leave-reset-warning.png)
 
@@ -121,7 +135,7 @@ If the normal leave is blocked only by local guests, the page offers **Leave and
 
 **Force Local Reset** is available only after a leave failure. It clears this machine's local cluster state and does not remove the member from surviving Raft membership. The dialog therefore requires the local Node ID and acknowledgements that remote membership is repaired or will be repaired separately, and that duplicate workloads and shared storage are externally fenced.
 
-Use it only when the normal leave workflow cannot be recovered. Keep the reset node isolated until a healthy cluster leader removes or repairs its old membership. The node restarts after the local reset.
+Use it only when the normal leave workflow cannot be recovered. Keep the reset node isolated until its old membership is removed with **Remove Peer** on the cluster leader. The node restarts after the local reset.
 
 ### The `raft.reset` recovery flag
 
@@ -141,11 +155,40 @@ On startup with this flag, Sylve clears the old Raft storage and bootstraps a on
 Use this flag only as part of a specific recovery procedure on a stopped node whose old membership has already been removed. Do not set it on a healthy cluster member. Use **Leave / Reset Cluster** for a normal leave, or the guarded **Force Local Reset** action after a failed leave.
 :::
 
+## Recover from losing a majority
+
+A cluster needs a majority of its voters to elect a leader and make changes. If a majority is gone for good, for example after hardware failures, the surviving voters can't recover on their own. Stop Sylve on each survivor and run `sylve datacenter cluster recover-quorum` with the same list of surviving voters on each of them. Then start Sylve on them again. See the [Data Center CLI guide](/guides/node/cli-console/data-center/#recover-from-a-lost-majority).
+
+:::danger
+Use `recover-quorum` only for voters that will never come back. Recovering both sides of a network split separately creates two clusters.
+:::
+
 ## Upgrade clustered nodes safely
 
-For releases whose upgrade notes permit mixed-version operation, upgrade a cluster as a rolling maintenance operation, one node at a time. Keep the mixed-version period as short and quiet as possible. Sylve requires a joining node to report exactly the leader's version, but it does not continuously reject an existing member after that member is upgraded, and a member that is unreachable or on a different version no longer blocks the version check. The membership change itself still requires Raft quorum, so a cluster that cannot reach a majority still cannot complete the join. This temporary tolerance is useful for compatible rolling maintenance, but it is not a promise that different releases can safely handle every new Raft command or cluster workflow together.
+For releases whose upgrade notes permit mixed-version operation, upgrade a cluster as a rolling maintenance operation, one node at a time. Keep the mixed-version period as short and quiet as possible. Sylve requires a joining node to run exactly the version of the member it joins through, but it does not reject an existing member after that member is upgraded. If a member receives a cluster change that it doesn't understand, because a newer member made it, the member stops and must be upgraded before it can continue. A rolling upgrade is therefore safe only when the release notes say so.
 
 Release-specific upgrade notes take precedence over this general playbook. If a release requires all nodes to stop together, a particular intermediate version, or another special step, follow that instruction instead.
+
+### Upgrade from 0.3.0 or 0.3.1
+
+Sylve 0.3.2 changes how members store cluster state and how they authenticate each other, so it can't run in a cluster alongside 0.3.0 or 0.3.1. Instead, the cluster rebuilds itself once from the members' databases. The rebuild runs on its own:
+
+1. Take a ZFS snapshot of the dataset that holds `dataPath` on every node. The package default is `/var/db/sylve`.
+2. Let migrations, backups, restores, and replication runs finish, then stop scheduling new ones. Make no cluster changes while stopping the nodes. A 0.3.0 or 0.3.1 node doesn't record which changes its database already holds, so a change committed just before the cluster stopped can be lost.
+3. Upgrade every node, ideally together. Guests keep running.
+4. Each upgraded node keeps its old cluster state in `raft.pre-1` under `dataPath` and waits until a majority of the old voters is upgraded. The member with the most up-to-date state then founds the new cluster from its own database, and the others rejoin it automatically. Until then, cluster-wide operations pause: guest creation and deletion, migrations, replication scheduling, and failover.
+5. Confirm in **Data Center → Cluster** that every member is online and reports the new version.
+
+A node that is offline during the upgrade rejoins once it is upgraded and started. A rejoining node can be refused for one of two reasons:
+
+- **Its hostname is in use:** another member already has its hostname. Rename it and restart Sylve.
+- **A guest ID is in use:** one of its VM RIDs or Jail CTIDs is used on another member. Change the conflicting ID.
+
+Either way, the node keeps running standalone, with its guests, until you fix the problem, and then it rejoins on its own.
+
+Old cluster keys stop working; generate a join key to add a node. If a majority of the old voters is gone for good, run `recover-quorum` on a surviving node, as described in [Recover from losing a majority](#recover-from-losing-a-majority). That node then founds the new cluster from its database the next time it starts.
+
+Rolling a rebuilt cluster back to 0.3.0 or 0.3.1 isn't supported. To go back, restore the snapshots on every node.
 
 :::caution[Large version jumps require a coordinated outage]
 Do not assume the rolling procedure below is safe for a large version jump. Releases with substantial changes to Raft commands, database schemas, or node-to-node APIs may not be compatible while different versions are running in the same cluster.

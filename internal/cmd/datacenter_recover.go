@@ -23,6 +23,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/services/cluster/raftdir"
 	"github.com/alchemillahq/sylve/pkg/network"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/urfave/cli/v3"
@@ -90,7 +91,7 @@ func recoverOfflineClusterIP(configPath string, requestedIP string, allowDisrupt
 	if err := requireOfflineConsole(consoleprotocol.SocketPath(dataPath)); err != nil {
 		return offlineClusterIPRecoveryResult{}, err
 	}
-	if !offlineRaftStateExists(filepath.Join(dataPath, "raft")) {
+	if !raftdir.HasState(filepath.Join(dataPath, "raft")) {
 		return offlineClusterIPRecoveryResult{}, fmt.Errorf("cluster_readdress_raft_state_missing")
 	}
 	if !utils.IsLocalIP(newIP) {
@@ -135,6 +136,9 @@ func openOfflineClusterDatabase(dataPath string) (*gorm.DB, func() error, error)
 	}
 	database, err := gorm.Open(sqlite.Open(databasePath), &gorm.Config{
 		Logger: gormLogger.Default.LogMode(gormLogger.Silent), TranslateError: true,
+		// The FSM migrates the replicated tables here; with gorm's defaults that
+		// rebuilds them with foreign keys the daemon never adds.
+		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("cluster_database_open_failed: %w", err)
@@ -171,16 +175,8 @@ func applyOfflineClusterIPRecovery(
 			return fmt.Errorf("cluster_readdress_lifecycle_conflict")
 		}
 		phase := strings.TrimSpace(record.ReaddressPhase)
-		if phase != "" && phase != "prepared" && phase != "membership_committed" && phase != offlineReaddressPhaseLocalRebound {
+		if phase != "" && phase != offlineReaddressPhaseLocalRebound {
 			return fmt.Errorf("cluster_readdress_phase_invalid: %s", phase)
-		}
-		if phase != "" && !sameOfflineClusterIP(record.ReaddressNewIP, newIP) {
-			return fmt.Errorf(
-				"cluster_readdress_already_active: old_ip=%s new_ip=%s phase=%s",
-				record.ReaddressOldIP,
-				record.ReaddressNewIP,
-				phase,
-			)
 		}
 		if phase == "" && sameOfflineClusterIP(record.RaftIP, newIP) {
 			return fmt.Errorf("cluster_readdress_ip_unchanged")
@@ -226,15 +222,6 @@ func requireOfflineConsole(socketPath string) error {
 		return nil
 	}
 	return fmt.Errorf("cluster_readdress_daemon_state_unavailable: %w", err)
-}
-
-func offlineRaftStateExists(path string) bool {
-	for _, name := range []string{"raft-log.db", "raft-stable.db", "snapshots"} {
-		if _, err := os.Stat(filepath.Join(path, name)); err == nil {
-			return true
-		}
-	}
-	return false
 }
 
 func normalizeOfflineClusterIP(value string) (string, error) {

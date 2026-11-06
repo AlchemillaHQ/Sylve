@@ -24,7 +24,10 @@ import (
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
@@ -73,23 +76,15 @@ func resetZeltaTestGlobals(t *testing.T) {
 
 func newZeltaServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 	t.Helper()
-	if len(migrateModels) == 0 {
-		migrateModels = []any{
-			&clusterModels.BackupTarget{},
-			&clusterModels.BackupJob{},
-		}
-	}
-	migrateModels = append(
-		migrateModels,
-		&clusterModels.BackupTargetProvisionOperation{},
-		&clusterModels.BackupJobOperation{},
-		&clusterModels.ReplicationRunOperation{},
-		&clusterModels.ScheduledRunReceipt{},
+	migrateModels = append(append(clusterModels.ReplicatedModels(), migrateModels...),
 		&clusterModels.ScheduledRunResultOutbox{},
-		&clusterModels.ReplicationTransitionEvent{},
-		&clusterModels.BackupTargetRestoreOperation{},
-		&clusterModels.BackupTargetSSHHostTrust{},
-		&clusterModels.ClusterOption{},
+		&clusterModels.Cluster{},
+		&jailModels.JailCreation{},
+		&jailModels.Jail{},
+		&jailModels.Storage{},
+		&vmModels.VM{},
+		&vmModels.Storage{},
+		&vmModels.VMStorageDataset{},
 		&utilitiesModels.Downloads{},
 		&utilitiesModels.Upload{},
 	)
@@ -104,6 +99,7 @@ func newZeltaServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 func newTestZeltaService(db *gorm.DB) *Service {
 	return &Service{
 		DB:                 db,
+		Cluster:            newTestClusterService(db, ""),
 		runningJobs:        make(map[uint]struct{}),
 		queuedJobs:         make(map[uint]struct{}),
 		runningReplication: make(map[uint]struct{}),
@@ -541,4 +537,28 @@ func fakeSSHWriteState(path string, state map[string]int) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0600)
+}
+
+func newTestClusterService(db *gorm.DB, nodeID string) *clusterService.Service {
+	if err := db.AutoMigrate(&clusterModels.Cluster{}, &jailModels.Jail{}, &jailModels.JailCreation{}); err != nil {
+		panic(err)
+	}
+	service := clusterService.NewClusterService(db, nil, nil).(*clusterService.Service)
+	service.NodeID = nodeID
+	_ = service.ReopenMutations()
+	return service
+}
+
+func seedReplicationPolicy(db *gorm.DB, policy *clusterModels.ReplicationPolicy, targets []clusterModels.ReplicationPolicyTarget) error {
+	fsm := clusterModels.NewFSMDispatcher(db)
+	clusterModels.RegisterDefaultHandlers(fsm)
+	data, err := json.Marshal(clusterModels.ReplicationPolicyPayload{Policy: *policy, Targets: targets})
+	if err != nil {
+		return err
+	}
+	cmd := clusterModels.Command{Type: "replication_policy", Action: "create", Data: data}
+	if err := clusterModels.PrepareCommand(&cmd, time.Now()); err != nil {
+		return err
+	}
+	return fsm.ApplyLocal(cmd)
 }

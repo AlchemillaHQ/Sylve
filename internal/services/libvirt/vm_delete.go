@@ -101,7 +101,8 @@ func (s *Service) RemoveVMWithWarnings(
 		return result, nil
 	}
 	if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, *identityClaim); releaseErr != nil {
-		return result, fmt.Errorf("guest_identity_release_pending: %w", releaseErr)
+		// The guest is gone; the owner reconcile gives its ID back later.
+		logger.L.Warn().Err(releaseErr).Uint("rid", rid).Msg("guest_identity_release_pending")
 	}
 	return result, nil
 }
@@ -197,11 +198,6 @@ func (s *Service) removeVMWithWarningsWithIdentity(
 			identityClaim.Entries[0].GuestID != vm.RID ||
 			strings.TrimSpace(identityClaim.OwnerNodeID) == "" {
 			return result, fmt.Errorf("%w: vm_release_claim_mismatch", clusterModels.ErrGuestIdentityClaimConflict)
-		}
-		if identityClaim.Clustered {
-			if strings.TrimSpace(identityClaim.Token) == "" {
-				return result, fmt.Errorf("%w: vm_release_claim_token_missing", clusterModels.ErrGuestIdentityClaimConflict)
-			}
 		}
 	}
 	if err := removeRuntime(rid); err != nil {

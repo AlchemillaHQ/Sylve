@@ -103,14 +103,14 @@ func TestDeletingPolicyCancelsTransferAuthority(t *testing.T) {
 	}
 
 	s := newTestZeltaService(db)
-	s.Cluster = &clusterService.Service{DB: db}
+	s.Cluster = clusterService.NewClusterService(db, nil, nil).(*clusterService.Service)
 	_, err := s.validateReplicationTransferAuthority(policy.ID, policy.OwnerEpoch, "")
 	if err == nil || !strings.Contains(err.Error(), "replication_policy_deleting") {
 		t.Fatalf("deleting did not revoke transfer authority: %v", err)
 	}
 }
 
-func TestReplicationDeleteCleanupStandaloneBypassesOnlyRaftFence(t *testing.T) {
+func TestReplicationDeleteCleanupStandaloneValidatesLifecycle(t *testing.T) {
 	db := newZeltaServiceTestDB(
 		t,
 		&clusterModels.ReplicationPolicy{},
@@ -127,31 +127,29 @@ func TestReplicationDeleteCleanupStandaloneBypassesOnlyRaftFence(t *testing.T) {
 	}
 
 	s := newTestZeltaService(db)
-	s.Cluster = &clusterService.Service{DB: db, NodeID: "node-a"}
-	err := s.CleanupReplicationPolicyDeleteBestEffort(context.Background(), policy.ID, 0)
+	s.Cluster = newTestClusterService(db, "node-a")
+	err := s.CleanupReplicationPolicyDeleteBestEffort(context.Background(), policy.ID)
 	if err == nil || !strings.Contains(err.Error(), "replication_policy_not_deleting") {
 		t.Fatalf("standalone cleanup bypassed lifecycle validation: %v", err)
 	}
-	err = s.CleanupReplicationPolicyDeleteBestEffort(context.Background(), policy.ID, 1)
-	if err == nil || !strings.Contains(err.Error(), "applied_index_invalid_standalone") {
-		t.Fatalf("standalone cleanup accepted a raft fence: %v", err)
-	}
 }
 
-func TestReplicationDeleteCleanupForwardRetriesOnlyTransientFailures(t *testing.T) {
+func TestReplicationDeleteCleanupRetriesOnlyTransientFailures(t *testing.T) {
 	tests := []struct {
 		name      string
 		err       error
 		retryable bool
 	}{
-		{name: "network", err: fmt.Errorf("connection refused"), retryable: true},
-		{name: "service unavailable", err: fmt.Errorf("replication_control_cleanup-policy-delete_failed_status_503"), retryable: true},
-		{name: "owner epoch conflict", err: fmt.Errorf("replication_control_cleanup-policy-delete_failed_status_409"), retryable: false},
-		{name: "invalid request", err: fmt.Errorf("replication_control_cleanup-policy-delete_failed_status_400"), retryable: false},
+		{name: "unanswered", err: fmt.Errorf("call_forward_failed: replication-delete-cleanup: connection refused"), retryable: true},
+		{name: "quiescing", err: fmt.Errorf("replication_policy_delete_cleanup_quiescing"), retryable: true},
+		{name: "owner epoch moved", err: fmt.Errorf("replication_policy_delete_authority_epoch_mismatch"), retryable: false},
+		{name: "not deleting", err: fmt.Errorf("replication_policy_not_deleting"), retryable: false},
+		{name: "invalid request", err: fmt.Errorf("invalid_request: policyId and ownerEpoch are required"), retryable: false},
+		{name: "invalid policy", err: fmt.Errorf("invalid_policy_id"), retryable: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := replicationPolicyDeleteCleanupForwardRetryable(tt.err); got != tt.retryable {
+			if got := replicationPolicyDeleteCleanupRetryable(tt.err); got != tt.retryable {
 				t.Fatalf("retryable=%t, want %t", got, tt.retryable)
 			}
 		})
@@ -164,7 +162,7 @@ func TestReplicationDeleteCleanupGuardsQuiesceAndRelease(t *testing.T) {
 		GuestType: clusterModels.ReplicationGuestTypeVM,
 		GuestID:   11,
 	}
-	s := newTestZeltaService(nil)
+	s := newTestZeltaService(newZeltaServiceTestDB(t))
 
 	if !s.acquireReplication(policy.ID) {
 		t.Fatal("failed to seed active replication guard")

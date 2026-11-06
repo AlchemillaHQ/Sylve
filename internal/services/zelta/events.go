@@ -18,7 +18,7 @@ import (
 func (s *Service) emitLeftPanelRefresh(reason string) {
 	reason = strings.TrimSpace(reason)
 
-	if s != nil && s.Cluster != nil {
+	if s != nil {
 		s.Cluster.EmitLeftPanelRefreshClusterWide(reason)
 		return
 	}

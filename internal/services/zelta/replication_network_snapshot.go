@@ -124,7 +124,7 @@ func replicationVMTargetNetworkCheckFromMetadata(
 		return replicationTargetNetworkCheck{}, nil
 	}
 	return replicationTargetNetworkCheck{
-		action:  "migration/check-vm-target",
+		action:  "migration-check-vm-target",
 		payload: probe,
 	}, nil
 }
@@ -172,7 +172,7 @@ func replicationJailTargetNetworkCheckFromMetadata(
 		return replicationTargetNetworkCheck{}, nil
 	}
 	return replicationTargetNetworkCheck{
-		action:  "migration/check-jail-target",
+		action:  "migration-check-jail-target",
 		payload: probe,
 	}, nil
 }

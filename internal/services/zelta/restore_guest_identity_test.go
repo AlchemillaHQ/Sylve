@@ -17,6 +17,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
+	"gorm.io/gorm"
 )
 
 func newStandaloneRestoreIdentityService(t *testing.T) *Service {
@@ -27,12 +28,17 @@ func newStandaloneRestoreIdentityService(t *testing.T) *Service {
 		&vmModels.VM{},
 		&jailModels.Jail{},
 	)
-	return &Service{
-		DB: database,
-		Cluster: &clusterService.Service{
-			DB: database, NodeID: "standalone-node",
-		},
+	return &Service{DB: database, Cluster: newStandaloneClusterService(t, database)}
+}
+
+func newStandaloneClusterService(t *testing.T, database *gorm.DB) *clusterService.Service {
+	t.Helper()
+	cluster := clusterService.NewClusterService(database, nil, nil).(*clusterService.Service)
+	cluster.NodeID = "standalone-node"
+	if err := cluster.ReopenMutations(); err != nil {
+		t.Fatal(err)
 	}
+	return cluster
 }
 
 func TestRestoreGuestIdentityReservationLifecycleStandalone(t *testing.T) {
@@ -128,13 +134,8 @@ func TestRestoreGuestIdentityFailureReleaseBoundaryStandalone(t *testing.T) {
 	); err == nil || !strings.Contains(err.Error(), clusterModels.ErrGuestIdentityAlreadyInUse.Error()) {
 		t.Fatalf("partially materialized restore ID became reusable: %v", err)
 	}
-
-	clusteredState := *retainedState
-	clusteredState.OwnedByCaller = true
-	clusteredState.Reservation.Clustered = true
-	retErr = errors.New("restore_runtime_finalize_failed")
-	service.releaseGuestIdentityReservationAfterError(t.Context(), &clusteredState, &retErr)
-	if !clusteredState.OwnedByCaller {
-		t.Fatal("clustered reservation was released after canonical identity became durable")
+	if claim, err := service.Cluster.ListGuestIdentityClaims(t.Context()); err != nil ||
+		len(claim) != 1 || claim[0].GuestID != 802 {
+		t.Fatalf("partially materialized restore lost its claim: claims=%+v err=%v", claim, err)
 	}
 }

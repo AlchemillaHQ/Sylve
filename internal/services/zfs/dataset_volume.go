@@ -212,15 +212,8 @@ func (s *Service) FlashVolume(ctx context.Context, guid string, uuid string) err
 				if _, err := os.Stat(fmt.Sprintf("/dev/zvol/%s", volume.Name)); err != nil {
 					return classifyError(ErrConflict, "zvol_not_found: %v", err)
 				} else {
-					output, err := utils.RunCommand(
-						"/usr/sbin/camdd",
-						"-i", "file="+file+",bs=4M",
-						"-o", "file=/dev/zvol/"+volume.Name+",bs=4M",
-						"-v",
-					)
-
-					if err != nil {
-						return fmt.Errorf("failed_to_flash_volume: %w, output: %s", err, output)
+					if err := utils.FlashImageToDiskCtx(ctx, file, "/dev/zvol/"+volume.Name); err != nil {
+						return fmt.Errorf("failed_to_flash_volume: %w", err)
 					}
 
 					s.SignalDSChange(volume.Pool, volume.Name, "generic-dataset", "flash")

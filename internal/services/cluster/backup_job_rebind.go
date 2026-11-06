@@ -10,7 +10,6 @@ package cluster
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -83,41 +82,13 @@ func isPermanentBackupJobRunnerRebindError(err error) bool {
 	return false
 }
 
-func (s *Service) applyBackupJobRunnerRebindCommand(action string, payload any, bypassRaft bool) error {
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("marshal_backup_job_runner_rebind_%s_failed: %w", action, err)
-	}
-	if bypassRaft {
-		switch action {
-		case "prepare":
-			value := payload.(clusterModels.BackupJobRunnerRebindPlan)
-			return clusterModels.PrepareBackupJobRunnerRebindTxn(s.DB, &value)
-		case "ready":
-			value := payload.(clusterModels.BackupJobRunnerRebindReady)
-			return clusterModels.ReadyBackupJobRunnerRebindTxn(s.DB, &value)
-		case "apply":
-			value := payload.(clusterModels.BackupJobRunnerRebindApply)
-			return clusterModels.ApplyBackupJobRunnerRebindTxn(s.DB, &value)
-		case "repair":
-			value := payload.(clusterModels.BackupJobRunnerRebindRepair)
-			return clusterModels.RepairBackupJobRunnerRebindTxn(s.DB, &value)
-		case "pending":
-			value := payload.(clusterModels.BackupJobRunnerRebindPending)
-			return clusterModels.PendingBackupJobRunnerRebindTxn(s.DB, &value)
-		case "abort":
-			value := payload.(clusterModels.BackupJobRunnerRebindAbort)
-			return clusterModels.AbortFailedFailoverBackupJobRunnerRebindTxn(s.DB, &value)
-		default:
-			return fmt.Errorf("invalid_backup_job_runner_rebind_action")
+func (s *Service) applyBackupJobRunnerRebindCommand(action string, payload any) error {
+	if !s.Standalone() {
+		if err := s.requireReplicationRaftLeader(); err != nil {
+			return err
 		}
 	}
-	if err := s.requireReplicationRaftLeader(); err != nil {
-		return err
-	}
-	return s.applyRaftCommand(clusterModels.Command{
-		Type: "backup_job_runner_rebind", Action: action, Data: raw,
-	})
+	return s.apply("backup_job_runner_rebind", action, payload)
 }
 
 type backupJobRunnerRebindPreparationAuthority struct {
@@ -195,7 +166,6 @@ func (s *Service) prepareBackupJobRunnerRebind(
 	guestID uint,
 	newRunnerNodeID string,
 	token string,
-	bypassRaft bool,
 ) error {
 	if s == nil || s.DB == nil {
 		return fmt.Errorf("backup_job_runner_rebind_service_unavailable")
@@ -211,7 +181,7 @@ func (s *Service) prepareBackupJobRunnerRebind(
 		guestID == 0 || newRunnerNodeID == "" || token == "" {
 		return fmt.Errorf("backup_job_runner_rebind_input_invalid")
 	}
-	if !bypassRaft {
+	if !s.Standalone() {
 		if err := s.requireReplicationRaftLeader(); err != nil {
 			return err
 		}
@@ -241,7 +211,7 @@ func (s *Service) prepareBackupJobRunnerRebind(
 		return nil
 	}
 
-	if !bypassRaft {
+	if !s.Standalone() {
 		if _, _, err := s.backupJobRunnerVoter(newRunnerNodeID); err != nil {
 			return fmt.Errorf("backup_job_runner_rebind_target_invalid: %w", err)
 		}
@@ -264,7 +234,7 @@ func (s *Service) prepareBackupJobRunnerRebind(
 		}
 		preflightErrors = append(preflightErrors, preflightError)
 	}
-	if !bypassRaft && len(matchedJobs) != 0 {
+	if !s.Standalone() && len(matchedJobs) != 0 {
 		validationCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		var validationWG sync.WaitGroup
 		for i := range matchedJobs {
@@ -277,7 +247,6 @@ func (s *Service) prepareBackupJobRunnerRebind(
 				_, _, validationErr := s.validateBackupJobOnRunnerWithTarget(
 					validationCtx,
 					&matchedJobs[index],
-					false,
 					authority.authorization,
 					matchedJobs[index].Enabled,
 				)
@@ -300,7 +269,7 @@ func (s *Service) prepareBackupJobRunnerRebind(
 			PreflightError:      preflightErrors[i],
 		})
 	}
-	if !bypassRaft {
+	if !s.Standalone() {
 		s.clusterJoinMu.Lock()
 		defer s.clusterJoinMu.Unlock()
 		if err := s.RequireCurrentRaftVoter(newRunnerNodeID); err != nil {
@@ -311,7 +280,7 @@ func (s *Service) prepareBackupJobRunnerRebind(
 		Token: token, Kind: kind, GuestType: guestType, GuestID: guestID,
 		OldRunnerNodeID: authority.oldRunnerNodeID, NewRunnerNodeID: newRunnerNodeID,
 		Items: items,
-	}, bypassRaft)
+	})
 }
 
 func (s *Service) PrepareBackupJobRunnerRebind(
@@ -320,11 +289,10 @@ func (s *Service) PrepareBackupJobRunnerRebind(
 	guestID uint,
 	newRunnerNodeID string,
 	operationToken string,
-	bypassRaft bool,
 ) error {
 	return s.prepareBackupJobRunnerRebind(
 		ctx, clusterModels.BackupJobRunnerRebindKindMigration,
-		guestType, guestID, newRunnerNodeID, operationToken, bypassRaft,
+		guestType, guestID, newRunnerNodeID, operationToken,
 	)
 }
 
@@ -334,17 +302,16 @@ func (s *Service) PrepareBackupJobRunnerRebindForFailover(
 	guestID uint,
 	newRunnerNodeID string,
 	transitionRunID string,
-	bypassRaft bool,
 ) error {
 	return s.prepareBackupJobRunnerRebind(
 		ctx, clusterModels.BackupJobRunnerRebindKindFailover,
-		guestType, guestID, newRunnerNodeID, transitionRunID, bypassRaft,
+		guestType, guestID, newRunnerNodeID, transitionRunID,
 	)
 }
 
-func (s *Service) ReadyBackupJobRunnerRebind(operationToken string, bypassRaft bool) error {
+func (s *Service) ReadyBackupJobRunnerRebind(operationToken string) error {
 	operationToken = strings.TrimSpace(operationToken)
-	if !bypassRaft {
+	if !s.Standalone() {
 		if err := s.requireReplicationRaftLeader(); err != nil {
 			return err
 		}
@@ -361,7 +328,7 @@ func (s *Service) ReadyBackupJobRunnerRebind(operationToken string, bypassRaft b
 	}
 	return s.applyBackupJobRunnerRebindCommand("ready", clusterModels.BackupJobRunnerRebindReady{
 		Token: operationToken,
-	}, bypassRaft)
+	})
 }
 
 func validateBackupJobRunnerRebindConfiguration(db *gorm.DB, job *clusterModels.BackupJob) error {
@@ -435,7 +402,7 @@ func (s *Service) proposeBackupJobRunnerRebindPending(token string, item cluster
 	}
 	return s.applyBackupJobRunnerRebindCommand("pending", clusterModels.BackupJobRunnerRebindPending{
 		Token: token, JobID: item.JobID, Reason: reason,
-	}, false)
+	})
 }
 
 func (s *Service) proposeBackupJobRunnerRebindRepair(token string, item clusterModels.BackupJobRunnerRebindItem, observedFingerprint string, cause error) error {
@@ -446,7 +413,7 @@ func (s *Service) proposeBackupJobRunnerRebindRepair(token string, item clusterM
 	return s.applyBackupJobRunnerRebindCommand("repair", clusterModels.BackupJobRunnerRebindRepair{
 		Token: token, JobID: item.JobID, ExpectedFingerprint: item.ExpectedFingerprint,
 		ObservedFingerprint: strings.TrimSpace(observedFingerprint), Reason: reason,
-	}, false)
+	})
 }
 
 func (s *Service) backupJobRunnerRebindAuthorization(
@@ -501,7 +468,7 @@ func (s *Service) reconcileBackupJobRunnerRebindItem(
 	if result.RowsAffected == 0 {
 		return s.applyBackupJobRunnerRebindCommand("apply", clusterModels.BackupJobRunnerRebindApply{
 			Token: operation.Token, JobID: item.JobID, ExpectedFingerprint: item.ExpectedFingerprint,
-		}, false)
+		})
 	}
 	currentFingerprint := clusterModels.BackupJobConfigurationFingerprint(&job)
 	configurationChanged := currentFingerprint != item.ExpectedFingerprint ||
@@ -514,7 +481,7 @@ func (s *Service) reconcileBackupJobRunnerRebindItem(
 		return err
 	}
 	validation, placementFence, err := s.validateBackupJobOnRunnerWithTarget(
-		ctx, &candidate, false, authorization, job.Enabled,
+		ctx, &candidate, authorization, job.Enabled,
 	)
 	if err != nil {
 		if isPermanentBackupJobRunnerRebindError(err) {
@@ -564,7 +531,7 @@ func (s *Service) reconcileBackupJobRunnerRebindItem(
 		PlacementFence:      placementFence, PreviousPlacementFence: previousFence,
 		TargetReadiness: targetReadiness,
 	}
-	if err := s.applyBackupJobRunnerRebindCommand("apply", apply, false); err != nil {
+	if err := s.applyBackupJobRunnerRebindCommand("apply", apply); err != nil {
 		_ = s.proposeBackupJobRunnerRebindPending(operation.Token, item, err)
 		return err
 	}
@@ -670,7 +637,7 @@ func (s *Service) reconcilePendingBackupJobRunnerRebinds(ctx context.Context) er
 			state := strings.ToLower(strings.TrimSpace(policy.TransitionState))
 			if sameRun && (state == clusterModels.ReplicationTransitionStatePromoting ||
 				state == clusterModels.ReplicationTransitionStateCompleted) {
-				if err := s.ReadyBackupJobRunnerRebind(operation.Token, false); err != nil {
+				if err := s.ReadyBackupJobRunnerRebind(operation.Token); err != nil {
 					errs = append(errs, fmt.Errorf("%s: %w", operation.Token, err))
 					continue
 				}
@@ -679,7 +646,7 @@ func (s *Service) reconcilePendingBackupJobRunnerRebinds(ctx context.Context) er
 				state == clusterModels.ReplicationTransitionStateRollingBack {
 				if err := s.applyBackupJobRunnerRebindCommand("abort", clusterModels.BackupJobRunnerRebindAbort{
 					Token: operation.Token, Reason: "failover_transition_aborted",
-				}, false); err != nil {
+				}); err != nil {
 					errs = append(errs, fmt.Errorf("%s: %w", operation.Token, err))
 				}
 				continue
@@ -727,9 +694,7 @@ func appendBackupJobRunnerRebindHAReason(policy *clusterModels.ReplicationPolicy
 // into the existing policy health fields without changing persisted policy
 // telemetry or the response envelope.
 func (s *Service) applyBackupJobRunnerRebindHAState(policy *clusterModels.ReplicationPolicy) error {
-	if s == nil || s.DB == nil || policy == nil || policy.GuestID == 0 ||
-		!s.DB.Migrator().HasTable(&clusterModels.BackupJobRunnerRebind{}) ||
-		!s.DB.Migrator().HasTable(&clusterModels.BackupJobRunnerRebindItem{}) {
+	if s == nil || s.DB == nil || policy == nil || policy.GuestID == 0 {
 		return nil
 	}
 	base := s.DB.Model(&clusterModels.BackupJobRunnerRebindItem{}).
@@ -788,4 +753,19 @@ func (s *Service) StartBackupJobRunnerRebindReconciler(ctx context.Context) {
 			reconcile()
 		}
 	}
+}
+
+type BackupJobRunnerRebindPrepareRequest struct {
+	GuestType       string `json:"guestType"`
+	GuestID         uint   `json:"guestId"`
+	NewRunnerNodeID string `json:"newRunnerNodeId"`
+	OperationToken  string `json:"operationToken"`
+}
+
+func (s *Service) backupJobRunnerRebindPrepareCall(
+	ctx context.Context,
+	_ string,
+	req BackupJobRunnerRebindPrepareRequest,
+) (struct{}, error) {
+	return struct{}{}, s.PrepareBackupJobRunnerRebind(ctx, req.GuestType, req.GuestID, req.NewRunnerNodeID, req.OperationToken)
 }

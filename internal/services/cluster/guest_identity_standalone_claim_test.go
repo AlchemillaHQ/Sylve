@@ -14,7 +14,7 @@ import (
 
 func TestGuestIdentityStandaloneAcquireRequiresOperationToken(t *testing.T) {
 	database := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &vmModels.VM{}, &jailModels.Jail{})
-	service := &Service{DB: database, NodeID: "standalone-node"}
+	service := withFSM(&Service{DB: database, NodeID: "standalone-node"})
 	reservation := clusterServiceInterfaces.GuestIdentityReservation{
 		OwnerNodeID: service.NodeID,
 		Entries:     []clusterServiceInterfaces.GuestIdentityReference{{GuestKind: clusterModels.ReplicationGuestTypeVM, GuestID: 902}},
@@ -27,7 +27,7 @@ func TestGuestIdentityStandaloneAcquireRequiresOperationToken(t *testing.T) {
 	}
 }
 
-func TestGuestIdentityStandaloneClaimGuardsDeletionAndClusterFormation(t *testing.T) {
+func TestGuestIdentityStandaloneClaimGuardsDeletion(t *testing.T) {
 	database := newClusterServiceTestDB(
 		t,
 		&clusterModels.Cluster{},
@@ -37,7 +37,7 @@ func TestGuestIdentityStandaloneClaimGuardsDeletionAndClusterFormation(t *testin
 	if err := database.Create(&vmModels.VM{RID: 902, Name: "guarded-vm"}).Error; err != nil {
 		t.Fatalf("seed standalone VM: %v", err)
 	}
-	service := &Service{DB: database, NodeID: "standalone-node"}
+	service := withFSM(&Service{DB: database, NodeID: "standalone-node"})
 
 	claim, err := service.GuestIdentityClaim(
 		t.Context(),
@@ -48,8 +48,7 @@ func TestGuestIdentityStandaloneClaimGuardsDeletionAndClusterFormation(t *testin
 	if err != nil {
 		t.Fatalf("claim standalone VM for deletion: %v", err)
 	}
-	if claim.Clustered || strings.TrimSpace(claim.Token) == "" ||
-		claim.LocalOperationToken != claim.Token {
+	if strings.TrimSpace(claim.LocalOperationToken) == "" {
 		t.Fatalf("standalone deletion guard = %+v", claim)
 	}
 	if err := service.ValidateGuestIdentityClaim(t.Context(), claim); err != nil {
@@ -58,8 +57,8 @@ func TestGuestIdentityStandaloneClaimGuardsDeletionAndClusterFormation(t *testin
 	service.guestIdentityRuntimeMu.Lock()
 	guardToken := service.guestIdentityLocalReservations[902].token
 	service.guestIdentityRuntimeMu.Unlock()
-	if guardToken != claim.Token {
-		t.Fatalf("local deletion guard token = %q, want %q", guardToken, claim.Token)
+	if guardToken != claim.LocalOperationToken {
+		t.Fatalf("local deletion guard token = %q, want %q", guardToken, claim.LocalOperationToken)
 	}
 	if _, err := service.GuestIdentityClaim(
 		t.Context(),
@@ -81,22 +80,16 @@ func TestGuestIdentityStandaloneClaimGuardsDeletionAndClusterFormation(t *testin
 		t.Fatalf("claim after mismatched cancel error = %v", err)
 	}
 
+	if err := database.Where("rid = ?", 902).Delete(&vmModels.VM{}).Error; err != nil {
+		t.Fatalf("delete standalone VM: %v", err)
+	}
 	if err := service.ReleaseGuestIdentities(t.Context(), claim); err != nil {
 		t.Fatalf("release standalone deletion guard: %v", err)
 	}
 	service.guestIdentityRuntimeMu.Lock()
 	remainingGuards := len(service.guestIdentityLocalReservations)
-	service.guestIdentityClusterFormation = true
 	service.guestIdentityRuntimeMu.Unlock()
 	if remainingGuards != 0 {
 		t.Fatalf("standalone deletion guards after release = %d", remainingGuards)
-	}
-	if _, err := service.GuestIdentityClaim(
-		t.Context(),
-		clusterModels.ReplicationGuestTypeVM,
-		902,
-		"",
-	); err == nil || !strings.Contains(err.Error(), "cluster_formation_in_progress") {
-		t.Fatalf("deletion during cluster formation error = %v", err)
 	}
 }

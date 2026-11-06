@@ -24,16 +24,17 @@ type mutationAdmission interface {
 
 var mutationAdmissionBypass = map[string]map[string]struct{}{
 	http.MethodPost: {
-		"/api/auth/login":                     {},
-		"/api/auth/passkeys/login/begin":      {},
-		"/api/auth/passkeys/login/finish":     {},
-		"/api/auth/logout":                    {},
-		"/api/auth/sse-tokens":                {},
-		"/api/basic/system/reboot":            {},
-		"/api/intra-cluster/leave":            {},
-		"/api/intra-cluster/readdress-member": {},
-		"/api/cluster/membership-status":      {},
-		"/api/cluster/leave/cancel":           {},
+		"/api/auth/login":                            {},
+		"/api/auth/passkeys/login/begin":             {},
+		"/api/auth/passkeys/login/finish":            {},
+		"/api/auth/logout":                           {},
+		"/api/auth/sse-tokens":                       {},
+		"/api/basic/system/reboot":                   {},
+		"/api/intra-cluster/node/readdress-identity": {},
+		"/api/intra-cluster/node/readdress-member":   {},
+		"/api/cluster/membership-status":             {},
+		"/api/cluster/rebuild":                       {},
+		"/api/cluster/leave/cancel":                  {},
 	},
 	http.MethodDelete: {
 		"/api/cluster/reset-node":       {},

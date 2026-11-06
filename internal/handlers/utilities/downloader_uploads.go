@@ -119,7 +119,7 @@ func newDownloaderUploadHandler(
 	policy = normalizeDownloaderUploadPolicy(policy)
 
 	return func(c *gin.Context) {
-		if c.GetUint("UserID") == 0 {
+		if c.GetString("Owner") == "" {
 			writeDownloaderUploadFailure(c, uploadCore.NewFailure(
 				http.StatusUnauthorized,
 				"upload_user_required",
@@ -173,7 +173,7 @@ func newDownloaderUploadHandler(
 			reader,
 			directory,
 			uploadID,
-			c.GetUint("UserID"),
+			c.GetString("Owner"),
 			utilitiesService,
 			policy.maxFileBytes,
 			storage,
@@ -217,7 +217,7 @@ func receiveDownloaderMultipartUpload(
 	reader *multipart.Reader,
 	directory string,
 	uploadID string,
-	userID uint,
+	owner string,
 	utilitiesService *utilities.Service,
 	maxFileBytes int64,
 	storage utilitiesModels.DownloadStorage,
@@ -282,7 +282,7 @@ func receiveDownloaderMultipartUpload(
 		staged.FinalPath,
 		staged.Name,
 		staged.Bytes,
-		userID,
+		owner,
 		staged.FileInfo,
 		storage,
 	)
@@ -360,7 +360,7 @@ func CompleteDownloaderUpload(utilitiesService *utilities.Service) gin.HandlerFu
 		result, err := utilitiesService.CompleteDownloaderUpload(
 			c.Request.Context(),
 			c.Param("id"),
-			c.GetUint("UserID"),
+			c.GetString("Owner"),
 			request,
 		)
 		if err != nil {
@@ -399,7 +399,7 @@ func AbortDownloaderUpload(utilitiesService *utilities.Service) gin.HandlerFunc 
 		completed, err := utilitiesService.AbortDownloaderUpload(
 			c.Request.Context(),
 			c.Param("id"),
-			c.GetUint("UserID"),
+			c.GetString("Owner"),
 		)
 		if err != nil {
 			writeDownloaderUploadFailure(c, mapDownloaderUploadServiceFailure(err))

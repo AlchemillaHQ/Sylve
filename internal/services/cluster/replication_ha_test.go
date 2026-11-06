@@ -140,7 +140,7 @@ func TestEvaluateReplicationPolicyHANilPolicy(t *testing.T) {
 
 func TestEvaluateReplicationPolicyHAWithRuntimeSnapshot(t *testing.T) {
 	db := newClusterServiceTestDB(t)
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	policy := &clusterModels.ReplicationPolicy{
 		ID: 1, Name: "ha-test", GuestType: clusterModels.ReplicationGuestTypeVM,
@@ -304,7 +304,7 @@ func TestEvaluateReplicationPolicyHAWithRuntimeSnapshot(t *testing.T) {
 
 func TestEvaluateReplicationPolicyHAWithTargetsOverride(t *testing.T) {
 	db := newClusterServiceTestDB(t)
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	policy := &clusterModels.ReplicationPolicy{
 		Name: "override-test", GuestType: clusterModels.ReplicationGuestTypeVM,
@@ -328,7 +328,7 @@ func TestEvaluateReplicationPolicyHAWithTargetsOverride(t *testing.T) {
 
 func TestEvaluateReplicationPolicyTransitionHA(t *testing.T) {
 	db := newClusterServiceTestDB(t)
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	policy := &clusterModels.ReplicationPolicy{
 		Name: "transition-test", GuestType: clusterModels.ReplicationGuestTypeVM,

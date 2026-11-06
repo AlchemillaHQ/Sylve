@@ -1,9 +1,8 @@
 <script lang="ts">
 	import { storage } from '$lib';
-	import { api } from '$lib/api/common';
+	import { api, nodePath, pageNode } from '$lib/api/common';
 	import { isDemoMode } from '$lib/demo/runtime';
 	import type { Column, Row, TreeTableState } from '$lib/types/components/tree-table';
-	import { resolveNodeHostname } from '$lib/utils/enabled-services';
 	import { findRow, getAllRows } from '$lib/utils/tree-table';
 	import { watch, Debounced } from 'runed';
 	import { onDestroy, onMount, untrack } from 'svelte';
@@ -172,12 +171,13 @@
 
 	function refreshAjaxHeaders() {
 		delete ajaxHeaders.Authorization;
-		delete ajaxHeaders['X-Current-Hostname'];
 
 		const token = storage.token?.trim();
-		const hostname = resolveNodeHostname(window.location.pathname);
 		if (token) ajaxHeaders.Authorization = `Bearer ${token}`;
-		if (hostname) ajaxHeaders['X-Current-Hostname'] = hostname;
+	}
+
+	function remoteURL(): string | undefined {
+		return ajaxURL ? nodePath(ajaxURL, pageNode()) : undefined;
 	}
 
 	function appendAjaxParam(search: URLSearchParams, key: string, value: unknown) {
@@ -214,7 +214,7 @@
 		if (tableComponent) {
 			table = new Tabulator(tableComponent, {
 				index,
-				ajaxURL: ajaxURL ? ajaxURL : undefined,
+				ajaxURL: remoteURL(),
 				ajaxRequestFunc:
 					isDemoMode && ajaxURL
 						? async (url, _config, params) =>
@@ -370,7 +370,7 @@
 		() => debouncedQuery.current,
 		() => {
 			if (table && tableInitialized) {
-				table.setData(ajaxURL!);
+				table.setData(remoteURL());
 			}
 		}
 	);
@@ -390,7 +390,7 @@
 		() => reload,
 		(newReload) => {
 			if (newReload && table && tableInitialized) {
-				table?.setData(ajaxURL!);
+				table?.setData(remoteURL());
 				reload = false;
 			}
 		}

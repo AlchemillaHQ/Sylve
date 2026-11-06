@@ -67,7 +67,7 @@ func TestRaftAddressHost(t *testing.T) {
 
 func TestApplyProbeHysteresis(t *testing.T) {
 	db := newClusterServiceTestDB(t)
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 	s.peerProbeFailureStreak = make(map[string]int)
 
 	if got := s.applyProbeHysteresis("peer-1", "online"); got != "online" {
@@ -154,7 +154,7 @@ func TestHasSignificantChange(t *testing.T) {
 
 func TestEmitLeftPanelRefreshLocal(t *testing.T) {
 	db := newClusterServiceTestDB(t)
-	service := &Service{DB: db}
+	service := withFSM(&Service{DB: db})
 
 	ch, unsub := hub.SSE.Subscribe()
 	defer unsub()
@@ -182,7 +182,7 @@ func TestEmitLeftPanelRefreshLocal(t *testing.T) {
 
 func TestApplyProbeHysteresisConcurrent(t *testing.T) {
 	db := newClusterServiceTestDB(t)
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 	s.peerProbeFailureStreak = make(map[string]int)
 
 	numPeers := 20
@@ -205,7 +205,7 @@ func TestApplyProbeHysteresisConcurrent(t *testing.T) {
 
 func TestPersistCurrentClusterNodes(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.ClusterNode{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	current := map[string]curInfo{
 		"node-1": {
@@ -241,6 +241,7 @@ func TestPersistCurrentClusterNodes(t *testing.T) {
 	updated := current["node-1"]
 	updated.sylveVersion = "0.3.2"
 	updated.sylveCommit = "def5678"
+	updated.protocol = 2
 	current["node-1"] = updated
 	changed, err = s.persistCurrentClusterNodes(current)
 	if err != nil || !changed {
@@ -256,12 +257,16 @@ func TestPersistCurrentClusterNodes(t *testing.T) {
 	if node.SylveCommit != "def5678" {
 		t.Fatalf("commit = %q, want def5678", node.SylveCommit)
 	}
+	if node.Protocol != 2 {
+		t.Fatalf("protocol = %d, want 2", node.Protocol)
+	}
 	// A failed node-info call leaves the row alone; liveness belongs to the
 	// health check, which retries before marking a node offline.
 	offline := current["node-1"]
 	offline.healthOK = false
 	offline.sylveVersion = ""
 	offline.sylveCommit = ""
+	offline.protocol = 0
 	offline.guestIDs = nil
 	current["node-1"] = offline
 	changed, err = s.persistCurrentClusterNodes(current)
@@ -279,6 +284,9 @@ func TestPersistCurrentClusterNodes(t *testing.T) {
 	}
 	if node.SylveCommit != "def5678" {
 		t.Fatalf("offline commit = %q, want retained def5678", node.SylveCommit)
+	}
+	if node.Protocol != 2 {
+		t.Fatalf("offline protocol = %d, want retained 2", node.Protocol)
 	}
 	if len(node.GuestIDs) != 2 || node.GuestIDs[0] != 1 || node.GuestIDs[1] != 2 {
 		t.Fatalf("offline guest IDs = %v, want retained [1 2]", node.GuestIDs)
@@ -318,10 +326,10 @@ func TestPersistCurrentClusterNodes(t *testing.T) {
 
 func TestSyncClusterHealthPersistsSylveBuild(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.ClusterNode{})
-	s := &Service{DB: db, NodeID: "node-1"}
+	s := withFSM(&Service{DB: db, NodeID: "node-1"})
 
 	err := s.SyncClusterHealth([]clusterServiceInterfaces.NodeHealthSync{{
-		NodeUUID: "node-2", SylveVersion: "0.3.1", SylveCommit: "abc1234", Status: nodeStatusOnline,
+		NodeUUID: "node-2", SylveVersion: "0.3.1", SylveCommit: "abc1234", Status: nodeStatusOnline, Protocol: 1,
 	}})
 	if err != nil {
 		t.Fatalf("sync cluster health: %v", err)
@@ -337,9 +345,12 @@ func TestSyncClusterHealthPersistsSylveBuild(t *testing.T) {
 	if node.SylveCommit != "abc1234" {
 		t.Fatalf("commit = %q, want abc1234", node.SylveCommit)
 	}
+	if node.Protocol != 1 {
+		t.Fatalf("protocol = %d, want 1", node.Protocol)
+	}
 
 	err = s.SyncClusterHealth([]clusterServiceInterfaces.NodeHealthSync{{
-		NodeUUID: "node-2", SylveVersion: "0.3.2", SylveCommit: "def5678", Status: nodeStatusOnline,
+		NodeUUID: "node-2", SylveVersion: "0.3.2", SylveCommit: "def5678", Status: nodeStatusOnline, Protocol: 2,
 	}})
 	if err != nil {
 		t.Fatalf("update cluster health: %v", err)
@@ -352,6 +363,9 @@ func TestSyncClusterHealthPersistsSylveBuild(t *testing.T) {
 	}
 	if node.SylveCommit != "def5678" {
 		t.Fatalf("updated commit = %q, want def5678", node.SylveCommit)
+	}
+	if node.Protocol != 2 {
+		t.Fatalf("updated protocol = %d, want 2", node.Protocol)
 	}
 }
 

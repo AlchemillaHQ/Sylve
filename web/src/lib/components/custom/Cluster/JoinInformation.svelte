@@ -5,7 +5,7 @@
 	import type { ClusterDetails } from '$lib/types/cluster/cluster';
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
-	import { getJoinKey } from '$lib/api/cluster/cluster';
+	import { generateJoinKey } from '$lib/api/cluster/cluster';
 	import { isAPIResponse } from '$lib/utils/http';
 	import { watch } from 'runed';
 	import SpanWithIcon from '../SpanWithIcon.svelte';
@@ -16,43 +16,42 @@
 	}
 
 	let { open = $bindable(), cluster }: Props = $props();
-	let clusterKey = $state('');
+	let joinKey = $state('');
+	let joinAddress = $state('');
 	let loading = $state(false);
 	let requestGeneration = 0;
 
-	async function loadClusterKey(generation: number) {
-		const result = await getJoinKey();
+	async function generate() {
+		const generation = ++requestGeneration;
+		loading = true;
+		const result = await generateJoinKey();
 
 		if (generation !== requestGeneration || !open) return;
 
 		loading = false;
 		if (isAPIResponse(result)) {
-			toast.error('Unable to load cluster key', { position: 'bottom-center' });
+			toast.error('Unable to generate a join key', { position: 'bottom-center' });
 			return;
 		}
 
-		clusterKey = result.key;
+		joinKey = result.key;
+		joinAddress = result.address;
 	}
 
 	watch(
 		() => open,
-		(isOpen) => {
-			const generation = ++requestGeneration;
-			clusterKey = '';
-			if (!isOpen) {
-				loading = false;
-				return;
-			}
-
-			loading = true;
-			void loadClusterKey(generation);
+		() => {
+			requestGeneration++;
+			joinKey = '';
+			joinAddress = '';
+			loading = false;
 		}
 	);
 
 	async function copy() {
-		if (!clusterKey) return;
-		await navigator.clipboard.writeText(clusterKey);
-		toast.success('Cluster key copied', {
+		if (!joinKey) return;
+		await navigator.clipboard.writeText(joinKey);
+		toast.success('Join key copied', {
 			position: 'bottom-center'
 		});
 
@@ -88,18 +87,37 @@
 					<Table.Cell>Leader Node</Table.Cell>
 					<Table.Cell>{cluster?.leaderAddress}</Table.Cell>
 				</Table.Row>
-				<Table.Row>
-					<Table.Cell>Cluster Key</Table.Cell>
-					<Table.Cell>{loading ? 'Loading…' : clusterKey || 'Unavailable'}</Table.Cell>
-				</Table.Row>
+				{#if joinKey}
+					<Table.Row>
+						<Table.Cell>Join Through</Table.Cell>
+						<Table.Cell>{joinAddress}</Table.Cell>
+					</Table.Row>
+					<Table.Row>
+						<Table.Cell>Join Key</Table.Cell>
+						<Table.Cell class="whitespace-normal break-all font-mono text-xs">{joinKey}</Table.Cell>
+					</Table.Row>
+				{/if}
 			</Table.Body>
 		</Table.Root>
 
+		<p class="text-muted-foreground text-sm">
+			A join key admits one node, which joins through this node. Generating a new key replaces the
+			previous one.
+		</p>
+
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={copy} type="submit" size="sm" disabled={loading || !clusterKey}>
-					Copy
+				<Button onclick={generate} variant="outline" size="sm" disabled={loading}>
+					{#if loading}
+						<div class="flex items-center gap-2">
+							<span class="icon-[mdi--loading] animate-spin h-4 w-4"></span>
+							<span>Generating</span>
+						</div>
+					{:else}
+						{joinKey ? 'Generate New Key' : 'Generate Join Key'}
+					{/if}
 				</Button>
+				<Button onclick={copy} type="submit" size="sm" disabled={loading || !joinKey}>Copy</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

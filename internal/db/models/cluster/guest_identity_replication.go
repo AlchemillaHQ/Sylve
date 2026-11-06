@@ -9,44 +9,17 @@
 package clusterModels
 
 import (
-	"errors"
-	"fmt"
 	"strings"
 
 	"gorm.io/gorm"
 )
 
-func moveReplicationPolicyGuestIdentityClaimTxn(
-	tx *gorm.DB,
-	policy *ReplicationPolicy,
-	expectedOwnerNodeID string,
-	newOwnerNodeID string,
-	move *GuestIdentityMoveOwner,
-) error {
-	if tx == nil || policy == nil {
-		return fmt.Errorf("replication_guest_identity_policy_required")
-	}
-	if !tx.Migrator().HasTable(&GuestIdentityRegistry{}) {
+func moveReplicationPolicyGuestIdentityClaimTxn(tx *gorm.DB, policy *ReplicationPolicy, oldOwnerNodeID, newOwnerNodeID string) error {
+	if strings.TrimSpace(oldOwnerNodeID) == strings.TrimSpace(newOwnerNodeID) {
 		return nil
 	}
-	registry, err := loadGuestIdentityRegistry(tx)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return ErrGuestIdentityRegistryInitializing
-	}
-	if err != nil {
-		return err
-	}
-	if registry.Phase != GuestIdentityRegistryPhaseActive {
-		return ErrGuestIdentityRegistryInitializing
-	}
-	if move == nil {
-		return fmt.Errorf("replication_guest_identity_move_required")
-	}
-	if normalizeGuestIdentityKind(move.GuestKind) != normalizeGuestIdentityKind(policy.GuestType) ||
-		move.GuestID != policy.GuestID ||
-		strings.TrimSpace(move.OldOwnerNodeID) != strings.TrimSpace(expectedOwnerNodeID) ||
-		strings.TrimSpace(move.NewOwnerNodeID) != strings.TrimSpace(newOwnerNodeID) {
-		return fmt.Errorf("replication_guest_identity_move_mismatch")
-	}
-	return MoveGuestIdentityClaimTxn(tx, move)
+	return MoveGuestIdentityClaimTxn(tx, &GuestIdentityMoveOwner{
+		GuestKind: policy.GuestType, GuestID: policy.GuestID,
+		OldOwnerNodeID: oldOwnerNodeID, NewOwnerNodeID: newOwnerNodeID,
+	})
 }

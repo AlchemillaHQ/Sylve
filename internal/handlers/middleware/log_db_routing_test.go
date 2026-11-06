@@ -121,6 +121,39 @@ func TestRequestLoggerMiddlewareWritesAuditToTelemetryDB(t *testing.T) {
 	}
 }
 
+func TestRequestLoggerMiddlewareAuditsWhoTheRequestIsFor(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	auditDB := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+	audit := func(scope string, keys map[string]any) infoModels.AuditRecord {
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("AuthScope", scope)
+			c.Set("Username", "admin")
+			c.Set("AuthType", "sylve")
+			for key, value := range keys {
+				c.Set(key, value)
+			}
+		})
+		router.Use(RequestLoggerMiddleware(auditDB, nil))
+		router.POST("/api/vm", func(c *gin.Context) { c.Status(http.StatusOK) })
+		router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/api/vm", nil))
+		var record infoModels.AuditRecord
+		if err := auditDB.Last(&record).Error; err != nil {
+			t.Fatalf("%s request not audited: %v", scope, err)
+		}
+		return record
+	}
+
+	local := audit("local", map[string]any{"UserID": uint(5)})
+	if local.UserID == nil || *local.UserID != 5 || local.User != "admin" || local.OriginNode != "" {
+		t.Fatalf("local request audited as %+v", local)
+	}
+	member := audit("cluster", map[string]any{"IssuerNodeID": "node-1"})
+	if member.UserID != nil || member.User != "admin" || member.AuthType != "sylve" || member.OriginNode != "node-1" {
+		t.Fatalf("member admin's request audited as %+v", member)
+	}
+}
+
 func TestRequestLoggerMiddlewareSkipsRoutineSSETokenIssuance(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	auditDB := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})

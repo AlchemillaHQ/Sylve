@@ -8,7 +8,11 @@
 
 package clusterModels
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 type ClusterNode struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
@@ -17,6 +21,7 @@ type ClusterNode struct {
 	Hostname     string    `json:"hostname"`
 	SylveVersion string    `json:"sylveVersion"`
 	SylveCommit  string    `json:"sylveCommit"`
+	Protocol     int       `json:"protocol"`
 	API          string    `json:"api"`
 	CPU          int       `json:"cpu"`
 	CPUUsage     float64   `json:"cpuUsage"`
@@ -27,4 +32,23 @@ type ClusterNode struct {
 	GuestIDs     []uint    `json:"guestIDs" gorm:"serializer:json;type:json"`
 	CreatedAt    time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt    time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+}
+
+type ClusterMemberRemoval struct {
+	NodeID string `json:"nodeId"`
+}
+
+func removeClusterMemberTxn(tx *gorm.DB, p *ClusterMemberRemoval) error {
+	nodeID, err := normalizeGuestIdentityNodeID(p.NodeID)
+	if err != nil {
+		return err
+	}
+	if err := tx.Where("owner_node_id = ?", nodeID).Delete(&GuestIdentityClaim{}).Error; err != nil {
+		return err
+	}
+	if err := tx.Where("node_uuid = ?", nodeID).Delete(&ClusterSSHIdentity{}).Error; err != nil {
+		return err
+	}
+	// A removal rotates the join key: one taken before can't bring a node back.
+	return setClusterJoinKeyTxn(tx, &ClusterJoinKey{})
 }

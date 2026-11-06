@@ -75,7 +75,7 @@ func TestIntegrationRaftFollowerClaimRepublishesAfterApplyLag(t *testing.T) {
 	for _, node := range fx.Nodes {
 		nodePolicy := policy
 		nodePolicy.Targets = append([]clusterModels.ReplicationPolicyTarget(nil), policy.Targets...)
-		if err := clusterModels.UpsertReplicationPolicyTxn(node.db, &nodePolicy, nodePolicy.Targets); err != nil {
+		if err := seedReplicationPolicy(node.db, &nodePolicy, nodePolicy.Targets); err != nil {
 			t.Fatalf("seed policy on %s: %v", node.id, err)
 		}
 		if err := node.db.Create(&clusterModels.ReplicationLease{
@@ -114,18 +114,18 @@ func TestIntegrationRaftFollowerClaimRepublishesAfterApplyLag(t *testing.T) {
 
 	forwardAttempts := 0
 	claimToken := ""
-	service.replicationRunClaimForward = func(
-		_ context.Context,
-		leaderNodeID string,
-		decision clusterModels.ReplicationPolicyScheduleDecision,
-	) error {
+	fx.routeCalls(func(sender, target *zeltaRaftNode, name string, payload []byte) error {
+		var decision clusterModels.ReplicationPolicyScheduleDecision
+		if err := json.Unmarshal(payload, &decision); err != nil || name != "replication-run-claim" || sender != owner {
+			t.Fatalf("unexpected leader call %s from %s: %v", name, sender.id, err)
+		}
 		if decision.HolderNodeID != owner.id || decision.PolicyID != policy.ID || decision.Scheduled {
 			t.Fatalf("forwarded claim lost owner/manual fence: %+v", decision)
 		}
 		forwardAttempts++
 		if forwardAttempts == 1 {
-			if leaderNodeID != initialLeader.id {
-				t.Fatalf("first claim target=%q, want %q", leaderNodeID, initialLeader.id)
+			if target != initialLeader {
+				t.Fatalf("first claim target=%q, want %q", target.id, initialLeader.id)
 			}
 			claimToken = decision.ClaimToken
 			if err := initialLeader.raft.LeadershipTransferToServer(
@@ -138,10 +138,10 @@ func TestIntegrationRaftFollowerClaimRepublishesAfterApplyLag(t *testing.T) {
 				return finalLeader.raft.State() == raft.Leader &&
 					strings.TrimSpace(string(observedLeaderID)) == finalLeader.id
 			})
-			return fmt.Errorf("replication_control_replication-run-claim_failed_status_503: not_leader")
+			return fmt.Errorf("not_leader: %w", raft.ErrNotLeader)
 		}
-		if leaderNodeID != finalLeader.id {
-			t.Fatalf("attempt %d claim target=%q, want %q", forwardAttempts, leaderNodeID, finalLeader.id)
+		if target != finalLeader {
+			t.Fatalf("attempt %d claim target=%q, want %q", forwardAttempts, target.id, finalLeader.id)
 		}
 		if forwardAttempts == 2 {
 			if decision.ClaimToken != claimToken {
@@ -152,8 +152,8 @@ func TestIntegrationRaftFollowerClaimRepublishesAfterApplyLag(t *testing.T) {
 				node.transport.Disconnect(owner.addr)
 			}
 		}
-		return finalLeader.cService.ApplyReplicationPolicyScheduleDecision(decision, false)
-	}
+		return nil
+	})
 
 	if err := service.EnqueueReplicationPolicyRun(context.Background(), policy.ID); err != nil {
 		t.Fatalf("enqueue through follower owner: %v", err)
@@ -270,7 +270,7 @@ func TestIntegrationRaftFollowerClaimRepublishesAfterApplyLag(t *testing.T) {
 					{NodeID: finalLeader.id, Weight: 100},
 				},
 			}
-			if err := clusterModels.UpsertReplicationPolicyTxn(
+			if err := seedReplicationPolicy(
 				owner.db, &rejectedPolicy, rejectedPolicy.Targets,
 			); err != nil {
 				t.Fatalf("seed rejected policy: %v", err)
@@ -340,7 +340,7 @@ func TestIntegrationRaftCapturedQueueTokenExecutesExactlyOnce(t *testing.T) {
 		}
 		nodePolicy := policy
 		nodePolicy.Targets = append([]clusterModels.ReplicationPolicyTarget(nil), policy.Targets...)
-		if err := clusterModels.UpsertReplicationPolicyTxn(node.db, &nodePolicy, nodePolicy.Targets); err != nil {
+		if err := seedReplicationPolicy(node.db, &nodePolicy, nodePolicy.Targets); err != nil {
 			t.Fatalf("seed policy on %s: %v", node.id, err)
 		}
 		if err := node.db.Create(&clusterModels.ReplicationLease{
@@ -461,7 +461,7 @@ func TestStandaloneReplicationClaimAppliesLocally(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acquire standalone claim: %v", err)
 	}
-	if handle.Token == "" || handle.HolderNodeID != "local" || handle.PolicyID != policy.ID {
+	if handle.Token == "" || handle.HolderNodeID != service.localNodeID() || handle.PolicyID != policy.ID {
 		t.Fatalf("unexpected standalone handle: %+v", handle)
 	}
 	var operation clusterModels.ReplicationRunOperation

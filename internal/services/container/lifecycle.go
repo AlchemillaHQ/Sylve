@@ -456,7 +456,8 @@ func (s *Service) Delete(ctx context.Context, ocid uint, deleteVolumes bool) err
 	}
 	if claim != nil {
 		if err := s.identity.ReleaseGuestIdentities(ctx, *claim); err != nil {
-			return fmt.Errorf("guest_identity_release_pending: %w", err)
+			// The container is gone; the owner reconcile gives its ID back later.
+			logger.L.Warn().Err(err).Uint("ocid", ocid).Msg("guest_identity_release_pending")
 		}
 	}
 	return nil

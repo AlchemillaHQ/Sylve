@@ -11,8 +11,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
 
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -184,12 +182,10 @@ func newDatacenterClusterGuestIDsCommand() *cli.Command {
 			},
 			{
 				Name:  "reclaim",
-				Usage: "Reclaim an orphaned shared guest ID claim",
+				Usage: "Release a guest ID claim, whoever holds it (run on the leader)",
 				Flags: []cli.Flag{
 					datacenterJSONFlag(),
 					&cli.IntFlag{Name: "id", Usage: "guest ID", Required: true},
-					&cli.BoolFlag{Name: "force", Usage: "allow unavailable voters after externally fencing them"},
-					&cli.StringFlag{Name: "confirm", Usage: "exact guest ID required with --force"},
 				},
 				Action: func(ctx context.Context, command *cli.Command) error {
 					guestID, err := commandPositiveUint(command, "id")
@@ -199,17 +195,9 @@ func newDatacenterClusterGuestIDsCommand() *cli.Command {
 					if guestID > clusterModels.GuestIdentityMaxID {
 						return fmt.Errorf("--id must be between 1 and %d", clusterModels.GuestIdentityMaxID)
 					}
-					force := command.Bool("force")
-					confirmation := strings.TrimSpace(command.String("confirm"))
-					if force && confirmation != strconv.FormatUint(uint64(guestID), 10) {
-						return fmt.Errorf("--confirm must equal --id when --force is set")
-					}
-					if !force && command.IsSet("confirm") {
-						return fmt.Errorf("--confirm requires --force")
-					}
 					return executeConsoleOperation(ctx, command, consoleprotocol.OperationDatacenterClusterGuestIDReclaim,
 						consoleprotocol.DatacenterClusterGuestIDReclaimPayload{
-							GuestID: guestID, Force: force, Confirmation: confirmation, JSON: command.Bool("json"),
+							GuestID: guestID, JSON: command.Bool("json"),
 						}, command.Bool("json"))
 				},
 			},

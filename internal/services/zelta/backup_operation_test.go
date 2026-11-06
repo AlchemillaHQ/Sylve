@@ -81,10 +81,11 @@ func TestBackupJobOperationRestartRequeuesExactToken(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed job: %v", err)
 	}
+	holder := newTestZeltaService(database).backupJobOperationHolder()
 	now := time.Now().UTC()
 	if err := database.Create(&clusterModels.BackupJobOperation{
 		JobID: 53, Token: "backup:local:restart", Operation: clusterModels.BackupJobOperationBackup,
-		State: clusterModels.BackupJobOperationRunning, HolderNodeID: "local",
+		State: clusterModels.BackupJobOperationRunning, HolderNodeID: holder,
 		Revision: 2, AcquiredAt: now, UpdatedAt: now,
 	}).Error; err != nil {
 		t.Fatalf("seed operation: %v", err)
@@ -99,7 +100,7 @@ func TestBackupJobOperationRestartRequeuesExactToken(t *testing.T) {
 				t.Fatalf("restart %d queue = %q", restart, name)
 			}
 			queued, ok := payload.(backupJobPayload)
-			if !ok || queued.JobID != 53 || queued.OperationToken != "backup:local:restart" || queued.HolderNodeID != "local" {
+			if !ok || queued.JobID != 53 || queued.OperationToken != "backup:local:restart" || queued.HolderNodeID != holder {
 				t.Fatalf("restart %d payload = %#v", restart, payload)
 			}
 			return nil

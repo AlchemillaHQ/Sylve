@@ -46,9 +46,6 @@ type BackupJobPlacementFence struct {
 	OperationTaskID       uint   `json:"operationTaskId,omitempty"`
 }
 
-// BackupJobCommandPayload is the additive command envelope used by new
-// create/update proposals. The FSM also accepts the legacy raw BackupJob JSON
-// so pre-upgrade Raft log entries remain replayable.
 type BackupJobCommandPayload struct {
 	Job                    BackupJob                        `json:"job"`
 	PlacementFence         *BackupJobPlacementFence         `json:"placementFence,omitempty"`
@@ -118,47 +115,43 @@ func LoadBackupJobPlacementFence(
 		RunnerNodeID: runnerNodeID,
 	}
 
-	if db.Migrator().HasTable(&ReplicationPolicy{}) {
-		var policies []ReplicationPolicy
-		if err := db.Where("guest_type = ? AND guest_id = ?", guestType, guestID).
-			Order("id ASC").Limit(2).Find(&policies).Error; err != nil {
-			return BackupJobPlacementFence{}, fmt.Errorf("backup_job_placement_policy_read_failed: %w", err)
-		}
-		if len(policies) > 1 {
-			return BackupJobPlacementFence{}, fmt.Errorf("backup_job_placement_policy_ambiguous")
-		}
-		if len(policies) == 1 {
-			policy := policies[0]
-			fence.PolicyPresent = true
-			fence.PolicyID = policy.ID
-			fence.PolicyEnabled = policy.Enabled
-			fence.PolicySourceNodeID = policy.SourceNodeID
-			fence.PolicyActiveNodeID = policy.ActiveNodeID
-			fence.PolicyOwnerEpoch = policy.OwnerEpoch
-			fence.PolicyTransitionState = policy.TransitionState
-			fence.PolicyTransitionRunID = policy.TransitionRunID
-			fence.PolicyTransitionSourceNodeID = policy.TransitionSourceNodeID
-			fence.PolicyTransitionTargetNodeID = policy.TransitionTargetNodeID
-			fence.PolicyTransitionOwnerEpoch = policy.TransitionOwnerEpoch
-		}
+	var policies []ReplicationPolicy
+	if err := db.Where("guest_type = ? AND guest_id = ?", guestType, guestID).
+		Order("id ASC").Limit(2).Find(&policies).Error; err != nil {
+		return BackupJobPlacementFence{}, fmt.Errorf("backup_job_placement_policy_read_failed: %w", err)
+	}
+	if len(policies) > 1 {
+		return BackupJobPlacementFence{}, fmt.Errorf("backup_job_placement_policy_ambiguous")
+	}
+	if len(policies) == 1 {
+		policy := policies[0]
+		fence.PolicyPresent = true
+		fence.PolicyID = policy.ID
+		fence.PolicyEnabled = policy.Enabled
+		fence.PolicySourceNodeID = policy.SourceNodeID
+		fence.PolicyActiveNodeID = policy.ActiveNodeID
+		fence.PolicyOwnerEpoch = policy.OwnerEpoch
+		fence.PolicyTransitionState = policy.TransitionState
+		fence.PolicyTransitionRunID = policy.TransitionRunID
+		fence.PolicyTransitionSourceNodeID = policy.TransitionSourceNodeID
+		fence.PolicyTransitionTargetNodeID = policy.TransitionTargetNodeID
+		fence.PolicyTransitionOwnerEpoch = policy.TransitionOwnerEpoch
 	}
 
-	if db.Migrator().HasTable(&ReplicationGuestOperation{}) {
-		var operation ReplicationGuestOperation
-		result := db.Where("guest_type = ? AND guest_id = ?", guestType, guestID).
-			Limit(1).Find(&operation)
-		if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return BackupJobPlacementFence{}, fmt.Errorf("backup_job_placement_operation_read_failed: %w", result.Error)
-		}
-		if result.RowsAffected != 0 {
-			fence.OperationPresent = true
-			fence.Operation = operation.Operation
-			fence.OperationState = operation.State
-			fence.OperationToken = operation.Token
-			fence.OperationOwnerNodeID = operation.OwnerNodeID
-			fence.OperationTargetNodeID = operation.TargetNodeID
-			fence.OperationTaskID = operation.TaskID
-		}
+	var operation ReplicationGuestOperation
+	result := db.Where("guest_type = ? AND guest_id = ?", guestType, guestID).
+		Limit(1).Find(&operation)
+	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return BackupJobPlacementFence{}, fmt.Errorf("backup_job_placement_operation_read_failed: %w", result.Error)
+	}
+	if result.RowsAffected != 0 {
+		fence.OperationPresent = true
+		fence.Operation = operation.Operation
+		fence.OperationState = operation.State
+		fence.OperationToken = operation.Token
+		fence.OperationOwnerNodeID = operation.OwnerNodeID
+		fence.OperationTargetNodeID = operation.TargetNodeID
+		fence.OperationTaskID = operation.TaskID
 	}
 
 	return normalizeBackupJobPlacementFence(fence), nil

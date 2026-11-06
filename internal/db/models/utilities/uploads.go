@@ -34,7 +34,7 @@ type Upload struct {
 	Path        string       `json:"-" gorm:"index;not null"`
 	Name        string       `json:"name" gorm:"not null"`
 	Size        int64        `json:"size" gorm:"not null"`
-	UserID      uint         `json:"userId" gorm:"index;not null"`
+	Owner       string       `json:"-" gorm:"index;not null"`
 	Node        string       `json:"node" gorm:"index;not null"`
 	Status      UploadStatus `json:"status" gorm:"index;not null"`
 	Device      int64        `json:"-" gorm:"not null"`

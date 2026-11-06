@@ -89,7 +89,7 @@ func TestStorageInterruptionRetainsRecordsAndDoesNotStallDefault(t *testing.T) {
 
 func TestUnavailableUploadStorageRetainsExpiredIdentity(t *testing.T) {
 	service, staging := newDownloaderUploadTestService(t)
-	upload := stageDownloaderUpload(t, service, staging, 7, "upload.iso", "payload")
+	upload := stageDownloaderUpload(t, service, staging, "user:7", "upload.iso", "payload")
 	upload.DownloadStorage = utilitiesModels.DownloadStorage{StoragePool: "missing", StorageRoot: "/missing", StoragePoolGUID: "pool", StorageDatasetGUID: "dataset"}
 	upload.Path = "/missing/uploads/" + DownloaderUploadFinalName(upload.ID)
 	upload.CreatedAt = service.uploadNow().Add(-2 * DownloaderUploadTTL)
@@ -99,7 +99,7 @@ func TestUnavailableUploadStorageRetainsExpiredIdentity(t *testing.T) {
 	if err := service.CleanupExpiredUploads(t.Context()); !errors.Is(err, downloadstorage.ErrUnavailable) {
 		t.Fatalf("expiration failed open: %v", err)
 	}
-	if _, err := service.AbortDownloaderUpload(t.Context(), upload.ID, 7); !errors.Is(err, downloadstorage.ErrUnavailable) {
+	if _, err := service.AbortDownloaderUpload(t.Context(), upload.ID, "user:7"); !errors.Is(err, downloadstorage.ErrUnavailable) {
 		t.Fatalf("abort failed open: %v", err)
 	}
 	var stored utilitiesModels.Upload

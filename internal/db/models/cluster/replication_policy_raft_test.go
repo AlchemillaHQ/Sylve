@@ -299,8 +299,8 @@ func TestFSMDispatcherReplicationPolicyCommands(t *testing.T) {
 		}
 		var evtCount int64
 		db5.Model(&ReplicationEvent{}).Count(&evtCount)
-		if evtCount != 0 {
-			t.Fatalf("expected 0 events, got %d", evtCount)
+		if evtCount != 1 {
+			t.Fatalf("expected the node-local event kept, got %d", evtCount)
 		}
 	})
 

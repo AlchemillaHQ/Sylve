@@ -9,11 +9,11 @@
 package clusterModels
 
 import (
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,8 +36,6 @@ type Command struct {
 
 const CurrentCommandVersion uint = 1
 
-var legacyCommandTime = time.Unix(0, 0).UTC()
-
 // NormalizeCommandTime keeps replicated timestamps portable across database
 // drivers while retaining more precision than any control-plane deadline
 // needs.
@@ -59,34 +57,21 @@ func PrepareCommand(command *Command, decidedAt time.Time) error {
 	return nil
 }
 
-func commandApplyTime(command Command, log *raft.Log) (time.Time, error) {
-	switch command.Version {
-	case 0:
-		// Logs written before the versioned envelope use the leader timestamp
-		// carried by Hashicorp Raft. The fixed epoch is only for old stores or
-		// tests that do not contain AppendedAt; it is deterministic on replay.
-		if log != nil && !log.AppendedAt.IsZero() {
-			return NormalizeCommandTime(log.AppendedAt), nil
-		}
-		return legacyCommandTime, nil
-	case CurrentCommandVersion:
-		if command.DecidedAt.IsZero() {
-			return time.Time{}, fmt.Errorf("raft_command_decided_at_required")
-		}
-		return NormalizeCommandTime(command.DecidedAt), nil
-	default:
-		return time.Time{}, fmt.Errorf("unsupported_raft_command_version_%d", command.Version)
+func commandApplyTime(command Command) (time.Time, error) {
+	if command.Version != CurrentCommandVersion {
+		return time.Time{}, fmt.Errorf("%w: version %d", errUnknownCommand, command.Version)
 	}
+	if command.DecidedAt.IsZero() {
+		return time.Time{}, fmt.Errorf("raft_command_decided_at_required")
+	}
+	return NormalizeCommandTime(command.DecidedAt), nil
 }
 
 func replicatedCommandTime(db *gorm.DB) time.Time {
-	if db == nil || db.NowFunc == nil {
-		return legacyCommandTime
-	}
 	return NormalizeCommandTime(db.NowFunc())
 }
 
-type HandlerFn func(db *gorm.DB, action string, raw json.RawMessage) error
+type handler func(db *gorm.DB, raw json.RawMessage) error
 
 // FSMState records the last Raft index this node's database reflects. It's
 // node-local and written in the same transaction as each entry, so a restart
@@ -102,22 +87,37 @@ const fsmStateID = 1
 
 var errEntryAlreadyApplied = errors.New("raft_entry_already_applied")
 
+// A node that meets a command it can't apply would diverge, so it stops (Apply
+// panics) without recording the entry, and replays it once it's upgraded.
+var errUnknownCommand = errors.New("raft_command_unknown")
+
+// Adding a command bumps ClusterProtocol and registers it with OnSince at the
+// new value (a changed command gets a new action), so a leader proposes it
+// only once every member runs a build that knows it.
+const ClusterProtocol = 1
+
 type FSMDispatcher struct {
-	DB            *gorm.DB
-	mu            sync.RWMutex
-	sm            sync.Mutex
-	handlers      map[string]HandlerFn
-	appliedIndex  atomic.Uint64
-	markerUnknown atomic.Bool
+	DB           *gorm.DB
+	mu           sync.RWMutex
+	sm           sync.Mutex
+	handlers     map[string]handler
+	protocols    map[string]int
+	types        map[string]bool
+	afterApply   map[string][]func()
+	appliedIndex atomic.Uint64
 }
 
 func NewFSMDispatcher(db *gorm.DB) *FSMDispatcher {
 	f := &FSMDispatcher{
-		DB:       db,
-		handlers: make(map[string]HandlerFn),
+		DB:        db,
+		handlers:  make(map[string]handler),
+		protocols: make(map[string]int),
+		types:     make(map[string]bool),
 	}
-	// The dispatcher owns its bookkeeping row, so it creates the table itself.
-	if err := db.AutoMigrate(&FSMState{}); err != nil {
+	if err := dropRetiredReplicatedState(db); err != nil {
+		logger.L.Error().Err(err).Msg("raft_fsm_retired_state_cleanup_failed")
+	}
+	if err := db.AutoMigrate(append(ReplicatedModels(), &FSMState{})...); err != nil {
 		logger.L.Error().Err(err).Msg("raft_fsm_state_migration_failed")
 	}
 	var state FSMState
@@ -127,10 +127,53 @@ func NewFSMDispatcher(db *gorm.DB) *FSMDispatcher {
 	return f
 }
 
-func (f *FSMDispatcher) Register(t string, fn HandlerFn) {
+func On[T any](f *FSMDispatcher, commandType, action string, fn func(*gorm.DB, *T) error) {
+	OnSince(f, 1, commandType, action, fn)
+}
+
+func OnSince[T any](f *FSMDispatcher, protocol int, commandType, action string, fn func(*gorm.DB, *T) error) {
 	f.mu.Lock()
-	f.handlers[t] = fn
-	f.mu.Unlock()
+	defer f.mu.Unlock()
+	f.types[commandType] = true
+	f.protocols[commandType+"/"+action] = protocol
+	f.handlers[commandType+"/"+action] = func(db *gorm.DB, raw json.RawMessage) error {
+		var payload T
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			return err
+		}
+		return fn(db, &payload)
+	}
+}
+
+// fn also runs after a restore or reset, with applies held off, so it may read
+// the database but must not apply commands.
+func (f *FSMDispatcher) AfterApply(commandType string, fn func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.afterApply == nil {
+		f.afterApply = make(map[string][]func())
+	}
+	f.afterApply[commandType] = append(f.afterApply[commandType], fn)
+}
+
+func (f *FSMDispatcher) runAfterApply(commandType string) {
+	f.mu.RLock()
+	var hooks []func()
+	for hookType, fns := range f.afterApply {
+		if commandType == "" || hookType == commandType {
+			hooks = append(hooks, fns...)
+		}
+	}
+	f.mu.RUnlock()
+	for _, fn := range hooks {
+		fn()
+	}
+}
+
+func (f *FSMDispatcher) Protocol(commandType, action string) int {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return max(f.protocols[commandType+"/"+action], 1)
 }
 
 func (f *FSMDispatcher) Apply(l *raft.Log) any {
@@ -151,11 +194,16 @@ func (f *FSMDispatcher) Apply(l *raft.Log) any {
 			return errEntryAlreadyApplied
 		}
 		cmd, rejected = f.apply(tx, l)
+		if errors.Is(rejected, errUnknownCommand) {
+			return rejected
+		}
 		return tx.Save(&FSMState{ID: fsmStateID, AppliedIndex: l.Index}).Error
 	})
 	switch {
 	case errors.Is(err, errEntryAlreadyApplied):
 		return nil
+	case errors.Is(err, errUnknownCommand):
+		panic(fmt.Sprintf("raft entry %d: %v: upgrade this node", l.Index, err))
 	case err != nil:
 		logger.L.Error().Err(err).Uint64("index", l.Index).Msg("raft_apply_failed")
 		return err
@@ -172,6 +220,7 @@ func (f *FSMDispatcher) Apply(l *raft.Log) any {
 			Msg("raft_command_rejected")
 		return rejected
 	}
+	f.runAfterApply(cmd.Type)
 	return nil
 }
 
@@ -203,31 +252,53 @@ func (f *FSMDispatcher) apply(tx *gorm.DB, l *raft.Log) (Command, error) {
 	if err := json.Unmarshal(l.Data, &cmd); err != nil {
 		return cmd, fmt.Errorf("unmarshal: %w", err)
 	}
-
-	f.mu.RLock()
-	h, ok := f.handlers[cmd.Type]
-	f.mu.RUnlock()
-	if !ok {
-		return cmd, fmt.Errorf("no handler for %s", cmd.Type)
-	}
-
-	decidedAt, err := commandApplyTime(cmd, l)
+	decidedAt, err := commandApplyTime(cmd)
 	if err != nil {
 		return cmd, err
+	}
+	return cmd, f.run(tx, cmd, decidedAt)
+}
+
+func (f *FSMDispatcher) run(tx *gorm.DB, cmd Command, decidedAt time.Time) error {
+	f.mu.RLock()
+	h, ok := f.handlers[cmd.Type+"/"+cmd.Action]
+	known := f.types[cmd.Type]
+	f.mu.RUnlock()
+	if !ok {
+		if known {
+			return unsupportedCommandAction(cmd.Action)
+		}
+		return fmt.Errorf("%w: no handler for %s", errUnknownCommand, cmd.Type)
 	}
 	commandDB := tx.Session(&gorm.Session{
 		NowFunc: func() time.Time { return decidedAt },
 	})
 	if err := commandDB.Transaction(func(tx *gorm.DB) error {
-		return h(tx, cmd.Action, cmd.Data)
+		return h(tx, cmd.Data)
 	}); err != nil {
-		return cmd, fmt.Errorf("handler: %w", err)
+		return fmt.Errorf("handler: %w", err)
 	}
-	return cmd, nil
+	return nil
+}
+
+func (f *FSMDispatcher) ApplyLocal(cmd Command) error {
+	decidedAt, err := commandApplyTime(cmd)
+	if err != nil {
+		return err
+	}
+	f.sm.Lock()
+	defer f.sm.Unlock()
+	if err := f.DB.Transaction(func(tx *gorm.DB) error {
+		return f.run(tx, cmd, decidedAt)
+	}); err != nil {
+		return err
+	}
+	f.runAfterApply(cmd.Type)
+	return nil
 }
 
 func unsupportedCommandAction(action string) error {
-	return fmt.Errorf("unsupported_raft_command_action_%s", action)
+	return fmt.Errorf("%w: unsupported_raft_command_action_%s", errUnknownCommand, action)
 }
 
 func (f *FSMDispatcher) recordAppliedIndex(index uint64) {
@@ -235,7 +306,6 @@ func (f *FSMDispatcher) recordAppliedIndex(index uint64) {
 		return
 	}
 	f.appliedIndex.Store(index)
-	f.markerUnknown.Store(false)
 }
 
 func (f *FSMDispatcher) AppliedIndex() uint64 {
@@ -245,16 +315,8 @@ func (f *FSMDispatcher) AppliedIndex() uint64 {
 	return f.appliedIndex.Load()
 }
 
-func (f *FSMDispatcher) AppliedIndexKnown() bool {
-	if f == nil {
-		return false
-	}
-	return !f.markerUnknown.Load()
-}
-
 func (f *FSMDispatcher) resetAppliedIndexLocked() {
 	f.appliedIndex.Store(0)
-	f.markerUnknown.Store(false)
 }
 
 func (f *FSMDispatcher) ClearReplicatedState() error {
@@ -272,40 +334,8 @@ func (f *FSMDispatcher) ClearReplicatedState() error {
 		return err
 	}
 	f.resetAppliedIndexLocked()
+	f.runAfterApply("")
 	return nil
-}
-
-// ClusterSnapshot represents the state that will be snapshotted/restored.
-type ClusterSnapshot struct {
-	AppliedIndex                  uint64                             `json:"appliedIndex,omitempty"`
-	GuestIdentityRegistries       []GuestIdentityRegistry            `json:"guestIdentityRegistries"`
-	GuestIdentityEnrollments      []GuestIdentityEnrollment          `json:"guestIdentityEnrollments"`
-	GuestIdentityClaims           []GuestIdentityClaim               `json:"guestIdentityClaims"`
-	GuestIdentityDepartures       []GuestIdentityDeparture           `json:"guestIdentityDepartures,omitempty"`
-	Notes                         []ClusterNote                      `json:"notes"`
-	Options                       []ClusterOption                    `json:"options"`
-	BackupTargets                 []BackupTargetReplicationPayload   `json:"backupTargets"`
-	BackupTargetProvisions        []BackupTargetProvisionOperation   `json:"backupTargetProvisions,omitempty"`
-	BackupTargetReadiness         []BackupTargetNodeReadiness        `json:"backupTargetReadiness,omitempty"`
-	BackupTargetHostTrust         []BackupTargetSSHHostTrust         `json:"backupTargetHostTrust,omitempty"`
-	BackupJobs                    []BackupJob                        `json:"backupJobs"`
-	BackupJobOperations           []BackupJobOperation               `json:"backupJobOperations"`
-	ReplicationRunOperations      []ReplicationRunOperation          `json:"replicationRunOperations,omitempty"`
-	ScheduledRunReceipts          []ScheduledRunReceipt              `json:"scheduledRunReceipts,omitempty"`
-	BackupTargetRestoreOperations []BackupTargetRestoreOperation     `json:"backupTargetRestoreOperations,omitempty"`
-	BackupJobRebinds              []BackupJobRunnerRebind            `json:"backupJobRebinds,omitempty"`
-	BackupJobRebindItems          []BackupJobRunnerRebindItem        `json:"backupJobRebindItems,omitempty"`
-	ReplicationPolicies           []ReplicationPolicyPayload         `json:"replicationPolicies"`
-	ReplicationLeases             []ReplicationLease                 `json:"replicationLeases"`
-	GuestOperations               []ReplicationGuestOperation        `json:"guestOperations"`
-	GuestOperationReceipts        []ReplicationGuestOperationReceipt `json:"guestOperationReceipts"`
-	// ReplicationEvents is accepted only for legacy snapshot restore. New
-	// snapshots never copy node-local run telemetry.
-	ReplicationEvents           []ReplicationEvent           `json:"replicationEvents,omitempty"`
-	ReplicationTransitionEvents []ReplicationTransitionEvent `json:"replicationTransitionEvents,omitempty"`
-	SSHIdentities               []ClusterSSHIdentity         `json:"sshIdentities"`
-	EncryptionKeys              []EncryptionKey              `json:"encryptionKeys"`
-	// We can add more tables here as needed
 }
 
 func (f *FSMDispatcher) Snapshot() (raft.FSMSnapshot, error) {
@@ -319,7 +349,6 @@ func (f *FSMDispatcher) Snapshot() (raft.FSMSnapshot, error) {
 	return snapshot, nil
 }
 
-// StateDigest serializes a canonical state capture with FSM command
 func (f *FSMDispatcher) StateDigest() (string, uint64, error) {
 	if f == nil {
 		return "", 0, fmt.Errorf("raft_fsm_unavailable")
@@ -338,177 +367,19 @@ func (f *FSMDispatcher) StateDigest() (string, uint64, error) {
 	return digest, f.AppliedIndex(), nil
 }
 
-func dedupReplicationTargets(payloads []ReplicationPolicyPayload) ([]ReplicationPolicy, []ReplicationPolicyTarget) {
-	replicationPolicies := make([]ReplicationPolicy, 0, len(payloads))
-	replicationTargets := make([]ReplicationPolicyTarget, 0)
-	seenID := make(map[uint]struct{})
-	seenPair := make(map[string]struct{})
-
-	for _, payload := range payloads {
-		policy := payload.Policy
-		policy.Targets = nil
-		replicationPolicies = append(replicationPolicies, policy)
-		for _, t := range payload.Targets {
-			t.PolicyID = payload.Policy.ID
-			if t.ID != 0 {
-				if _, exists := seenID[t.ID]; exists {
-					continue
-				}
-				seenID[t.ID] = struct{}{}
-			} else {
-				k := fmt.Sprintf("%d|%s", t.PolicyID, strings.TrimSpace(t.NodeID))
-				if _, exists := seenPair[k]; exists {
-					continue
-				}
-				seenPair[k] = struct{}{}
-			}
-			replicationTargets = append(replicationTargets, t)
-		}
-	}
-
-	return replicationPolicies, replicationTargets
-}
-
 func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 	defer rc.Close()
 	f.sm.Lock()
 	defer f.sm.Unlock()
 
 	var snap ClusterSnapshot
-	if err := json.NewDecoder(rc).Decode(&snap); err != nil {
+	if err := gob.NewDecoder(rc).Decode(&snap); err != nil {
 		return err
 	}
-	if err := ValidateGuestIdentitySnapshot(&snap); err != nil {
-		return err
-	}
-	restoreDB := f.DB.Session(&gorm.Session{
-		NowFunc: func() time.Time { return legacyCommandTime },
-	})
-	if err := restoreDB.Transaction(func(tx *gorm.DB) error {
-		type restoreSet struct {
-			table string
-			data  any
-			batch int
-		}
-
-		backupTargets := make([]BackupTarget, 0, len(snap.BackupTargets))
-		for _, t := range snap.BackupTargets {
-			backupTargets = append(backupTargets, t.ToModel())
-		}
-		replicationPolicies, replicationTargets := dedupReplicationTargets(snap.ReplicationPolicies)
-		var crashRecoveryDisabled, poolHealthCheckDisabled []uint
-		for _, policy := range replicationPolicies {
-			if !policy.CrashRecovery {
-				crashRecoveryDisabled = append(crashRecoveryDisabled, policy.ID)
-			}
-			if !policy.PoolHealthCheck {
-				poolHealthCheckDisabled = append(poolHealthCheckDisabled, policy.ID)
-			}
-		}
-		transitionEvents := append([]ReplicationTransitionEvent(nil), snap.ReplicationTransitionEvents...)
-		transitionEventIDs := make(map[uint]struct{}, len(transitionEvents))
-		for _, event := range transitionEvents {
-			transitionEventIDs[event.ID] = struct{}{}
-		}
-		legacyLocalEvents := make([]ReplicationEvent, 0)
-		for _, event := range snap.ReplicationEvents {
-			if strings.TrimSpace(event.TransitionRunID) == "" {
-				legacyLocalEvents = append(legacyLocalEvents, event)
-				continue
-			}
-			if _, exists := transitionEventIDs[event.ID]; exists {
-				continue
-			}
-			transitionEvents = append(transitionEvents, ReplicationTransitionEventFromEvent(event))
-			transitionEventIDs[event.ID] = struct{}{}
-		}
-		createSets := []restoreSet{
-			{"guest_identity_registries", snap.GuestIdentityRegistries, 1},
-			{"guest_identity_enrollments", snap.GuestIdentityEnrollments, 200},
-			{"guest_identity_claims", snap.GuestIdentityClaims, 500},
-			{"cluster_ssh_identities", snap.SSHIdentities, 200},
-			{"encryption_keys", snap.EncryptionKeys, 200},
-		}
-		if tx.Migrator().HasTable(&GuestIdentityDeparture{}) {
-			createSets = append(createSets, restoreSet{"guest_identity_departures", snap.GuestIdentityDepartures, 200})
-		}
-		createSets = append(createSets,
-			restoreSet{"replication_policies", replicationPolicies, 500},
-			restoreSet{"replication_policy_targets", replicationTargets, 500},
-			restoreSet{"replication_leases", snap.ReplicationLeases, 500},
-			restoreSet{"replication_guest_operations", snap.GuestOperations, 500},
-			restoreSet{"replication_guest_operation_receipts", snap.GuestOperationReceipts, 500},
-			restoreSet{"backup_targets", backupTargets, 200},
-		)
-		if tx.Migrator().HasTable(&ReplicationTransitionEvent{}) {
-			createSets = append(createSets,
-				restoreSet{"replication_transition_events", transitionEvents, 500},
-			)
-		}
-		if tx.Migrator().HasTable(&BackupTargetProvisionOperation{}) {
-			createSets = append(createSets, restoreSet{"backup_target_provision_operations", snap.BackupTargetProvisions, 500})
-		}
-		if tx.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
-			createSets = append(createSets, restoreSet{"backup_target_node_readinesses", snap.BackupTargetReadiness, 500})
-		}
-		if tx.Migrator().HasTable(&BackupTargetSSHHostTrust{}) {
-			createSets = append(createSets, restoreSet{"backup_target_ssh_host_trusts", snap.BackupTargetHostTrust, 500})
-		}
-		createSets = append(createSets,
-			restoreSet{"backup_jobs", snap.BackupJobs, 500},
-			restoreSet{"backup_job_operations", snap.BackupJobOperations, 500},
-		)
-		if tx.Migrator().HasTable(&ReplicationRunOperation{}) {
-			createSets = append(createSets, restoreSet{"replication_run_operations", snap.ReplicationRunOperations, 500})
-		}
-		if tx.Migrator().HasTable(&ScheduledRunReceipt{}) {
-			createSets = append(createSets, restoreSet{"scheduled_run_receipts", snap.ScheduledRunReceipts, 500})
-		}
-		if tx.Migrator().HasTable(&BackupTargetRestoreOperation{}) {
-			createSets = append(createSets, restoreSet{"backup_target_restore_operations", snap.BackupTargetRestoreOperations, 500})
-		}
-		if tx.Migrator().HasTable(&BackupJobRunnerRebind{}) {
-			createSets = append(createSets, restoreSet{"backup_job_runner_rebinds", snap.BackupJobRebinds, 500})
-		}
-		if tx.Migrator().HasTable(&BackupJobRunnerRebindItem{}) {
-			createSets = append(createSets, restoreSet{"backup_job_runner_rebind_items", snap.BackupJobRebindItems, 500})
-		}
-		createSets = append(createSets,
-			restoreSet{"cluster_notes", snap.Notes, 500},
-			restoreSet{"cluster_options", snap.Options, 100},
-		)
-
-		if err := ClearReplicatedStateTx(tx); err != nil {
+	if err := f.DB.Transaction(func(tx *gorm.DB) error {
+		if err := restoreReplicatedStateTx(tx, &snap); err != nil {
 			return err
 		}
-
-		for _, s := range createSets {
-			val := reflect.ValueOf(s.data)
-			if val.Kind() == reflect.Slice && val.Len() > 0 {
-				if err := tx.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(s.data, s.batch).Error; err != nil {
-					return err
-				}
-			}
-		}
-		if err := tx.Model(&ReplicationPolicy{}).Where("id IN ?", crashRecoveryDisabled).
-			UpdateColumn("crash_recovery", false).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&ReplicationPolicy{}).Where("id IN ?", poolHealthCheckDisabled).
-			UpdateColumn("pool_health_check", false).Error; err != nil {
-			return err
-		}
-
-		// Legacy snapshots mixed leader-local telemetry into replicated state.
-		// Never replace this node's local history; import only non-colliding
-		// ambiguous rows when restoring an old snapshot.
-		if len(legacyLocalEvents) > 0 && tx.Migrator().HasTable(&ReplicationEvent{}) {
-			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).
-				CreateInBatches(legacyLocalEvents, 500).Error; err != nil {
-				return err
-			}
-		}
-
 		// Raft resumes after the snapshot's index, so record what this
 		// database now reflects in the same transaction as the restore.
 		return tx.Save(&FSMState{ID: fsmStateID, AppliedIndex: snap.AppliedIndex}).Error
@@ -516,14 +387,17 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 		return err
 	}
 	f.appliedIndex.Store(snap.AppliedIndex)
-	f.markerUnknown.Store(snap.AppliedIndex == 0)
+	f.runAfterApply("")
 	return nil
 }
 
 // Persist cancels the sink on a failed encode. Closing it instead would
 // commit a truncated snapshot as the latest one.
 func (s *ClusterSnapshot) Persist(sink raft.SnapshotSink) error {
-	if err := json.NewEncoder(sink).Encode(s); err != nil {
+	if digest, err := ClusterSnapshotDigest(s); err == nil {
+		logger.L.Info().Uint64("applied_index", s.AppliedIndex).Str("digest", digest).Msg("replicated_state_snapshot")
+	}
+	if err := gob.NewEncoder(sink).Encode(s); err != nil {
 		_ = sink.Cancel()
 		return err
 	}
@@ -532,895 +406,299 @@ func (s *ClusterSnapshot) Persist(sink raft.SnapshotSink) error {
 
 func (s *ClusterSnapshot) Release() {}
 
-func RegisterDefaultHandlers(fsm *FSMDispatcher) {
-	RegisterGuestIdentityRegistryHandler(fsm)
+type (
+	commandID struct {
+		ID uint `json:"id"`
+	}
+	noteID struct {
+		ID int `json:"id"`
+	}
+	noteIDs struct {
+		IDs []int `json:"ids"`
+	}
+	backupJobState struct {
+		Version     uint       `json:"version"`
+		JobID       uint       `json:"jobId"`
+		LastRunAt   *time.Time `json:"lastRunAt"`
+		LastStatus  string     `json:"lastStatus"`
+		LastError   string     `json:"lastError"`
+		NextRunAt   *time.Time `json:"nextRunAt"`
+		Encrypted   *bool      `json:"encrypted"`
+		NextRunOnly bool       `json:"nextRunOnly"`
+	}
+	backupJobFriendlySource struct {
+		JobIDs      []uint `json:"jobIds"`
+		FriendlySrc string `json:"friendlySrc"`
+	}
+	replicationPolicyState struct {
+		ID         uint       `json:"id"`
+		LastRunAt  *time.Time `json:"lastRunAt"`
+		LastStatus string     `json:"lastStatus"`
+		LastError  string     `json:"lastError"`
+		NextRunAt  *time.Time `json:"nextRunAt"`
+	}
+	replicationPolicyTransitionUpdate struct {
+		PolicyID   uint                        `json:"policyId"`
+		Transition ReplicationPolicyTransition `json:"transition"`
+	}
+)
 
-	fsm.Register("cluster_state", func(_ *gorm.DB, action string, _ json.RawMessage) error {
-		if action != "checkpoint" {
-			return fmt.Errorf("unsupported_cluster_state_action_%s", action)
+func RegisterDefaultHandlers(f *FSMDispatcher) {
+	RegisterGuestIdentityHandlers(f)
+
+	On(f, "cluster_state", "checkpoint", func(*gorm.DB, *struct{}) error { return nil })
+
+	On(f, "note", "create", upsertNote)
+	On(f, "note", "update", func(db *gorm.DB, note *ClusterNote) error {
+		result := db.Model(&ClusterNote{}).Where("id = ?", note.ID).Updates(*note)
+		return requireRowsAffected(result, 1)
+	})
+	On(f, "note", "delete", func(db *gorm.DB, p *noteID) error {
+		return requireRowsAffected(db.Delete(&ClusterNote{}, p.ID), 1)
+	})
+	On(f, "note", "bulk_delete", func(db *gorm.DB, p *noteIDs) error {
+		return requireRowsAffected(db.Delete(&ClusterNote{}, p.IDs), int64(len(p.IDs)))
+	})
+
+	On(f, "backup_target", "create_v3", ApplyBackupTargetCreateV3Txn)
+	On(f, "backup_target", "update_v2", ApplyBackupTargetUpdateV2Txn)
+	On(f, "backup_target", "delete_v2", func(db *gorm.DB, p *commandID) error {
+		if p.ID == 0 {
+			return nil
+		}
+		return DeleteBackupTargetTxn(db, p.ID)
+	})
+
+	On(f, "backup_target_ssh_host_trust", "initialize_all_v1", func(db *gorm.DB, change *BackupTargetSSHHostTrustChange) error {
+		return InitializeBackupTargetSSHHostTrustTxn(db, change.OccurredAt)
+	})
+	for _, action := range []string{"initialize_v1", "install_v1", "reset_v1"} {
+		On(f, "backup_target_ssh_host_trust", action, func(db *gorm.DB, change *BackupTargetSSHHostTrustChange) error {
+			return ApplyBackupTargetSSHHostTrustTxn(db, action, change)
+		})
+	}
+
+	On(f, "backup_target_provision", "prepare_v2", PrepareBackupTargetProvisionOperationV2Txn)
+	On(f, "backup_target_provision", "complete", CompleteBackupTargetProvisionOperationTxn)
+	On(f, "backup_target_provision", "fail", FailBackupTargetProvisionOperationTxn)
+
+	On(f, "backup_target_readiness", "update_v2", ApplyBackupTargetNodeReadinessUpdateV2Txn)
+
+	On(f, "backup_job", "create", func(db *gorm.DB, p *BackupJobCommandPayload) error {
+		if !validBackupJobMode(p.Job.Mode) {
+			return fmt.Errorf("invalid_backup_job_mode")
+		}
+		if p.TargetReadiness != nil {
+			if err := ApplyBackupTargetNodeReadinessForJobTxn(db, &p.Job, p.TargetReadiness); err != nil {
+				return err
+			}
+		}
+		if err := ValidateBackupJobPlacementFenceTxn(db, &p.Job, p.PlacementFence); err != nil {
+			return err
+		}
+		return upsertBackupJob(db, &p.Job)
+	})
+	On(f, "backup_job", "update", func(db *gorm.DB, p *BackupJobCommandPayload) error {
+		if !validBackupJobMode(p.Job.Mode) {
+			return fmt.Errorf("invalid_backup_job_mode")
+		}
+		rebindPending, err := BackupJobRunnerRebindPendingForJob(db, p.Job.ID)
+		if err != nil {
+			return err
+		}
+		if rebindPending {
+			return fmt.Errorf("backup_job_runner_rebind_pending")
+		}
+		if p.PreviousPlacementFence != nil {
+			var existing BackupJob
+			result := db.Where("id = ?", p.Job.ID).Limit(1).Find(&existing)
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected == 0 {
+				return fmt.Errorf("backup_job_not_found")
+			}
+			if err := ValidateBackupJobPlacementFenceTxn(db, &existing, p.PreviousPlacementFence); err != nil {
+				return err
+			}
+		}
+		if err := ValidateBackupJobPlacementFenceTxn(db, &p.Job, p.PlacementFence); err != nil {
+			return err
+		}
+		if p.TargetReadiness != nil {
+			if err := ApplyBackupTargetNodeReadinessForJobTxn(db, &p.Job, p.TargetReadiness); err != nil {
+				return err
+			}
+		}
+		return ApplyBackupJobUpdateTxn(db, &p.Job)
+	})
+	On(f, "backup_job", "delete", func(db *gorm.DB, p *commandID) error {
+		return DeleteBackupJobTxn(db, p.ID)
+	})
+
+	On(f, "backup_job_runner_rebind", "prepare", PrepareBackupJobRunnerRebindTxn)
+	On(f, "backup_job_runner_rebind", "ready", ReadyBackupJobRunnerRebindTxn)
+	On(f, "backup_job_runner_rebind", "apply", ApplyBackupJobRunnerRebindTxn)
+	On(f, "backup_job_runner_rebind", "repair", RepairBackupJobRunnerRebindTxn)
+	On(f, "backup_job_runner_rebind", "pending", PendingBackupJobRunnerRebindTxn)
+	On(f, "backup_job_runner_rebind", "abort", AbortFailedFailoverBackupJobRunnerRebindTxn)
+
+	On(f, "backup_job_operation", "acquire_v2", AcquireBackupJobOperationV2Txn)
+	On(f, "backup_job_operation", "start_v2", StartBackupJobOperationV2Txn)
+	On(f, "backup_job_operation", "finish", FinishBackupJobOperationTxn)
+	On(f, "backup_job_operation", "abort", AbortBackupJobOperationTxn)
+	On(f, "backup_job_operation", "release", ReleaseBackupJobOperationTxn)
+
+	On(f, "backup_target_restore_operation", "acquire_v2", AcquireBackupTargetRestoreOperationV2Txn)
+	On(f, "backup_target_restore_operation", "start_v2", StartBackupTargetRestoreOperationV2Txn)
+	On(f, "backup_target_restore_operation", "finish", FinishBackupTargetRestoreOperationTxn)
+	On(f, "backup_target_restore_operation", "requeue", RequeueBackupTargetRestoreOperationTxn)
+	On(f, "backup_target_restore_operation", "abort", AbortBackupTargetRestoreOperationTxn)
+	On(f, "backup_target_restore_operation", "release", ReleaseBackupTargetRestoreOperationTxn)
+
+	On(f, "backup_job_schedule", "decide_v2", ApplyBackupJobScheduleDecisionV2Txn)
+	On(f, "backup_job_schedule", "complete", CompleteBackupJobRunTxn)
+
+	On(f, "replication_policy_schedule", "decide", ApplyReplicationPolicyScheduleDecisionTxn)
+	On(f, "replication_policy_schedule", "start", StartReplicationRunOperationTxn)
+	On(f, "replication_policy_schedule", "complete", CompleteReplicationPolicyRunTxn)
+
+	On(f, "backup_job_state", "update", func(db *gorm.DB, p *backupJobState) error {
+		if p.JobID == 0 {
+			return fmt.Errorf("invalid_job_id")
+		}
+		job := db.Model(&BackupJob{}).Where("id = ?", p.JobID)
+		if p.NextRunOnly {
+			return job.Update("next_run_at", p.NextRunAt).Error
+		}
+		status := strings.TrimSpace(strings.ToLower(p.LastStatus))
+		if status == "" {
+			return fmt.Errorf("last_status_required")
+		}
+		if status != "success" && status != "failed" && status != "running" && status != "blocked" {
+			return fmt.Errorf("invalid_last_status")
+		}
+		updates := map[string]any{
+			"last_run_at": p.LastRunAt,
+			"last_status": status,
+			"last_error":  strings.TrimSpace(p.LastError),
+			"next_run_at": p.NextRunAt,
+		}
+		if p.Encrypted != nil {
+			updates["encrypted"] = *p.Encrypted
+		}
+		return job.Updates(updates).Error
+	})
+
+	On(f, "backup_job_friendly_source", "update", func(db *gorm.DB, p *backupJobFriendlySource) error {
+		friendlySrc := strings.TrimSpace(p.FriendlySrc)
+		if friendlySrc == "" {
+			return fmt.Errorf("friendly_src_required")
+		}
+		seen := make(map[uint]struct{}, len(p.JobIDs))
+		jobIDs := make([]uint, 0, len(p.JobIDs))
+		for _, id := range p.JobIDs {
+			if _, exists := seen[id]; id == 0 || exists {
+				continue
+			}
+			seen[id] = struct{}{}
+			jobIDs = append(jobIDs, id)
+		}
+		if len(jobIDs) == 0 {
+			return nil
+		}
+		return db.Model(&BackupJob{}).Where("id IN ?", jobIDs).Update("friendly_src", friendlySrc).Error
+	})
+
+	On(f, "replication_policy", "create", func(db *gorm.DB, p *ReplicationPolicyPayload) error {
+		if err := upsertReplicationPolicy(db, &p.Policy, p.Targets); err != nil {
+			return err
+		}
+		return dropDisabledReplicationPolicyLeases(db, &p.Policy)
+	})
+	On(f, "replication_policy", "update", func(db *gorm.DB, p *ReplicationPolicyPayload) error {
+		if err := updateReplicationPolicy(db, p); err != nil {
+			return err
+		}
+		return dropDisabledReplicationPolicyLeases(db, &p.Policy)
+	})
+	On(f, "replication_policy", "delete", func(db *gorm.DB, p *commandID) error {
+		if p.ID == 0 {
+			return nil
+		}
+		return DeleteReplicationPolicyTxn(db, p.ID)
+	})
+	On(f, "replication_policy", "state_update", func(db *gorm.DB, p *replicationPolicyState) error {
+		if p.ID == 0 {
+			return nil
+		}
+		return db.Model(&ReplicationPolicy{}).Where("id = ?", p.ID).Updates(map[string]any{
+			"last_run_at": p.LastRunAt,
+			"last_status": p.LastStatus,
+			"last_error":  p.LastError,
+			"next_run_at": p.NextRunAt,
+		}).Error
+	})
+
+	On(f, "replication_lease", "upsert", upsertReplicationLease)
+	On(f, "replication_lease", "upsert_batch", func(db *gorm.DB, leases *[]ReplicationLease) error {
+		for i := range *leases {
+			if err := upsertReplicationLease(db, &(*leases)[i]); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
 
-	fsm.Register("note", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		var note ClusterNote
-		switch action {
-		case "create":
-			if err := json.Unmarshal(raw, &note); err != nil {
-				return err
-			}
-			return upsertNote(db, &note)
-		case "update":
-			if err := json.Unmarshal(raw, &note); err != nil {
-				return err
-			}
-			result := db.Model(&ClusterNote{}).
-				Where("id = ?", note.ID).
-				Updates(note)
-			if result.Error != nil {
-				return result.Error
-			}
-			if result.RowsAffected != 1 {
-				return gorm.ErrRecordNotFound
-			}
-			return nil
-		case "delete":
-			var payload struct{ ID int }
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			result := db.Delete(&ClusterNote{}, payload.ID)
-			if result.Error != nil {
-				return result.Error
-			}
-			if result.RowsAffected != 1 {
-				return gorm.ErrRecordNotFound
-			}
-			return nil
-		case "bulk_delete":
-			var payload struct{ IDs []int }
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return db.Transaction(func(tx *gorm.DB) error {
-				result := tx.Delete(&ClusterNote{}, payload.IDs)
-				if result.Error != nil {
-					return result.Error
-				}
-				if result.RowsAffected != int64(len(payload.IDs)) {
-					return gorm.ErrRecordNotFound
-				}
-				return nil
-			})
-		default:
-			return unsupportedCommandAction(action)
-		}
+	On(f, "replication_guest_operation", "acquire", acquireReplicationGuestOperation)
+	On(f, "replication_guest_operation", "seal", sealReplicationGuestOperation)
+	On(f, "replication_guest_operation", "abort", abortReplicationGuestOperation)
+	On(f, "replication_guest_operation", "complete", completeReplicationGuestOperation)
+
+	On(f, "replication_policy_transition", "begin", beginReplicationPolicyTransition)
+	On(f, "replication_policy_transition", "update", func(db *gorm.DB, p *replicationPolicyTransitionUpdate) error {
+		return upsertReplicationPolicyTransition(db, p.PolicyID, &p.Transition)
 	})
 
-	fsm.Register("options", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		var opt ClusterOption
-		if err := json.Unmarshal(raw, &opt); err != nil {
-			return err
-		}
-		opt.ID = 1
-		if action == "set" {
-			return upsertOption(db, &opt)
-		}
-		return unsupportedCommandAction(action)
-	})
+	On(f, "replication_ownership_transition", "commit", applyReplicationOwnershipTransition)
+	On(f, "replication_ownership_transition", "reassign_disabled", reassignDisabledReplicationPolicyOwner)
 
-	fsm.Register("backup_target", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "create_v3":
-			var command BackupTargetCreateV3
-			if err := json.Unmarshal(raw, &command); err != nil {
-				return err
-			}
-			return ApplyBackupTargetCreateV3Txn(db, &command)
-		case "create_v2":
-			var command BackupTargetCreateV2
-			if err := json.Unmarshal(raw, &command); err != nil {
-				return err
-			}
-			return ApplyBackupTargetCreateV2Txn(db, &command)
-		case "update_v2":
-			var command BackupTargetUpdateV2
-			if err := json.Unmarshal(raw, &command); err != nil {
-				return err
-			}
-			return ApplyBackupTargetUpdateV2Txn(db, &command)
-		case "create":
-			var payload BackupTargetReplicationPayload
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			target := payload.ToModel()
-			return upsertBackupTarget(db, &target)
-		case "update":
-			var payload BackupTargetReplicationPayload
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			target := payload.ToModel()
-			return upsertBackupTarget(db, &target)
-		case "delete", "delete_v2":
-			var payload struct {
-				ID uint `json:"id"`
-			}
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
+	On(f, "replication_target_readiness", "update", updateReplicationTargetReadiness)
+	On(f, "replication_policy_protection_state", "update", updateReplicationPolicyProtectionState)
 
-			if payload.ID == 0 {
-				return nil
-			}
-			if action == "delete_v2" {
-				return DeleteBackupTargetTxn(db, payload.ID)
-			}
-			return DeleteBackupTargetLegacyTxn(db, payload.ID)
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
+	On(f, "cluster_ssh_identity", "upsert", upsertClusterSSHIdentity)
+	On(f, "cluster_member", "remove", removeClusterMemberTxn)
+	On(f, "cluster_join_key", "set", setClusterJoinKeyTxn)
 
-	fsm.Register("backup_target_ssh_host_trust", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		var change BackupTargetSSHHostTrustChange
-		if err := json.Unmarshal(raw, &change); err != nil {
-			return err
-		}
-		if action == "initialize_all_v1" {
-			return InitializeBackupTargetSSHHostTrustTxn(db, change.OccurredAt)
-		}
-		return ApplyBackupTargetSSHHostTrustTxn(db, action, &change)
-	})
+	On(f, "encryption_key", "upsert", upsertEncryptionKey)
 
-	fsm.Register("backup_target_provision", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "prepare":
-			var prepare BackupTargetProvisionPrepare
-			if err := json.Unmarshal(raw, &prepare); err != nil {
-				return err
-			}
-			return PrepareBackupTargetProvisionOperationTxn(db, &prepare)
-		case "prepare_v2":
-			var prepare BackupTargetProvisionPrepare
-			if err := json.Unmarshal(raw, &prepare); err != nil {
-				return err
-			}
-			return PrepareBackupTargetProvisionOperationV2Txn(db, &prepare)
-		case "complete":
-			var transition BackupTargetProvisionTransition
-			if err := json.Unmarshal(raw, &transition); err != nil {
-				return err
-			}
-			return CompleteBackupTargetProvisionOperationTxn(db, &transition)
-		case "fail":
-			var transition BackupTargetProvisionTransition
-			if err := json.Unmarshal(raw, &transition); err != nil {
-				return err
-			}
-			return FailBackupTargetProvisionOperationTxn(db, &transition)
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("backup_target_readiness", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "update_v2":
-			var update BackupTargetNodeReadinessUpdate
-			if err := json.Unmarshal(raw, &update); err != nil {
-				return err
-			}
-			return ApplyBackupTargetNodeReadinessUpdateV2Txn(db, &update)
-		case "update":
-			var update BackupTargetNodeReadinessUpdate
-			if err := json.Unmarshal(raw, &update); err != nil {
-				return err
-			}
-			return ApplyBackupTargetNodeReadinessUpdateTxn(db, &update)
-		case "backfill":
-			var row BackupTargetNodeReadiness
-			if err := json.Unmarshal(raw, &row); err != nil {
-				return err
-			}
-			return UpsertBackupTargetNodeReadinessBackfillTxn(db, &row)
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("backup_job", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		decodeMutation := func() (*BackupJob, *BackupJobPlacementFence, *BackupJobPlacementFence, *BackupTargetNodeReadinessUpdate, error) {
-			var envelope struct {
-				Job                    *BackupJob                       `json:"job"`
-				PlacementFence         *BackupJobPlacementFence         `json:"placementFence"`
-				PreviousPlacementFence *BackupJobPlacementFence         `json:"previousPlacementFence"`
-				TargetReadiness        *BackupTargetNodeReadinessUpdate `json:"targetReadiness"`
-			}
-			if err := json.Unmarshal(raw, &envelope); err != nil {
-				return nil, nil, nil, nil, err
-			}
-			if envelope.Job != nil {
-				return envelope.Job, envelope.PlacementFence, envelope.PreviousPlacementFence, envelope.TargetReadiness, nil
-			}
-
-			// Compatibility with raw BackupJob entries written before the
-			// placement-fence and target-readiness envelope was introduced.
-			var legacy BackupJob
-			if err := json.Unmarshal(raw, &legacy); err != nil {
-				return nil, nil, nil, nil, err
-			}
-			return &legacy, nil, nil, nil, nil
-		}
-
-		switch action {
-		case "create":
-			job, fence, _, targetReadiness, err := decodeMutation()
-			if err != nil {
-				return err
-			}
-			if !validBackupJobMode(job.Mode) {
-				return fmt.Errorf("invalid_backup_job_mode")
-			}
-			return db.Transaction(func(tx *gorm.DB) error {
-				if targetReadiness != nil {
-					if err := ApplyBackupTargetNodeReadinessForJobTxn(tx, job, targetReadiness); err != nil {
-						return err
-					}
-				}
-				if err := ValidateBackupJobPlacementFenceTxn(tx, job, fence); err != nil {
-					return err
-				}
-				return upsertBackupJob(tx, job)
-			})
-		case "update":
-			job, fence, previousFence, targetReadiness, err := decodeMutation()
-			if err != nil {
-				return err
-			}
-			if !validBackupJobMode(job.Mode) {
-				return fmt.Errorf("invalid_backup_job_mode")
-			}
-			return db.Transaction(func(tx *gorm.DB) error {
-				rebindPending, err := BackupJobRunnerRebindPendingForJob(tx, job.ID)
-				if err != nil {
-					return err
-				}
-				if rebindPending {
-					return fmt.Errorf("backup_job_runner_rebind_pending")
-				}
-				if previousFence != nil {
-					var existing BackupJob
-					result := tx.Where("id = ?", job.ID).Limit(1).Find(&existing)
-					if result.Error != nil {
-						return result.Error
-					}
-					if result.RowsAffected == 0 {
-						return fmt.Errorf("backup_job_not_found")
-					}
-					if err := ValidateBackupJobPlacementFenceTxn(tx, &existing, previousFence); err != nil {
-						return err
-					}
-				}
-				if err := ValidateBackupJobPlacementFenceTxn(tx, job, fence); err != nil {
-					return err
-				}
-				if targetReadiness != nil {
-					if err := ApplyBackupTargetNodeReadinessForJobTxn(tx, job, targetReadiness); err != nil {
-						return err
-					}
-				}
-				return ApplyBackupJobUpdateTxn(tx, job)
-			})
-		case "delete":
-			var payload struct {
-				ID uint `json:"id"`
-			}
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return DeleteBackupJobTxn(db, payload.ID)
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("backup_job_runner_rebind", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "prepare":
-			var payload BackupJobRunnerRebindPlan
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return PrepareBackupJobRunnerRebindTxn(db, &payload)
-		case "ready":
-			var payload BackupJobRunnerRebindReady
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return ReadyBackupJobRunnerRebindTxn(db, &payload)
-		case "apply":
-			var payload BackupJobRunnerRebindApply
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return ApplyBackupJobRunnerRebindTxn(db, &payload)
-		case "repair":
-			var payload BackupJobRunnerRebindRepair
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return RepairBackupJobRunnerRebindTxn(db, &payload)
-		case "pending":
-			var payload BackupJobRunnerRebindPending
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return PendingBackupJobRunnerRebindTxn(db, &payload)
-		case "abort":
-			var payload BackupJobRunnerRebindAbort
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return AbortFailedFailoverBackupJobRunnerRebindTxn(db, &payload)
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("backup_job_operation", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "acquire_v2":
-			var payload BackupJobOperationAcquire
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return AcquireBackupJobOperationV2Txn(db, &payload)
-		case "start_v2":
-			var payload BackupJobOperationTransition
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return StartBackupJobOperationV2Txn(db, &payload)
-		case "acquire":
-			var payload BackupJobOperationAcquire
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return AcquireBackupJobOperationTxn(db, &payload)
-		case "start", "finish", "abort", "release":
-			var payload BackupJobOperationTransition
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			switch action {
-			case "start":
-				return StartBackupJobOperationTxn(db, &payload)
-			case "finish":
-				return FinishBackupJobOperationTxn(db, &payload)
-			case "abort":
-				return AbortBackupJobOperationTxn(db, &payload)
-			default:
-				return ReleaseBackupJobOperationTxn(db, &payload)
-			}
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("backup_target_restore_operation", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "acquire_v2":
-			var payload BackupTargetRestoreOperationAcquire
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return AcquireBackupTargetRestoreOperationV2Txn(db, &payload)
-		case "start_v2":
-			var payload BackupTargetRestoreOperationTransition
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return StartBackupTargetRestoreOperationV2Txn(db, &payload)
-		case "backfill":
-			var operation BackupTargetRestoreOperation
-			if err := json.Unmarshal(raw, &operation); err != nil {
-				return err
-			}
-			return BackfillBackupTargetRestoreOperationTxn(db, &operation)
-		case "acquire":
-			var payload BackupTargetRestoreOperationAcquire
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return AcquireBackupTargetRestoreOperationTxn(db, &payload)
-		case "start", "finish", "requeue", "abort", "release":
-			var payload BackupTargetRestoreOperationTransition
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			switch action {
-			case "start":
-				return StartBackupTargetRestoreOperationTxn(db, &payload)
-			case "finish":
-				return FinishBackupTargetRestoreOperationTxn(db, &payload)
-			case "requeue":
-				return RequeueBackupTargetRestoreOperationTxn(db, &payload)
-			case "abort":
-				return AbortBackupTargetRestoreOperationTxn(db, &payload)
-			default:
-				return ReleaseBackupTargetRestoreOperationTxn(db, &payload)
-			}
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("backup_job_schedule", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "decide_v2":
-			var decision BackupJobScheduleDecision
-			if err := json.Unmarshal(raw, &decision); err != nil {
-				return err
-			}
-			return ApplyBackupJobScheduleDecisionV2Txn(db, &decision)
-		case "decide":
-			var decision BackupJobScheduleDecision
-			if err := json.Unmarshal(raw, &decision); err != nil {
-				return err
-			}
-			return ApplyBackupJobScheduleDecisionTxn(db, &decision)
-		case "complete":
-			var result BackupJobRunResult
-			if err := json.Unmarshal(raw, &result); err != nil {
-				return err
-			}
-			return CompleteBackupJobRunTxn(db, &result)
-		case "backfill_operation":
-			var operation BackupJobOperation
-			if err := json.Unmarshal(raw, &operation); err != nil {
-				return err
-			}
-			if operation.JobID == 0 || strings.TrimSpace(operation.Token) == "" {
-				return fmt.Errorf("backup_job_operation_backfill_invalid")
-			}
-			return db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&operation).Error
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("replication_policy_schedule", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "decide":
-			var decision ReplicationPolicyScheduleDecision
-			if err := json.Unmarshal(raw, &decision); err != nil {
-				return err
-			}
-			return ApplyReplicationPolicyScheduleDecisionTxn(db, &decision)
-		case "start":
-			var transition ReplicationRunOperationTransition
-			if err := json.Unmarshal(raw, &transition); err != nil {
-				return err
-			}
-			return StartReplicationRunOperationTxn(db, &transition)
-		case "complete":
-			var result ReplicationPolicyRunResult
-			if err := json.Unmarshal(raw, &result); err != nil {
-				return err
-			}
-			return CompleteReplicationPolicyRunTxn(db, &result)
-		case "backfill_operation":
-			var operation ReplicationRunOperation
-			if err := json.Unmarshal(raw, &operation); err != nil {
-				return err
-			}
-			if operation.PolicyID == 0 || strings.TrimSpace(operation.Token) == "" {
-				return fmt.Errorf("replication_run_operation_backfill_invalid")
-			}
-			return db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&operation).Error
-		case "backfill_receipt":
-			var receipt ScheduledRunReceipt
-			if err := json.Unmarshal(raw, &receipt); err != nil {
-				return err
-			}
-			if strings.TrimSpace(receipt.Token) == "" {
-				return fmt.Errorf("scheduled_run_receipt_backfill_invalid")
-			}
-			return db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&receipt).Error
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("backup_job_state", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "update":
-			var payload struct {
-				Version     uint       `json:"version"`
-				JobID       uint       `json:"jobId"`
-				LastRunAt   *time.Time `json:"lastRunAt"`
-				LastStatus  string     `json:"lastStatus"`
-				LastError   string     `json:"lastError"`
-				NextRunAt   *time.Time `json:"nextRunAt"`
-				Encrypted   *bool      `json:"encrypted"`
-				NextRunOnly bool       `json:"nextRunOnly"`
-			}
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			if payload.JobID == 0 {
-				return fmt.Errorf("invalid_job_id")
-			}
-			if payload.NextRunOnly {
-				return db.Model(&BackupJob{}).Where("id = ?", payload.JobID).Update("next_run_at", payload.NextRunAt).Error
-			}
-
-			status := strings.TrimSpace(strings.ToLower(payload.LastStatus))
-			if status == "" {
-				return fmt.Errorf("last_status_required")
-			}
-			if status != "success" && status != "failed" && status != "running" && status != "blocked" {
-				return fmt.Errorf("invalid_last_status")
-			}
-
-			updates := map[string]any{
-				"last_run_at": payload.LastRunAt,
-				"last_status": status,
-				"last_error":  strings.TrimSpace(payload.LastError),
-				"next_run_at": payload.NextRunAt,
-			}
-			if payload.Encrypted != nil {
-				updates["encrypted"] = *payload.Encrypted
-			}
-			return db.Model(&BackupJob{}).Where("id = ?", payload.JobID).Updates(updates).Error
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("backup_job_friendly_source", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "update":
-			var payload struct {
-				JobIDs      []uint `json:"jobIds"`
-				FriendlySrc string `json:"friendlySrc"`
-			}
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-
-			payload.FriendlySrc = strings.TrimSpace(payload.FriendlySrc)
-			if payload.FriendlySrc == "" {
-				return fmt.Errorf("friendly_src_required")
-			}
-
-			if len(payload.JobIDs) == 0 {
-				return nil
-			}
-
-			seen := make(map[uint]struct{}, len(payload.JobIDs))
-			jobIDs := make([]uint, 0, len(payload.JobIDs))
-			for _, id := range payload.JobIDs {
-				if id == 0 {
-					continue
-				}
-				if _, exists := seen[id]; exists {
-					continue
-				}
-				seen[id] = struct{}{}
-				jobIDs = append(jobIDs, id)
-			}
-			if len(jobIDs) == 0 {
-				return nil
-			}
-
-			return db.Model(&BackupJob{}).Where("id IN ?", jobIDs).Update("friendly_src", payload.FriendlySrc).Error
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("replication_policy", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "create", "update":
-			var payload ReplicationPolicyPayload
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return db.Transaction(func(tx *gorm.DB) error {
-				var err error
-				if action == "create" {
-					err = upsertReplicationPolicy(tx, &payload.Policy, payload.Targets)
-				} else {
-					err = updateReplicationPolicy(tx, &payload)
-				}
-				if err != nil {
-					return err
-				}
-				if !payload.Policy.Enabled && tx.Migrator().HasTable(&ReplicationLease{}) {
-					return tx.Where("policy_id = ?", payload.Policy.ID).Delete(&ReplicationLease{}).Error
-				}
-				return nil
-			})
-		case "delete":
-			var payload struct {
-				ID uint `json:"id"`
-			}
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			if payload.ID == 0 {
-				return nil
-			}
-			return DeleteReplicationPolicyTxn(db, payload.ID)
-		case "state_update":
-			var payload struct {
-				ID         uint       `json:"id"`
-				LastRunAt  *time.Time `json:"lastRunAt"`
-				LastStatus string     `json:"lastStatus"`
-				LastError  string     `json:"lastError"`
-				NextRunAt  *time.Time `json:"nextRunAt"`
-			}
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			if payload.ID == 0 {
-				return nil
-			}
-			updates := map[string]any{
-				"last_run_at": payload.LastRunAt,
-				"last_status": payload.LastStatus,
-				"last_error":  payload.LastError,
-				"next_run_at": payload.NextRunAt,
-			}
-			return db.Model(&ReplicationPolicy{}).Where("id = ?", payload.ID).Updates(updates).Error
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("replication_lease", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "upsert":
-			var lease ReplicationLease
-			if err := json.Unmarshal(raw, &lease); err != nil {
-				return err
-			}
-			return upsertReplicationLease(db, &lease)
-		case "upsert_batch":
-			var leases []ReplicationLease
-			if err := json.Unmarshal(raw, &leases); err != nil {
-				return err
-			}
-			return db.Transaction(func(tx *gorm.DB) error {
-				for i := range leases {
-					if err := upsertReplicationLease(tx, &leases[i]); err != nil {
-						return err
-					}
-				}
-				return nil
-			})
-		case "delete":
-			var payload struct {
-				PolicyID uint `json:"policyId"`
-			}
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			if payload.PolicyID == 0 {
-				return nil
-			}
-			return db.Where("policy_id = ?", payload.PolicyID).Delete(&ReplicationLease{}).Error
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("replication_guest_operation", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "acquire":
-			var payload ReplicationGuestOperationAcquire
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return acquireReplicationGuestOperation(db, &payload)
-		case "seal":
-			var payload ReplicationGuestOperationTransition
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return sealReplicationGuestOperation(db, &payload)
-		case "abort":
-			var payload ReplicationGuestOperationTransition
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return abortReplicationGuestOperation(db, &payload)
-		case "complete":
-			var payload ReplicationGuestOperationTransition
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return completeReplicationGuestOperation(db, &payload)
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("replication_policy_transition", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "begin":
-			var payload ReplicationPolicyTransitionBegin
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return beginReplicationPolicyTransition(db, &payload)
-		case "update":
-			var payload struct {
-				PolicyID   uint                        `json:"policyId"`
-				Transition ReplicationPolicyTransition `json:"transition"`
-			}
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return upsertReplicationPolicyTransition(db, payload.PolicyID, &payload.Transition)
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("replication_ownership_transition", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "commit":
-			var payload ReplicationOwnershipTransitionPayload
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return applyReplicationOwnershipTransition(db, &payload)
-		case "reassign_disabled":
-			var payload ReplicationDisabledOwnerReassignment
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return reassignDisabledReplicationPolicyOwner(db, &payload)
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("replication_target_readiness", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "update":
-			var payload ReplicationTargetReadinessUpdate
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return updateReplicationTargetReadiness(db, &payload)
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("replication_policy_protection_state", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "update":
-			var payload ReplicationPolicyProtectionStateUpdate
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return updateReplicationPolicyProtectionState(db, &payload)
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("cluster_ssh_identity", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "upsert":
-			var identity ClusterSSHIdentity
-			if err := json.Unmarshal(raw, &identity); err != nil {
-				return err
-			}
-			return upsertClusterSSHIdentity(db, &identity)
-		case "delete":
-			var payload struct {
-				NodeUUID string `json:"nodeUUID"`
-			}
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			payload.NodeUUID = strings.TrimSpace(payload.NodeUUID)
-			if payload.NodeUUID == "" {
-				return nil
-			}
-			return db.Where("node_uuid = ?", payload.NodeUUID).Delete(&ClusterSSHIdentity{}).Error
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("encryption_key", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "upsert":
-			var key EncryptionKey
-			if err := json.Unmarshal(raw, &key); err != nil {
-				return err
-			}
-			return upsertEncryptionKey(db, &key)
-		case "delete":
-			var payload struct {
-				UUID string `json:"uuid"`
-			}
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			payload.UUID = strings.TrimSpace(payload.UUID)
-			if payload.UUID == "" {
-				return nil
-			}
-			return db.Where("uuid = ?", payload.UUID).Delete(&EncryptionKey{}).Error
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("replication_event", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "create", "update":
-			var event ReplicationEvent
-			if err := json.Unmarshal(raw, &event); err != nil {
-				return err
-			}
-			if event.ID == 0 {
-				return fmt.Errorf("replication_event_id_required")
-			}
-			// Preserve committed legacy log replay. Rows with an explicit
-			// transition identity become replicated state; ambiguous rows keep
-			// their historical node-local meaning.
-			if strings.TrimSpace(event.TransitionRunID) != "" &&
-				db.Migrator().HasTable(&ReplicationTransitionEvent{}) {
-				transition := ReplicationTransitionEventFromEvent(event)
-				return upsertReplicationTransitionEvent(db, &transition)
-			}
-			if strings.TrimSpace(event.TransitionRunID) == "" {
-				return db.Clauses(clause.OnConflict{DoNothing: true}).Create(&event).Error
-			}
-			return upsertReplicationEvent(db, &event)
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
-
-	fsm.Register("replication_transition_event", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "create", "update":
-			var event ReplicationTransitionEvent
-			if err := json.Unmarshal(raw, &event); err != nil {
-				return err
-			}
+	for _, action := range []string{"create", "update"} {
+		On(f, "replication_transition_event", action, func(db *gorm.DB, event *ReplicationTransitionEvent) error {
 			if event.ID == 0 {
 				return fmt.Errorf("replication_transition_event_id_required")
 			}
-			return upsertReplicationTransitionEvent(db, &event)
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
+			return upsertReplicationTransitionEvent(db, event)
+		})
+	}
 
-	fsm.Register("replicated_retention", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		switch action {
-		case "apply":
-			var decision ReplicatedRetentionDecision
-			if err := json.Unmarshal(raw, &decision); err != nil {
-				return err
-			}
-			return ApplyReplicatedRetentionTxn(db, &decision)
-		default:
-			return unsupportedCommandAction(action)
-		}
-	})
+	On(f, "replicated_retention", "apply", ApplyReplicatedRetentionTxn)
+}
+
+func requireRowsAffected(result *gorm.DB, expected int64) error {
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != expected {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func dropDisabledReplicationPolicyLeases(db *gorm.DB, policy *ReplicationPolicy) error {
+	if policy.Enabled {
+		return nil
+	}
+	return db.Where("policy_id = ?", policy.ID).Delete(&ReplicationLease{}).Error
 }
 
 func replicationEventConflictClause() clause.OnConflict {
@@ -1443,10 +721,6 @@ func replicationEventConflictClause() clause.OnConflict {
 			"updated_at",
 		}),
 	}
-}
-
-func upsertReplicationEvent(db *gorm.DB, event *ReplicationEvent) error {
-	return db.Clauses(replicationEventConflictClause()).Create(event).Error
 }
 
 func upsertReplicationTransitionEvent(db *gorm.DB, event *ReplicationTransitionEvent) error {

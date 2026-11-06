@@ -57,11 +57,8 @@ export const ClusterJoinStatusSchema = z.object({
 
 export const ClusterLeaveStatusSchema = z.object({
 	enabled: z.boolean(),
-	leaveId: z.string(),
 	phase: z.string(),
-	leaderIp: z.string(),
 	lastError: z.string(),
-	attempts: z.number().int().nonnegative(),
 	localNodeId: z.string()
 });
 

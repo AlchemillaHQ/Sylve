@@ -38,52 +38,20 @@ func (s *Service) runtimeStateBypassRaft() (bool, error) {
 	if s == nil || s.DB == nil {
 		return false, fmt.Errorf("runtime_state_database_unavailable")
 	}
-	if s.Cluster != nil {
-		return s.Cluster.RuntimeStateBypassRaft()
-	}
-	// Still inspect persisted state when the cluster service itself has not
-	// been wired. An enabled cluster must fail closed in this condition.
-	probe := &cluster.Service{DB: s.DB}
-	return probe.RuntimeStateBypassRaft()
+	return s.Cluster.RuntimeStateBypassRaft()
 }
 
 func (s *Service) requireCurrentRuntimeVoter(nodeID string, bypassRaft bool) error {
 	if bypassRaft {
 		return nil
 	}
-	if s == nil || s.Cluster == nil {
+	if s == nil {
 		return fmt.Errorf("cluster_service_unavailable")
 	}
 	if err := s.Cluster.RequireCurrentRaftVoter(nodeID); err != nil {
 		return fmt.Errorf("runtime_node_not_current_raft_voter: %w", err)
 	}
 	return nil
-}
-
-func (s *Service) applyBackupJobScheduleDecision(
-	decision clusterModels.BackupJobScheduleDecision,
-	bypassRaft bool,
-) error {
-	if s.Cluster != nil {
-		return s.Cluster.ApplyBackupJobScheduleDecision(decision, bypassRaft)
-	}
-	if !bypassRaft {
-		return fmt.Errorf("cluster_service_unavailable")
-	}
-	return clusterModels.ApplyBackupJobScheduleDecisionV2Txn(s.DB, &decision)
-}
-
-func (s *Service) applyReplicationPolicyScheduleDecision(
-	decision clusterModels.ReplicationPolicyScheduleDecision,
-	bypassRaft bool,
-) error {
-	if s.Cluster != nil {
-		return s.Cluster.ApplyReplicationPolicyScheduleDecision(decision, bypassRaft)
-	}
-	if !bypassRaft {
-		return fmt.Errorf("cluster_service_unavailable")
-	}
-	return clusterModels.ApplyReplicationPolicyScheduleDecisionTxn(s.DB, &decision)
 }
 
 func (s *Service) applyReplicationRunClaim(
@@ -94,21 +62,14 @@ func (s *Service) applyReplicationRunClaim(
 	if s == nil || s.DB == nil {
 		return fmt.Errorf("replication_run_claim_service_unavailable")
 	}
-	if decision.PolicyID == 0 || decision.ExpectedOwnerEpoch == 0 || decision.DecidedAt.IsZero() ||
-		strings.TrimSpace(decision.ClaimToken) == "" ||
-		strings.TrimSpace(decision.HolderNodeID) == "" || decision.OccurrenceAt == nil ||
-		decision.SetRuntime || decision.LastRunAt != nil ||
-		strings.TrimSpace(decision.LastStatus) != "" || strings.TrimSpace(decision.LastError) != "" {
+	if !cluster.ValidReplicationRunClaim(decision) {
 		return fmt.Errorf("replication_run_claim_invalid")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if bypassRaft {
-		return s.applyReplicationPolicyScheduleDecision(decision, true)
-	}
-	if s.Cluster == nil {
-		return fmt.Errorf("cluster_service_unavailable")
+		return s.Cluster.ApplyReplicationPolicyScheduleDecision(decision)
 	}
 	if s.Cluster.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
@@ -119,25 +80,11 @@ func (s *Service) applyReplicationRunClaim(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if s.Cluster.LocalNodeIsLeader() {
-			lastErr = s.Cluster.ApplyReplicationPolicyScheduleDecision(decision, false)
-		} else {
-			_, leaderID := s.Cluster.Raft().LeaderWithID()
-			leaderNodeID := strings.TrimSpace(string(leaderID))
-			if leaderNodeID == "" {
-				lastErr = fmt.Errorf("leader_not_available")
-			} else if s.replicationRunClaimForward != nil {
-				lastErr = s.replicationRunClaimForward(ctx, leaderNodeID, decision)
-			} else {
-				lastErr = s.forwardReplicationPolicyControlContext(
-					ctx,
-					leaderNodeID,
-					"replication-run-claim",
-					decision,
-					replicationRunClaimForwardTimeout,
-				)
-			}
-		}
+		callCtx, cancel := context.WithTimeout(ctx, replicationRunClaimForwardTimeout)
+		_, lastErr = cluster.CallLeader[clusterModels.ReplicationPolicyScheduleDecision, struct{}](
+			callCtx, s.Cluster, "replication-run-claim", decision,
+		)
+		cancel()
 		if lastErr == nil {
 			return nil
 		}
@@ -188,16 +135,6 @@ func replicationRunClaimApplicationError(err error) bool {
 }
 
 func (s *Service) deliverBackupJobRunResult(result clusterModels.BackupJobRunResult) error {
-	bypassRaft, err := s.runtimeStateBypassRaft()
-	if err != nil {
-		return err
-	}
-	if s.Cluster == nil {
-		if !bypassRaft {
-			return fmt.Errorf("cluster_service_unavailable")
-		}
-		return clusterModels.CompleteBackupJobRunTxn(s.DB, &result)
-	}
 	update := cluster.BackupJobRuntimeStateUpdate{
 		Version: cluster.BackupJobRuntimeStateVersion,
 		JobID:   result.JobID, Token: result.Token, HolderNodeID: result.HolderNodeID,
@@ -205,41 +142,17 @@ func (s *Service) deliverBackupJobRunResult(result clusterModels.BackupJobRunRes
 		LastStatus: result.LastStatus, LastError: result.LastError,
 		NextRunAt: result.NextRunAt, Encrypted: result.Encrypted,
 	}
-	err = s.Cluster.UpdateBackupJobRuntimeState(update, bypassRaft)
-	if err == nil {
-		return nil
-	}
-	if !bypassRaft && strings.Contains(strings.ToLower(err.Error()), "not_leader") {
-		return s.forwardBackupJobStateToLeader(update)
-	}
-	return err
+	return s.callLeader(context.Background(), "backup-job-state", update)
 }
 
 func (s *Service) deliverReplicationPolicyRunResult(result clusterModels.ReplicationPolicyRunResult) error {
-	bypassRaft, err := s.runtimeStateBypassRaft()
-	if err != nil {
-		return err
-	}
-	if s.Cluster == nil {
-		if !bypassRaft {
-			return fmt.Errorf("cluster_service_unavailable")
-		}
-		return clusterModels.CompleteReplicationPolicyRunTxn(s.DB, &result)
-	}
 	update := cluster.ReplicationPolicyRuntimeState{
 		ID: result.PolicyID, Token: result.Token, HolderNodeID: result.HolderNodeID,
 		ScheduleRevision: result.ScheduleRevision, OwnerEpoch: result.OwnerEpoch,
 		LastRunAt: &result.CompletedAt, LastStatus: result.LastStatus,
 		LastError: result.LastError, NextRunAt: result.NextRunAt,
 	}
-	err = s.Cluster.ProposeReplicationPolicyStateUpdate(update, bypassRaft)
-	if err == nil {
-		return nil
-	}
-	if !bypassRaft && strings.Contains(strings.ToLower(err.Error()), "not_leader") {
-		return s.forwardReplicationPolicyStateToLeader(update)
-	}
-	return err
+	return s.callLeader(context.Background(), "replication-policy-state", update)
 }
 
 func (s *Service) storeScheduledRunResult(kind string, objectID uint, token string, result any) error {
@@ -438,7 +351,7 @@ func (s *Service) recordScheduledRunOutboxFailure(
 }
 
 func (s *Service) drainScheduledRunResultOutbox() error {
-	if s == nil || s.DB == nil || !s.DB.Migrator().HasTable(&clusterModels.ScheduledRunResultOutbox{}) {
+	if s == nil || s.DB == nil {
 		return nil
 	}
 	// Completion paths and the scheduler can request a drain concurrently.
@@ -668,9 +581,6 @@ func (s *Service) acquireReplicationRunOperation(
 	if holder == "" {
 		holder = strings.TrimSpace(s.localNodeID())
 	}
-	if holder == "" && bypassRaft {
-		holder = "local"
-	}
 	if holder == "" {
 		return nil, fmt.Errorf("replication_run_holder_unavailable")
 	}
@@ -706,27 +616,10 @@ func (s *Service) startReplicationRunOperation(operation *clusterModels.Replicat
 	if err := s.requireCurrentRuntimeVoter(operation.HolderNodeID, bypassRaft); err != nil {
 		return err
 	}
-	transition := clusterModels.ReplicationRunOperationTransition{
-		PolicyID: operation.PolicyID, Token: operation.Token,
-		HolderNodeID: operation.HolderNodeID, OccurredAt: now,
-	}
-	if s.Cluster == nil {
-		if !bypassRaft {
-			return fmt.Errorf("cluster_service_unavailable")
-		}
-		return clusterModels.StartReplicationRunOperationTxn(s.DB, &transition)
-	}
-	err = s.Cluster.StartReplicationRun(transition, bypassRaft)
-	if err == nil {
-		return nil
-	}
-	if !bypassRaft && strings.Contains(strings.ToLower(err.Error()), "not_leader") {
-		return s.forwardReplicationPolicyStateToLeader(cluster.ReplicationPolicyRuntimeState{
-			Action: "start", ID: operation.PolicyID, Token: operation.Token,
-			HolderNodeID: operation.HolderNodeID, LastRunAt: &now,
-		})
-	}
-	return err
+	return s.callLeader(context.Background(), "replication-policy-state", cluster.ReplicationPolicyRuntimeState{
+		Action: "start", ID: operation.PolicyID, Token: operation.Token,
+		HolderNodeID: operation.HolderNodeID, LastRunAt: &now,
+	})
 }
 
 func (s *Service) prepareReplicationRunOperation(
@@ -769,10 +662,7 @@ func (s *Service) prepareReplicationRunOperation(
 	if holder != "" && operation.HolderNodeID != holder {
 		return nil, false, nil
 	}
-	localHolder := strings.TrimSpace(s.localNodeID())
-	if localHolder == "" {
-		localHolder = "local"
-	}
+	localHolder := s.localNodeID()
 	if operation.HolderNodeID != localHolder {
 		return nil, false, nil
 	}
@@ -831,13 +721,10 @@ func (s *Service) ReconcileReplicationRunsAfterRestart(ctx context.Context) erro
 }
 
 func (s *Service) reconcileReplicationRuns(ctx context.Context, queuedOnly bool) error {
-	if s == nil || s.DB == nil || !s.DB.Migrator().HasTable(&clusterModels.ReplicationRunOperation{}) {
+	if s == nil || s.DB == nil {
 		return nil
 	}
-	holder := strings.TrimSpace(s.localNodeID())
-	if holder == "" {
-		holder = "local"
-	}
+	holder := s.localNodeID()
 	bypassRaft, err := s.runtimeStateBypassRaft()
 	if err != nil {
 		return err

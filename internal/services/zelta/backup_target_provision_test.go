@@ -24,7 +24,7 @@ func TestReconcileBackupTargetProvisionOperationCompletesPreparedCreate(t *testi
 	database := newZeltaServiceTestDB(t,
 		&clusterModels.BackupTarget{}, &clusterModels.BackupTargetProvisionOperation{}, &clusterModels.BackupJob{},
 	)
-	cluster := &clusterService.Service{DB: database}
+	cluster := clusterService.NewClusterService(database, nil, nil).(*clusterService.Service)
 	service := newTestZeltaService(database)
 	service.Cluster = cluster
 	candidate := &clusterModels.BackupTarget{
@@ -32,7 +32,7 @@ func TestReconcileBackupTargetProvisionOperationCompletesPreparedCreate(t *testi
 		Name:       "target", SSHHost: "root@backup", SSHPort: 22, SSHKey: "private-key",
 		BackupRoot: "tank/backups", CreateBackupRoot: true, Enabled: true,
 	}
-	operation, err := cluster.PrepareBackupTargetProvisionCreate(candidate, "provision:reconcile", true)
+	operation, err := cluster.PrepareBackupTargetProvisionCreate(candidate, "provision:reconcile")
 	if err != nil {
 		t.Fatalf("prepare operation: %v", err)
 	}
@@ -77,14 +77,14 @@ func TestReconcileBackupTargetProvisionCompletesAfterCrashFollowingRemoteCreate(
 	database := newZeltaServiceTestDB(t,
 		&clusterModels.BackupTarget{}, &clusterModels.BackupTargetProvisionOperation{}, &clusterModels.BackupJob{},
 	)
-	cluster := &clusterService.Service{DB: database}
+	cluster := clusterService.NewClusterService(database, nil, nil).(*clusterService.Service)
 	service := newTestZeltaService(database)
 	service.Cluster = cluster
 	operation, err := cluster.PrepareBackupTargetProvisionCreate(&clusterModels.BackupTarget{
 		SSHHostKey: fakeSSHHostKey(),
 		Name:       "target", SSHHost: "root@backup", SSHKey: "key", BackupRoot: "tank/backups",
 		CreateBackupRoot: true, Enabled: true,
-	}, "provision:after-create-crash", true)
+	}, "provision:after-create-crash")
 	if err != nil {
 		t.Fatalf("prepare operation: %v", err)
 	}
@@ -109,14 +109,14 @@ func TestReconcileBackupTargetProvisionKeepsTransientFailurePending(t *testing.T
 	database := newZeltaServiceTestDB(t,
 		&clusterModels.BackupTarget{}, &clusterModels.BackupTargetProvisionOperation{}, &clusterModels.BackupJob{},
 	)
-	cluster := &clusterService.Service{DB: database}
+	cluster := clusterService.NewClusterService(database, nil, nil).(*clusterService.Service)
 	service := newTestZeltaService(database)
 	service.Cluster = cluster
 	operation, err := cluster.PrepareBackupTargetProvisionCreate(&clusterModels.BackupTarget{
 		SSHHostKey: fakeSSHHostKey(),
 		Name:       "target", SSHHost: "root@backup", SSHKey: "key", BackupRoot: "tank/backups",
 		CreateBackupRoot: true, Enabled: true,
-	}, "provision:pending", true)
+	}, "provision:pending")
 	if err != nil {
 		t.Fatalf("prepare operation: %v", err)
 	}

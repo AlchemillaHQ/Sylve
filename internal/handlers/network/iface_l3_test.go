@@ -16,42 +16,32 @@ import (
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/services/network"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
 
 func TestRequireLocalHostOnly(t *testing.T) {
-	local, err := utils.GetSystemHostname()
-	if err != nil {
-		t.Fatalf("GetSystemHostname: %v", err)
-	}
 	tests := []struct {
 		name       string
-		target     string
-		header     string
+		scope      string
 		statusCode int
 	}{
-		{name: "missing selection", target: "/write", statusCode: http.StatusNoContent},
-		{name: "local selection", target: "/write", header: local, statusCode: http.StatusNoContent},
-		{name: "remote selection", target: "/write", header: local + "-remote", statusCode: http.StatusConflict},
-		{name: "malformed auth", target: "/write?auth=not-hex", statusCode: http.StatusBadRequest},
+		{name: "local session", scope: "local", statusCode: http.StatusNoContent},
+		{name: "forwarded by a member", scope: "cluster", statusCode: http.StatusConflict},
 	}
 
 	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.Use(RequireLocalHostOnly())
-	router.POST("/write", func(c *gin.Context) {
-		c.Status(http.StatusNoContent)
-	})
-
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodPost, test.target, nil)
-			if test.header != "" {
-				request.Header.Set("X-Current-Hostname", test.header)
-			}
+			router := gin.New()
+			router.Use(func(c *gin.Context) {
+				c.Set("AuthScope", test.scope)
+				c.Next()
+			}, RequireLocalHostOnly())
+			router.POST("/write", func(c *gin.Context) {
+				c.Status(http.StatusNoContent)
+			})
 			response := httptest.NewRecorder()
-			router.ServeHTTP(response, request)
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/write", nil))
 
 			if response.Code != test.statusCode {
 				t.Fatalf("expected status %d, got %d: %s", test.statusCode, response.Code, response.Body.String())

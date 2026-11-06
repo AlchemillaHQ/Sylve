@@ -15,6 +15,7 @@ import (
 
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
+	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 func TestParseClusterAddressFlagsRequiresAcknowledgement(t *testing.T) {
@@ -30,26 +31,18 @@ func TestParseClusterAddressFlagsRequiresAcknowledgement(t *testing.T) {
 }
 
 func TestParseGuestIdentityReclaimFlags(t *testing.T) {
-	guestID, force, confirmation, err := parseGuestIdentityReclaimFlags([]string{"--id", "505"})
-	if err != nil || guestID != 505 || force || confirmation != "" {
-		t.Fatalf("guestID=%d force=%v confirmation=%q err=%v", guestID, force, confirmation, err)
-	}
-	guestID, force, confirmation, err = parseGuestIdentityReclaimFlags([]string{
-		"--force", "--confirm", "506", "--id", "506",
-	})
-	if err != nil || guestID != 506 || !force || confirmation != "506" {
-		t.Fatalf("guestID=%d force=%v confirmation=%q err=%v", guestID, force, confirmation, err)
+	guestID, err := parseGuestIdentityReclaimFlags([]string{"--id", "505"})
+	if err != nil || guestID != 505 {
+		t.Fatalf("guestID=%d err=%v", guestID, err)
 	}
 	invalid := [][]string{
 		{},
 		{"--id", "0"},
 		{"--id", "10000"},
 		{"--id", "505", "--force"},
-		{"--id", "505", "--force", "--confirm", "506"},
-		{"--id", "505", "--confirm", "505"},
 	}
 	for _, args := range invalid {
-		if _, _, _, err := parseGuestIdentityReclaimFlags(args); err == nil {
+		if _, err := parseGuestIdentityReclaimFlags(args); err == nil {
 			t.Fatalf("expected validation error for %v", args)
 		}
 	}
@@ -83,21 +76,10 @@ func TestDatacenterClusterCommandsUseCorrectMutationAdmission(t *testing.T) {
 }
 
 func TestGuestIdentityReclaimSocketRejectsUnsafeRequests(t *testing.T) {
-	tests := []consoleprotocol.DatacenterClusterGuestIDReclaimPayload{
-		{},
-		{GuestID: 10000},
-		{GuestID: 505, Force: true},
-		{GuestID: 505, Force: true, Confirmation: "506"},
-		{GuestID: 505, Confirmation: "505"},
-	}
-	for _, request := range tests {
-		payload, err := json.Marshal(request)
-		if err != nil {
-			t.Fatal(err)
-		}
-		response := processDatacenterClusterGuestIDReclaimSocketRequest(nil, payload)
+	for _, payload := range []string{`{}`, `{"guestId":10000}`, `{"guestId":505,"force":true}`} {
+		response := processDatacenterClusterGuestIDReclaimSocketRequest(nil, json.RawMessage(payload))
 		if !strings.Contains(response.Error, "invalid_datacenter_cluster_guest_id_reclaim_request") {
-			t.Fatalf("request=%+v error=%q", request, response.Error)
+			t.Fatalf("payload=%s error=%q", payload, response.Error)
 		}
 	}
 }
@@ -140,7 +122,7 @@ func TestFormatSylveBuild(t *testing.T) {
 }
 
 func TestAddressSocketOperationsRejectMissingAcknowledgement(t *testing.T) {
-	service := clusterService.NewClusterService(nil, nil, nil).(*clusterService.Service)
+	service := clusterService.NewClusterService(testutil.NewSQLiteTestDB(t), nil, nil).(*clusterService.Service)
 	if err := service.ReopenMutations(); err != nil {
 		t.Fatal(err)
 	}

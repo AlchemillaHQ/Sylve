@@ -15,27 +15,19 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
 
-func TestMigrateLegacyPortsRewritesRaftAndSSHPorts(t *testing.T) {
+func TestMigrateLegacyPortsOnlyMovesTheLocalRaftPort(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &clusterModels.ClusterSSHIdentity{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
-	clusterRecord := clusterModels.Cluster{
-		Enabled:  false,
-		Key:      "",
-		RaftIP:   "",
-		RaftPort: 7000,
-	}
+	clusterRecord := clusterModels.Cluster{RaftPort: 7000}
 	if err := db.Create(&clusterRecord).Error; err != nil {
 		t.Fatalf("failed to seed cluster record: %v", err)
 	}
-
-	identities := []clusterModels.ClusterSSHIdentity{
-		{NodeUUID: "node-a", SSHUser: "root", SSHHost: "10.0.0.10", SSHPort: 0, PublicKey: "pk-a"},
-		{NodeUUID: "node-b", SSHUser: "root", SSHHost: "10.0.0.11", SSHPort: legacyClusterEmbeddedSSHPort, PublicKey: "pk-b"},
-		{NodeUUID: "node-c", SSHUser: "root", SSHHost: "10.0.0.12", SSHPort: 2222, PublicKey: "pk-c"},
+	legacy := clusterModels.ClusterSSHIdentity{
+		NodeUUID: "node-b", SSHUser: "root", SSHHost: "10.0.0.11", SSHPort: 8122, PublicKey: "pk-b",
 	}
-	if err := db.Create(&identities).Error; err != nil {
-		t.Fatalf("failed to seed cluster ssh identities: %v", err)
+	if err := db.Create(&legacy).Error; err != nil {
+		t.Fatalf("failed to seed cluster ssh identity: %v", err)
 	}
 
 	if err := s.MigrateLegacyPorts(); err != nil {
@@ -49,34 +41,18 @@ func TestMigrateLegacyPortsRewritesRaftAndSSHPorts(t *testing.T) {
 	if updatedCluster.RaftPort != ClusterRaftPort {
 		t.Fatalf("expected raft port %d, got %d", ClusterRaftPort, updatedCluster.RaftPort)
 	}
-
-	var migrated []clusterModels.ClusterSSHIdentity
-	if err := db.Order("node_uuid ASC").Find(&migrated).Error; err != nil {
-		t.Fatalf("failed to fetch migrated cluster ssh identities: %v", err)
+	var identity clusterModels.ClusterSSHIdentity
+	if err := db.First(&identity, "node_uuid = ?", "node-b").Error; err != nil {
+		t.Fatal(err)
 	}
-	if len(migrated) != 3 {
-		t.Fatalf("expected 3 migrated identities, got %d", len(migrated))
-	}
-
-	for _, identity := range migrated {
-		switch identity.NodeUUID {
-		case "node-a", "node-b":
-			if identity.SSHPort != ClusterEmbeddedSSHPort {
-				t.Fatalf("expected %s SSH port to be migrated to %d, got %d", identity.NodeUUID, ClusterEmbeddedSSHPort, identity.SSHPort)
-			}
-		case "node-c":
-			if identity.SSHPort != 2222 {
-				t.Fatalf("expected non-legacy SSH port to remain 2222, got %d", identity.SSHPort)
-			}
-		default:
-			t.Fatalf("unexpected node UUID in migrated identities: %s", identity.NodeUUID)
-		}
+	if identity.SSHPort != 8122 {
+		t.Fatalf("replicated identity rewritten locally: port %d", identity.SSHPort)
 	}
 }
 
 func TestMigrateLegacyPortsFailsWhenClusterRecordMissing(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &clusterModels.ClusterSSHIdentity{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	err := s.MigrateLegacyPorts()
 	if err == nil {

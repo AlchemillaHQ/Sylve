@@ -17,7 +17,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -52,8 +51,9 @@ func newFileExplorerUploadRouterWithPolicy(
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
-		userID, _ := strconv.ParseUint(c.GetHeader("X-Test-User-ID"), 10, 64)
-		c.Set("UserID", uint(userID))
+		if owner := c.GetHeader("X-Test-Owner"); owner != "" {
+			c.Set("Owner", owner)
+		}
 		c.Next()
 	})
 	router.POST("/upload", newFileExplorerUploadHandler(service, policy, semaphore.NewWeighted(1)))
@@ -87,20 +87,20 @@ func newMultipartUploadRequest(t *testing.T, destination, filename string, conte
 		&body,
 	)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
-	request.Header.Set("X-Test-User-ID", "7")
+	request.Header.Set("X-Test-Owner", "user:7")
 	return request
 }
 
 func TestUploadFileUsesServerIssuedIdentityForRevert(t *testing.T) {
+	const owner = "node:node-1:sylve:admin"
 	destination := t.TempDir()
 	service := newFileExplorerSystemService(t)
 	router := newFileExplorerUploadRouter(service)
 
 	uploadResponse := httptest.NewRecorder()
-	router.ServeHTTP(
-		uploadResponse,
-		newMultipartUploadRequest(t, destination, "installer.iso", []byte("image-data")),
-	)
+	uploadRequest := newMultipartUploadRequest(t, destination, "installer.iso", []byte("image-data"))
+	uploadRequest.Header.Set("X-Test-Owner", owner)
+	router.ServeHTTP(uploadResponse, uploadRequest)
 	if uploadResponse.Code != http.StatusCreated {
 		t.Fatalf("upload status=%d body=%s", uploadResponse.Code, uploadResponse.Body.String())
 	}
@@ -125,10 +125,21 @@ func TestUploadFileUsesServerIssuedIdentityForRevert(t *testing.T) {
 		t.Fatalf("uploaded mode=%#o want=0600", info.Mode().Perm())
 	}
 
+	for _, other := range []string{"user:1", "node:node-2:sylve:admin"} {
+		foreignResponse := httptest.NewRecorder()
+		foreignRequest := httptest.NewRequest(http.MethodDelete, "/upload", bytes.NewReader(uploadResponse.Body.Bytes()))
+		foreignRequest.Header.Set("Content-Type", "text/plain;charset=UTF-8")
+		foreignRequest.Header.Set("X-Test-Owner", other)
+		router.ServeHTTP(foreignResponse, foreignRequest)
+		if foreignResponse.Code != http.StatusNotFound {
+			t.Fatalf("%s delete status=%d body=%s", other, foreignResponse.Code, foreignResponse.Body.String())
+		}
+	}
+
 	deleteResponse := httptest.NewRecorder()
 	deleteRequest := httptest.NewRequest(http.MethodDelete, "/upload", bytes.NewReader(uploadResponse.Body.Bytes()))
 	deleteRequest.Header.Set("Content-Type", "text/plain;charset=UTF-8")
-	deleteRequest.Header.Set("X-Test-User-ID", "7")
+	deleteRequest.Header.Set("X-Test-Owner", owner)
 	router.ServeHTTP(deleteResponse, deleteRequest)
 	if deleteResponse.Code != http.StatusOK {
 		t.Fatalf("delete status=%d body=%s", deleteResponse.Code, deleteResponse.Body.String())
@@ -154,7 +165,7 @@ func TestDeleteUploadRejectsCallerProvidedPath(t *testing.T) {
 		bytes.NewBufferString(fmt.Sprintf(`{"data":{"path":%q}}`, target)),
 	)
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-Test-User-ID", "7")
+	request.Header.Set("X-Test-Owner", "user:7")
 	router.ServeHTTP(response, request)
 
 	if response.Code != http.StatusBadRequest {
@@ -173,7 +184,7 @@ func TestDeleteUploadRejectsOversizedRequest(t *testing.T) {
 		`"}}`
 	request := httptest.NewRequest(http.MethodDelete, "/upload", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-Test-User-ID", "7")
+	request.Header.Set("X-Test-Owner", "user:7")
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
@@ -198,7 +209,7 @@ func TestDeleteUploadReturnsConflictForReplacedFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte("uploaded"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	uploadID, err := service.RegisterFileExplorerUpload(path, 7)
+	uploadID, err := service.RegisterFileExplorerUpload(path, "user:7")
 	if err != nil {
 		t.Fatalf("register upload: %v", err)
 	}
@@ -216,7 +227,7 @@ func TestDeleteUploadReturnsConflictForReplacedFile(t *testing.T) {
 		strings.NewReader(fmt.Sprintf(`{"data":{"uploadId":%q}}`, uploadID)),
 	)
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-Test-User-ID", "7")
+	request.Header.Set("X-Test-Owner", "user:7")
 	router.ServeHTTP(response, request)
 
 	if response.Code != http.StatusConflict {
@@ -318,7 +329,7 @@ func TestUploadFileValidatesDestinationBeforeMultipartParsing(t *testing.T) {
 				"/upload?path="+url.QueryEscape(test.destination),
 				bytes.NewBufferString("not multipart"),
 			)
-			request.Header.Set("X-Test-User-ID", "7")
+			request.Header.Set("X-Test-Owner", "user:7")
 			router.ServeHTTP(response, request)
 			if response.Code != test.status {
 				t.Fatalf("status=%d want=%d body=%s", response.Code, test.status, response.Body.String())
@@ -443,7 +454,7 @@ func TestUploadFileRejectsMultipleFilePartsAndCleansPartial(t *testing.T) {
 		&body,
 	)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
-	request.Header.Set("X-Test-User-ID", "7")
+	request.Header.Set("X-Test-Owner", "user:7")
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
@@ -510,7 +521,7 @@ func TestUploadFileRejectsMalformedMultipartAndCleansPartial(t *testing.T) {
 		strings.NewReader(body),
 	)
 	request.Header.Set("Content-Type", "multipart/form-data; boundary=broken")
-	request.Header.Set("X-Test-User-ID", "7")
+	request.Header.Set("X-Test-Owner", "user:7")
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
@@ -568,7 +579,7 @@ func TestUploadFileReturnsRetryableCapacityErrorWithoutReadingQueuedBody(t *test
 		blockedBody,
 	)
 	firstRequest.Header.Set("Content-Type", "multipart/form-data; boundary=blocked")
-	firstRequest.Header.Set("X-Test-User-ID", "7")
+	firstRequest.Header.Set("X-Test-Owner", "user:7")
 	firstResponse := httptest.NewRecorder()
 	firstDone := make(chan struct{})
 	go func() {
@@ -589,7 +600,7 @@ func TestUploadFileReturnsRetryableCapacityErrorWithoutReadingQueuedBody(t *test
 		secondBody,
 	)
 	secondRequest.Header.Set("Content-Type", "multipart/form-data; boundary=second")
-	secondRequest.Header.Set("X-Test-User-ID", "7")
+	secondRequest.Header.Set("X-Test-Owner", "user:7")
 	secondResponse := httptest.NewRecorder()
 	router.ServeHTTP(secondResponse, secondRequest)
 
@@ -635,7 +646,7 @@ func TestUploadFileCancellationRemovesDestinationPartial(t *testing.T) {
 	ctx, cancel := context.WithCancel(request.Context())
 	request = request.WithContext(ctx)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
-	request.Header.Set("X-Test-User-ID", "7")
+	request.Header.Set("X-Test-Owner", "user:7")
 
 	prefixWritten := make(chan struct{})
 	releaseWriter := make(chan struct{})

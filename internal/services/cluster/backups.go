@@ -11,11 +11,9 @@ package cluster
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
-	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -24,7 +22,6 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/remoteexec"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/raft"
 	"github.com/robfig/cron/v3"
 	"gorm.io/gorm"
@@ -163,7 +160,7 @@ func (s *Service) GetBackupTargetByID(id uint) (*clusterModels.BackupTarget, err
 	return &target, nil
 }
 
-func (s *Service) ProposeBackupTargetCreate(input clusterServiceInterfaces.BackupTargetReq, bypassRaft bool, hostKey string) error {
+func (s *Service) ProposeBackupTargetCreate(input clusterServiceInterfaces.BackupTargetReq, hostKey string) error {
 	resolvedSSHKey, err := resolveSSHKeyMaterial(input.SSHKey, input.SSHKeyPath)
 	if err != nil {
 		return err
@@ -174,15 +171,15 @@ func (s *Service) ProposeBackupTargetCreate(input clusterServiceInterfaces.Backu
 		return err
 	}
 	candidate.SSHHostKey = hostKey
-	_, err = s.ProposeBackupTargetCreateCandidate(candidate, bypassRaft)
+	_, err = s.ProposeBackupTargetCreateCandidate(candidate)
 	return err
 }
 
-func (s *Service) ProposeBackupTargetUpdate(input clusterServiceInterfaces.BackupTargetReq, bypassRaft bool) error {
+func (s *Service) ProposeBackupTargetUpdate(input clusterServiceInterfaces.BackupTargetReq) error {
 	if input.ID == 0 {
 		return fmt.Errorf("invalid_target_id")
 	}
-	if !bypassRaft && s.Raft() == nil {
+	if !s.Standalone() && s.Raft() == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 	existing, err := s.GetBackupTargetByID(input.ID)
@@ -193,34 +190,16 @@ func (s *Service) ProposeBackupTargetUpdate(input clusterServiceInterfaces.Backu
 	if err != nil {
 		return err
 	}
-	return s.ProposeBackupTargetUpdatePlan(plan, bypassRaft)
+	return s.ProposeBackupTargetUpdatePlan(plan)
 }
 
-func (s *Service) ProposeBackupTargetDelete(id uint, bypassRaft bool) error {
+func (s *Service) ProposeBackupTargetDelete(id uint) error {
 	if id == 0 {
 		return fmt.Errorf("invalid_target_id")
 	}
-
-	if bypassRaft {
-		return clusterModels.DeleteBackupTargetTxn(s.DB, id)
-	}
-
-	if s.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-
-	data, err := json.Marshal(struct {
+	return s.apply("backup_target", "delete_v2", struct {
 		ID uint `json:"id"`
 	}{ID: id})
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_backup_target_delete_payload: %w", err)
-	}
-
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "backup_target",
-		Action: "delete_v2",
-		Data:   data,
-	})
 }
 
 func (s *Service) ListBackupJobs(targetID uint) ([]clusterModels.BackupJob, error) {
@@ -334,15 +313,12 @@ func (s *Service) GetBackupJobByID(id uint) (*clusterModels.BackupJob, error) {
 	return &job, nil
 }
 
-func (s *Service) UpdateBackupJobRuntimeState(update BackupJobRuntimeStateUpdate, bypassRaft bool) error {
+func (s *Service) UpdateBackupJobRuntimeState(update BackupJobRuntimeStateUpdate) error {
 	if update.Version > BackupJobRuntimeStateVersion {
 		return fmt.Errorf("unsupported_backup_job_runtime_state_version")
 	}
 	if update.JobID == 0 {
 		return fmt.Errorf("invalid_job_id")
-	}
-	if err := s.requireRuntimeWriteAuthority(bypassRaft); err != nil {
-		return err
 	}
 	if strings.TrimSpace(update.Token) != "" {
 		if update.LastRunAt == nil {
@@ -353,72 +329,22 @@ func (s *Service) UpdateBackupJobRuntimeState(update BackupJobRuntimeStateUpdate
 			ScheduleRevision: update.ScheduleRevision, CompletedAt: *update.LastRunAt,
 			LastStatus: update.LastStatus, LastError: update.LastError,
 			NextRunAt: update.NextRunAt, Encrypted: update.Encrypted,
-		}, bypassRaft)
-	}
-	if update.NextRunOnly {
-		if bypassRaft {
-			return s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", update.JobID).Update("next_run_at", update.NextRunAt).Error
-		}
-		if s.Raft() == nil {
-			return fmt.Errorf("raft_not_initialized")
-		}
-		if s.Raft().State() != raft.Leader {
-			return fmt.Errorf("not_leader")
-		}
-
-		data, err := json.Marshal(update)
-		if err != nil {
-			return fmt.Errorf("failed_to_marshal_backup_job_state_payload: %w", err)
-		}
-		return s.applyRaftCommand(clusterModels.Command{
-			Type:   "backup_job_state",
-			Action: "update",
-			Data:   data,
 		})
 	}
-
-	status := strings.TrimSpace(strings.ToLower(update.LastStatus))
-	if status == "" {
-		return fmt.Errorf("last_status_required")
-	}
-	if status != "success" && status != "failed" && status != "running" && status != "blocked" {
-		return fmt.Errorf("invalid_last_status")
-	}
-	update.LastStatus = status
-
-	if bypassRaft {
-		updates := map[string]any{
-			"last_run_at": update.LastRunAt,
-			"last_status": update.LastStatus,
-			"last_error":  strings.TrimSpace(update.LastError),
-			"next_run_at": update.NextRunAt,
+	if !update.NextRunOnly {
+		status := strings.TrimSpace(strings.ToLower(update.LastStatus))
+		if status == "" {
+			return fmt.Errorf("last_status_required")
 		}
-		if update.Encrypted != nil {
-			updates["encrypted"] = *update.Encrypted
+		if status != "success" && status != "failed" && status != "running" && status != "blocked" {
+			return fmt.Errorf("invalid_last_status")
 		}
-		return s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", update.JobID).Updates(updates).Error
+		update.LastStatus = status
 	}
-
-	if s.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-	if s.Raft().State() != raft.Leader {
-		return fmt.Errorf("not_leader")
-	}
-
-	data, err := json.Marshal(update)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_backup_job_state_payload: %w", err)
-	}
-
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "backup_job_state",
-		Action: "update",
-		Data:   data,
-	})
+	return s.apply("backup_job_state", "update", update)
 }
 
-func (s *Service) SyncBackupJobFriendlySourceByGuest(update BackupJobFriendlySourceUpdate, bypassRaft bool) error {
+func (s *Service) SyncBackupJobFriendlySourceByGuest(update BackupJobFriendlySourceUpdate) error {
 	update.GuestType = strings.TrimSpace(strings.ToLower(update.GuestType))
 	update.FriendlySrc = strings.TrimSpace(update.FriendlySrc)
 	if !clusterModels.ValidReplicationGuestType(update.GuestType) {
@@ -438,45 +364,18 @@ func (s *Service) SyncBackupJobFriendlySourceByGuest(update BackupJobFriendlySou
 	if len(jobIDs) == 0 {
 		return nil
 	}
-
-	if bypassRaft {
-		return s.DB.Model(&clusterModels.BackupJob{}).
-			Where("id IN ?", jobIDs).
-			Update("friendly_src", update.FriendlySrc).Error
-	}
-
-	if s.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-	if s.Raft().State() != raft.Leader {
-		return fmt.Errorf("not_leader")
-	}
-
-	data, err := json.Marshal(backupJobFriendlySourceCommandPayload{
+	// The job IDs come from this node's state, so a follower leaves the
+	// whole update to the leader.
+	return s.apply("backup_job_friendly_source", "update", backupJobFriendlySourceCommandPayload{
 		JobIDs:      jobIDs,
 		FriendlySrc: update.FriendlySrc,
-	})
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_backup_job_friendly_source_payload: %w", err)
-	}
-
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "backup_job_friendly_source",
-		Action: "update",
-		Data:   data,
 	})
 }
 
 func (s *Service) SyncBackupJobFriendlySourceByGuestClusterWide(update BackupJobFriendlySourceUpdate) error {
-	err := s.SyncBackupJobFriendlySourceByGuest(update, s.Standalone())
-	if err == nil {
-		return nil
-	}
-
-	if s.Raft() != nil && strings.Contains(strings.ToLower(err.Error()), "not_leader") {
-		return s.forwardBackupJobFriendlySourceToLeader(update)
-	}
-
+	_, err := CallLeader[BackupJobFriendlySourceUpdate, struct{}](
+		context.Background(), s, "backup-job-friendly-source", update,
+	)
 	return err
 }
 
@@ -526,114 +425,15 @@ func (s *Service) matchBackupJobIDsForGuest(guestType string, guestID uint) ([]u
 	return jobIDs, nil
 }
 
-func (s *Service) forwardBackupJobFriendlySourceToLeader(update BackupJobFriendlySourceUpdate) error {
-	if s == nil {
-		return fmt.Errorf("cluster_service_unavailable")
-	}
-	if s.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-
-	_, leaderID := s.Raft().LeaderWithID()
-	leaderNodeID := strings.TrimSpace(string(leaderID))
-	if leaderNodeID == "" {
-		return fmt.Errorf("leader_unknown")
-	}
-
-	targetAPI, err := s.resolveClusterNodeAPIByNodeID(leaderNodeID)
-	if err != nil {
-		return err
-	}
-
-	hostname, err := utils.GetSystemHostname()
-	if err != nil || strings.TrimSpace(hostname) == "" {
-		hostname = "cluster"
-	}
-
-	if s.AuthService == nil {
-		return fmt.Errorf("auth_service_unavailable")
-	}
-
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(hostname)
-	if err != nil {
-		return fmt.Errorf("create_cluster_token_failed: %w", err)
-	}
-
-	body, err := json.Marshal(update)
-	if err != nil {
-		return fmt.Errorf("marshal_backup_job_friendly_source_payload_failed: %w", err)
-	}
-
-	_, statusCode, err := utils.HTTPPostJSONWithTimeout(
-		fmt.Sprintf("https://%s/api/intra-cluster/backup-job-friendly-source", targetAPI),
-		body,
-		map[string]string{
-			"Accept":          "application/json",
-			"Content-Type":    "application/json",
-			"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-		},
-		5*time.Second,
-	)
-	if err != nil {
-		return fmt.Errorf("forward_backup_job_friendly_source_failed_status_%d: %w", statusCode, err)
-	}
-
-	return nil
-}
-
-func (s *Service) resolveClusterNodeAPIByNodeID(nodeID string) (string, error) {
-	nodeID = strings.TrimSpace(nodeID)
-	if nodeID == "" {
-		return "", fmt.Errorf("cluster_node_not_found")
-	}
-
-	nodes, err := s.Nodes()
-	if err == nil {
-		for _, node := range nodes {
-			if strings.TrimSpace(node.NodeUUID) == nodeID {
-				api := strings.TrimSpace(node.API)
-				if api != "" {
-					return api, nil
-				}
-			}
-		}
-	}
-
-	if s.Raft() != nil {
-		fut := s.Raft().GetConfiguration()
-		if err := fut.Error(); err == nil {
-			for _, server := range fut.Configuration().Servers {
-				if strings.TrimSpace(string(server.ID)) != nodeID {
-					continue
-				}
-
-				host, _, splitErr := net.SplitHostPort(string(server.Address))
-				if splitErr != nil {
-					host = string(server.Address)
-				}
-
-				if strings.TrimSpace(host) == "" {
-					continue
-				}
-
-				return net.JoinHostPort(strings.TrimSpace(host), strconv.Itoa(ClusterEmbeddedHTTPSPort)), nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("cluster_node_not_found")
-}
-
-func (s *Service) ProposeBackupJobCreate(input clusterServiceInterfaces.BackupJobReq, bypassRaft bool) error {
-	return s.ProposeBackupJobCreateContext(context.Background(), input, bypassRaft)
+func (s *Service) ProposeBackupJobCreate(input clusterServiceInterfaces.BackupJobReq) error {
+	return s.ProposeBackupJobCreateContext(context.Background(), input)
 }
 
 func (s *Service) ProposeBackupJobCreateContext(
 	ctx context.Context,
 	input clusterServiceInterfaces.BackupJobReq,
-	bypassRaft bool,
 ) error {
-	if !bypassRaft {
+	if !s.Standalone() {
 		s.clusterJoinMu.Lock()
 		defer s.clusterJoinMu.Unlock()
 	}
@@ -643,7 +443,7 @@ func (s *Service) ProposeBackupJobCreateContext(
 		return fmt.Errorf("new_backup_job_id_failed: %w", err)
 	}
 
-	job, fence, err := s.buildBackupJob(ctx, id, input, bypassRaft, BackupJobPlacementAuthorization{})
+	job, fence, err := s.buildBackupJob(ctx, id, input, BackupJobPlacementAuthorization{})
 	if err != nil {
 		return err
 	}
@@ -652,38 +452,16 @@ func (s *Service) ProposeBackupJobCreateContext(
 		return fmt.Errorf("backup_target_readiness_job_receipt_missing")
 	}
 
-	if bypassRaft {
-		return s.DB.Transaction(func(tx *gorm.DB) error {
-			if err := clusterModels.ApplyBackupTargetNodeReadinessForJobTxn(tx, job, targetReadiness); err != nil {
-				return err
-			}
-			return clusterModels.InsertBackupJobTxn(tx, job)
-		})
-	}
-
-	if s.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-
-	data, err := json.Marshal(clusterModels.BackupJobCommandPayload{
+	return s.apply("backup_job", "create", clusterModels.BackupJobCommandPayload{
 		Job:             *job,
 		PlacementFence:  fence,
 		TargetReadiness: targetReadiness,
 	})
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_backup_job_payload: %w", err)
-	}
-
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "backup_job",
-		Action: "create",
-		Data:   data,
-	})
 }
 
-func (s *Service) ProposeBackupJobUpdate(id uint, input clusterServiceInterfaces.BackupJobReq, bypassRaft bool) error {
+func (s *Service) ProposeBackupJobUpdate(id uint, input clusterServiceInterfaces.BackupJobReq) error {
 	return s.ProposeBackupJobUpdateContext(
-		context.Background(), id, input, bypassRaft, BackupJobPlacementAuthorization{},
+		context.Background(), id, input, BackupJobPlacementAuthorization{},
 	)
 }
 
@@ -691,10 +469,9 @@ func (s *Service) ProposeBackupJobUpdateContext(
 	ctx context.Context,
 	id uint,
 	input clusterServiceInterfaces.BackupJobReq,
-	bypassRaft bool,
 	authorization BackupJobPlacementAuthorization,
 ) error {
-	if !bypassRaft {
+	if !s.Standalone() {
 		s.clusterJoinMu.Lock()
 		defer s.clusterJoinMu.Unlock()
 	}
@@ -740,7 +517,7 @@ func (s *Service) ProposeBackupJobUpdateContext(
 	if err != nil {
 		return err
 	}
-	job, fence, err := s.buildBackupJob(ctx, id, input, bypassRaft, authorization)
+	job, fence, err := s.buildBackupJob(ctx, id, input, authorization)
 	if err != nil {
 		return err
 	}
@@ -760,68 +537,27 @@ func (s *Service) ProposeBackupJobUpdateContext(
 		}
 	}
 
-	if bypassRaft {
-		return s.DB.Transaction(func(tx *gorm.DB) error {
-			if err := clusterModels.ApplyBackupTargetNodeReadinessForJobTxn(tx, job, targetReadiness); err != nil {
-				return err
-			}
-			return clusterModels.ApplyBackupJobUpdateTxn(tx, job)
-		})
-	}
-
-	if s.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-
-	data, err := json.Marshal(clusterModels.BackupJobCommandPayload{
+	return s.apply("backup_job", "update", clusterModels.BackupJobCommandPayload{
 		Job:                    *job,
 		PlacementFence:         fence,
 		PreviousPlacementFence: previousFence,
 		TargetReadiness:        targetReadiness,
 	})
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_backup_job_payload: %w", err)
-	}
-
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "backup_job",
-		Action: "update",
-		Data:   data,
-	})
 }
 
-func (s *Service) ProposeBackupJobDelete(id uint, bypassRaft bool) error {
+func (s *Service) ProposeBackupJobDelete(id uint) error {
 	if id == 0 {
 		return fmt.Errorf("invalid_job_id")
 	}
-
-	if bypassRaft {
-		return clusterModels.DeleteBackupJobTxn(s.DB, id)
-	}
-
-	if s.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-
-	data, err := json.Marshal(struct {
+	return s.apply("backup_job", "delete", struct {
 		ID uint `json:"id"`
 	}{ID: id})
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_backup_job_delete_payload: %w", err)
-	}
-
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "backup_job",
-		Action: "delete",
-		Data:   data,
-	})
 }
 
 func (s *Service) buildBackupJob(
 	ctx context.Context,
 	id uint,
 	input clusterServiceInterfaces.BackupJobReq,
-	bypassRaft bool,
 	authorization BackupJobPlacementAuthorization,
 ) (*clusterModels.BackupJob, *clusterModels.BackupJobPlacementFence, error) {
 	if ctx == nil {
@@ -941,7 +677,7 @@ func (s *Service) buildBackupJob(
 	}
 	*dataset = parsedDataset.String()
 
-	validation, placementFence, err := s.validateBackupJobOnRunner(ctx, job, bypassRaft, authorization)
+	validation, placementFence, err := s.validateBackupJobOnRunner(ctx, job, authorization)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1100,33 +836,15 @@ func canonicalBackupTargetInput(
 }
 
 func (s *Service) applyRaftCommand(cmd clusterModels.Command) error {
-	s.replicatedStateMu.RLock()
-	defer s.replicatedStateMu.RUnlock()
-	return s.applyRaftCommandUnlocked(cmd)
-}
-
-func (s *Service) applyRaftCommandUnlocked(cmd clusterModels.Command) error {
-	if s == nil || s.Raft() == nil {
+	r := s.Raft()
+	if r == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
 	if err := clusterModels.PrepareCommand(&cmd, time.Now()); err != nil {
 		return fmt.Errorf("failed_to_prepare_command: %w", err)
 	}
-	payload, err := json.Marshal(cmd)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_command: %w", err)
-	}
-
-	applyFuture := s.Raft().Apply(payload, raftApplyTimeout)
-	if err := applyFuture.Error(); err != nil {
-		return fmt.Errorf("raft_apply_failed: %w", err)
-	}
-
-	if resp, ok := applyFuture.Response().(error); ok && resp != nil {
-		return fmt.Errorf("fsm_apply_failed: %w", resp)
-	}
-
-	return nil
+	_, err := s.raftApply(r, cmd)
+	return err
 }
 
 // backupRunnerNodeExists is retained for replication-policy compatibility.
@@ -1141,8 +859,8 @@ func (s *Service) backupRunnerNodeExists(nodeID string) bool {
 	if s.Raft() != nil {
 		return s.RequireCurrentRaftVoter(nodeID) == nil
 	}
-	bypassRaft, err := s.RuntimeStateBypassRaft()
-	if err != nil || !bypassRaft {
+	standalone, err := s.RuntimeStateBypassRaft()
+	if err != nil || !standalone {
 		return false
 	}
 	detail := s.Detail()

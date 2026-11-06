@@ -13,6 +13,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
 
 func TestMutationGateStartsClosed(t *testing.T) {
@@ -152,4 +154,63 @@ func TestMutationGateCanceledDrainReopensAfterActiveWork(t *testing.T) {
 		t.Fatalf("gate did not reopen after drain: %v", err)
 	}
 	secondRelease()
+}
+
+func TestEnterMutationWhenReadyWaits(t *testing.T) {
+	service := &Service{DB: newClusterServiceTestDB(t), mutationGate: NewMutationGate()}
+	if err := service.DB.Create(&clusterModels.Cluster{Enabled: true, RaftIP: "192.0.2.1"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	admitted := make(chan error, 1)
+	go func() {
+		_, release, err := service.EnterMutationWhenReady(context.Background())
+		if err == nil {
+			release()
+		}
+		admitted <- err
+	}()
+	select {
+	case err := <-admitted:
+		t.Fatalf("admitted through a closed gate: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if err := service.ReopenMutations(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-admitted:
+		t.Fatalf("admitted while clustered without Raft: %v", err)
+	case <-time.After(1500 * time.Millisecond):
+	}
+	if err := service.DB.Model(&clusterModels.Cluster{}).Where("1 = 1").Update("enabled", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-admitted:
+		if err != nil {
+			t.Fatalf("after the gate opened: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("still waiting after the gate opened")
+	}
+
+	service.mutationGate.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, _, err := service.EnterMutationWhenReady(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("fenced until the context ended: %v", err)
+	}
+
+	voter := newStandaloneTestService(t)
+	voter.NodeID = "node-a"
+	startSoleVoter(t, voter, "node-a")
+	if _, release, err := voter.EnterReadyMutation(context.Background()); err != nil {
+		t.Fatalf("a voter: %v", err)
+	} else {
+		release()
+	}
+	voter.NodeID = "node-b"
+	if _, _, err := voter.EnterReadyMutation(context.Background()); err == nil {
+		t.Fatal("ready on a node that doesn't vote")
+	}
 }

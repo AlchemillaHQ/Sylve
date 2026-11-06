@@ -152,7 +152,7 @@ func (s *Service) requireOOBGuestRestoreAvailable(
 		destination.Kind,
 		destination.GuestID,
 	); !reserved {
-		if s == nil || s.Cluster == nil {
+		if s == nil {
 			return fmt.Errorf("guest_identity_inventory_scan_failed: cluster_service_not_initialized")
 		}
 		if err := s.Cluster.RequireGuestIDAvailable(ctx, destination.GuestID); err != nil {
@@ -717,6 +717,7 @@ func (s *Service) handleRestoreFromTargetQueue(
 	ctx context.Context,
 	payload restoreFromTargetPayload,
 ) (retErr error) {
+	s.setTargetRestoreToken(&s.queuedTargetRestoreTokens, payload.OperationToken, false)
 	admittedCtx, release, err := s.enterMutation(ctx)
 	if err != nil {
 		return err
@@ -1671,7 +1672,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 
 	restoreExists, verifyErr := s.localDatasetExists(ctx, restorePath)
 	if verifyErr != nil || !restoreExists {
-		restoreErr = fmt.Errorf("zelta_recv_dataset_missing: zelta exited successfully but '%s' does not exist", restorePath)
+		restoreErr = zeltaRecvMissingError(restorePath, output)
 		restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, restoreErr)
 		if ownsEvent {
 			s.finalizeRestoreEvent(&event, restoreErr, output)

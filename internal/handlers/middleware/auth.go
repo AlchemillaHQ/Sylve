@@ -11,13 +11,12 @@ package middleware
 import (
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
-	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	authSvc "github.com/alchemillahq/sylve/internal/services/auth"
+	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
@@ -68,17 +67,6 @@ func abortAuthentication(c *gin.Context, status int, code string) {
 	})
 }
 
-func clusterTokenErrorCode(err error) string {
-	switch {
-	case errors.Is(err, authSvc.ErrClusterTokenExpired):
-		return "cluster_token_expired"
-	case errors.Is(err, authSvc.ErrClusterTokenFutureIssued):
-		return "cluster_token_future_issued"
-	default:
-		return "invalid_cluster_token"
-	}
-}
-
 func singleHeaderValue(header http.Header, name string) (string, bool, bool) {
 	values := header.Values(name)
 	if len(values) == 0 {
@@ -90,22 +78,8 @@ func singleHeaderValue(header http.Header, name string) (string, bool, bool) {
 	return values[0], true, true
 }
 
-func clusterBearer(header http.Header) (string, bool, bool) {
-	value, present, valid := singleHeaderValue(header, authSvc.ClusterTokenHeader)
-	if !present || !valid {
-		return "", present, valid
-	}
-	if !strings.HasPrefix(value, "Bearer ") {
-		return "", true, false
-	}
-	token := strings.TrimPrefix(value, "Bearer ")
-	if token == "" || token != strings.TrimSpace(token) || strings.ContainsAny(token, " \t\r\n") {
-		return "", true, false
-	}
-	return token, true, true
-}
-
 var serviceReadPaths = map[string]struct{}{
+	"/api/health/basic":     {},
 	"/api/health/http":      {},
 	"/api/info/node":        {},
 	"/api/vm/simple":        {},
@@ -115,58 +89,52 @@ var serviceReadPaths = map[string]struct{}{
 	"/api/container/simple": {},
 }
 
-func clusterRequestAllowed(claims serviceInterfaces.CustomClaims, method, path string) bool {
-	switch claims.TokenUse {
-	case authSvc.ClusterTokenUseUserProxy:
-		if claims.UserID == 0 {
-			_, allowed := serviceReadPaths[path]
-			return allowed && method == http.MethodGet && !claims.Admin
-		}
-		if !claims.Admin || strings.HasPrefix(path, "/api/intra-cluster/") || path == "/api/intra-cluster" {
-			return false
-		}
-		return claims.AuthType == "sylve" || claims.AuthType == "pam" ||
-			claims.AuthType == authSvc.AuthTypeSylvePasskey
-	case authSvc.ClusterTokenUseInternalControl:
-		return claims.UserID == 0 && !claims.Admin && claims.AuthType == authSvc.ClusterInternalAuthType &&
-			strings.HasPrefix(path, "/api/intra-cluster/") && path != "/api/intra-cluster/"
-	default:
-		return false
+func clusterRequestAllowed(caller, method, path string) bool {
+	intra := strings.HasPrefix(path, "/api/intra-cluster/") || path == "/api/intra-cluster"
+	if caller == authSvc.ClusterCallerUser {
+		return !intra
 	}
+	if intra {
+		return path != "/api/intra-cluster/"
+	}
+	_, read := serviceReadPaths[path]
+	return read && method == http.MethodGet
 }
 
-func authenticateClusterHeader(c *gin.Context, authService *authSvc.Service) (bool, bool) {
-	clusterJWT, present, valid := clusterBearer(c.Request.Header)
-	if !present {
+// A member is identified by its cert (cluster.PeerHandler). Any other client
+// isn't a peer, and is left to the local session checks.
+func authenticatePeer(c *gin.Context, authService *authSvc.Service) (bool, bool) {
+	nodeID := cluster.PeerNode(c.Request)
+	if nodeID == "" {
 		return false, false
 	}
-	if !valid {
-		abortAuthentication(c, http.StatusUnauthorized, "invalid_cluster_token")
+	caller := authSvc.ClusterCallerNode
+	user := authSvc.ProxiedUser{Username: nodeID, AuthType: authSvc.ClusterInternalAuthType}
+	if value, present, single := singleHeaderValue(c.Request.Header, authSvc.ProxyUserHeader); present {
+		proxied, err := authSvc.ParseProxiedUser(value)
+		if !single || err != nil {
+			abortAuthentication(c, http.StatusUnauthorized, "invalid_proxy_user")
+			return true, false
+		}
+		caller, user = authSvc.ClusterCallerUser, proxied
+	}
+	if !clusterRequestAllowed(caller, c.Request.Method, c.Request.URL.Path) {
+		abortAuthentication(c, http.StatusForbidden, "cluster_peer_forbidden")
+		return true, false
+	}
+	if err := authService.AuthorizeClusterPeer(nodeID, caller, c.Request.Method, c.Request.URL.Path); err != nil {
+		abortAuthentication(c, http.StatusForbidden, "cluster_peer_forbidden")
 		return true, false
 	}
 
-	claims, err := authService.VerifyClusterJWT(clusterJWT)
-	if err != nil {
-		abortAuthentication(c, http.StatusUnauthorized, clusterTokenErrorCode(err))
-		return true, false
-	}
-	if !clusterRequestAllowed(claims, c.Request.Method, c.Request.URL.Path) {
-		abortAuthentication(c, http.StatusForbidden, "cluster_token_forbidden")
-		return true, false
-	}
-	if err := authService.AuthorizeClusterIssuer(claims, c.Request.Method, c.Request.URL.Path); err != nil {
-		abortAuthentication(c, http.StatusForbidden, "cluster_token_issuer_forbidden")
-		return true, false
-	}
-
-	c.Set("Token", clusterJWT)
 	c.Set("AuthScope", "cluster")
-	c.Set("ClusterTokenUse", claims.TokenUse)
-	c.Set("UserID", claims.UserID)
-	c.Set("Username", claims.Username)
-	c.Set("AuthType", claims.AuthType)
-	c.Set("ProxyAdmin", claims.Admin)
-	c.Set("IssuerNodeID", claims.IssuerNodeID)
+	c.Set("ClusterCaller", caller)
+	c.Set("Username", user.Username)
+	c.Set("AuthType", user.AuthType)
+	c.Set("IssuerNodeID", nodeID)
+	if caller == authSvc.ClusterCallerUser {
+		c.Set("Owner", authSvc.ProxiedOwner(nodeID, user))
+	}
 	return true, true
 }
 
@@ -182,6 +150,7 @@ func setLocalAuthentication(c *gin.Context, authService *authSvc.Service, token 
 	c.Set("UserID", claims.UserID)
 	c.Set("Username", claims.Username)
 	c.Set("AuthType", claims.AuthType)
+	c.Set("Owner", authSvc.LocalOwner(claims.UserID))
 	_ = authService.UpdateLastUsageTime(claims.UserID)
 	return true
 }
@@ -194,13 +163,11 @@ func authenticateConsole(c *gin.Context, authService *authSvc.Service) bool {
 	}
 
 	var auth struct {
-		Hash     string `json:"hash"`
-		Hostname string `json:"hostname"`
-		Token    string `json:"token"`
+		Hash  string `json:"hash"`
+		Token string `json:"token"`
 	}
 	data, err := hex.DecodeString(authHex)
-	if err != nil || json.Unmarshal(data, &auth) != nil || strings.TrimSpace(auth.Hostname) == "" ||
-		auth.Hash == "" || auth.Token != "" {
+	if err != nil || json.Unmarshal(data, &auth) != nil || auth.Hash == "" || auth.Token != "" {
 		abortAuthentication(c, http.StatusUnauthorized, "invalid_ws_auth")
 		return false
 	}
@@ -221,18 +188,6 @@ func authenticateLocalRequest(c *gin.Context, authService *authSvc.Service) bool
 	}
 
 	if c.Request.Method == http.MethodGet && c.Request.URL.Path == "/api/system/file-explorer/download" {
-		if encodedAuth := c.Query("auth"); encodedAuth != "" {
-			var routingAuth struct {
-				Hostname string `json:"hostname"`
-				Token    string `json:"token"`
-			}
-			data, err := hex.DecodeString(encodedAuth)
-			if err != nil || json.Unmarshal(data, &routingAuth) != nil ||
-				strings.TrimSpace(routingAuth.Hostname) == "" || routingAuth.Token != "" {
-				abortAuthentication(c, http.StatusUnauthorized, "invalid_auth_transport")
-				return false
-			}
-		}
 		if hash := c.Query("hash"); hash != "" {
 			token, err := authService.GetTokenBySHA256(hash)
 			if err != nil {
@@ -253,7 +208,7 @@ func authenticateLocalRequest(c *gin.Context, authService *authSvc.Service) bool
 
 func EnsureAuthenticated(authService *authSvc.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if present, ok := authenticateClusterHeader(c, authService); present {
+		if present, ok := authenticatePeer(c, authService); present {
 			if ok {
 				c.Next()
 			}
@@ -306,7 +261,7 @@ func validClusterKeyHeader(c *gin.Context, authService *authSvc.Service, require
 
 func AuthenticateBasicHealth(authService *authSvc.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if present, ok := authenticateClusterHeader(c, authService); present {
+		if present, ok := authenticatePeer(c, authService); present {
 			if ok {
 				c.Next()
 			}
@@ -324,18 +279,15 @@ func AuthenticateBasicHealth(authService *authSvc.Service) gin.HandlerFunc {
 	}
 }
 
-func AuthenticateClusterKey(authService *authSvc.Service) gin.HandlerFunc {
+// A member forwarding a joiner's request, or a joiner asking again once admitted
+// (its key used up by then), is a peer and isn't checked against the key.
+func AuthenticateJoin(authService *authSvc.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if token, present, valid := clusterBearer(c.Request.Header); present {
-			if !valid {
-				abortAuthentication(c, http.StatusUnauthorized, "invalid_cluster_token")
-				return
+		if cluster.PeerNode(c.Request) != "" {
+			if key, present, single := singleHeaderValue(c.Request.Header, authSvc.ClusterKeyHeader); present && single {
+				c.Set("ClusterKey", key)
 			}
-			if _, err := authService.VerifyClusterJWT(token); err != nil {
-				abortAuthentication(c, http.StatusUnauthorized, clusterTokenErrorCode(err))
-				return
-			}
-			abortAuthentication(c, http.StatusForbidden, "cluster_token_forbidden")
+			c.Next()
 			return
 		}
 		if _, ok := validClusterKeyHeader(c, authService, true); ok {
@@ -346,23 +298,10 @@ func AuthenticateClusterKey(authService *authSvc.Service) gin.HandlerFunc {
 
 func RequireClusterScope() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if c.GetString("AuthScope") != "cluster" {
-			abortAuthentication(c, http.StatusForbidden, "cluster_scope_required")
+		if c.GetString("AuthScope") != "cluster" || c.GetString("ClusterCaller") != authSvc.ClusterCallerNode {
+			abortAuthentication(c, http.StatusForbidden, "cluster_node_scope_required")
 			return
 		}
-		if c.GetString("ClusterTokenUse") != authSvc.ClusterTokenUseInternalControl {
-			abortAuthentication(c, http.StatusForbidden, "internal_cluster_token_required")
-			return
-		}
-		if c.GetString("AuthType") != authSvc.ClusterInternalAuthType {
-			abortAuthentication(c, http.StatusForbidden, "internal_cluster_auth_type_required")
-			return
-		}
-		if c.GetUint("UserID") != 0 || c.GetBool("ProxyAdmin") {
-			abortAuthentication(c, http.StatusForbidden, "internal_cluster_user_required")
-			return
-		}
-
 		c.Next()
 	}
 }

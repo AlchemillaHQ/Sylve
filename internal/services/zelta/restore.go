@@ -384,7 +384,7 @@ func (s *Service) runRestoreJob(
 	}
 	// Verify the replication lease before the restore operation itself becomes
 	// the durable guest-wide exclusion lock.
-	if guestType, guestID := backupJobGuestIdentity(job); guestType != "" && guestID > 0 && s.Cluster != nil {
+	if guestType, guestID := backupJobGuestIdentity(job); guestType != "" && guestID > 0 {
 		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, guestType, guestID, s.localNodeID())
 		if leaseErr != nil {
 			restoreErr := fmt.Errorf("pre_restore_lease_check_failed: %w", leaseErr)
@@ -511,7 +511,7 @@ func (s *Service) runRestoreJob(
 	// Verify the dataset was actually created
 	restoreExists, verifyErr := s.localDatasetExists(ctx, restorePath)
 	if verifyErr != nil || !restoreExists {
-		restoreErr = fmt.Errorf("zelta_recv_dataset_missing: zelta exited successfully but '%s' does not exist", restorePath)
+		restoreErr = zeltaRecvMissingError(restorePath, output)
 		restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, restoreErr)
 		s.finalizeRestoreEvent(&event, restoreErr, output)
 		return restoreErr
@@ -729,7 +729,7 @@ func (s *Service) requireInPlaceGuestRestorePlacement(
 	guestType string,
 	guestID uint,
 ) error {
-	if s == nil || s.Cluster == nil {
+	if s == nil {
 		return fmt.Errorf("guest_identity_inventory_scan_failed: cluster_service_not_initialized")
 	}
 	return s.Cluster.RequireGuestRestorePlacement(ctx, guestType, guestID, "")
@@ -818,9 +818,6 @@ func (s *Service) acquireRestoreGuestFence(
 		return nil, nil
 	}
 	ownerNodeID := s.localNodeID()
-	if ownerNodeID == "" {
-		ownerNodeID = "local"
-	}
 	fence := &restoreGuestFence{
 		service:   s,
 		guestType: guestType,
@@ -842,15 +839,7 @@ func (s *Service) acquireRestoreGuestFence(
 		Operation: clusterModels.ReplicationGuestOperationRestore,
 		Token:     fence.token,
 	}
-	var err error
-	if s.Cluster != nil && s.Cluster.Raft() != nil {
-		err = s.applyGuestMigrationInterlock(ctx, "acquire", acquire, transition)
-	} else if s.Cluster != nil {
-		err = s.Cluster.AcquireReplicationGuestOperation(acquire, true)
-	} else {
-		err = clusterModels.AcquireReplicationGuestOperationTxn(s.DB, &acquire)
-	}
-	if err != nil {
+	if err := s.applyGuestMigrationInterlock(ctx, "acquire", acquire, transition); err != nil {
 		return nil, err
 	}
 	return fence, nil
@@ -868,13 +857,7 @@ func (f *restoreGuestFence) release() error {
 	}
 	ctx, cancel := restoreRecoveryContext()
 	defer cancel()
-	if f.service.Cluster != nil && f.service.Cluster.Raft() != nil {
-		return f.service.applyGuestMigrationInterlock(ctx, "abort", clusterModels.ReplicationGuestOperationAcquire{}, transition)
-	}
-	if f.service.Cluster != nil {
-		return f.service.Cluster.AbortReplicationGuestOperation(transition, true)
-	}
-	return clusterModels.AbortReplicationGuestOperationTxn(f.service.DB, &transition)
+	return f.service.applyGuestMigrationInterlock(ctx, "abort", clusterModels.ReplicationGuestOperationAcquire{}, transition)
 }
 
 // advanceBackupJobScheduleAfterRestore prevents an overdue pre-restore
@@ -909,20 +892,33 @@ func (s *Service) advanceBackupJobScheduleAfterRestore(job *clusterModels.Backup
 		return fmt.Errorf("next_backup_run: %w", err)
 	}
 
-	bypassRaft, err := s.runtimeStateBypassRaft()
-	if err != nil {
-		return err
-	}
 	decision := clusterModels.BackupJobScheduleDecision{
 		JobID: current.ID, ExpectedScheduleRevision: current.ScheduleRevision,
 		ExpectedNextRunAt: current.NextRunAt, NextRunAt: &nextRunAt, DecidedAt: now,
 	}
-	if err := s.applyBackupJobScheduleDecision(decision, bypassRaft); err != nil {
+	if err := s.Cluster.ApplyBackupJobScheduleDecision(decision); err != nil {
 		return fmt.Errorf("update_next_backup_run: %w", err)
 	}
 	job.NextRunAt = &nextRunAt
 	job.ScheduleRevision = current.ScheduleRevision + 1
 	return nil
+}
+
+// zelta logs a failed zfs send or receive (a target user without send
+// permission, a missing snapshot) at info level and still exits 0.
+func zeltaRecvMissingError(restorePath, output string) error {
+	err := fmt.Errorf("zelta_recv_dataset_missing: zelta exited successfully but '%s' does not exist", restorePath)
+	var reasons []string
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "info:"))
+		if strings.Contains(line, "cannot ") {
+			reasons = append(reasons, line)
+		}
+	}
+	if len(reasons) == 0 {
+		return err
+	}
+	return fmt.Errorf("%w: %s", err, strings.Join(reasons, "; "))
 }
 
 func restoreZeltaArgs(remoteEndpoint, restorePath string, recursive bool) []string {
@@ -1300,6 +1296,7 @@ func (s *Service) registerRestoreJob() {
 func (s *Service) handleRestoreJobQueue(ctx context.Context, payload restoreJobPayload) (retErr error) {
 	admittedCtx, release, err := s.enterMutation(ctx)
 	if err != nil {
+		s.releaseReservedJob(payload.JobID)
 		return err
 	}
 	defer release()
@@ -1323,6 +1320,7 @@ func (s *Service) handleRestoreJobQueue(ctx context.Context, payload restoreJobP
 		string(requestBytes),
 	)
 	if err != nil {
+		s.releaseReservedJob(payload.JobID)
 		return err
 	}
 	if !execute {

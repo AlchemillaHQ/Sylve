@@ -29,7 +29,7 @@ func TestIntegrationRaftConcurrentProposals(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			title := fmt.Sprintf("note-%d", idx)
-			if err := leader.service.ProposeNoteCreate(title, "content", false); err != nil {
+			if err := leader.service.ProposeNoteCreate(t.Context(), title, "content"); err != nil {
 				t.Errorf("concurrent create %d failed: %v", idx, err)
 			}
 		}(i)
@@ -60,7 +60,7 @@ func TestIntegrationRaftConcurrentCreateDeleteRace(t *testing.T) {
 
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 
-	if err := leader.service.ProposeNoteCreate("race-target", "original", false); err != nil {
+	if err := leader.service.ProposeNoteCreate(t.Context(), "race-target", "original"); err != nil {
 		t.Fatalf("seed create: %v", err)
 	}
 
@@ -85,13 +85,13 @@ func TestIntegrationRaftConcurrentCreateDeleteRace(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_ = leader.service.ProposeNoteUpdate(noteID, "updated-by-racer", "content", false)
+		_ = leader.service.ProposeNoteUpdate(t.Context(), noteID, "updated-by-racer", "content")
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_ = leader.service.ProposeNoteDelete(noteID, false)
+		_ = leader.service.ProposeNoteDelete(t.Context(), noteID)
 	}()
 
 	wg.Wait()

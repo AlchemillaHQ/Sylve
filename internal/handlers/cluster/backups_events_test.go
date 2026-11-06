@@ -34,7 +34,7 @@ func newBackupEventsRouter(cS *cluster.Service, zS *zelta.Service) *gin.Engine {
 
 func TestBackupEventsHandlerGet(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupEvent{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	zS := &zelta.Service{DB: db}
 	r := newBackupEventsRouter(cS, zS)
 
@@ -105,7 +105,7 @@ func TestBackupEventsHandlerGet(t *testing.T) {
 
 func TestBackupEventsRejectInvalidQueries(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupEvent{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	zS := &zelta.Service{DB: db}
 	r := newBackupEventsRouter(cS, zS)
 
@@ -134,7 +134,7 @@ func TestBackupEventsRejectInvalidQueries(t *testing.T) {
 
 func TestBackupEventsUnknownNodeReturnsNotFound(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupEvent{}, &clusterModels.ClusterNode{})
-	r := newBackupEventsRouter(&cluster.Service{DB: db}, &zelta.Service{DB: db})
+	r := newBackupEventsRouter(cluster.NewClusterService(db, nil, nil).(*cluster.Service), &zelta.Service{DB: db})
 
 	rr := performJSONRequest(
 		t, r, http.MethodGet, "/cluster/backups/events?nodeId=missing-node", nil,
@@ -142,14 +142,14 @@ func TestBackupEventsUnknownNodeReturnsNotFound(t *testing.T) {
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", rr.Code, rr.Body.String())
 	}
-	if !strings.Contains(rr.Body.String(), "backup_events_node_not_found") {
+	if !strings.Contains(rr.Body.String(), "node_not_found") {
 		t.Fatalf("unexpected response: %s", rr.Body.String())
 	}
 }
 
 func TestBackupEventByIDHandler(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupEvent{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	zS := &zelta.Service{DB: db}
 	r := newBackupEventsRouter(cS, zS)
 
@@ -175,7 +175,7 @@ func TestBackupEventByIDHandler(t *testing.T) {
 
 func TestBackupEventProgressByIDHandler(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupEvent{}, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	zS := &zelta.Service{DB: db}
 	r := newBackupEventsRouter(cS, zS)
 
@@ -252,7 +252,7 @@ func TestBackupEventProgressByIDHandler(t *testing.T) {
 
 func TestBackupEventsRemoteHandler(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupEvent{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	zS := &zelta.Service{DB: db}
 	r := newBackupEventsRouter(cS, zS)
 

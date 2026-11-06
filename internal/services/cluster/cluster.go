@@ -10,6 +10,8 @@ package cluster
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -23,6 +25,7 @@ import (
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/cluster/raftdir"
 	"github.com/alchemillahq/sylve/pkg/network"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/raft"
@@ -44,38 +47,27 @@ type Service struct {
 	membershipLifecycleMu          sync.Mutex
 	leaveInitiationMu              sync.Mutex
 	backupJobRebindMu              sync.Mutex
-	replicatedStateMu              sync.RWMutex
 	mutationGate                   *MutationGate
 	addressProvider                *raftAddressProvider
 	guestIdentityRuntimeMu         sync.Mutex
+	callsMu                        sync.RWMutex
+	callsOnce                      sync.Once
+	calls                          map[string]registeredCall
 	guestIdentityLocalReservations map[uint]localGuestIdentityReservation
-	guestIdentityClusterFormation  bool
 
-	joinPromotionMu       sync.Mutex
-	joinPromotionFailures map[string]string
-	joinLeaderTargetMu    sync.Mutex
-	joinLeaderTargetIndex uint64
-	joinVersionWarnMu     sync.Mutex
-	joinVersionWarnings   map[string]string
-	joinNudgeMu           sync.Mutex
-	joinProgressNudges    map[string]struct{}
+	joinMu           sync.Mutex
+	joinLastError    string
+	joinAttempts     uint
+	nonvoterProgress map[string]nonvoterProgress
+	joinRaftStarter  func(ip, clusterKey string) error
 
-	raftFSM            raft.FSM
-	raftStores         []io.Closer
-	stateFSM           *clusterModels.FSMDispatcher
-	stateRepair        atomic.Bool
-	stateDigestForNode func(
-		context.Context,
-		string,
-		raft.ServerAddress,
-		uint64,
-	) (ReplicatedStateDigest, error)
-	stateRepairForNode func(
-		context.Context,
-		string,
-		raft.ServerAddress,
-		ReplicatedStateRepairRequest,
-	) error
+	raftStores  []io.Closer
+	rebuild     atomic.Pointer[rebuild]
+	fsm         *clusterModels.FSMDispatcher
+	clusterCert *tls.Certificate
+	pins        atomic.Pointer[map[[sha256.Size]byte]string]
+	pinsMu      sync.Mutex
+	joinPins    map[[sha256.Size]byte]string
 	// peerRequest replaces intra-cluster HTTP in tests; see peerHTTP.
 	peerRequest func(
 		ctx context.Context,
@@ -101,22 +93,11 @@ type Service struct {
 
 	clusterStartHook func(ip string) error
 
-	guestIdentityInventoryAPIForNode func(string, raft.ServerAddress) (string, error)
-	guestIdentityControlForNode      func(
-		context.Context,
-		string,
-		GuestIdentityControlRequest,
-	) (GuestIdentityControlResponse, error)
-	joinVersionForNode               func(context.Context, raft.Server, string) (string, error)
-	joinProgressForNode              func(context.Context, string, raft.ServerAddress, uint64) (ClusterJoinProgress, error)
-	backupJobValidationAPIForNode    func(string, raft.ServerAddress) (string, error)
-	backupTargetValidationAPIForNode func(string, raft.ServerAddress) (string, error)
-	leaveMembershipForNode           func(context.Context, clusterModels.Cluster, string) (MembershipStatus, error)
-	leaveRemovalForNode              func(context.Context, string, RemoveMembershipRequest) error
-	backupTargetValidator            func(context.Context, *clusterModels.BackupTarget) error
-	backupTargetHostKeyEnroller      func(context.Context, *clusterModels.BackupTarget) error
-	backupJobIDGenerator             func() (uint, error)
-	raftMembershipForNode            func(string) (RaftMembership, error)
+	joinVersionForNode          func(context.Context, raft.Server) (string, error)
+	backupTargetValidator       func(context.Context, *clusterModels.BackupTarget) error
+	backupTargetHostKeyEnroller func(context.Context, *clusterModels.BackupTarget) error
+	backupJobIDGenerator        func() (uint, error)
+	raftMembershipForNode       func(string) (RaftMembership, error)
 }
 
 // Raft returns the running Raft node, or nil when none has been started.
@@ -129,13 +110,10 @@ func (s *Service) SetRaft(r *raft.Raft) {
 	s.raftNode.Store(r)
 }
 
-// Standalone reports whether writes should bypass Raft. A node whose cluster
-// is enabled but whose Raft node isn't running must fail writes, not apply
-// them to replicated tables locally.
+// Standalone reports whether writes bypass Raft, for the cluster-only checks
+// that come before a write. When the cluster row can't be read it says no, so
+// those checks fail closed; the write itself returns the actual error.
 func (s *Service) Standalone() bool {
-	if s.Raft() != nil {
-		return false
-	}
 	bypass, err := s.RuntimeStateBypassRaft()
 	return err == nil && bypass
 }
@@ -193,32 +171,34 @@ func (s *Service) triggerClusterStart(ip string) error {
 	if s.clusterStartHook == nil {
 		return nil
 	}
-	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
-		if err := s.clusterStartHook(ip); err == nil {
-			return nil
-		} else {
-			lastErr = err
-		}
-		if attempt < 2 {
-			time.Sleep(time.Duration(attempt+1) * 200 * time.Millisecond)
-		}
-	}
-	return lastErr
+	return s.clusterStartHook(ip)
 }
 
 func NewClusterService(db *gorm.DB, authService serviceInterfaces.AuthServiceInterface, jailService jailServiceInterfaces.JailServiceInterface) clusterServiceInterfaces.ClusterServiceInterface {
-	return &Service{
+	fsm := clusterModels.NewFSMDispatcher(db)
+	clusterModels.RegisterDefaultHandlers(fsm)
+	// Set once, here, so nothing writes it while the reconcilers and handlers
+	// read it.
+	nodeID, _ := utils.GetSystemUUID()
+	s := &Service{
 		DB:              db,
 		RaftID:          nil,
-		NodeID:          "",
+		NodeID:          nodeID,
 		AuthService:     authService,
 		JailService:     jailService,
 		mutationGate:    NewMutationGate(),
 		addressProvider: newRaftAddressProvider(),
+		fsm:             fsm,
 
 		peerProbeFailureStreak: make(map[string]int),
 	}
+	s.callsOnce.Do(s.registerCalls)
+	s.trackPins(fsm)
+	return s
+}
+
+func (s *Service) FSM() *clusterModels.FSMDispatcher {
+	return s.fsm
 }
 
 func (s *Service) GetClusterDetails() (*clusterServiceInterfaces.ClusterDetails, error) {
@@ -325,13 +305,37 @@ func (s *Service) waitUntilLeader(timeout time.Duration) (bool, raft.ServerAddre
 	return false, "", fmt.Errorf("timeout waiting for leader election")
 }
 
+// snapshotPreClusterState makes the founding node's standalone database the
+// cluster's first snapshot. Its rows were never in the log, so one replicated
+// checkpoint gives Raft an index to snapshot at, and every joiner installs the
+// snapshot instead of replaying a log that lacks them.
 func (s *Service) snapshotPreClusterState() error {
-	// The first node already owns the authoritative standalone database. A
-	// single replicated checkpoint gives Raft a snapshot index without
-	// maintaining a second row-by-row definition of replicated state.
-	s.replicatedStateMu.Lock()
-	defer s.replicatedStateMu.Unlock()
-	return s.checkpointAndSnapshotLocked()
+	r := s.Raft()
+	if r == nil {
+		return fmt.Errorf("raft_not_initialized")
+	}
+	if err := s.applyRaftCommand(clusterModels.Command{
+		Type: "cluster_state", Action: "checkpoint", Data: []byte("{}"),
+	}); err != nil {
+		return fmt.Errorf("replicated_state_checkpoint_failed: %w", err)
+	}
+	// Keep no log behind the snapshot: a joiner given even the checkpoint
+	// entry would replay it instead of installing the snapshot.
+	original := r.ReloadableConfig()
+	snapshotConfig := original
+	snapshotConfig.TrailingLogs = 0
+	if err := r.ReloadConfig(snapshotConfig); err != nil {
+		return fmt.Errorf("replicated_state_snapshot_config_failed: %w", err)
+	}
+	snapshotErr := r.Snapshot().Error()
+	restoreErr := r.ReloadConfig(original)
+	if snapshotErr != nil && !errors.Is(snapshotErr, raft.ErrNothingNewToSnapshot) {
+		return fmt.Errorf("replicated_state_snapshot_failed: %w", snapshotErr)
+	}
+	if restoreErr != nil {
+		return fmt.Errorf("replicated_state_snapshot_config_restore_failed: %w", restoreErr)
+	}
+	return nil
 }
 
 // shutdownRaft stops Raft and releases its transport and stores. The stopped
@@ -368,28 +372,16 @@ func (s *Service) stopRaftRuntime() error {
 }
 
 // rollbackClusterCreate undoes a CreateCluster that failed before the cluster
-// row was enabled: no running Raft, no Raft state on disk, and none of the
-// founding guest-identity rows that only exist once clustered.
+// row was enabled: no running Raft and no Raft state on disk. Guest ID claims
+// stay; a standalone node keeps them too.
 func (s *Service) rollbackClusterCreate() error {
 	return errors.Join(
 		s.stopRaftRuntime(),
 		s.CleanRaftDir(),
-		s.DB.Transaction(func(tx *gorm.DB) error {
-			for _, model := range []any{
-				&clusterModels.GuestIdentityClaim{},
-				&clusterModels.GuestIdentityEnrollment{},
-				&clusterModels.GuestIdentityRegistry{},
-			} {
-				if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(model).Error; err != nil {
-					return err
-				}
-			}
-			return nil
-		}),
 	)
 }
 
-func (s *Service) CreateCluster(ip string, fsm raft.FSM) (err error) {
+func (s *Service) CreateCluster(ip string) (err error) {
 	ip, err = normalizeClusterIPv4(ip, "invalid_ip_address")
 	if err != nil {
 		return err
@@ -398,10 +390,6 @@ func (s *Service) CreateCluster(ip string, fsm raft.FSM) (err error) {
 		return errors.New("raft_already_initialized")
 	}
 	s.guestIdentityRuntimeMu.Lock()
-	if s.guestIdentityClusterFormation {
-		s.guestIdentityRuntimeMu.Unlock()
-		return errors.New("guest_identity_cluster_formation_in_progress")
-	}
 	if len(s.guestIdentityLocalReservations) != 0 {
 		s.guestIdentityRuntimeMu.Unlock()
 		return errors.New("guest_identity_mutation_in_progress")
@@ -410,14 +398,8 @@ func (s *Service) CreateCluster(ip string, fsm raft.FSM) (err error) {
 		s.guestIdentityRuntimeMu.Unlock()
 		return err
 	}
-	s.guestIdentityClusterFormation = true
 	s.guestIdentityRuntimeMu.Unlock()
-	defer func() {
-		s.guestIdentityRuntimeMu.Lock()
-		s.guestIdentityClusterFormation = false
-		s.guestIdentityRuntimeMu.Unlock()
-	}()
-	localNodeID := s.guestIdentityInventoryLocalNodeID()
+	localNodeID := s.LocalNodeID()
 	if localNodeID == "" {
 		return errors.New("local_node_id_unavailable")
 	}
@@ -445,17 +427,13 @@ func (s *Service) CreateCluster(ip string, fsm raft.FSM) (err error) {
 	if c.HasIncompleteJoin() {
 		return errors.New("cluster_join_in_progress")
 	}
-	if dir, _ := config.GetRaftPath(); hasExistingRaftState(dir) {
+	if dir, _ := config.GetRaftPath(); raftdir.HasState(dir) {
 		return errors.New("raft_state_already_exists")
 	}
 
 	bootstrap := true
-	newKey := c.Key
-	if newKey == "" {
-		newKey = utils.GenerateRandomString(32)
-	}
 
-	if _, err := s.setupRaftAtIP(true, fsm, ip); err != nil {
+	if _, err := s.setupRaftAtIP(true, ip); err != nil {
 		return errors.Join(err, s.CleanRaftDir())
 	}
 	defer func() {
@@ -473,8 +451,8 @@ func (s *Service) CreateCluster(ip string, fsm raft.FSM) (err error) {
 		if err := s.snapshotPreClusterState(); err != nil {
 			return err
 		}
-		if err := s.initializeGuestIdentityRegistryForFoundingNode(localNodeID, localInventory); err != nil {
-			return err
+		if _, err := s.reconcileOwnGuestIdentityClaims(context.Background()); err != nil {
+			return fmt.Errorf("founding_guest_identity_claims_failed: %w", err)
 		}
 	} else {
 		return fmt.Errorf("bootstrap_node_not_leader: leader=%s", string(leaderAddr))
@@ -483,25 +461,18 @@ func (s *Service) CreateCluster(ip string, fsm raft.FSM) (err error) {
 	// Persist clustered state only after Raft bootstrap, backfill, and snapshot
 	// have succeeded.
 	if err := s.DB.Model(&c).Updates(map[string]any{
-		"enabled":           true,
-		"key":               newKey,
-		"raft_bootstrap":    &bootstrap,
-		"raft_ip":           ip,
-		"raft_port":         port,
-		"join_leader_ip":    "",
-		"join_node_id":      "",
-		"join_node_ip":      "",
-		"join_node_version": "",
-		"join_inventory":    nil,
-		"join_phase":        "",
-		"join_last_error":   "",
-		"join_attempts":     0,
+		"enabled":        true,
+		"key":            "",
+		"raft_bootstrap": &bootstrap,
+		"raft_ip":        ip,
+		"raft_port":      port,
+		"join_leader_ip": "",
 	}).Error; err != nil {
 		return err
 	}
 	s.joinComplete.Store(true)
 
-	if err := s.EnsureAndPublishLocalSSHIdentity(); err != nil {
+	if err := s.EnsureAndPublishLocalSSHIdentity(context.Background()); err != nil {
 		logger.L.Warn().Err(err).Msg("Cluster SSH identity publish deferred during cluster creation")
 	}
 
@@ -516,15 +487,11 @@ func (s *Service) CreateCluster(ip string, fsm raft.FSM) (err error) {
 	return nil
 }
 
-func (s *Service) rollbackJoinPreparation(
-	originalCluster clusterModels.Cluster,
-	originalNodeID string,
-) error {
+func (s *Service) rollbackJoinPreparation(originalCluster clusterModels.Cluster) error {
 	rollbackErrors := make([]error, 0, 3)
 	if err := s.stopRaftRuntime(); err != nil {
 		rollbackErrors = append(rollbackErrors, err)
 	}
-	s.NodeID = originalNodeID
 	if err := s.DB.Save(&originalCluster).Error; err != nil {
 		rollbackErrors = append(rollbackErrors, fmt.Errorf("restore_cluster_record: %w", err))
 	}
@@ -534,7 +501,7 @@ func (s *Service) rollbackJoinPreparation(
 	return errors.Join(rollbackErrors...)
 }
 
-func (s *Service) StartAsJoiner(fsm raft.FSM, ip, clusterKey string) error {
+func (s *Service) StartAsJoiner(ip, clusterKey string) error {
 	s.clusterJoinMu.Lock()
 	defer s.clusterJoinMu.Unlock()
 
@@ -588,9 +555,8 @@ func (s *Service) StartAsJoiner(fsm raft.FSM, ip, clusterKey string) error {
 	}
 
 	originalCluster := c
-	originalNodeID := s.NodeID
-	if _, err := s.setupRaftAtIP(false, fsm, ip); err != nil {
-		if rollbackErr := s.rollbackJoinPreparation(originalCluster, originalNodeID); rollbackErr != nil {
+	if _, err := s.setupRaftAtIP(false, ip); err != nil {
+		if rollbackErr := s.rollbackJoinPreparation(originalCluster); rollbackErr != nil {
 			return errors.Join(err, fmt.Errorf("join_preparation_rollback_failed: %w", rollbackErr))
 		}
 		return err
@@ -601,13 +567,13 @@ func (s *Service) StartAsJoiner(fsm raft.FSM, ip, clusterKey string) error {
 	c.Enabled = true
 	c.Key = clusterKey
 	if err := s.DB.Save(&c).Error; err != nil {
-		if rollbackErr := s.rollbackJoinPreparation(originalCluster, originalNodeID); rollbackErr != nil {
+		if rollbackErr := s.rollbackJoinPreparation(originalCluster); rollbackErr != nil {
 			return errors.Join(err, fmt.Errorf("join_preparation_rollback_failed: %w", rollbackErr))
 		}
 		return err
 	}
 
-	if err := s.EnsureAndPublishLocalSSHIdentity(); err != nil {
+	if err := s.EnsureAndPublishLocalSSHIdentity(context.Background()); err != nil {
 		logger.L.Warn().Err(err).Msg("Cluster SSH identity publish deferred during joiner startup")
 	}
 
@@ -623,10 +589,7 @@ func clearClusteredDataTx(tx *gorm.DB) error {
 }
 
 func (s *Service) clearClusteredData() error {
-	if s.stateFSM != nil {
-		return s.stateFSM.ClearReplicatedState()
-	}
-	return s.DB.Transaction(clearClusteredDataTx)
+	return s.fsm.ClearReplicatedState()
 }
 
 func markDeclusteredTx(tx *gorm.DB) error {
@@ -640,21 +603,8 @@ func markDeclusteredTx(tx *gorm.DB) error {
 	c.RaftIP = ""
 	c.RaftPort = ClusterRaftPort
 	c.JoinLeaderIP = ""
-	c.JoinNodeID = ""
-	c.JoinNodeIP = ""
-	c.JoinNodeVersion = ""
-	c.JoinInventory = nil
-	c.JoinPhase = ""
-	c.JoinLastError = ""
-	c.JoinAttempts = 0
-	c.LeaveID = ""
 	c.LeavePhase = ""
-	c.LeaveLeaderIP = ""
-	c.LeavePeerAddrs = nil
-	c.LeaveRetainGuests = false
-	c.LeaveInventoryDigest = ""
 	c.LeaveLastError = ""
-	c.LeaveAttempts = 0
 	c.ReaddressOldIP = ""
 	c.ReaddressNewIP = ""
 	c.ReaddressPhase = ""
@@ -666,4 +616,8 @@ func (s *Service) ListBackupTargetsForSync() ([]clusterModels.BackupTarget, erro
 	var targets []clusterModels.BackupTarget
 	err := s.DB.Order("id ASC").Find(&targets).Error
 	return targets, err
+}
+
+func (s *Service) SetPeerRequest(fn func(ctx context.Context, method, url string, payload []byte, headers map[string]string) (int, []byte, error)) {
+	s.peerRequest = fn
 }

@@ -38,9 +38,9 @@
 		if (!isValidIPv4(properties.ip)) {
 			error = 'Node IP must be an IPv4 address';
 		} else if (!isValidIPv4(properties.leaderIp)) {
-			error = 'Leader IP must be an IPv4 address';
+			error = 'Cluster Node IP must be an IPv4 address';
 		} else if (!properties.clusterKey) {
-			error = 'Cluster Key is required';
+			error = 'Join Key is required';
 		}
 
 		if (error) {
@@ -122,14 +122,14 @@
 
 			<CustomValueInput
 				bind:value={properties.leaderIp}
-				placeholder="Leader IP (192.168.1.1)"
+				placeholder="Cluster Node IP (192.168.1.1)"
 				classes="flex-1 space-y-1.5 w-1/2"
 			/>
 
 			<Input
 				type="password"
 				id="cluster-key"
-				placeholder="Cluster Key"
+				placeholder="Join Key"
 				class="w-1/2"
 				autocomplete="off"
 				bind:value={properties.clusterKey}

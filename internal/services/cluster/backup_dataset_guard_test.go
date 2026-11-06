@@ -57,12 +57,12 @@ func newManagedDatasetGuardTestService(t *testing.T) *Service {
 		&vmModels.Storage{},
 		&vmModels.VMStorageDataset{},
 	)
-	return &Service{
+	return withFSM(&Service{
 		DB: db,
 		backupTargetValidator: func(context.Context, *clusterModels.BackupTarget) error {
 			return nil
 		},
-	}
+	})
 }
 
 func seedManagedDatasetGuardGuests(t *testing.T, service *Service) {
@@ -199,14 +199,14 @@ func TestBackupJobValidationRejectsManagedGuestAncestorsOnlyForDatasetMode(t *te
 		CronExpr:      "0 0 * * *",
 		Enabled:       &enabled,
 	}
-	if err := service.ProposeBackupJobCreate(datasetInput, true); err == nil ||
+	if err := service.ProposeBackupJobCreate(datasetInput); err == nil ||
 		!strings.Contains(err.Error(), "dataset_backup_source_reserved_managed_scope") {
 		t.Fatalf("unsafe dataset create error = %v", err)
 	}
 
 	datasetInput.Name = "ordinary-dataset-job"
 	datasetInput.SourceDataset = "tank/ordinary"
-	if err := service.ProposeBackupJobCreate(datasetInput, true); err != nil {
+	if err := service.ProposeBackupJobCreate(datasetInput); err != nil {
 		t.Fatalf("ordinary dataset create: %v", err)
 	}
 
@@ -218,7 +218,7 @@ func TestBackupJobValidationRejectsManagedGuestAncestorsOnlyForDatasetMode(t *te
 		CronExpr:        "0 1 * * *",
 		Enabled:         &enabled,
 	}
-	if err := service.ProposeBackupJobCreate(jailInput, true); err != nil {
+	if err := service.ProposeBackupJobCreate(jailInput); err != nil {
 		t.Fatalf("jail-mode create: %v", err)
 	}
 
@@ -231,7 +231,7 @@ func TestBackupJobValidationRejectsManagedGuestAncestorsOnlyForDatasetMode(t *te
 		Enabled:       &enabled,
 		Recursive:     true,
 	}
-	if err := service.ProposeBackupJobCreate(vmInput, true); err != nil {
+	if err := service.ProposeBackupJobCreate(vmInput); err != nil {
 		t.Fatalf("VM-mode create: %v", err)
 	}
 }
@@ -361,20 +361,20 @@ func TestBackupJobCreateAndUpdateEnforceGuestModeSafety(t *testing.T) {
 		CronExpr:      "0 3 * * *",
 		Enabled:       &enabled,
 	}
-	if err := service.ProposeBackupJobCreate(vmInput, true); err == nil ||
+	if err := service.ProposeBackupJobCreate(vmInput); err == nil ||
 		!strings.Contains(err.Error(), "vm_backup_requires_recursive") {
 		t.Fatalf("nonrecursive VM create error = %v", err)
 	}
 
 	vmInput.Recursive = true
 	vmInput.SourceDataset = "zroot/sylve/jails/100"
-	if err := service.ProposeBackupJobCreate(vmInput, true); err == nil ||
+	if err := service.ProposeBackupJobCreate(vmInput); err == nil ||
 		!strings.Contains(err.Error(), "vm_backup_requires_registered_canonical_root") {
 		t.Fatalf("cross-kind VM create error = %v", err)
 	}
 
 	vmInput.SourceDataset = " /fast//sylve/virtual-machines/200/ "
-	if err := service.ProposeBackupJobCreate(vmInput, true); err != nil {
+	if err := service.ProposeBackupJobCreate(vmInput); err != nil {
 		t.Fatalf("canonical recursive VM create: %v", err)
 	}
 	var vmJob clusterModels.BackupJob
@@ -385,7 +385,7 @@ func TestBackupJobCreateAndUpdateEnforceGuestModeSafety(t *testing.T) {
 		t.Fatalf("stored VM job = source %q recursive=%v", vmJob.SourceDataset, vmJob.Recursive)
 	}
 	vmInput.Recursive = false
-	if err := service.ProposeBackupJobUpdate(vmJob.ID, vmInput, true); err == nil ||
+	if err := service.ProposeBackupJobUpdate(vmJob.ID, vmInput); err == nil ||
 		!strings.Contains(err.Error(), "vm_backup_requires_recursive") {
 		t.Fatalf("nonrecursive VM update error = %v", err)
 	}
@@ -398,17 +398,17 @@ func TestBackupJobCreateAndUpdateEnforceGuestModeSafety(t *testing.T) {
 		CronExpr:        "0 4 * * *",
 		Enabled:         &enabled,
 	}
-	if err := service.ProposeBackupJobCreate(jailInput, true); err == nil ||
+	if err := service.ProposeBackupJobCreate(jailInput); err == nil ||
 		!strings.Contains(err.Error(), "jail_backup_requires_registered_canonical_root") {
 		t.Fatalf("broad jail create error = %v", err)
 	}
 	jailInput.JailRootDataset = "zroot/sylve/jails/999"
-	if err := service.ProposeBackupJobCreate(jailInput, true); err == nil ||
+	if err := service.ProposeBackupJobCreate(jailInput); err == nil ||
 		!strings.Contains(err.Error(), "jail_backup_requires_registered_canonical_root") {
 		t.Fatalf("stale jail create error = %v", err)
 	}
 	jailInput.JailRootDataset = " /zroot//sylve/jails/100/ "
-	if err := service.ProposeBackupJobCreate(jailInput, true); err != nil {
+	if err := service.ProposeBackupJobCreate(jailInput); err != nil {
 		t.Fatalf("canonical jail create: %v", err)
 	}
 	var jailJob clusterModels.BackupJob

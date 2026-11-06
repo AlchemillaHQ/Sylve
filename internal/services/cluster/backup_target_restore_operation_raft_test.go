@@ -49,7 +49,7 @@ func TestIntegrationRaftBackupTargetRestoreReservationSurvivesLeadershipChange(t
 		DestinationDataset: "zroot/restored", RequestPayload: `{"targetId":91,"snapshot":"@bk_j1_c1_test"}`,
 		AcquiredAt: now,
 	}
-	if err := leader.service.AcquireBackupTargetRestoreOperation(acquire, false); err != nil {
+	if err := leader.service.AcquireBackupTargetRestoreOperation(acquire); err != nil {
 		t.Fatalf("acquire on leader %s: %v", leader.id, err)
 	}
 	waitForClusterCondition(t, 8*time.Second, "queued target restore replication", func() bool {
@@ -67,7 +67,7 @@ func TestIntegrationRaftBackupTargetRestoreReservationSurvivesLeadershipChange(t
 	conflict.Token = "target-restore:node-2:overlap"
 	conflict.DestinationDataset = "zroot/restored/child"
 	conflict.AcquiredAt = now.Add(time.Second)
-	if err := leader.service.AcquireBackupTargetRestoreOperation(conflict, false); err == nil ||
+	if err := leader.service.AcquireBackupTargetRestoreOperation(conflict); err == nil ||
 		!strings.Contains(err.Error(), "restore_destination_reserved") {
 		t.Fatalf("overlapping acquire error = %v", err)
 	}
@@ -90,10 +90,10 @@ func TestIntegrationRaftBackupTargetRestoreReservationSurvivesLeadershipChange(t
 		DestinationDataset: acquire.DestinationDataset, RequestPayload: acquire.RequestPayload,
 		OccurredAt: now.Add(2 * time.Second),
 	}
-	if err := newLeader.service.TransitionBackupTargetRestoreOperation("start", transition, false); err != nil {
+	if err := newLeader.service.TransitionBackupTargetRestoreOperation("start", transition); err != nil {
 		t.Fatalf("start after leadership change on %s: %v", newLeader.id, err)
 	}
-	if err := newLeader.service.TransitionBackupTargetRestoreOperation("start", transition, false); err == nil ||
+	if err := newLeader.service.TransitionBackupTargetRestoreOperation("start", transition); err == nil ||
 		!strings.Contains(err.Error(), "already_started") {
 		t.Fatalf("duplicate start error = %v", err)
 	}
@@ -109,11 +109,11 @@ func TestIntegrationRaftBackupTargetRestoreReservationSurvivesLeadershipChange(t
 	})
 
 	transition.OccurredAt = now.Add(3 * time.Second)
-	if err := newLeader.service.TransitionBackupTargetRestoreOperation("finish", transition, false); err != nil {
+	if err := newLeader.service.TransitionBackupTargetRestoreOperation("finish", transition); err != nil {
 		t.Fatalf("finish: %v", err)
 	}
 	transition.OccurredAt = now.Add(4 * time.Second)
-	if err := newLeader.service.TransitionBackupTargetRestoreOperation("release", transition, false); err != nil {
+	if err := newLeader.service.TransitionBackupTargetRestoreOperation("release", transition); err != nil {
 		t.Fatalf("release: %v", err)
 	}
 	waitForClusterCondition(t, 8*time.Second, "target restore completion replication", func() bool {

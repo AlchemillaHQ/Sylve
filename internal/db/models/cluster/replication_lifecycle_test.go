@@ -17,7 +17,7 @@ func TestReplicationPolicyMutationAndDeleteRejectPersistedTransition(t *testing.
 		t.Fatal(err)
 	}
 	policy.Name = "must-not-change"
-	if err := UpsertReplicationPolicyTxn(db, &policy, policy.Targets); err == nil || !strings.Contains(err.Error(), "transition_in_progress") {
+	if err := updateReplicationPolicy(db, &ReplicationPolicyPayload{Policy: policy, Targets: policy.Targets, ExpectedOwnerEpoch: policy.OwnerEpoch}); err == nil || !strings.Contains(err.Error(), "transition_in_progress") {
 		t.Fatalf("policy update error = %v, want transition guard", err)
 	}
 	if err := DeleteReplicationPolicyTxn(db, 1); err == nil || !strings.Contains(err.Error(), "transition_in_progress") {
@@ -46,12 +46,12 @@ func TestDeletingLifecycleWinsRaceAgainstTransitionBegin(t *testing.T) {
 	if err := db.Create(&policy).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := UpdateReplicationPolicyProtectionStateTxn(db, &ReplicationPolicyProtectionStateUpdate{
+	if err := updateReplicationPolicyProtectionState(db, &ReplicationPolicyProtectionStateUpdate{
 		PolicyID: 7, ExpectedOwnerEpoch: 2, State: ReplicationProtectionStateDeleting,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	err := BeginReplicationPolicyTransitionTxn(db, &ReplicationPolicyTransitionBegin{
+	err := beginReplicationPolicyTransition(db, &ReplicationPolicyTransitionBegin{
 		PolicyID: 7, ExpectedOwnerEpoch: 2, ProtectionState: ReplicationProtectionStateSuspended,
 		Transition: ReplicationPolicyTransition{
 			State: ReplicationTransitionStateDemoting, RunID: "run-delete-race",
@@ -61,7 +61,7 @@ func TestDeletingLifecycleWinsRaceAgainstTransitionBegin(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "deleting") {
 		t.Fatalf("begin transition error = %v, want deleting guard", err)
 	}
-	if err := UpdateReplicationPolicyProtectionStateTxn(db, &ReplicationPolicyProtectionStateUpdate{
+	if err := updateReplicationPolicyProtectionState(db, &ReplicationPolicyProtectionStateUpdate{
 		PolicyID: 7, ExpectedOwnerEpoch: 2, State: ReplicationProtectionStateArmed,
 	}); err == nil || !strings.Contains(err.Error(), "deleting") {
 		t.Fatalf("deleting lifecycle was resurrected: %v", err)
@@ -87,7 +87,7 @@ func TestReplicationPolicyDeleteRequiresDeletingLifecycle(t *testing.T) {
 	if err := DeleteReplicationPolicyTxn(db, 8); err == nil || !strings.Contains(err.Error(), "not_deleting") {
 		t.Fatalf("direct delete should require deleting lifecycle, got %v", err)
 	}
-	if err := UpdateReplicationPolicyProtectionStateTxn(db, &ReplicationPolicyProtectionStateUpdate{
+	if err := updateReplicationPolicyProtectionState(db, &ReplicationPolicyProtectionStateUpdate{
 		PolicyID: 8, ExpectedOwnerEpoch: 1, State: ReplicationProtectionStateDeleting,
 	}); err != nil {
 		t.Fatalf("mark deleting: %v", err)
@@ -97,7 +97,7 @@ func TestReplicationPolicyDeleteRequiresDeletingLifecycle(t *testing.T) {
 	}
 }
 
-func TestReplicationPolicyDeleteRemovesOnlyExactPolicyEvents(t *testing.T) {
+func TestReplicationPolicyDeleteRemovesOnlyExactPolicyTransitionEvents(t *testing.T) {
 	db := newClusterModelTestDB(t,
 		&ReplicationPolicy{},
 		&ReplicationPolicyTarget{},
@@ -146,10 +146,11 @@ func TestReplicationPolicyDeleteRemovesOnlyExactPolicyEvents(t *testing.T) {
 		t.Fatalf("delete policy: %v", err)
 	}
 
-	for name, model := range map[string]any{
-		"local":      &ReplicationEvent{},
-		"transition": &ReplicationTransitionEvent{},
-	} {
+	var localCount int64
+	if err := db.Model(&ReplicationEvent{}).Count(&localCount).Error; err != nil || localCount != 3 {
+		t.Fatalf("local events=%d (err %v), want all 3 kept", localCount, err)
+	}
+	for name, model := range map[string]any{"transition": &ReplicationTransitionEvent{}} {
 		var deletedCount int64
 		if err := db.Model(model).Where("policy_id = ?", deletedPolicyID).Count(&deletedCount).Error; err != nil {
 			t.Fatalf("count deleted %s events: %v", name, err)
@@ -192,7 +193,7 @@ func TestTransitionTargetReadinessRequiresExactRunAndKeepsPolicySuspended(t *tes
 		State: ReplicationTransitionStateCatchup, RunID: "run-ready",
 		SourceNodeID: "node-a", TargetNodeID: "node-b", OwnerEpoch: 4, RequestedAt: &now,
 	}
-	if err := BeginReplicationPolicyTransitionTxn(db, &ReplicationPolicyTransitionBegin{
+	if err := beginReplicationPolicyTransition(db, &ReplicationPolicyTransitionBegin{
 		PolicyID: 9, ExpectedOwnerEpoch: 4, Transition: transition,
 	}); err != nil {
 		t.Fatal(err)
@@ -203,15 +204,15 @@ func TestTransitionTargetReadinessRequiresExactRunAndKeepsPolicySuspended(t *tes
 		Ready: true, GenerationID: "run-ready", ManifestHash: "manifest", RequiredDatasetCount: 2,
 		CompletedDatasetCount: 2, LastVerifiedAt: &now, ReadyUntil: &readyUntil,
 	}
-	if err := UpdateReplicationTargetReadinessTxn(db, &update); err == nil || !strings.Contains(err.Error(), "transition_in_progress") {
+	if err := updateReplicationTargetReadiness(db, &update); err == nil || !strings.Contains(err.Error(), "transition_in_progress") {
 		t.Fatalf("readiness without run bypassed transition: %v", err)
 	}
 	update.TransitionRunID = "wrong-run"
-	if err := UpdateReplicationTargetReadinessTxn(db, &update); err == nil || !strings.Contains(err.Error(), "transition_in_progress") {
+	if err := updateReplicationTargetReadiness(db, &update); err == nil || !strings.Contains(err.Error(), "transition_in_progress") {
 		t.Fatalf("readiness with wrong run bypassed transition: %v", err)
 	}
 	update.TransitionRunID = "run-ready"
-	if err := UpdateReplicationTargetReadinessTxn(db, &update); err != nil {
+	if err := updateReplicationTargetReadiness(db, &update); err != nil {
 		t.Fatalf("exact transition readiness failed: %v", err)
 	}
 	var stored ReplicationPolicy

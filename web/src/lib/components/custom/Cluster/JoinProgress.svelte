@@ -34,9 +34,8 @@
 		cn(
 			buttonVariants({ variant: 'outline', size: 'sm' }),
 			'h-6 max-w-72 gap-1.5 px-2 text-xs',
-			phase.tone === 'warning' &&
-				'border-amber-500/50 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400',
-			phase.tone === 'error' && 'border-destructive/50 text-destructive hover:bg-destructive/10'
+			status.lastError &&
+				'border-amber-500/50 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400'
 		)
 	);
 </script>
@@ -83,11 +82,7 @@
 		{/if}
 
 		{#if friendlyError}
-			<div
-				class={phase.tone === 'error'
-					? 'border-destructive/30 bg-destructive/10 rounded-md border p-2.5'
-					: 'rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5'}
-			>
+			<div class="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5">
 				<p class="text-xs font-medium">
 					{status.retrying ? 'Retrying Automatically' : 'Action Required'}
 				</p>

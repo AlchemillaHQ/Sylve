@@ -14,6 +14,7 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/cmd"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	infoServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/info"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/shirou/gopsutil/cpu"
@@ -79,6 +80,7 @@ func (s *Service) GetNodeInfo() (infoServiceInterfaces.NodeInfo, error) {
 	nodeInfo.Hostname = hostname
 	nodeInfo.SylveVersion = cmd.Version
 	nodeInfo.SylveCommit = cmd.Commit
+	nodeInfo.ClusterProtocol = clusterModels.ClusterProtocol
 
 	nodeInfo.LogicalCores = logicalCoreCount()
 

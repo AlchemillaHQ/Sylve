@@ -48,7 +48,6 @@ type BackupTargetNodeReadiness struct {
 	ReadyUntil           *time.Time `gorm:"index" json:"readyUntil"`
 	LastError            string     `gorm:"type:text" json:"lastError"`
 	Revision             uint64     `gorm:"not null;default:1" json:"revision"`
-	RaftAppliedIndex     uint64     `gorm:"not null;default:0" json:"raftAppliedIndex"`
 	UpdatedAt            time.Time  `gorm:"not null" json:"updatedAt"`
 	Ready                bool       `gorm:"-" json:"-"`
 	CurrentVoter         bool       `gorm:"-" json:"-"`
@@ -68,7 +67,6 @@ type BackupTargetNodeReadinessUpdate struct {
 	LastVerifiedAt      time.Time  `json:"lastVerifiedAt"`
 	ReadyUntil          *time.Time `json:"readyUntil,omitempty"`
 	LastError           string     `json:"lastError,omitempty"`
-	RaftAppliedIndex    uint64     `json:"raftAppliedIndex,omitempty"`
 }
 
 type backupTargetConnectivityFingerprintPayload struct {
@@ -114,69 +112,6 @@ func normalizeBackupTargetNodeReadinessUpdate(update BackupTargetNodeReadinessUp
 		update.LastError = update.LastError[:4096]
 	}
 	return update
-}
-
-func UpsertBackupTargetNodeReadinessBackfillTxn(db *gorm.DB, row *BackupTargetNodeReadiness) error {
-	if db == nil || row == nil {
-		return fmt.Errorf("backup_target_readiness_backfill_invalid")
-	}
-	update := BackupTargetNodeReadinessUpdate{
-		HostKeyRevision: row.HostKeyRevision,
-		TargetID:        row.TargetID, NodeID: row.NodeID, TargetFingerprint: row.TargetFingerprint,
-		ValidationSucceeded: row.ValidationSucceeded, LastVerifiedAt: row.LastVerifiedAt,
-		ReadyUntil: row.ReadyUntil, LastError: row.LastError,
-		RaftAppliedIndex: row.RaftAppliedIndex,
-	}
-	normalized := normalizeBackupTargetNodeReadinessUpdate(update)
-	if normalized.TargetID == 0 || normalized.NodeID == "" || normalized.TargetFingerprint == "" ||
-		normalized.LastVerifiedAt.IsZero() {
-		return fmt.Errorf("backup_target_readiness_backfill_invalid")
-	}
-	if normalized.ValidationSucceeded {
-		if normalized.ReadyUntil == nil || !normalized.ReadyUntil.After(normalized.LastVerifiedAt) {
-			return fmt.Errorf("backup_target_readiness_expiry_invalid")
-		}
-		normalized.LastError = ""
-	} else {
-		normalized.ReadyUntil = nil
-		if normalized.LastError == "" {
-			return fmt.Errorf("backup_target_readiness_error_required")
-		}
-	}
-	var target BackupTarget
-	result := db.Where("id = ?", normalized.TargetID).Limit(1).Find(&target)
-	if result.Error != nil || result.RowsAffected == 0 {
-		if result.Error != nil {
-			return result.Error
-		}
-		return fmt.Errorf("backup_target_not_found")
-	}
-	if BackupTargetConnectivityFingerprint(&target) != normalized.TargetFingerprint {
-		return fmt.Errorf("backup_target_readiness_fingerprint_mismatch")
-	}
-	revision := row.Revision
-	if revision == 0 {
-		revision = 1
-	}
-	updatedAt := NormalizeCommandTime(row.UpdatedAt)
-	if updatedAt.IsZero() {
-		updatedAt = normalized.LastVerifiedAt
-	}
-	backfill := BackupTargetNodeReadiness{
-		HostKeyRevision: row.HostKeyRevision,
-		TargetID:        normalized.TargetID, NodeID: normalized.NodeID,
-		TargetFingerprint: normalized.TargetFingerprint, ValidationSucceeded: normalized.ValidationSucceeded,
-		LastVerifiedAt: normalized.LastVerifiedAt, ReadyUntil: normalized.ReadyUntil,
-		LastError: normalized.LastError, Revision: revision,
-		RaftAppliedIndex: normalized.RaftAppliedIndex, UpdatedAt: updatedAt,
-	}
-	return db.Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "target_id"}, {Name: "node_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{
-			"target_fingerprint", "validation_succeeded", "last_verified_at",
-			"ready_until", "last_error", "revision", "raft_applied_index", "updated_at", "host_key_revision",
-		}),
-	}).Create(&backfill).Error
 }
 
 func ApplyBackupTargetNodeReadinessForJobTxn(
@@ -274,14 +209,13 @@ func ApplyBackupTargetNodeReadinessUpdateTxn(db *gorm.DB, update *BackupTargetNo
 		ReadyUntil:          update.ReadyUntil,
 		LastError:           update.LastError,
 		Revision:            revision,
-		RaftAppliedIndex:    update.RaftAppliedIndex,
 		UpdatedAt:           update.LastVerifiedAt,
 	}
 	return db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "target_id"}, {Name: "node_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"target_fingerprint", "validation_succeeded", "last_verified_at",
-			"ready_until", "last_error", "revision", "raft_applied_index", "updated_at", "host_key_revision",
+			"ready_until", "last_error", "revision", "updated_at", "host_key_revision",
 		}),
 	}).Create(&row).Error
 }

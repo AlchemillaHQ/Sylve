@@ -69,15 +69,6 @@ func (s *Service) ResourcesContext(ctx context.Context) ([]clusterServiceInterfa
 		return []clusterServiceInterfaces.NodeResources{}, nil
 	}
 
-	selfHostname, err := utils.GetSystemHostname()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get system hostname: %w", err)
-	}
-
-	clusterToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create cluster jwt: %w", err)
-	}
 	selfNodeID, _ := utils.GetSystemUUID()
 
 	results := make([]clusterServiceInterfaces.NodeResources, len(nodes))
@@ -106,10 +97,7 @@ func (s *Service) ResourcesContext(ctx context.Context) ([]clusterServiceInterfa
 			vmTemplatesURL := fmt.Sprintf("%s/api/vm/templates", base)
 			containersURL := fmt.Sprintf("%s/api/container/simple", base)
 
-			headers := map[string]string{
-				"Accept":          "application/json",
-				"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-			}
+			headers := map[string]string{"Accept": "application/json"}
 
 			var jails []jailServiceInterfaces.SimpleList
 			var vms []libvirtServiceInterfaces.SimpleList

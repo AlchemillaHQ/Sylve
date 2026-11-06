@@ -263,12 +263,14 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		logger.L.Error().Err(err).Msg("failed_to_reconcile_network_global_config_on_startup")
 	}
 
-	if err := s.System.ReconcilePreparedPPTDevices(); err != nil {
-		return fmt.Errorf("failed to reconcile prepared passthrough devices: %w", err)
-	}
-
-	if err := s.System.SyncPPTDevices(); err != nil {
-		return fmt.Errorf("failed to sync passthrough devices: %w", err)
+	// Only with VMs: a node in a jail has no loader.conf to keep.
+	if slices.Contains(basicSettings.Services, models.Virtualization) {
+		if err := s.System.ReconcilePreparedPPTDevices(); err != nil {
+			return fmt.Errorf("failed to reconcile prepared passthrough devices: %w", err)
+		}
+		if err := s.System.SyncPPTDevices(); err != nil {
+			return fmt.Errorf("failed to sync passthrough devices: %w", err)
+		}
 	}
 
 	if s.Directory != nil {

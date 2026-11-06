@@ -20,8 +20,8 @@ import (
 func TestClusterLifecycleRejectsIPv6BeforeStateAccess(t *testing.T) {
 	service := &Service{}
 	for name, err := range map[string]error{
-		"create": service.CreateCluster("2001:db8::10", nil),
-		"join":   service.StartAsJoiner(nil, "2001:db8::20", "secret"),
+		"create": service.CreateCluster("2001:db8::10"),
+		"join":   service.StartAsJoiner("2001:db8::20", "secret"),
 	} {
 		if err == nil || !strings.Contains(err.Error(), "cluster_ipv6_unsupported") {
 			t.Fatalf("%s error = %v", name, err)
@@ -31,7 +31,7 @@ func TestClusterLifecycleRejectsIPv6BeforeStateAccess(t *testing.T) {
 
 func TestGetClusterDetailsRaftNotInit(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.Cluster{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	if err := db.Create(&clusterModels.Cluster{
 		Enabled: false, Key: "", RaftIP: "", RaftPort: ClusterRaftPort,
@@ -75,7 +75,7 @@ func TestClusterRaftNodeDetails(t *testing.T) {
 
 func TestMarkDeclustered(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.Cluster{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	if err := db.Create(&clusterModels.Cluster{
 		Enabled: true, Key: "secret", RaftBootstrap: boolPtr(true),
@@ -119,7 +119,7 @@ func TestClearClusteredData(t *testing.T) {
 		&clusterModels.ReplicationPolicy{},
 		&clusterModels.ClusterSSHIdentity{},
 	)
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	seedDB := func(table string, record any) {
 		if err := db.Table(table).Create(record).Error; err != nil {
@@ -175,36 +175,6 @@ func TestClearClusteredData(t *testing.T) {
 	}
 }
 
-func TestResyncClusterStateRequiresRaft(t *testing.T) {
-	s := &Service{}
-	if err := s.ResyncClusterState(); err == nil {
-		t.Fatal("expected error when Raft is nil")
-	}
-}
-
-func TestIntegrationRaftResyncClusterStateRejectsFollower(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 2,
-		&clusterModels.ClusterNote{}, &clusterModels.ClusterOption{},
-		&clusterModels.BackupTarget{}, &clusterModels.BackupJob{},
-		&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{},
-		&clusterModels.ReplicationLease{}, &clusterModels.ClusterSSHIdentity{},
-		&clusterModels.EncryptionKey{}, &clusterModels.ReplicationEvent{},
-	)
-
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	var follower *clusterRaftTestNode
-	for _, node := range nodes {
-		if node.id != leader.id {
-			follower = node
-			break
-		}
-	}
-
-	if err := follower.service.ResyncClusterState(); err == nil {
-		t.Fatal("expected error when calling ResyncClusterState on follower")
-	}
-}
-
 func TestIntegrationRaftSnapshotPreClusterState(t *testing.T) {
 	allModels := []any{
 		&clusterModels.ClusterNote{}, &clusterModels.ClusterOption{},
@@ -250,7 +220,7 @@ func TestIntegrationRaftSnapshotPreClusterState(t *testing.T) {
 		TargetID: target.ID, NodeID: "node-1",
 		TargetFingerprint:   clusterModels.BackupTargetConnectivityFingerprint(&target),
 		ValidationSucceeded: true, LastVerifiedAt: readinessAt, ReadyUntil: &readinessUntil,
-		Revision: 7, RaftAppliedIndex: 88, UpdatedAt: readinessAt,
+		Revision: 7, UpdatedAt: readinessAt,
 	})
 
 	seedDB.Create(&clusterModels.BackupJob{
@@ -382,7 +352,7 @@ func TestIntegrationRaftSnapshotPreClusterState(t *testing.T) {
 			var readiness clusterModels.BackupTargetNodeReadiness
 			if err := node.service.DB.Where("target_id = ? AND node_id = ?", target.ID, "node-1").
 				First(&readiness).Error; err != nil || readiness.Revision != 7 ||
-				readiness.RaftAppliedIndex != 88 || readiness.TargetFingerprint != clusterModels.BackupTargetConnectivityFingerprint(&target) {
+				readiness.TargetFingerprint != clusterModels.BackupTargetConnectivityFingerprint(&target) {
 				return false
 			}
 

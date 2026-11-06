@@ -9,6 +9,7 @@
 package cluster
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -73,8 +74,8 @@ func (s *Service) GetReplicationPolicyByID(id uint) (*clusterModels.ReplicationP
 	return &policy, nil
 }
 
-func (s *Service) ProposeReplicationPolicyCreate(input clusterServiceInterfaces.ReplicationPolicyReq, bypassRaft bool) error {
-	if !bypassRaft {
+func (s *Service) ProposeReplicationPolicyCreate(input clusterServiceInterfaces.ReplicationPolicyReq) error {
+	if !s.Standalone() {
 		s.clusterJoinMu.Lock()
 		defer s.clusterJoinMu.Unlock()
 	}
@@ -89,27 +90,14 @@ func (s *Service) ProposeReplicationPolicyCreate(input clusterServiceInterfaces.
 		return err
 	}
 
-	if bypassRaft {
-		return clusterModels.UpsertReplicationPolicyTxn(s.DB, policy, targets)
-	}
-
-	data, err := json.Marshal(clusterModels.ReplicationPolicyPayload{
+	return s.apply("replication_policy", "create", clusterModels.ReplicationPolicyPayload{
 		Policy:  *policy,
 		Targets: targets,
 	})
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_replication_policy_payload: %w", err)
-	}
-
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "replication_policy",
-		Action: "create",
-		Data:   data,
-	})
 }
 
-func (s *Service) ProposeReplicationPolicyUpdate(id uint, input clusterServiceInterfaces.ReplicationPolicyReq, bypassRaft bool) error {
-	if !bypassRaft {
+func (s *Service) ProposeReplicationPolicyUpdate(id uint, input clusterServiceInterfaces.ReplicationPolicyReq) error {
+	if !s.Standalone() {
 		s.clusterJoinMu.Lock()
 		defer s.clusterJoinMu.Unlock()
 	}
@@ -128,50 +116,23 @@ func (s *Service) ProposeReplicationPolicyUpdate(id uint, input clusterServiceIn
 		Targets:            targets,
 		ExpectedOwnerEpoch: policy.OwnerEpoch,
 	}
-	if bypassRaft {
-		return clusterModels.UpdateReplicationPolicyTxn(s.DB, &payload)
-	}
-
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_replication_policy_payload: %w", err)
-	}
-
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "replication_policy",
-		Action: "update",
-		Data:   data,
-	})
+	return s.apply("replication_policy", "update", payload)
 }
 
-func (s *Service) ProposeReplicationPolicyDelete(id uint, bypassRaft bool) error {
+func (s *Service) ProposeReplicationPolicyDelete(id uint) error {
 	if id == 0 {
 		return fmt.Errorf("invalid_policy_id")
 	}
 
-	if !bypassRaft {
+	if !s.Standalone() {
 		runtimeSnapshot := s.buildReplicationHARuntimeSnapshot()
 		if !runtimeSnapshot.QuorumAvailable {
 			return NewReplicationHAIneligibleError([]string{ReplicationHAReasonQuorumLost})
 		}
 	}
-
-	if bypassRaft {
-		return clusterModels.DeleteReplicationPolicyTxn(s.DB, id)
-	}
-
-	data, err := json.Marshal(struct {
+	return s.apply("replication_policy", "delete", struct {
 		ID uint `json:"id"`
 	}{ID: id})
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_replication_policy_delete_payload: %w", err)
-	}
-
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "replication_policy",
-		Action: "delete",
-		Data:   data,
-	})
 }
 
 type ReplicationPolicyRuntimeState struct {
@@ -187,12 +148,9 @@ type ReplicationPolicyRuntimeState struct {
 	NextRunAt        *time.Time `json:"nextRunAt"`
 }
 
-func (s *Service) ProposeReplicationPolicyStateUpdate(update ReplicationPolicyRuntimeState, bypassRaft bool) error {
+func (s *Service) ProposeReplicationPolicyStateUpdate(update ReplicationPolicyRuntimeState) error {
 	if update.ID == 0 {
 		return fmt.Errorf("invalid_policy_id")
-	}
-	if err := s.requireRuntimeWriteAuthority(bypassRaft); err != nil {
-		return err
 	}
 	action := strings.ToLower(strings.TrimSpace(update.Action))
 	if action == "start" {
@@ -202,7 +160,7 @@ func (s *Service) ProposeReplicationPolicyStateUpdate(update ReplicationPolicyRu
 		return s.StartReplicationRun(clusterModels.ReplicationRunOperationTransition{
 			PolicyID: update.ID, Token: update.Token, HolderNodeID: update.HolderNodeID,
 			OccurredAt: *update.LastRunAt,
-		}, bypassRaft)
+		})
 	}
 	if action != "" {
 		return fmt.Errorf("invalid_replication_policy_runtime_action")
@@ -219,35 +177,9 @@ func (s *Service) ProposeReplicationPolicyStateUpdate(update ReplicationPolicyRu
 			ScheduleRevision: update.ScheduleRevision, OwnerEpoch: update.OwnerEpoch,
 			CompletedAt: *update.LastRunAt, LastStatus: update.LastStatus,
 			LastError: update.LastError, NextRunAt: update.NextRunAt,
-		}, bypassRaft)
+		})
 	}
-
-	if bypassRaft {
-		return s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", update.ID).Updates(map[string]any{
-			"last_run_at": update.LastRunAt,
-			"last_status": update.LastStatus,
-			"last_error":  update.LastError,
-			"next_run_at": update.NextRunAt,
-		}).Error
-	}
-
-	if s.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-	if s.Raft().State() != raft.Leader {
-		return fmt.Errorf("not_leader")
-	}
-
-	data, err := json.Marshal(update)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_policy_state_update: %w", err)
-	}
-
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "replication_policy",
-		Action: "state_update",
-		Data:   data,
-	})
+	return s.apply("replication_policy", "state_update", update)
 }
 
 func (s *Service) buildReplicationPolicy(
@@ -707,26 +639,15 @@ func (s *Service) GetReplicationLeaseByPolicyID(policyID uint) (*clusterModels.R
 	return &lease, nil
 }
 
-func (s *Service) UpsertReplicationLease(lease clusterModels.ReplicationLease, bypassRaft bool) error {
-	if bypassRaft {
-		return clusterModels.UpsertReplicationLeaseTxn(s.DB, &lease)
+func (s *Service) UpsertReplicationLease(lease clusterModels.ReplicationLease) error {
+	if !s.Standalone() {
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+		if err := s.RequireCurrentRaftVoter(lease.OwnerNodeID); err != nil {
+			return fmt.Errorf("replication_lease_owner_not_current_voter: %w", err)
+		}
 	}
-
-	s.clusterJoinMu.Lock()
-	defer s.clusterJoinMu.Unlock()
-	if err := s.RequireCurrentRaftVoter(lease.OwnerNodeID); err != nil {
-		return fmt.Errorf("replication_lease_owner_not_current_voter: %w", err)
-	}
-	data, err := json.Marshal(lease)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_replication_lease: %w", err)
-	}
-
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "replication_lease",
-		Action: "upsert",
-		Data:   data,
-	})
+	return s.apply("replication_lease", "upsert", lease)
 }
 
 func (s *Service) UpsertReplicationLeasesBatch(leases []clusterModels.ReplicationLease) error {
@@ -803,34 +724,23 @@ func (s *Service) UpdateReplicationPolicyTransition(
 // the persisted transition reaches a terminal state.
 func (s *Service) BeginReplicationPolicyTransition(
 	begin clusterModels.ReplicationPolicyTransitionBegin,
-	bypassRaft bool,
 ) error {
-	if bypassRaft {
-		return clusterModels.BeginReplicationPolicyTransitionTxn(s.DB, &begin)
-	}
-	if err := s.requireReplicationRaftLeader(); err != nil {
-		return err
-	}
-	s.clusterJoinMu.Lock()
-	defer s.clusterJoinMu.Unlock()
-	for _, nodeID := range []string{begin.Transition.SourceNodeID, begin.Transition.TargetNodeID} {
-		if strings.TrimSpace(nodeID) == "" {
-			continue
+	if !s.Standalone() {
+		if err := s.requireReplicationRaftLeader(); err != nil {
+			return err
 		}
-		if err := s.RequireCurrentRaftVoter(nodeID); err != nil {
-			return fmt.Errorf("replication_transition_node_not_current_voter: %w", err)
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+		for _, nodeID := range []string{begin.Transition.SourceNodeID, begin.Transition.TargetNodeID} {
+			if strings.TrimSpace(nodeID) == "" {
+				continue
+			}
+			if err := s.RequireCurrentRaftVoter(nodeID); err != nil {
+				return fmt.Errorf("replication_transition_node_not_current_voter: %w", err)
+			}
 		}
 	}
-
-	data, err := json.Marshal(begin)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_replication_policy_transition_begin: %w", err)
-	}
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "replication_policy_transition",
-		Action: "begin",
-		Data:   data,
-	})
+	return s.apply("replication_policy_transition", "begin", begin)
 }
 
 // CommitReplicationOwnershipTransition performs the ownership cutover as one
@@ -838,239 +748,170 @@ func (s *Service) BeginReplicationPolicyTransition(
 // its run ID in ExpectedTransitionRunID.
 func (s *Service) CommitReplicationOwnershipTransition(
 	payload clusterModels.ReplicationOwnershipTransitionPayload,
-	bypassRaft bool,
 ) error {
-	if bypassRaft {
-		return clusterModels.ApplyReplicationOwnershipTransitionTxn(s.DB, &payload)
-	}
-	if err := s.requireReplicationRaftLeader(); err != nil {
-		return err
-	}
-	operationKey := fmt.Sprintf("replication:%s:%s:%s:%d", payload.ExpectedTransitionRunID, payload.ExpectedActiveNodeID, payload.ActiveNodeID, payload.OwnerEpoch)
-	identityMove, err := s.replicationPolicyGuestIdentityMove(
-		payload.PolicyID,
-		payload.ExpectedActiveNodeID,
-		payload.ActiveNodeID,
-		operationKey,
-	)
-	if err != nil {
-		return err
-	}
-	payload.GuestIdentityMove = identityMove
-	s.clusterJoinMu.Lock()
-	defer s.clusterJoinMu.Unlock()
-	nodeIDs := []string{payload.ActiveNodeID, payload.Lease.OwnerNodeID}
-	if payload.SourceNodeID != nil {
-		nodeIDs = append(nodeIDs, *payload.SourceNodeID)
-	}
-	for _, target := range payload.Targets {
-		nodeIDs = append(nodeIDs, target.NodeID)
-	}
-	for _, nodeID := range nodeIDs {
-		if strings.TrimSpace(nodeID) == "" {
-			continue
+	if !s.Standalone() {
+		if err := s.requireReplicationRaftLeader(); err != nil {
+			return err
 		}
-		if err := s.RequireCurrentRaftVoter(nodeID); err != nil {
-			return fmt.Errorf("replication_ownership_node_not_current_voter: %w", err)
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+		nodeIDs := []string{payload.ActiveNodeID, payload.Lease.OwnerNodeID}
+		if payload.SourceNodeID != nil {
+			nodeIDs = append(nodeIDs, *payload.SourceNodeID)
+		}
+		for _, target := range payload.Targets {
+			nodeIDs = append(nodeIDs, target.NodeID)
+		}
+		for _, nodeID := range nodeIDs {
+			if strings.TrimSpace(nodeID) == "" {
+				continue
+			}
+			if err := s.RequireCurrentRaftVoter(nodeID); err != nil {
+				return fmt.Errorf("replication_ownership_node_not_current_voter: %w", err)
+			}
 		}
 	}
-
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_replication_ownership_transition: %w", err)
-	}
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "replication_ownership_transition",
-		Action: "commit",
-		Data:   data,
-	})
+	return s.apply("replication_ownership_transition", "commit", payload)
 }
 
 func (s *Service) ReassignDisabledReplicationPolicyOwner(
 	payload clusterModels.ReplicationDisabledOwnerReassignment,
-	bypassRaft bool,
 ) error {
-	if bypassRaft {
-		return clusterModels.ReassignDisabledReplicationPolicyOwnerTxn(s.DB, &payload)
-	}
-	if err := s.requireReplicationRaftLeader(); err != nil {
-		return err
-	}
-	operationKey := fmt.Sprintf("replication-disabled:%s:%s:%s:%d", payload.RunID, payload.ExpectedActiveNodeID, payload.ActiveNodeID, payload.OwnerEpoch)
-	identityMove, err := s.replicationPolicyGuestIdentityMove(
-		payload.PolicyID,
-		payload.ExpectedActiveNodeID,
-		payload.ActiveNodeID,
-		operationKey,
-	)
-	if err != nil {
-		return err
-	}
-	payload.GuestIdentityMove = identityMove
-	s.clusterJoinMu.Lock()
-	defer s.clusterJoinMu.Unlock()
-	nodeIDs := []string{payload.ActiveNodeID, payload.SourceNodeID}
-	for _, target := range payload.Targets {
-		nodeIDs = append(nodeIDs, target.NodeID)
-	}
-	for _, nodeID := range nodeIDs {
-		if strings.TrimSpace(nodeID) == "" {
-			continue
+	if !s.Standalone() {
+		if err := s.requireReplicationRaftLeader(); err != nil {
+			return err
 		}
-		if err := s.RequireCurrentRaftVoter(nodeID); err != nil {
-			return fmt.Errorf("replication_owner_reassignment_node_not_current_voter: %w", err)
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+		nodeIDs := []string{payload.ActiveNodeID, payload.SourceNodeID}
+		for _, target := range payload.Targets {
+			nodeIDs = append(nodeIDs, target.NodeID)
+		}
+		for _, nodeID := range nodeIDs {
+			if strings.TrimSpace(nodeID) == "" {
+				continue
+			}
+			if err := s.RequireCurrentRaftVoter(nodeID); err != nil {
+				return fmt.Errorf("replication_owner_reassignment_node_not_current_voter: %w", err)
+			}
 		}
 	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_disabled_replication_owner_reassignment: %w", err)
-	}
-	return s.applyRaftCommand(clusterModels.Command{
-		Type: "replication_ownership_transition", Action: "reassign_disabled", Data: data,
-	})
+	return s.apply("replication_ownership_transition", "reassign_disabled", payload)
 }
 
 func (s *Service) AcquireReplicationGuestOperation(
 	payload clusterModels.ReplicationGuestOperationAcquire,
-	bypassRaft bool,
 ) error {
 	if payload.AcquiredAt.IsZero() {
 		payload.AcquiredAt = time.Now().UTC()
 	}
-	if bypassRaft {
-		return clusterModels.AcquireReplicationGuestOperationTxn(s.DB, &payload)
-	}
-	if err := s.requireReplicationRaftLeader(); err != nil {
-		return err
-	}
-	s.clusterJoinMu.Lock()
-	defer s.clusterJoinMu.Unlock()
-	if err := s.RequireCurrentRaftVoter(payload.OwnerNodeID); err != nil {
-		return fmt.Errorf("replication_guest_operation_owner_not_current_voter: %w", err)
-	}
-	if strings.TrimSpace(payload.TargetNodeID) != "" {
-		if err := s.RequireCurrentRaftVoter(payload.TargetNodeID); err != nil {
-			return fmt.Errorf("replication_guest_operation_target_not_current_voter: %w", err)
+	if !s.Standalone() {
+		if err := s.requireReplicationRaftLeader(); err != nil {
+			return err
+		}
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+		if err := s.RequireCurrentRaftVoter(payload.OwnerNodeID); err != nil {
+			return fmt.Errorf("replication_guest_operation_owner_not_current_voter: %w", err)
+		}
+		if strings.TrimSpace(payload.TargetNodeID) != "" {
+			if err := s.RequireCurrentRaftVoter(payload.TargetNodeID); err != nil {
+				return fmt.Errorf("replication_guest_operation_target_not_current_voter: %w", err)
+			}
 		}
 	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_replication_guest_operation_acquire: %w", err)
-	}
-	return s.applyRaftCommand(clusterModels.Command{
-		Type: "replication_guest_operation", Action: "acquire", Data: data,
-	})
+	return s.apply("replication_guest_operation", "acquire", payload)
 }
 
 func (s *Service) applyReplicationGuestOperationTransition(
 	action string,
 	payload clusterModels.ReplicationGuestOperationTransition,
-	bypassRaft bool,
 ) error {
+	if action != "seal" && action != "abort" && action != "complete" {
+		return fmt.Errorf("invalid_replication_guest_operation_action")
+	}
 	if (action == "seal" || action == "complete") && payload.OccurredAt.IsZero() {
 		payload.OccurredAt = time.Now().UTC()
 	}
-	if bypassRaft {
-		switch action {
-		case "seal":
-			return clusterModels.SealReplicationGuestOperationTxn(s.DB, &payload)
-		case "abort":
-			return clusterModels.AbortReplicationGuestOperationTxn(s.DB, &payload)
-		case "complete":
-			return clusterModels.CompleteReplicationGuestOperationTxn(s.DB, &payload)
-		default:
-			return fmt.Errorf("invalid_replication_guest_operation_action")
+	if !s.Standalone() {
+		if err := s.requireReplicationRaftLeader(); err != nil {
+			return err
 		}
 	}
-	if err := s.requireReplicationRaftLeader(); err != nil {
-		return err
+	return s.apply("replication_guest_operation", action, payload)
+}
+
+func (s *Service) SealReplicationGuestOperation(payload clusterModels.ReplicationGuestOperationTransition) error {
+	return s.applyReplicationGuestOperationTransition("seal", payload)
+}
+
+func (s *Service) AbortReplicationGuestOperation(payload clusterModels.ReplicationGuestOperationTransition) error {
+	return s.applyReplicationGuestOperationTransition("abort", payload)
+}
+
+func (s *Service) CompleteReplicationGuestOperation(payload clusterModels.ReplicationGuestOperationTransition) error {
+	return s.applyReplicationGuestOperationTransition("complete", payload)
+}
+
+type ReplicationGuestOperationRequest struct {
+	Action     string                                            `json:"action"`
+	Acquire    clusterModels.ReplicationGuestOperationAcquire    `json:"acquire"`
+	Transition clusterModels.ReplicationGuestOperationTransition `json:"transition"`
+}
+
+func (s *Service) replicationGuestOperationCall(
+	_ context.Context,
+	_ string,
+	req ReplicationGuestOperationRequest,
+) (struct{}, error) {
+	switch strings.ToLower(strings.TrimSpace(req.Action)) {
+	case "acquire":
+		return struct{}{}, s.AcquireReplicationGuestOperation(req.Acquire)
+	case "seal":
+		return struct{}{}, s.SealReplicationGuestOperation(req.Transition)
+	case "abort":
+		return struct{}{}, s.AbortReplicationGuestOperation(req.Transition)
+	case "complete":
+		return struct{}{}, s.CompleteReplicationGuestOperation(req.Transition)
+	default:
+		return struct{}{}, fmt.Errorf("invalid_replication_guest_operation_action")
 	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_replication_guest_operation_%s: %w", action, err)
-	}
-	return s.applyRaftCommand(clusterModels.Command{
-		Type: "replication_guest_operation", Action: action, Data: data,
-	})
-}
-
-func (s *Service) SealReplicationGuestOperation(payload clusterModels.ReplicationGuestOperationTransition, bypassRaft bool) error {
-	return s.applyReplicationGuestOperationTransition("seal", payload, bypassRaft)
-}
-
-func (s *Service) AbortReplicationGuestOperation(payload clusterModels.ReplicationGuestOperationTransition, bypassRaft bool) error {
-	return s.applyReplicationGuestOperationTransition("abort", payload, bypassRaft)
-}
-
-func (s *Service) CompleteReplicationGuestOperation(payload clusterModels.ReplicationGuestOperationTransition, bypassRaft bool) error {
-	return s.applyReplicationGuestOperationTransition("complete", payload, bypassRaft)
 }
 
 // UpdateReplicationTargetReadiness publishes a verified per-target generation
 // through Raft. ExpectedOwnerEpoch rejects late results from an old owner.
 func (s *Service) UpdateReplicationTargetReadiness(
 	update clusterModels.ReplicationTargetReadinessUpdate,
-	bypassRaft bool,
 ) error {
 	if update.EvaluatedAt.IsZero() {
 		update.EvaluatedAt = time.Now().UTC()
 	}
-	if bypassRaft {
-		return clusterModels.UpdateReplicationTargetReadinessTxn(s.DB, &update)
+	if !s.Standalone() {
+		if err := s.requireReplicationRaftLeader(); err != nil {
+			return err
+		}
 	}
-	if err := s.requireReplicationRaftLeader(); err != nil {
-		return err
-	}
-
-	data, err := json.Marshal(update)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_replication_target_readiness: %w", err)
-	}
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "replication_target_readiness",
-		Action: "update",
-		Data:   data,
-	})
+	return s.apply("replication_target_readiness", "update", update)
 }
 
 func (s *Service) UpdateReplicationPolicyProtectionState(
 	policyID uint,
 	expectedOwnerEpoch uint64,
 	state string,
-	bypassRaft bool,
 ) error {
-	update := clusterModels.ReplicationPolicyProtectionStateUpdate{
+	if !s.Standalone() {
+		if err := s.requireReplicationRaftLeader(); err != nil {
+			return err
+		}
+	}
+	return s.apply("replication_policy_protection_state", "update", clusterModels.ReplicationPolicyProtectionStateUpdate{
 		PolicyID:           policyID,
 		ExpectedOwnerEpoch: expectedOwnerEpoch,
 		State:              state,
-	}
-	if bypassRaft {
-		return clusterModels.UpdateReplicationPolicyProtectionStateTxn(s.DB, &update)
-	}
-	if err := s.requireReplicationRaftLeader(); err != nil {
-		return err
-	}
-
-	data, err := json.Marshal(update)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_replication_policy_protection_state: %w", err)
-	}
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "replication_policy_protection_state",
-		Action: "update",
-		Data:   data,
 	})
 }
 
-func (s *Service) CreateOrUpdateReplicationEvent(event clusterModels.ReplicationEvent, bypassRaft bool) (uint, error) {
-	if bypassRaft {
-		event.Scope = ""
-		if err := s.DB.Save(&event).Error; err != nil {
-			return 0, err
-		}
-		return event.ID, nil
-	}
-
+func (s *Service) CreateOrUpdateReplicationEvent(event clusterModels.ReplicationEvent) (uint, error) {
 	action := "create"
 	if event.ID == 0 {
 		id, err := s.newRaftObjectID("replication_transition_events")
@@ -1090,19 +931,9 @@ func (s *Service) CreateOrUpdateReplicationEvent(event clusterModels.Replication
 	}
 	event.UpdatedAt = decidedAt
 	transition := clusterModels.ReplicationTransitionEventFromEvent(event)
-	data, err := json.Marshal(transition)
-	if err != nil {
-		return 0, fmt.Errorf("failed_to_marshal_replication_transition_event_payload: %w", err)
-	}
-
-	if err := s.applyRaftCommand(clusterModels.Command{
-		Type:   "replication_transition_event",
-		Action: action,
-		Data:   data,
-	}); err != nil {
+	if err := s.apply("replication_transition_event", action, transition); err != nil {
 		return 0, err
 	}
-
 	return event.ID, nil
 }
 
@@ -1124,18 +955,16 @@ func (s *Service) ListReplicationEvents(limit int, policyID uint) ([]clusterMode
 	}
 
 	events := localEvents
-	if s.DB.Migrator().HasTable(&clusterModels.ReplicationTransitionEvent{}) {
-		transitionQuery := s.DB.Order("started_at DESC, id DESC").Limit(limit)
-		if policyID > 0 {
-			transitionQuery = transitionQuery.Where("policy_id = ?", policyID)
-		}
-		var transitions []clusterModels.ReplicationTransitionEvent
-		if err := transitionQuery.Find(&transitions).Error; err != nil {
-			return nil, err
-		}
-		for _, transition := range transitions {
-			events = append(events, transition.AsReplicationEvent())
-		}
+	transitionQuery := s.DB.Order("started_at DESC, id DESC").Limit(limit)
+	if policyID > 0 {
+		transitionQuery = transitionQuery.Where("policy_id = ?", policyID)
+	}
+	var transitions []clusterModels.ReplicationTransitionEvent
+	if err := transitionQuery.Find(&transitions).Error; err != nil {
+		return nil, err
+	}
+	for _, transition := range transitions {
+		events = append(events, transition.AsReplicationEvent())
 	}
 
 	sort.SliceStable(events, func(i, j int) bool {
@@ -1166,9 +995,6 @@ func (s *Service) GetReplicationEventByScopedID(id uint, scope string) (*cluster
 		return nil, fmt.Errorf("invalid_event_id")
 	}
 	if strings.TrimSpace(scope) == clusterModels.ReplicationEventScopeTransition {
-		if !s.DB.Migrator().HasTable(&clusterModels.ReplicationTransitionEvent{}) {
-			return nil, gorm.ErrRecordNotFound
-		}
 		var transition clusterModels.ReplicationTransitionEvent
 		if err := s.DB.First(&transition, id).Error; err != nil {
 			return nil, err
@@ -1193,45 +1019,8 @@ func (s *Service) ListClusterSSHIdentities() ([]clusterModels.ClusterSSHIdentity
 	return identities, nil
 }
 
-func (s *Service) UpsertClusterSSHIdentity(identity clusterModels.ClusterSSHIdentity, bypassRaft bool) error {
-	if bypassRaft {
-		return clusterModels.UpsertClusterSSHIdentityTxn(s.DB, &identity)
-	}
-
-	data, err := json.Marshal(identity)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_cluster_ssh_identity_payload: %w", err)
-	}
-
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "cluster_ssh_identity",
-		Action: "upsert",
-		Data:   data,
-	})
-}
-
-func (s *Service) DeleteClusterSSHIdentity(nodeUUID string, bypassRaft bool) error {
-	nodeUUID = strings.TrimSpace(nodeUUID)
-	if nodeUUID == "" {
-		return nil
-	}
-
-	if bypassRaft {
-		return s.DB.Where("node_uuid = ?", nodeUUID).Delete(&clusterModels.ClusterSSHIdentity{}).Error
-	}
-
-	data, err := json.Marshal(struct {
-		NodeUUID string `json:"nodeUUID"`
-	}{NodeUUID: nodeUUID})
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_cluster_ssh_identity_delete_payload: %w", err)
-	}
-
-	return s.applyRaftCommand(clusterModels.Command{
-		Type:   "cluster_ssh_identity",
-		Action: "delete",
-		Data:   data,
-	})
+func (s *Service) UpsertClusterSSHIdentity(ctx context.Context, identity clusterModels.ClusterSSHIdentity) error {
+	return s.Propose(ctx, "cluster_ssh_identity", "upsert", identity)
 }
 
 func (s *Service) LocalNodeID() string {

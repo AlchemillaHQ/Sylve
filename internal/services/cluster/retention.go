@@ -9,7 +9,6 @@
 package cluster
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -35,23 +34,8 @@ func (s *Service) EnforceReplicatedRetention(now time.Time) error {
 	if s == nil || s.DB == nil {
 		return fmt.Errorf("cluster_service_unavailable")
 	}
-	decision := replicatedRetentionDecision(now)
-	bypassRaft, err := s.RuntimeStateBypassRaft()
-	if err != nil {
-		return err
-	}
-	if bypassRaft {
-		return clusterModels.ApplyReplicatedRetentionTxn(s.DB, &decision)
-	}
-	if s.Raft() == nil || s.Raft().State() != raft.Leader {
+	if r := s.Raft(); r != nil && r.State() != raft.Leader {
 		return nil
 	}
-
-	data, err := json.Marshal(decision)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_replicated_retention_decision: %w", err)
-	}
-	return s.applyRaftCommand(clusterModels.Command{
-		Type: "replicated_retention", Action: "apply", Data: data,
-	})
+	return s.apply("replicated_retention", "apply", replicatedRetentionDecision(now))
 }

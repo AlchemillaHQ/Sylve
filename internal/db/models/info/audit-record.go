@@ -13,18 +13,19 @@ import (
 )
 
 type AuditRecord struct {
-	ID        uint          `gorm:"primaryKey" json:"id"`
-	UserID    *uint         `json:"userId" gorm:"index"`
-	User      string        `json:"user"`
-	AuthType  string        `json:"authType"`
-	Node      string        `json:"node"`
-	Started   time.Time     `json:"started"`
-	Ended     time.Time     `json:"ended"`
-	Action    string        `json:"action"`
-	Duration  time.Duration `json:"duration"`
-	Status    string        `json:"status"`
-	CreatedAt time.Time     `json:"createdAt" gorm:"autoCreateTime;index"`
-	UpdatedAt time.Time     `json:"updatedAt" gorm:"autoUpdateTime"`
+	ID         uint          `gorm:"primaryKey" json:"id"`
+	UserID     *uint         `json:"userId" gorm:"index"`
+	User       string        `json:"user"`
+	AuthType   string        `json:"authType"`
+	OriginNode string        `json:"originNode,omitempty"`
+	Node       string        `json:"node"`
+	Started    time.Time     `json:"started"`
+	Ended      time.Time     `json:"ended"`
+	Action     string        `json:"action"`
+	Duration   time.Duration `json:"duration"`
+	Status     string        `json:"status"`
+	CreatedAt  time.Time     `json:"createdAt" gorm:"autoCreateTime;index"`
+	UpdatedAt  time.Time     `json:"updatedAt" gorm:"autoUpdateTime"`
 
 	AsyncJobID       *uint  `json:"asyncJobId" gorm:"index"`
 	AsyncJobType     string `json:"asyncJobType" gorm:"index"`

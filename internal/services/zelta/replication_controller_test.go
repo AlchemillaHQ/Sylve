@@ -18,7 +18,6 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
-	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/rs/zerolog"
 )
@@ -65,7 +64,7 @@ func TestCrashRecoveryLoadsTargetsAndRetriesWithoutRepeatedWarnings(t *testing.T
 	policy := clusterModels.ReplicationPolicy{ID: 71, Name: "crash-recovery", GuestType: clusterModels.ReplicationGuestTypeJail,
 		GuestID: 101, SourceNodeID: "owner", ActiveNodeID: "owner", OwnerEpoch: 1, Enabled: true,
 		CrashRecovery: true, CrashRestartMax: 1, FailoverMode: clusterModels.ReplicationFailoverAutoSafe, CronExpr: "* * * * *"}
-	if err := clusterModels.UpsertReplicationPolicyTxn(database, &policy, []clusterModels.ReplicationPolicyTarget{{NodeID: "target", Weight: 100}}); err != nil {
+	if err := seedReplicationPolicy(database, &policy, []clusterModels.ReplicationPolicyTarget{{NodeID: "target", Weight: 100}}); err != nil {
 		t.Fatal(err)
 	}
 	lease := clusterModels.ReplicationLease{PolicyID: policy.ID, OwnerNodeID: "owner", OwnerEpoch: 1, Version: 2, ExpiresAt: time.Now().Add(time.Hour)}
@@ -75,7 +74,7 @@ func TestCrashRecoveryLoadsTargetsAndRetriesWithoutRepeatedWarnings(t *testing.T
 		}
 	}
 	service := newTestZeltaService(database)
-	service.Cluster = &clusterService.Service{DB: database, NodeID: "owner"}
+	service.Cluster = newTestClusterService(database, "owner")
 	jail := &stubJailService{}
 	service.Jail = jail
 	lease.Version = 1

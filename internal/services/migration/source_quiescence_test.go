@@ -155,28 +155,27 @@ func TestExplicitMigrationCancellationDoesNotTreatPollFailuresAsCancellation(t *
 }
 
 func TestTargetMigrationImportReceiptMustMatchTokenGuestAndRootManifest(t *testing.T) {
-	const valid = `{"status":"success","guestId":42,"operationToken":"migration:source:42","startGuest":true,"sourceDatasetRoots":["pool-b/sylve/virtual-machines/42","pool-a/sylve/virtual-machines/42"]}`
 	roots := []string{"pool-a/sylve/virtual-machines/42", "pool-b/sylve/virtual-machines/42"}
-	if _, err := validateTargetMigrationImportReceipt(
-		[]byte(valid), 42, "migration:source:42", true, roots,
-	); err != nil {
+	started, stopped := true, false
+	valid := targetMigrationImportReceipt{
+		GuestID: 42, OperationToken: "migration:source:42", StartGuest: &started,
+		SourceDatasetRoots: []string{roots[1], roots[0]},
+	}
+	if err := validateTargetMigrationImportReceipt(valid, 42, "migration:source:42", true, roots); err != nil {
 		t.Fatalf("valid token-bound receipt rejected: %v", err)
 	}
 
-	invalid := []string{
-		`not-json`,
-		`{"status":"error","guestId":42,"operationToken":"migration:source:42","startGuest":true,"sourceDatasetRoots":["pool-a/sylve/virtual-machines/42","pool-b/sylve/virtual-machines/42"]}`,
-		`{"status":"success","guestId":43,"operationToken":"migration:source:42","startGuest":true,"sourceDatasetRoots":["pool-a/sylve/virtual-machines/42","pool-b/sylve/virtual-machines/42"]}`,
-		`{"status":"success","guestId":42,"operationToken":"stale","startGuest":true,"sourceDatasetRoots":["pool-a/sylve/virtual-machines/42","pool-b/sylve/virtual-machines/42"]}`,
-		`{"status":"success","guestId":42,"operationToken":"migration:source:42","startGuest":false,"sourceDatasetRoots":["pool-a/sylve/virtual-machines/42","pool-b/sylve/virtual-machines/42"]}`,
-		`{"status":"success","guestId":42,"operationToken":"migration:source:42","sourceDatasetRoots":["pool-a/sylve/virtual-machines/42","pool-b/sylve/virtual-machines/42"]}`,
-		`{"status":"success","guestId":42,"operationToken":"migration:source:42","startGuest":true,"sourceDatasetRoots":["pool-a/sylve/virtual-machines/42"]}`,
-	}
-	for _, raw := range invalid {
-		if _, err := validateTargetMigrationImportReceipt(
-			[]byte(raw), 42, "migration:source:42", true, roots,
-		); err == nil {
-			t.Fatalf("invalid receipt was accepted: %s", raw)
+	for name, mutate := range map[string]func(*targetMigrationImportReceipt){
+		"other guest":   func(r *targetMigrationImportReceipt) { r.GuestID = 43 },
+		"stale token":   func(r *targetMigrationImportReceipt) { r.OperationToken = "stale" },
+		"stopped guest": func(r *targetMigrationImportReceipt) { r.StartGuest = &stopped },
+		"no run state":  func(r *targetMigrationImportReceipt) { r.StartGuest = nil },
+		"missing root":  func(r *targetMigrationImportReceipt) { r.SourceDatasetRoots = roots[:1] },
+	} {
+		receipt := valid
+		mutate(&receipt)
+		if err := validateTargetMigrationImportReceipt(receipt, 42, "migration:source:42", true, roots); err == nil {
+			t.Fatalf("%s receipt was accepted: %+v", name, receipt)
 		}
 	}
 }

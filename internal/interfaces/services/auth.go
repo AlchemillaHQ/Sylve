@@ -11,18 +11,28 @@ package serviceInterfaces
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 )
 
 type CustomClaims struct {
-	UserID       uint   `json:"userId"`
-	Username     string `json:"username"`
-	AuthType     string `json:"authType"`
-	TokenUse     string `json:"tokenUse,omitempty"`
-	Admin        bool   `json:"admin,omitempty"`
-	IssuerNodeID string `json:"issuerNodeId,omitempty"`
+	UserID   uint   `json:"userId"`
+	Username string `json:"username"`
+	AuthType string `json:"authType"`
+}
+
+// Trusted only from a member's cert. It has no user ID: one from another node
+// names nobody here.
+type ProxiedUser struct {
+	Username string `json:"username"`
+	AuthType string `json:"authType"`
+}
+
+func (u ProxiedUser) Header() string {
+	data, _ := json.Marshal(u)
+	return string(data)
 }
 
 type ScopedValidationResult struct {
@@ -69,12 +79,8 @@ type EditUserOpts struct {
 
 type AuthServiceInterface interface {
 	GetJWTSecret() (string, error)
-	GetClusterKey() (string, error)
 	CreateJWT(username, password, authType string, remember bool) (uint, string, error)
 	CreateScopedJWT(userID uint, username, authType, scope string, expiresInSeconds int64) (string, error)
-	CreateUserProxyJWT(userId uint, username string, authType string) (string, error)
-	CreateInternalClusterJWT(username string) (string, error)
-	VerifyClusterJWT(tokenString string) (CustomClaims, error)
 	RevokeJWT(token string) error
 	VerifyTokenInDb(token string) bool
 	ValidateToken(tokenString string) (CustomClaims, error)
@@ -105,4 +111,5 @@ type AuthServiceInterface interface {
 	AuthenticatePAM(username, password string) (bool, error)
 
 	GetClusterTLSConfig() (*tls.Config, error)
+	ProxiedUser(userID uint, authType string) (ProxiedUser, error)
 }

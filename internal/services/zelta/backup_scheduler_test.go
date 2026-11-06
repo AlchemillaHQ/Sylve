@@ -10,6 +10,7 @@ package zelta
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +26,7 @@ func newSchedulerTestDB(t *testing.T) *Service {
 	)
 	return &Service{
 		DB:                db,
+		Cluster:           newTestClusterService(db, ""),
 		queuedJobs:        make(map[uint]struct{}),
 		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
@@ -54,15 +56,11 @@ func TestNextRunTime(t *testing.T) {
 }
 
 func TestIsLocalBackupJobRunner(t *testing.T) {
-	svc := &Service{
-		queuedJobs:        make(map[uint]struct{}),
-		runningJobs:       make(map[uint]struct{}),
-		runningWorkloadOp: make(map[string]string),
-	}
+	svc := newSchedulerTestDB(t)
 
 	job := &clusterModels.BackupJob{RunnerNodeID: ""}
 	if !svc.isLocalBackupJobRunner(job, "") {
-		t.Fatal("empty runner, no cluster → should be local")
+		t.Fatal("empty runner, standalone → should be local")
 	}
 	if !svc.isLocalBackupJobRunner(job, "node-a") {
 		t.Fatal("empty runner, any localNodeID → should be local")
@@ -401,4 +399,45 @@ func TestAcquireAndReleaseJob(t *testing.T) {
 		t.Fatal("beginJob should succeed after reserveJob")
 	}
 	svc.releaseJob(42)
+}
+
+type refusingMutationGate struct{}
+
+func (refusingMutationGate) EnterMutation(ctx context.Context) (context.Context, func(), error) {
+	return ctx, nil, errors.New("node_leave_fenced")
+}
+
+func TestJobMessageThatCantStartReleasesTheReservation(t *testing.T) {
+	service := newSchedulerTestDB(t)
+	handlers := map[string]func() error{
+		"backup": func() error {
+			return service.handleBackupJobQueue(context.Background(), backupJobPayload{JobID: 51, OperationToken: "token"})
+		},
+		"restore": func() error {
+			return service.handleRestoreJobQueue(context.Background(), restoreJobPayload{JobID: 51, OperationToken: "token"})
+		},
+	}
+	check := func(when string) {
+		t.Helper()
+		for name, handle := range handlers {
+			if !service.reserveJob(51) {
+				t.Fatalf("%s %s: job already reserved", when, name)
+			}
+			if err := handle(); err == nil {
+				t.Fatalf("%s %s: the message started", when, name)
+			}
+			if !service.reserveJob(51) {
+				t.Fatalf("%s %s: the message kept the job's reservation", when, name)
+			}
+			service.releaseReservedJob(51)
+		}
+	}
+
+	service.SetMutationAdmission(refusingMutationGate{})
+	check("fenced")
+	service.SetMutationAdmission(nil)
+	if err := service.DB.Migrator().DropTable(&clusterModels.BackupJobOperation{}); err != nil {
+		t.Fatal(err)
+	}
+	check("start failing")
 }

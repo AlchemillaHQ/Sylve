@@ -29,6 +29,7 @@ if (browser) {
 
 export type APIRequestConfig = {
 	url: string;
+	node?: string;
 	method?: string;
 	headers?: Record<string, string>;
 	data?: unknown;
@@ -89,44 +90,42 @@ function applyRequestDefaults(config: APIRequestConfig): APIRequestConfig {
 		nextConfig.headers!.Authorization = `Bearer ${storage.token}`;
 	}
 
-	const routeHost = window.location.pathname.split('/').filter(Boolean)[0] || '';
-	const pathBasedHost =
-		routeHost !== '' &&
-		routeHost !== 'datacenter' &&
-		routeHost !== 'login' &&
-		routeHost !== 'inactive-node'
-			? routeHost
-			: '';
-	const fallbackHost = pathBasedHost || storage.localHostname || storage.hostname || '';
-	const explicitHost =
-		typeof nextConfig.headers!['X-Current-Hostname'] === 'string'
-			? nextConfig.headers!['X-Current-Hostname']
-			: '';
-
-	if (explicitHost) {
-		nextConfig.headers!['X-Current-Hostname'] = explicitHost;
-	} else if (
-		(nextConfig.url === '/vm' || nextConfig.url === '/jail') &&
-		nextConfig.method?.toLowerCase() === 'post'
-	) {
-		try {
-			const bodyData = nextConfig.data as { node?: string } | undefined;
-			if (bodyData?.node) {
-				nextConfig.headers!['X-Current-Hostname'] = `${bodyData.node}`;
-			} else if (fallbackHost) {
-				nextConfig.headers!['X-Current-Hostname'] = `${fallbackHost}`;
-			}
-		} catch (e) {
-			console.error('Error parsing request data:', e);
-			if (fallbackHost) {
-				nextConfig.headers!['X-Current-Hostname'] = `${fallbackHost}`;
-			}
-		}
-	} else if (fallbackHost) {
-		nextConfig.headers!['X-Current-Hostname'] = `${fallbackHost}`;
+	const node = nextConfig.node || pageNode();
+	if (node && nextConfig.url.startsWith('/') && !isNodeless(nextConfig.url)) {
+		nextConfig.url = nodePath(nextConfig.url, node);
 	}
 
 	return nextConfig;
+}
+
+// Never node-prefixed: cluster-wide, or the signed-in node's own session.
+const NODELESS_ROUTES = [
+	'/auth/login',
+	'/auth/passkeys/login',
+	'/auth/logout',
+	'/auth/sse-tokens',
+	'/auth/preferences',
+	'/basic',
+	'/cluster',
+	'/health',
+	'/events'
+];
+
+function isNodeless(url: string): boolean {
+	return NODELESS_ROUTES.some(
+		(route) => url === route || url.startsWith(`${route}/`) || url.startsWith(`${route}?`)
+	);
+}
+
+export function pageNode(): string {
+	const segment = window.location.pathname.split('/').filter(Boolean)[0] || '';
+	return ['datacenter', 'login', 'inactive-node'].includes(segment) ? '' : segment;
+}
+
+export function nodePath(path: string, node?: string | null): string {
+	if (!node || /^(\/api)?\/nodes\//.test(path)) return path;
+	const prefix = `/nodes/${encodeURIComponent(node)}`;
+	return path.startsWith('/api/') ? `/api${prefix}${path.slice(4)}` : `${prefix}${path}`;
 }
 
 function isAPIClientError(error: unknown): error is APIClientError {

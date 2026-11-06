@@ -3,8 +3,13 @@
 package clusterModels
 
 import (
+	"bytes"
+	"fmt"
+	"os"
+	"os/exec"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,9 +33,6 @@ func TestReplicatedStateManifestCoversSnapshotAndExcludesLocalState(t *testing.T
 		"cluster_ssh_identities",
 		"encryption_keys",
 		"guest_identity_claims",
-		"guest_identity_departures",
-		"guest_identity_enrollments",
-		"guest_identity_registries",
 		"replication_guest_operation_receipts",
 		"replication_guest_operations",
 		"replication_leases",
@@ -42,26 +44,12 @@ func TestReplicatedStateManifestCoversSnapshotAndExcludesLocalState(t *testing.T
 	}
 	manifest := ReplicatedStateManifest()
 	actualTables := make([]string, 0, len(manifest))
-	coveredFields := make(map[string]bool)
 	for _, entry := range manifest {
 		actualTables = append(actualTables, entry.Table)
-		coveredFields[entry.SnapshotField] = true
 	}
 	sort.Strings(actualTables)
 	if !reflect.DeepEqual(actualTables, expectedTables) {
 		t.Fatalf("replicated tables = %#v, want %#v", actualTables, expectedTables)
-	}
-
-	snapshotType := reflect.TypeOf(ClusterSnapshot{})
-	for index := 0; index < snapshotType.NumField(); index++ {
-		field := snapshotType.Field(index)
-		switch field.Name {
-		case "ReplicationEvents", "AppliedIndex":
-			continue
-		}
-		if !coveredFields[field.Name] {
-			t.Fatalf("snapshot field %s is absent from replicated-state manifest", field.Name)
-		}
 	}
 
 	localTables := map[string]bool{
@@ -111,82 +99,42 @@ func TestReplicatedStateDigestIsIndependentOfInsertionOrder(t *testing.T) {
 	}
 }
 
-func TestReplicatedStateDigestIgnoresSurrogateIDs(t *testing.T) {
-	left := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
-	right := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
-	now := time.Date(2026, time.July, 30, 2, 3, 4, 0, time.UTC)
-
-	leftIdentities := []ClusterSSHIdentity{
-		{ID: 451, NodeUUID: "node-b", SSHUser: "root", SSHHost: "10.0.0.2", SSHPort: 8183, PublicKey: "key-b", CreatedAt: now, UpdatedAt: now},
-		{ID: 5, NodeUUID: "node-a", SSHUser: "root", SSHHost: "10.0.0.1", SSHPort: 8183, PublicKey: "key-a", CreatedAt: now, UpdatedAt: now},
-	}
-	rightIdentities := []ClusterSSHIdentity{
-		{ID: 9, NodeUUID: "node-b", SSHUser: "root", SSHHost: "10.0.0.2", SSHPort: 8183, PublicKey: "key-b", CreatedAt: now, UpdatedAt: now},
-		{ID: 8, NodeUUID: "node-a", SSHUser: "root", SSHHost: "10.0.0.1", SSHPort: 8183, PublicKey: "key-a", CreatedAt: now, UpdatedAt: now},
-	}
-	policies := []ReplicationPolicy{
-		{
-			ID: 20, Name: "policy-a", GuestType: ReplicationGuestTypeVM, GuestID: 20,
-			SourceNodeID: "node-a", ActiveNodeID: "node-a", OwnerEpoch: 1,
-			SourceMode: ReplicationSourceModeFollowActive, FailbackMode: ReplicationFailbackManual,
-			FailoverMode: ReplicationFailoverManual, CronExpr: "*/5 * * * *", Enabled: true,
-			ProtectionState: ReplicationProtectionStateArmed, TransitionState: ReplicationTransitionStateNone,
-			CreatedAt: now, UpdatedAt: now,
-		},
-		{
-			ID: 21, Name: "policy-b", GuestType: ReplicationGuestTypeJail, GuestID: 21,
-			SourceNodeID: "node-b", ActiveNodeID: "node-b", OwnerEpoch: 1,
-			SourceMode: ReplicationSourceModeFollowActive, FailbackMode: ReplicationFailbackManual,
-			FailoverMode: ReplicationFailoverManual, CronExpr: "*/10 * * * *", Enabled: true,
-			ProtectionState: ReplicationProtectionStateArmed, TransitionState: ReplicationTransitionStateNone,
-			CreatedAt: now, UpdatedAt: now,
-		},
-	}
-	leftTargets := []ReplicationPolicyTarget{
-		{ID: 900, PolicyID: 20, NodeID: "node-b", Weight: 90, CreatedAt: now, UpdatedAt: now},
-		{ID: 4, PolicyID: 20, NodeID: "node-a", Weight: 100, CreatedAt: now, UpdatedAt: now},
-	}
-	rightTargets := []ReplicationPolicyTarget{
-		{ID: 5, PolicyID: 20, NodeID: "node-b", Weight: 90, CreatedAt: now, UpdatedAt: now},
-		{ID: 800, PolicyID: 20, NodeID: "node-a", Weight: 100, CreatedAt: now, UpdatedAt: now},
-	}
-	leftLeases := []ReplicationLease{
-		{ID: 901, PolicyID: 20, GuestType: ReplicationGuestTypeVM, GuestID: 20, OwnerNodeID: "node-a", OwnerEpoch: 1, ExpiresAt: now.Add(time.Hour), Version: 1, CreatedAt: now, UpdatedAt: now},
-		{ID: 6, PolicyID: 21, GuestType: ReplicationGuestTypeJail, GuestID: 21, OwnerNodeID: "node-b", OwnerEpoch: 1, ExpiresAt: now.Add(time.Hour), Version: 1, CreatedAt: now, UpdatedAt: now},
-	}
-	rightLeases := []ReplicationLease{
-		{ID: 7, PolicyID: 20, GuestType: ReplicationGuestTypeVM, GuestID: 20, OwnerNodeID: "node-a", OwnerEpoch: 1, ExpiresAt: now.Add(time.Hour), Version: 1, CreatedAt: now, UpdatedAt: now},
-		{ID: 850, PolicyID: 21, GuestType: ReplicationGuestTypeJail, GuestID: 21, OwnerNodeID: "node-b", OwnerEpoch: 1, ExpiresAt: now.Add(time.Hour), Version: 1, CreatedAt: now, UpdatedAt: now},
-	}
-	leftKeys := []EncryptionKey{
-		{ID: 902, UUID: "key-b", KeyData: "secret-b", KeyFormat: "passphrase", CreatedAt: now, UpdatedAt: now},
-		{ID: 8, UUID: "key-a", KeyData: "secret-a", KeyFormat: "passphrase", CreatedAt: now, UpdatedAt: now},
-	}
-	rightKeys := []EncryptionKey{
-		{ID: 9, UUID: "key-b", KeyData: "secret-b", KeyFormat: "passphrase", CreatedAt: now, UpdatedAt: now},
-		{ID: 820, UUID: "key-a", KeyData: "secret-a", KeyFormat: "passphrase", CreatedAt: now, UpdatedAt: now},
-	}
-	seed := func(db *gorm.DB, identities []ClusterSSHIdentity, targets []ReplicationPolicyTarget, leases []ReplicationLease, keys []EncryptionKey) {
-		t.Helper()
-		for _, value := range []any{&policies, &identities, &targets, &leases, &keys} {
-			if err := db.Create(value).Error; err != nil {
-				t.Fatalf("seed %T: %v", value, err)
-			}
+func TestSnapshotRestoreReproducesIDsAndSequences(t *testing.T) {
+	source := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	now := time.Date(2026, time.July, 30, 2, 3, 4, 0, time.FixedZone("source", 5*60*60))
+	for _, uuid := range []string{"key-a", "key-b", "key-c"} {
+		if err := source.Create(&EncryptionKey{UUID: uuid, KeyData: "secret", KeyFormat: "passphrase", CreatedAt: now, UpdatedAt: now}).Error; err != nil {
+			t.Fatal(err)
 		}
 	}
-	seed(left, leftIdentities, leftTargets, leftLeases, leftKeys)
-	seed(right, rightIdentities, rightTargets, rightLeases, rightKeys)
+	if err := source.Where("uuid = ?", "key-c").Delete(&EncryptionKey{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	snapshot, sourceDigest, err := CaptureReplicatedStateDigest(source)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	_, leftDigest, err := CaptureReplicatedStateDigest(left)
-	if err != nil {
-		t.Fatalf("capture left digest: %v", err)
+	destination := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	if err := NewFSMDispatcher(destination).Restore(snapshotReader(t, snapshot)); err != nil {
+		t.Fatal(err)
 	}
-	_, rightDigest, err := CaptureReplicatedStateDigest(right)
+	_, destinationDigest, err := CaptureReplicatedStateDigest(destination)
 	if err != nil {
-		t.Fatalf("capture right digest: %v", err)
+		t.Fatal(err)
 	}
-	if leftDigest != rightDigest {
-		t.Fatalf("surrogate IDs changed digest: left=%s right=%s", leftDigest, rightDigest)
+	if sourceDigest != destinationDigest {
+		t.Fatalf("digest after restore = %s, want %s", destinationDigest, sourceDigest)
+	}
+
+	for _, db := range []*gorm.DB{source, destination} {
+		key := EncryptionKey{UUID: "key-d", KeyData: "secret", KeyFormat: "passphrase"}
+		if err := db.Create(&key).Error; err != nil {
+			t.Fatal(err)
+		}
+		if key.ID != 4 {
+			t.Fatalf("next key ID = %d, want 4", key.ID)
+		}
 	}
 }
 
@@ -293,5 +241,143 @@ func TestClusterSnapshotDigestIgnoresAppliedIndex(t *testing.T) {
 			leftDigest,
 			rightDigest,
 		)
+	}
+}
+
+func TestClusterSnapshotDigestIsTheSameInEveryProcess(t *testing.T) {
+	if mode := os.Getenv("SYLVE_DIGEST_PROBE"); mode != "" {
+		db := newClusterModelTestDB(t)
+		fsm := NewFSMDispatcher(db)
+		at := time.Date(2026, time.November, 5, 10, 0, 0, 123456000, time.UTC)
+		if err := db.Create(&ClusterNote{ID: 7, Title: "t", Content: "c", CreatedAt: at, UpdatedAt: at}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if mode == "after-persist" {
+			snapshot, err := fsm.Snapshot()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := snapshot.Persist(&writerSnapSink{buf: &bytes.Buffer{}}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		_, digest, err := CaptureReplicatedStateDigest(db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Println("digest=" + digest)
+		return
+	}
+	digestIn := func(mode string) string {
+		t.Helper()
+		probe := exec.Command(os.Args[0], "-test.run=^TestClusterSnapshotDigestIsTheSameInEveryProcess$", "-test.v")
+		probe.Env = append(os.Environ(), "SYLVE_DIGEST_PROBE="+mode)
+		output, err := probe.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s probe: %v\n%s", mode, err, output)
+		}
+		for _, line := range strings.Split(string(output), "\n") {
+			if digest, ok := strings.CutPrefix(line, "digest="); ok {
+				return digest
+			}
+		}
+		t.Fatalf("%s probe printed no digest:\n%s", mode, output)
+		return ""
+	}
+	if fresh, leader := digestIn("fresh"), digestIn("after-persist"); fresh != leader {
+		t.Fatalf("digest depends on the process: fresh=%s after-persist=%s", fresh, leader)
+	}
+}
+
+func TestClusterSnapshotIgnoresTheTableLayout(t *testing.T) {
+	upgraded := testutil.NewSQLiteTestDB(t)
+	if err := upgraded.Exec("CREATE TABLE `cluster_notes` (`updated_at` datetime,`retired` integer NOT NULL DEFAULT 0," +
+		"`content` text,`title` text,`created_at` datetime,`id` integer PRIMARY KEY AUTOINCREMENT)").Error; err != nil {
+		t.Fatal(err)
+	}
+	NewFSMDispatcher(upgraded)
+	var firstColumn string
+	if err := upgraded.Raw("SELECT name FROM pragma_table_info('cluster_notes') WHERE cid = 0").Scan(&firstColumn).Error; err != nil || firstColumn != "updated_at" {
+		t.Fatalf("migration rebuilt the upgraded table: first column %q, %v", firstColumn, err)
+	}
+	fresh := newClusterModelTestDB(t)
+	NewFSMDispatcher(fresh)
+
+	at := time.Date(2026, time.November, 5, 10, 0, 0, 0, time.FixedZone("IST", 5*60*60+30*60))
+	for _, db := range []*gorm.DB{upgraded, fresh} {
+		if err := db.Create(&ClusterNote{ID: 1, Title: "t", Content: "c", CreatedAt: at, UpdatedAt: at}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot, upgradedDigest, err := CaptureReplicatedStateDigest(upgraded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, freshDigest, err := CaptureReplicatedStateDigest(fresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if upgradedDigest != freshDigest {
+		t.Fatalf("digest depends on the table layout: upgraded=%s fresh=%s", upgradedDigest, freshDigest)
+	}
+
+	restored := newClusterModelTestDB(t)
+	if err := NewFSMDispatcher(restored).Restore(snapshotReader(t, snapshot)); err != nil {
+		t.Fatalf("restore an upgraded node's snapshot on a fresh node: %v", err)
+	}
+	if _, restoredDigest, err := CaptureReplicatedStateDigest(restored); err != nil || restoredDigest != upgradedDigest {
+		t.Fatalf("restored digest = %s, %v; want %s", restoredDigest, err, upgradedDigest)
+	}
+	var original, copied string
+	if err := upgraded.Raw("SELECT CAST(created_at AS TEXT) FROM cluster_notes WHERE id = 1").Scan(&original).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := restored.Raw("SELECT CAST(created_at AS TEXT) FROM cluster_notes WHERE id = 1").Scan(&copied).Error; err != nil {
+		t.Fatal(err)
+	}
+	if copied != original {
+		t.Fatalf("restore rewrote the stored time: %q, want %q", copied, original)
+	}
+}
+
+func TestRestoreSnapshotTableKeepsBinaryValues(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t)
+	if err := db.Exec("CREATE TABLE `blobs` (`data` blob,`id` integer PRIMARY KEY AUTOINCREMENT)").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		return restoreSnapshotTable(tx, SnapshotTable{
+			Name: "blobs", Columns: []string{"data", "id"}, Rows: [][]any{{[]byte("ab"), int64(1)}},
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var data []byte
+	if err := db.Raw("SELECT data FROM blobs WHERE id = 1").Row().Scan(&data); err != nil || string(data) != "ab" {
+		t.Fatalf("restored blob = %q, %v", data, err)
+	}
+}
+
+func TestDropRetiredReplicatedState(t *testing.T) {
+	db := newClusterModelTestDB(t)
+	for _, statement := range []string{
+		"CREATE TABLE guest_identity_registries (id integer PRIMARY KEY)",
+		"ALTER TABLE guest_identity_claims ADD COLUMN `token` text",
+		"ALTER TABLE backup_target_node_readinesses ADD COLUMN `raft_applied_index` integer NOT NULL DEFAULT 0",
+	} {
+		if err := db.Exec(statement).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := dropRetiredReplicatedState(db); err != nil {
+		t.Fatal(err)
+	}
+	if db.Migrator().HasTable("guest_identity_registries") ||
+		db.Migrator().HasColumn(&GuestIdentityClaim{}, "token") ||
+		db.Migrator().HasColumn(&BackupTargetNodeReadiness{}, "raft_applied_index") {
+		t.Fatal("retired state survived")
+	}
+	if err := dropRetiredReplicatedState(db); err != nil {
+		t.Fatalf("second run: %v", err)
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -32,6 +33,9 @@ func TestRequireNoManagedGuestsWithinRestore(t *testing.T) {
 		&vmModels.Storage{},
 		&vmModels.VMStorageDataset{},
 	)
+	if err := containerModels.Migrate(database); err != nil {
+		t.Fatal(err)
+	}
 
 	jail := jailModels.Jail{CTID: 100, Name: "restore-guard-jail"}
 	if err := database.Create(&jail).Error; err != nil {
@@ -111,7 +115,7 @@ func TestRequireNoManagedGuestsFailsClosedForPartialInventory(t *testing.T) {
 
 	service := &Service{DB: database}
 	err := service.requireNoManagedGuestsWithinRestore(t.Context(), "zroot/sylve")
-	if err == nil || !strings.Contains(err.Error(), "restore_jail_inventory_unavailable") {
+	if err == nil || !strings.Contains(err.Error(), "_inventory_failed") {
 		t.Fatalf("partial inventory did not fail closed: %v", err)
 	}
 }

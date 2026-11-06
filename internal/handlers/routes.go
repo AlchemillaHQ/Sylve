@@ -21,7 +21,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/assets"
 	"github.com/alchemillahq/sylve/internal/bootstrap"
 	"github.com/alchemillahq/sylve/internal/config"
-	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	authHandlers "github.com/alchemillahq/sylve/internal/handlers/auth"
 	basicHandlers "github.com/alchemillahq/sylve/internal/handlers/basic"
 	certificateHandlers "github.com/alchemillahq/sylve/internal/handlers/certificates"
@@ -94,17 +93,12 @@ import (
 // @name X-Cluster-Key
 // @description Exact enabled cluster join key.
 
-// @securityDefinitions.apikey ClusterTokenAuth
-// @in header
-// @name X-Cluster-Token
-// @description Short-lived server-issued cluster token.
-
 // @host      sylve.lan:8181
 // @BasePath  /api
-func registerSignedDownloadRoutes(api *gin.RouterGroup, db *gorm.DB, utilitiesService *utilitiesServicePkg.Service) {
+func registerSignedDownloadRoutes(api *gin.RouterGroup, memberAPIHost func(string) (string, error), utilitiesService *utilitiesServicePkg.Service) {
 	methods := []string{http.MethodGet, http.MethodHead}
-	api.Match(methods, "/utilities/downloads/:uuid", EnsurePublicDownloadHost(db), utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
-	api.Match(methods, "/utilities/downloads/:uuid/:filename", EnsurePublicDownloadHost(db), utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
+	api.Match(methods, "/utilities/downloads/:uuid", EnsurePublicDownloadHost(memberAPIHost), utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
+	api.Match(methods, "/utilities/downloads/:uuid/:filename", EnsurePublicDownloadHost(memberAPIHost), utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
 }
 
 func RegisterRoutes(r *gin.Engine,
@@ -131,12 +125,12 @@ func RegisterRoutes(r *gin.Engine,
 	clusterService *cluster.Service,
 	zeltaService *zelta.Service,
 	migrationService *migration.Service,
-	fsm *clusterModels.FSMDispatcher,
-	db *gorm.DB,
 	telemetryDB *gorm.DB,
 ) {
 	api := r.Group("/api")
 	api.Use(middleware.ClusterMutationAdmission(clusterService))
+	api.Use(clusterHandlers.StampAppliedIndex(clusterService))
+	registerNodeRoute(api, clusterService, clusterService.MemberAPIHost, middleware.EnsureAuthenticated(authService))
 	uploadAdmission := semaphore.NewWeighted(config.GetUploadsConfig().MaxConcurrentTransfers)
 	api.GET("/auth/login/config", authHandlers.LoginConfigHandler())
 	publicAuth := api.Group("/auth")
@@ -165,7 +159,6 @@ func RegisterRoutes(r *gin.Engine,
 
 	info := api.Group("/info")
 	info.Use(middleware.EnsureAuthenticated(authService))
-	info.Use(EnsureCorrectHost(db, authService))
 	info.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		info.GET("/basic", infoHandlers.BasicInfo(infoService))
@@ -198,7 +191,6 @@ func RegisterRoutes(r *gin.Engine,
 	hostTerminal := api.Group("/info")
 	hostTerminal.Use(middleware.EnsureAuthenticated(authService))
 	hostTerminal.Use(middleware.RequireLocalAdmin(authService))
-	hostTerminal.Use(EnsureCorrectHost(db, authService))
 	hostTerminal.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	hostTerminal.GET("/terminal", infoHandlers.HandleHostTerminal)
 
@@ -206,7 +198,6 @@ func RegisterRoutes(r *gin.Engine,
 		containers := api.Group("/container")
 		containers.Use(middleware.EnsureAuthenticated(authService))
 		containers.Use(middleware.RequireLocalAdminForWrites(authService))
-		containers.Use(EnsureCorrectHost(db, authService))
 		containers.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 		{
 			containers.GET("", containerHandlers.ListContainers(containerService))
@@ -244,7 +235,6 @@ func RegisterRoutes(r *gin.Engine,
 
 	zfs := api.Group("/zfs")
 	zfs.Use(middleware.EnsureAuthenticated(authService))
-	zfs.Use(EnsureCorrectHost(db, authService))
 	zfs.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		zfs.GET("/dashboard/snapshot", zfsHandlers.DashboardSnapshot(zfsService))
@@ -331,7 +321,6 @@ func RegisterRoutes(r *gin.Engine,
 
 	samba := api.Group("/samba")
 	samba.Use(middleware.EnsureAuthenticated(authService))
-	samba.Use(EnsureCorrectHost(db, authService))
 	samba.Use(middleware.LimitRequestBody(sambaServicePkg.MaxRequestBodyBytes))
 	samba.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -353,7 +342,6 @@ func RegisterRoutes(r *gin.Engine,
 	if directoryService := sambaService.Directory; directoryService != nil {
 		recoveryGroup := api.Group("/directory-services/recovery")
 		recoveryGroup.Use(middleware.EnsureAuthenticated(authService))
-		recoveryGroup.Use(EnsureCorrectHost(db, authService))
 		recoveryGroup.Use(middleware.RequireLocalAdmin(authService))
 		recoveryGroup.Use(middleware.LimitRequestBody(directoryservices.MaxRecoveryRequestBytes))
 		recoveryGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
@@ -363,7 +351,6 @@ func RegisterRoutes(r *gin.Engine,
 		recoveryGroup.POST("/rollback", directoryHandlers.RollbackRecovery(directoryService))
 		directoryGroup := api.Group("/directory-services")
 		directoryGroup.Use(middleware.EnsureAuthenticated(authService))
-		directoryGroup.Use(EnsureCorrectHost(db, authService))
 		directoryGroup.Use(middleware.LimitRequestBody(directoryservices.MaxRequestBodyBytes))
 		directoryGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 		directoryGroup.GET("/active-directory", directoryHandlers.GetAD(directoryService))
@@ -390,7 +377,6 @@ func RegisterRoutes(r *gin.Engine,
 
 	mdnsGroup := api.Group("/mdns")
 	mdnsGroup.Use(middleware.EnsureAuthenticated(authService))
-	mdnsGroup.Use(EnsureCorrectHost(db, authService))
 	mdnsGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		mdnsGroup.GET("/config", mdnsHandlers.GetSettings(mdnsService))
@@ -405,7 +391,6 @@ func RegisterRoutes(r *gin.Engine,
 	dynamicDNSGroup := api.Group("/dynamic-dns")
 	dynamicDNSGroup.Use(middleware.EnsureAuthenticated(authService))
 	dynamicDNSGroup.Use(middleware.RequireLocalAdminForWrites(authService))
-	dynamicDNSGroup.Use(EnsureCorrectHost(db, authService))
 	dynamicDNSGroup.Use(middleware.LimitRequestBody(dynamicdns.MaxRequestBodyBytes))
 	dynamicDNSGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -419,7 +404,6 @@ func RegisterRoutes(r *gin.Engine,
 	certificateGroup := api.Group("/certificates")
 	certificateGroup.Use(middleware.EnsureAuthenticated(authService))
 	certificateGroup.Use(middleware.RequireLocalAdminForWrites(authService))
-	certificateGroup.Use(EnsureCorrectHost(db, authService))
 	certificateGroup.Use(middleware.LimitRequestBody(certificates.MaxRequestBodyBytes))
 	certificateGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -438,7 +422,6 @@ func RegisterRoutes(r *gin.Engine,
 	nfsGroup := api.Group("/nfs")
 	nfsGroup.Use(middleware.EnsureAuthenticated(authService))
 	nfsGroup.Use(middleware.RequireLocalAdminForWrites(authService))
-	nfsGroup.Use(EnsureCorrectHost(db, authService))
 	nfsGroup.Use(middleware.LimitRequestBody(nfs.MaxRequestBodyBytes))
 	nfsGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	nfsGroup.Use(func(c *gin.Context) {
@@ -462,7 +445,6 @@ func RegisterRoutes(r *gin.Engine,
 	iscsiGroup := api.Group("/iscsi")
 	iscsiGroup.Use(middleware.EnsureAuthenticated(authService))
 	iscsiGroup.Use(middleware.RequireLocalAdminForWrites(authService))
-	iscsiGroup.Use(EnsureCorrectHost(db, authService))
 	iscsiGroup.Use(middleware.LimitRequestBody(iscsi.MaxRequestBodyBytes))
 	iscsiGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -489,7 +471,6 @@ func RegisterRoutes(r *gin.Engine,
 
 	disk := api.Group("/disk")
 	disk.Use(middleware.EnsureAuthenticated(authService))
-	disk.Use(EnsureCorrectHost(db, authService))
 	disk.Use(middleware.RequireLocalAdminForWrites(authService))
 	disk.Use(middleware.LimitRequestBody(diskServicePkg.MaxRequestBodyBytes))
 	disk.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
@@ -533,7 +514,6 @@ func RegisterRoutes(r *gin.Engine,
 
 	network := api.Group("/network")
 	network.Use(middleware.EnsureAuthenticated(authService))
-	network.Use(EnsureCorrectHost(db, authService))
 	network.Use(middleware.LimitRequestBody(networkServicePkg.MaxRequestBodyBytes))
 	network.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -676,7 +656,6 @@ func RegisterRoutes(r *gin.Engine,
 	system := api.Group("/system")
 	system.Use(middleware.EnsureAuthenticated(authService))
 	system.Use(middleware.RequireLocalAdminForWrites(authService))
-	system.Use(EnsureCorrectHost(db, authService))
 
 	systemJSON := system.Group("")
 	systemJSON.Use(middleware.LimitRequestBody(systemServicePkg.MaxRequestBodyBytes))
@@ -730,7 +709,6 @@ func RegisterRoutes(r *gin.Engine,
 	vm := api.Group("/vm")
 	vm.Use(middleware.EnsureAuthenticated(authService))
 	vm.Use(middleware.RequireLocalAdminForWrites(authService))
-	vm.Use(EnsureCorrectHost(db, authService))
 	vm.Use(middleware.LimitRequestBody(libvirt.MaxRequestBodyBytes))
 	vm.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -807,7 +785,6 @@ func RegisterRoutes(r *gin.Engine,
 	jail := api.Group("/jail")
 	jail.Use(middleware.EnsureAuthenticated(authService))
 	jail.Use(middleware.RequireLocalAdminForWrites(authService))
-	jail.Use(EnsureCorrectHost(db, authService))
 	jail.Use(middleware.LimitRequestBody(jailServicePkg.MaxRequestBodyBytes))
 	jail.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -894,7 +871,6 @@ func RegisterRoutes(r *gin.Engine,
 	utilities := api.Group("/utilities")
 	utilities.Use(middleware.EnsureAuthenticated(authService))
 	utilities.Use(middleware.RequireLocalAdminForWrites(authService))
-	utilities.Use(EnsureCorrectHost(db, authService))
 	utilities.POST(
 		"/downloader-uploads",
 		middleware.RequestLoggerMiddleware(telemetryDB, authService),
@@ -925,7 +901,7 @@ func RegisterRoutes(r *gin.Engine,
 		utilitiesJSON.DELETE("/cloud-init/templates/:templateId", utilitiesHandlers.DeleteCloudInitTemplate(utilitiesService))
 	}
 
-	registerSignedDownloadRoutes(api, db, utilitiesService)
+	registerSignedDownloadRoutes(api, clusterService.MemberAPIHost, utilitiesService)
 
 	authSession := api.Group("/auth")
 	authSession.Use(middleware.EnsureAuthenticated(authService))
@@ -942,7 +918,6 @@ func RegisterRoutes(r *gin.Engine,
 	authManagement.Use(middleware.EnsureAuthenticated(authService))
 	authManagement.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
 	authManagement.Use(middleware.RequireLocalAdmin(authService))
-	authManagement.Use(EnsureCorrectHost(db, authService))
 	authManagement.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 
 	events := api.Group("/events")
@@ -954,7 +929,6 @@ func RegisterRoutes(r *gin.Engine,
 	notifications := api.Group("/notifications")
 	notifications.Use(middleware.EnsureAuthenticated(authService))
 	notifications.Use(middleware.RequireLocalAdminForWrites(authService))
-	notifications.Use(EnsureCorrectHost(db, authService))
 	notifications.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		notifications.GET("", notificationsHandlers.List(notificationService))
@@ -966,7 +940,6 @@ func RegisterRoutes(r *gin.Engine,
 	notificationSettings := api.Group("/notifications")
 	notificationSettings.Use(middleware.EnsureAuthenticated(authService))
 	notificationSettings.Use(middleware.RequireLocalAdmin(authService))
-	notificationSettings.Use(EnsureCorrectHost(db, authService))
 	notificationSettings.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
 	notificationSettings.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -1014,57 +987,26 @@ func RegisterRoutes(r *gin.Engine,
 		passkeys.POST("/register/finish", authHandlers.FinishPasskeyRegistrationHandler(authService))
 	}
 
+	leaderOnly := clusterHandlers.LeaderOnly(clusterService)
+
+	migrationHandlers.RegisterCalls(clusterService, zeltaService, libvirtService, jailService)
+
 	intraCluster := api.Group("/intra-cluster")
 	intraCluster.Use(middleware.EnsureAuthenticated(authService))
 	intraCluster.Use(middleware.RequireClusterScope())
 	{
-		intraCluster.POST("/migration/import-vm", migrationHandlers.IntraClusterImportVM(zeltaService, libvirtService))
-		intraCluster.POST("/migration/import-jail", migrationHandlers.IntraClusterImportJail(zeltaService, jailService))
-		intraCluster.POST("/migration/check-vm-target", migrationHandlers.IntraClusterCheckVMTarget(libvirtService))
-		intraCluster.POST("/migration/check-jail-target", migrationHandlers.IntraClusterCheckJailTarget(jailService))
-		intraCluster.POST("/sync-health", clusterHandlers.SyncHealth(clusterService))
-		intraCluster.POST("/events/left-panel-refresh", clusterHandlers.EmitLeftPanelRefreshLocal(clusterService))
-		intraCluster.POST("/ssh-identity", clusterHandlers.UpsertClusterSSHIdentityInternal(clusterService))
-		intraCluster.POST("/ssh-reconcile", clusterHandlers.ReconcileClusterSSHNow(clusterService))
-		intraCluster.GET("/guest-identity-inventory", clusterHandlers.GuestIdentityInventoryInternal(clusterService))
-		intraCluster.POST("/guest-identity-control", clusterHandlers.GuestIdentityControlInternal(clusterService))
-		intraCluster.GET("/join-progress", clusterHandlers.JoinProgressInternal(clusterService))
-		intraCluster.GET("/replicated-state", clusterHandlers.ReplicatedStateInternal(clusterService))
-		intraCluster.POST("/replicated-state-repair", clusterHandlers.ReplicatedStateRepairInternal(clusterService, zeltaService))
-		intraCluster.POST("/backup-job-safety-validation", clusterHandlers.ValidateBackupJobSafetyInternal(clusterService))
-		intraCluster.POST("/backup-target-validation", clusterHandlers.ValidateBackupTargetInternal(clusterService))
-		intraCluster.POST("/backup-target-host-key", middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes), clusterHandlers.InstallBackupTargetHostKeyInternal(clusterService))
-		intraCluster.POST("/run", clusterHandlers.RunReplicationPolicyInternal(clusterService, zeltaService))
-		intraCluster.POST("/activate", clusterHandlers.ActivateReplicationPolicyInternal(clusterService, zeltaService))
-		intraCluster.POST("/demote", clusterHandlers.DemoteReplicationPolicyInternal(clusterService, zeltaService))
-		intraCluster.POST("/catchup", clusterHandlers.CatchupReplicationPolicyInternal(clusterService, zeltaService))
-		intraCluster.POST("/replication-runtime-state", clusterHandlers.ReplicationPolicyRuntimeStateInternal(clusterService, zeltaService))
-		intraCluster.POST("/replication-run-claim", clusterHandlers.ReplicationRunClaimInternal(clusterService))
-		intraCluster.POST("/replication-target-readiness", clusterHandlers.UpdateReplicationTargetReadinessInternal(clusterService))
-		intraCluster.POST("/backup-job-runner-rebind-prepare", clusterHandlers.PrepareBackupJobRunnerRebindInternal(clusterService, zeltaService))
-		intraCluster.POST("/replication-reassign-owner", clusterHandlers.ReassignReplicationOwnerInternal(clusterService, zeltaService))
-		intraCluster.POST("/replication-guest-operation", clusterHandlers.ReplicationGuestOperationInternal(clusterService))
-		intraCluster.POST("/replication-guest-operation-status", clusterHandlers.ReplicationGuestOperationStatusInternal(clusterService))
-		intraCluster.POST("/cleanup-policy-delete", clusterHandlers.CleanupReplicationPolicyDeleteInternal(clusterService, zeltaService))
-		intraCluster.POST("/replication-failover-enqueue", clusterHandlers.EnqueueFailoverInternal(zeltaService))
-		intraCluster.POST("/backup-job-state", clusterHandlers.UpdateBackupJobStateInternal(clusterService))
-		intraCluster.POST("/backup-job-operation", clusterHandlers.BackupJobOperationInternal(clusterService))
-		intraCluster.POST("/backup-target-restore-operation", clusterHandlers.BackupTargetRestoreOperationInternal(clusterService))
-		intraCluster.POST("/replication-policy-state", clusterHandlers.UpdateReplicationPolicyStateInternal(clusterService))
-		intraCluster.POST("/backup-job-friendly-source", clusterHandlers.UpdateBackupJobFriendlySourceInternal(clusterService))
-		intraCluster.POST("/encryption-key/discover", clusterHandlers.DiscoverEncryptionKeyInternal(clusterService))
-		intraCluster.POST("/leave", clusterHandlers.StartLeaveInternal(clusterService))
-		intraCluster.POST("/remove-peer", clusterHandlers.RemoveMembershipInternal(clusterService))
-		intraCluster.POST("/note-mutation", clusterHandlers.MutateNoteInternal(clusterService))
-		intraCluster.GET("/readdress-identity", clusterHandlers.ReaddressIdentityInternal(clusterService))
-		intraCluster.POST("/readdress-member", clusterHandlers.ReaddressMemberInternal(clusterService))
+		intraCluster.POST("/raft/apply", clusterHandlers.ApplyProposalInternal(clusterService))
+		intraCluster.POST("/leader/:name", middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes), clusterHandlers.LeaderCallInternal(clusterService))
+		intraCluster.POST("/node/:name", middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes), clusterHandlers.NodeCallInternal(clusterService))
 	}
 
+	// Members upgrading from an older Raft format ask each other every few
+	// seconds while they wait, so it isn't audited.
+	api.POST("/cluster/rebuild", middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes), clusterHandlers.Rebuild(clusterService))
 	clusterAdmission := api.Group("/cluster")
-	clusterAdmission.Use(middleware.AuthenticateClusterKey(authService))
 	clusterAdmission.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
 	clusterAdmission.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
-	clusterAdmission.POST("/accept-join", clusterHandlers.AcceptJoin(clusterService))
+	clusterAdmission.POST("/accept-join", middleware.AuthenticateJoin(authService), clusterHandlers.AcceptJoin(clusterService))
 	clusterAdmission.POST("/membership-status", clusterHandlers.MembershipStatus(clusterService))
 
 	clusterLocal := api.Group("/cluster")
@@ -1074,23 +1016,17 @@ func RegisterRoutes(r *gin.Engine,
 	clusterLocal.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
 	clusterLocal.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
-		clusterLocal.GET("/join-key", clusterHandlers.GetJoinKey(authService))
+		clusterLocal.POST("/join-key", clusterHandlers.GenerateJoinKey(clusterService))
 		clusterLocal.GET("/join-status", clusterHandlers.GetJoinStatus(clusterService))
 		clusterLocal.GET("/leave-status", clusterHandlers.GetLeaveStatus(clusterService))
 		clusterLocal.POST("/leave/cancel", clusterHandlers.CancelLeave(clusterService))
-		clusterLocal.POST("", clusterHandlers.CreateCluster(clusterService, fsm))
-		clusterLocal.POST("/join", clusterHandlers.JoinCluster(clusterService, zeltaService, fsm))
+		clusterLocal.POST("", clusterHandlers.CreateCluster(clusterService))
+		clusterLocal.POST("/join", clusterHandlers.JoinCluster(clusterService))
 		clusterLocal.DELETE("/reset-node", clusterHandlers.ResetRaftNode(clusterService))
 		clusterLocal.DELETE("/reset-node/force", clusterHandlers.ForceResetRaftNode(clusterService))
 		clusterLocal.POST("/remove-node", clusterHandlers.RemoveNode(clusterService))
 		clusterLocal.POST("/remove-node/force", clusterHandlers.ForceRemoveNode(clusterService))
 	}
-
-	clusterAdmin := api.Group("/cluster")
-	clusterAdmin.Use(middleware.EnsureAuthenticated(authService))
-	clusterAdmin.Use(middleware.RequireLocalAdmin(authService))
-	clusterAdmin.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
-	clusterAdmin.POST("/resync-state", clusterHandlers.ResyncClusterState(clusterService, zeltaService))
 
 	cluster := api.Group("/cluster")
 	cluster.Use(middleware.EnsureAuthenticated(authService))
@@ -1118,27 +1054,27 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		targets := clusterBackups.Group("/targets")
 		{
-			targets.GET("", clusterHandlers.BackupTargets(clusterService))
-			targets.POST("", clusterHandlers.CreateBackupTarget(clusterService, zeltaService))
-			targets.PUT("/:id", clusterHandlers.UpdateBackupTarget(clusterService, zeltaService))
-			targets.DELETE("/:id", clusterHandlers.DeleteBackupTarget(clusterService, zeltaService))
-			targets.POST("/:id/validate", clusterHandlers.ValidateBackupTarget(clusterService, zeltaService))
-			targets.POST("/:id/host-key/reset", clusterHandlers.ResetBackupTargetHostKey(clusterService))
-			targets.GET("/:id/readiness", clusterHandlers.BackupTargetReadiness(clusterService))
+			targets.GET("", leaderOnly, clusterHandlers.BackupTargets(clusterService))
+			targets.POST("", leaderOnly, clusterHandlers.CreateBackupTarget(clusterService, zeltaService))
+			targets.PUT("/:id", leaderOnly, clusterHandlers.UpdateBackupTarget(clusterService, zeltaService))
+			targets.DELETE("/:id", leaderOnly, clusterHandlers.DeleteBackupTarget(clusterService, zeltaService))
+			targets.POST("/:id/validate", leaderOnly, clusterHandlers.ValidateBackupTarget(clusterService, zeltaService))
+			targets.POST("/:id/host-key/reset", leaderOnly, clusterHandlers.ResetBackupTargetHostKey(clusterService))
+			targets.GET("/:id/readiness", leaderOnly, clusterHandlers.BackupTargetReadiness(clusterService))
 			targets.GET("/:id/datasets", clusterHandlers.BackupTargetDatasets(zeltaService))
 			targets.GET("/:id/datasets/snapshots", clusterHandlers.BackupTargetDatasetSnapshots(zeltaService))
 			targets.GET("/:id/datasets/jail-metadata", clusterHandlers.BackupTargetDatasetJailMetadata(zeltaService))
 			targets.GET("/:id/datasets/vm-metadata", clusterHandlers.BackupTargetDatasetVMMetadata(zeltaService))
-			targets.GET("/:id/running-jobs", clusterHandlers.BackupTargetRunningJobIDs(clusterService))
+			targets.GET("/:id/running-jobs", leaderOnly, clusterHandlers.BackupTargetRunningJobIDs(clusterService))
 			targets.POST("/:id/restore", clusterHandlers.RestoreBackupTargetDataset(clusterService, zeltaService))
 		}
 
 		jobs := clusterBackups.Group("/jobs")
 		{
-			jobs.GET("", clusterHandlers.BackupJobs(clusterService))
-			jobs.POST("", clusterHandlers.CreateBackupJob(clusterService))
-			jobs.PUT("/:id", clusterHandlers.UpdateBackupJob(clusterService))
-			jobs.DELETE("/:id", clusterHandlers.DeleteBackupJob(clusterService))
+			jobs.GET("", leaderOnly, clusterHandlers.BackupJobs(clusterService))
+			jobs.POST("", leaderOnly, clusterHandlers.CreateBackupJob(clusterService))
+			jobs.PUT("/:id", leaderOnly, clusterHandlers.UpdateBackupJob(clusterService))
+			jobs.DELETE("/:id", leaderOnly, clusterHandlers.DeleteBackupJob(clusterService))
 			jobs.POST("/:id/run", clusterHandlers.RunBackupJobNow(clusterService, zeltaService))
 			jobs.GET("/:id/snapshots", clusterHandlers.BackupJobSnapshots(clusterService, zeltaService))
 			jobs.POST("/:id/restore", clusterHandlers.RestoreBackupJob(clusterService, zeltaService))
@@ -1154,11 +1090,11 @@ func RegisterRoutes(r *gin.Engine,
 	clusterReplication.Use(middleware.RequireLocalAdmin(authService))
 	{
 		clusterReplication.GET("/policies", clusterHandlers.ReplicationPolicies(clusterService))
-		clusterReplication.POST("/policies", clusterHandlers.CreateReplicationPolicy(clusterService))
-		clusterReplication.PUT("/policies/:id", clusterHandlers.UpdateReplicationPolicy(clusterService, zeltaService))
-		clusterReplication.DELETE("/policies/:id", clusterHandlers.DeleteReplicationPolicy(clusterService, zeltaService))
+		clusterReplication.POST("/policies", leaderOnly, clusterHandlers.CreateReplicationPolicy(clusterService))
+		clusterReplication.PUT("/policies/:id", leaderOnly, clusterHandlers.UpdateReplicationPolicy(clusterService, zeltaService))
+		clusterReplication.DELETE("/policies/:id", leaderOnly, clusterHandlers.DeleteReplicationPolicy(clusterService, zeltaService))
 		clusterReplication.POST("/policies/:id/run", clusterHandlers.RunReplicationPolicyNow(clusterService, zeltaService))
-		clusterReplication.POST("/policies/:id/failover", clusterHandlers.FailoverReplicationPolicy(clusterService, zeltaService))
+		clusterReplication.POST("/policies/:id/failover", leaderOnly, clusterHandlers.FailoverReplicationPolicy(clusterService, zeltaService))
 
 		clusterReplication.GET("/events", clusterHandlers.ReplicationEvents(clusterService))
 		clusterReplication.GET("/events/:id", clusterHandlers.ReplicationEventByID(clusterService))
@@ -1168,14 +1104,12 @@ func RegisterRoutes(r *gin.Engine,
 	vnc := api.Group("/vnc")
 	vnc.Use(middleware.EnsureAuthenticated(authService))
 	vnc.Use(middleware.RequireLocalAdmin(authService))
-	vnc.Use(EnsureCorrectHost(db, authService))
 	vnc.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	vnc.GET("/:port", vncHandler.VNCProxyHandler(libvirtService))
 
 	tasks := api.Group("/tasks")
 	tasks.Use(middleware.EnsureAuthenticated(authService))
 	tasks.Use(middleware.RequireLocalAdminForWrites(authService))
-	tasks.Use(EnsureCorrectHost(db, authService))
 	tasks.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		lifecycleTasks := tasks.Group("/lifecycle")

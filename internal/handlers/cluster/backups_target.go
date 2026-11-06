@@ -10,6 +10,7 @@ package clusterHandlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -210,10 +211,6 @@ func writeBackupTargetHostKeyError(c *gin.Context, err error) bool {
 // @Router /cluster/backups/targets [get]
 func BackupTargets(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
-			forwardToLeader(c, cS)
-			return
-		}
 		targets, err := cS.ListBackupTargets()
 		if err != nil {
 			writeBackupTargetMutationError(c, "list_backup_targets_failed", err)
@@ -232,10 +229,6 @@ func ResetBackupTargetHostKey(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS == nil || cS.DB == nil {
 			writeBackupTargetMutationError(c, "backup_target_host_key_reset_failed", fmt.Errorf("backup_target_host_key_state_unavailable"))
-			return
-		}
-		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
-			forwardToLeader(c, cS)
 			return
 		}
 		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -316,11 +309,6 @@ func writeBackupTargetKeyMaterializationError(c *gin.Context, err error) {
 // @Router /cluster/backups/targets [post]
 func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
-			forwardToLeader(c, cS)
-			return
-		}
-
 		var req clusterServiceInterfaces.BackupTargetReq
 		if err := c.ShouldBindJSON(&req); err != nil {
 			writeClusterJSONBindError(c, err, "invalid_request")
@@ -346,7 +334,6 @@ func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 			operation, prepareErr := cS.PrepareBackupTargetProvisionCreate(
 				candidate,
 				"backup-target-provision:"+uuid.NewString(),
-				cS.Standalone(),
 			)
 			if prepareErr != nil {
 				writeBackupTargetMutationError(c, "backup_target_create_failed", prepareErr)
@@ -362,7 +349,7 @@ func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 			}
 			if provisionErr := zS.ProvisionBackupTargetRoot(validateCtx, &proposed); provisionErr != nil {
 				if !zelta.BackupTargetProvisionFailureIsAmbiguous(provisionErr) {
-					if failErr := cS.FailBackupTargetProvision(operation, provisionErr.Error(), cS.Standalone()); failErr != nil {
+					if failErr := cS.FailBackupTargetProvision(operation, provisionErr.Error()); failErr != nil {
 						provisionErr = errors.Join(provisionErr, failErr)
 					} else {
 						zS.RemoveSSHKey(operation.TargetID)
@@ -371,13 +358,13 @@ func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 				writeBackupTargetCandidateValidationError(c, provisionErr)
 				return
 			}
-			if completeErr := cS.CompleteBackupTargetProvision(operation, cS.Standalone()); completeErr != nil {
+			if completeErr := cS.CompleteBackupTargetProvision(operation); completeErr != nil {
 				writeBackupTargetMutationError(c, "backup_target_create_failed", completeErr)
 				return
 			}
 			committed = &proposed
 		} else {
-			committed, err = cS.ProposeBackupTargetCreateCandidate(candidate, cS.Standalone())
+			committed, err = cS.ProposeBackupTargetCreateCandidate(candidate)
 			if err != nil {
 				writeBackupTargetMutationError(c, "backup_target_create_failed", err)
 				return
@@ -416,11 +403,6 @@ func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 // @Router /cluster/backups/targets/{id} [put]
 func UpdateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
-			forwardToLeader(c, cS)
-			return
-		}
-
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil || id64 == 0 {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -468,7 +450,7 @@ func UpdateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 			defer releaseKey()
 		}
 
-		if err = cS.ProposeBackupTargetUpdatePlan(plan, cS.Standalone()); err != nil {
+		if err = cS.ProposeBackupTargetUpdatePlan(plan); err != nil {
 			writeBackupTargetMutationError(c, "backup_target_update_failed", err)
 			return
 		}
@@ -499,11 +481,6 @@ func UpdateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 // @Router /cluster/backups/targets/{id} [delete]
 func DeleteBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
-			forwardToLeader(c, cS)
-			return
-		}
-
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil || id64 == 0 {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -515,7 +492,7 @@ func DeleteBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 			return
 		}
 
-		err = cS.ProposeBackupTargetDelete(uint(id64), cS.Standalone())
+		err = cS.ProposeBackupTargetDelete(uint(id64))
 		if err != nil {
 			writeBackupTargetMutationError(c, "backup_target_delete_failed", err)
 			return
@@ -549,10 +526,6 @@ func DeleteBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 // @Router /cluster/backups/targets/{id}/validate [post]
 func ValidateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
-			forwardToLeader(c, cS)
-			return
-		}
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil || id64 == 0 {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -634,10 +607,6 @@ func ValidateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.Handler
 // @Router /cluster/backups/targets/{id}/readiness [get]
 func BackupTargetReadiness(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft() != nil && cS.Raft().State() != raft.Leader {
-			forwardToLeader(c, cS)
-			return
-		}
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil || id64 == 0 {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -916,16 +885,14 @@ func restoreFromTargetEnqueueError(err error) (int, string) {
 		strings.Contains(message, "guest_identity_inventory_conflict"),
 		strings.Contains(message, "restore_destination_guest_dataset_exists"):
 		return http.StatusConflict, "restore_guest_destination_conflict"
-	case strings.Contains(message, "guest_identity_inventory_unavailable"),
-		strings.Contains(message, "guest_identity_registry_initializing"),
-		strings.Contains(message, "guest_identity_cluster_formation_in_progress"):
+	case strings.Contains(message, "guest_identity_cluster_formation_in_progress"):
 		return http.StatusServiceUnavailable, "restore_guest_identity_unavailable"
 	case strings.Contains(message, "leader_not_available"),
 		strings.Contains(message, "not_leader"),
 		strings.Contains(message, "cluster_consensus_unavailable"),
 		strings.Contains(message, "guest_identity_release_failed"),
 		strings.Contains(message, "raft_"),
-		strings.Contains(message, "replication_control_"),
+		strings.Contains(message, "call_forward_failed"),
 		strings.Contains(message, "request timed out"),
 		strings.Contains(message, "local_node_id_unavailable"):
 		return http.StatusServiceUnavailable, "restore_reservation_unavailable"
@@ -1024,15 +991,7 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 			return
 		}
 
-		localNodeID := ""
-		if detail := cS.Detail(); detail != nil {
-			localNodeID = strings.TrimSpace(detail.NodeID)
-		}
-
 		restoreNodeID := strings.TrimSpace(req.RestoreNodeID)
-		if restoreNodeID == "" {
-			restoreNodeID = localNodeID
-		}
 		restoreNetwork := true
 		if req.RestoreNetwork != nil {
 			restoreNetwork = *req.RestoreNetwork
@@ -1042,8 +1001,8 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 			operationID = strings.TrimSpace(c.GetHeader("Idempotency-Key"))
 		}
 
-		if restoreNodeID != "" && localNodeID != "" && restoreNodeID != localNodeID {
-			response, err := forwardBackupTargetRestoreToNode(c, cS, uint(id64), restoreNodeID, map[string]any{
+		if forOtherNode(cS, restoreNodeID) {
+			body, err := json.Marshal(map[string]any{
 				"remoteDataset":       strings.TrimSpace(req.RemoteDataset),
 				"snapshot":            strings.TrimSpace(req.Snapshot),
 				"destinationDataset":  strings.TrimSpace(req.DestinationDataset),
@@ -1054,16 +1013,12 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 				"encryptionKeyFormat": req.EncryptionKeyFormat,
 			})
 			if err != nil {
-				writeBackupNodeForwardError(
-					c,
-					"restore_remote_node_forward_failed",
-					"restore_node_not_found",
-					err,
-				)
+				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+					Status: "error", Message: "restore_forward_encode_failed", Error: err.Error(), Data: nil,
+				})
 				return
 			}
-
-			writeClusterForwardResponse(c, response)
+			ForwardToNode(c, cS, restoreNodeID, body)
 			return
 		}
 

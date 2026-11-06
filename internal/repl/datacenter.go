@@ -150,7 +150,7 @@ func handleDatacenterClusterGuestIDs(ctx *Context, args []string, jsonMode bool)
 	if len(args) == 0 {
 		printSubHelp(ctx, "datacenter cluster guest-ids", []cmdHelp{
 			{"list", "List shared guest ID claims"},
-			{"reclaim --id <id> [--force --confirm <id>]", "Reclaim an orphaned shared guest ID claim"},
+			{"reclaim --id <id>", "Release a guest ID claim, whoever holds it (run on the leader)"},
 		})
 		return
 	}
@@ -162,82 +162,31 @@ func handleDatacenterClusterGuestIDs(ctx *Context, args []string, jsonMode bool)
 		}
 		datacenterClusterGuestIDsList(ctx, jsonMode)
 	case "reclaim":
-		guestID, force, confirmation, err := parseGuestIdentityReclaimFlags(args[1:])
+		guestID, err := parseGuestIdentityReclaimFlags(args[1:])
 		if err != nil {
-			println(ctx, styledErrorf("Usage: datacenter cluster guest-ids reclaim --id <id> [--force --confirm <id>]"))
+			println(ctx, styledErrorf("Usage: datacenter cluster guest-ids reclaim --id <id>"))
 			return
 		}
-		datacenterClusterGuestIDReclaim(ctx, guestID, force, confirmation, jsonMode)
+		datacenterClusterGuestIDReclaim(ctx, guestID, jsonMode)
 	default:
 		println(ctx, styledErrorf("Unknown datacenter cluster guest-ids command: '%s'.", args[0]))
 	}
 }
 
-func parseGuestIdentityReclaimFlags(args []string) (uint, bool, string, error) {
-	var guestID uint
-	var confirmation string
-	hasID := false
-	hasConfirmation := false
-	force := false
-	for index := 0; index < len(args); index++ {
-		switch args[index] {
-		case "--force":
-			if force {
-				return 0, false, "", fmt.Errorf("duplicate_flag")
-			}
-			force = true
-		case "--id", "--confirm":
-			if index+1 >= len(args) {
-				return 0, false, "", fmt.Errorf("flag_value_required")
-			}
-			name, value := args[index], strings.TrimSpace(args[index+1])
-			index++
-			if value == "" {
-				return 0, false, "", fmt.Errorf("flag_value_required")
-			}
-			if name == "--id" {
-				if hasID {
-					return 0, false, "", fmt.Errorf("duplicate_flag")
-				}
-				parsed, err := parsePositiveUint(value)
-				if err != nil {
-					return 0, false, "", err
-				}
-				guestID = parsed
-				hasID = true
-			} else {
-				if hasConfirmation {
-					return 0, false, "", fmt.Errorf("duplicate_flag")
-				}
-				confirmation = value
-				hasConfirmation = true
-			}
-		default:
-			return 0, false, "", fmt.Errorf("unknown_flag")
-		}
+func parseGuestIdentityReclaimFlags(args []string) (uint, error) {
+	if len(args) != 2 || args[0] != "--id" {
+		return 0, fmt.Errorf("usage")
 	}
-	if !hasID {
-		return 0, false, "", fmt.Errorf("required_flag_missing")
+	guestID, err := parsePositiveUint(strings.TrimSpace(args[1]))
+	if err != nil {
+		return 0, err
 	}
-	if err := validateGuestIdentityReclaimRequest(guestID, force, confirmation); err != nil {
-		return 0, false, "", err
-	}
-	if !force && hasConfirmation {
-		return 0, false, "", fmt.Errorf("confirmation_requires_force")
-	}
-	return guestID, force, confirmation, nil
+	return guestID, validateGuestIdentityReclaimRequest(guestID)
 }
 
-func validateGuestIdentityReclaimRequest(guestID uint, force bool, confirmation string) error {
+func validateGuestIdentityReclaimRequest(guestID uint) error {
 	if guestID == 0 || guestID > clusterModels.GuestIdentityMaxID {
 		return fmt.Errorf("invalid_guest_id")
-	}
-	normalized := strings.TrimSpace(confirmation)
-	if force && normalized != strconv.FormatUint(uint64(guestID), 10) {
-		return fmt.Errorf("confirmation_must_equal_guest_id")
-	}
-	if !force && normalized != "" {
-		return fmt.Errorf("confirmation_requires_force")
 	}
 	return nil
 }
@@ -345,7 +294,7 @@ func mutateDatacenterNote(ctx *Context, request clusterService.NoteMutation) (co
 	if ctx == nil || ctx.Cluster == nil {
 		return result, fmt.Errorf("cluster_service_unavailable")
 	}
-	return result, ctx.Cluster.ApplyNoteMutation(operationContext(ctx), request, true)
+	return result, ctx.Cluster.ApplyNoteMutation(operationContext(ctx), request)
 }
 
 func formatDatacenterNotes(notes []clusterModels.ClusterNote) string {
@@ -426,11 +375,9 @@ func datacenterClusterGuestIDsList(ctx *Context, jsonMode bool) {
 func datacenterClusterGuestIDReclaim(
 	ctx *Context,
 	guestID uint,
-	force bool,
-	confirmation string,
 	jsonMode bool,
 ) {
-	result, err := reclaimDatacenterClusterGuestID(ctx, guestID, force, confirmation)
+	result, err := reclaimDatacenterClusterGuestID(ctx, guestID)
 	if err != nil {
 		printOperationError(ctx, jsonMode, "Error reclaiming guest ID", err)
 		return
@@ -532,14 +479,12 @@ func listDatacenterClusterGuestIDClaims(ctx *Context) ([]consoleprotocol.Datacen
 func reclaimDatacenterClusterGuestID(
 	ctx *Context,
 	guestID uint,
-	force bool,
-	confirmation string,
 ) (consoleprotocol.DatacenterClusterGuestIDReclaimResult, error) {
 	result := consoleprotocol.DatacenterClusterGuestIDReclaimResult{GuestID: guestID}
 	if ctx == nil || ctx.Cluster == nil {
 		return result, fmt.Errorf("cluster_service_unavailable")
 	}
-	return result, ctx.Cluster.ReclaimGuestIdentity(operationContext(ctx), guestID, force, confirmation)
+	return result, ctx.Cluster.ReclaimGuestIdentity(operationContext(ctx), guestID)
 }
 
 func formatDatacenterClusterStatus(status clusterService.CommandStatus) string {
@@ -710,12 +655,10 @@ func processDatacenterClusterGuestIDReclaimSocketRequest(ctx *Context, payload j
 	if err := decodeOperationPayload(payload, &request); err != nil {
 		return socketResponse{Error: "invalid_datacenter_cluster_guest_id_reclaim_request: " + err.Error()}
 	}
-	if err := validateGuestIdentityReclaimRequest(request.GuestID, request.Force, request.Confirmation); err != nil {
+	if err := validateGuestIdentityReclaimRequest(request.GuestID); err != nil {
 		return socketResponse{Error: "invalid_datacenter_cluster_guest_id_reclaim_request: " + err.Error()}
 	}
-	result, err := reclaimDatacenterClusterGuestID(
-		ctx, request.GuestID, request.Force, strings.TrimSpace(request.Confirmation),
-	)
+	result, err := reclaimDatacenterClusterGuestID(ctx, request.GuestID)
 	if err != nil {
 		return socketResponse{Error: err.Error()}
 	}

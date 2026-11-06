@@ -9,7 +9,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,7 +65,7 @@ func performReplicationRunRequest(t *testing.T, router http.Handler, policyID ui
 	)
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
+	router.ServeHTTP(forwardRecorder{response}, request)
 	return response
 }
 
@@ -125,43 +124,7 @@ func TestReplicationSyncNowThroughEveryIngressQueuesOnlyOnFollowerOwner(t *testi
 		third.id:  newReplicationRunForwardRouter(third.service, thirdRun),
 	}
 
-	originalForward := clusterForwardHTTP
-	forwardCalls := 0
-	clusterForwardHTTP = func(
-		ctx context.Context,
-		method string,
-		targetURL string,
-		body []byte,
-		headers map[string]string,
-		timeout time.Duration,
-	) (clusterForwardResponse, error) {
-		forwardCalls++
-		if method != http.MethodPost || timeout != clusterForwardDurableTimeout {
-			t.Fatalf("forward method=%s timeout=%s", method, timeout)
-		}
-		parsed, err := url.Parse(targetURL)
-		if err != nil {
-			return clusterForwardResponse{}, err
-		}
-		if parsed.Host != owner.id+":8184" {
-			t.Fatalf("forward target=%q, want owner %q", parsed.Host, owner.id+":8184")
-		}
-		request := httptest.NewRequest(method, parsed.Path, bytes.NewReader(body)).WithContext(ctx)
-		for key, value := range headers {
-			request.Header.Set(key, value)
-		}
-		if request.Header.Get(clusterForwardHopHeader) != "1" {
-			t.Fatalf("forward hop=%q, want 1", request.Header.Get(clusterForwardHopHeader))
-		}
-		response := httptest.NewRecorder()
-		ownerRouter.ServeHTTP(response, request)
-		return clusterForwardResponse{
-			StatusCode: response.Code,
-			Header:     response.Header().Clone(),
-			Body:       append([]byte(nil), response.Body.Bytes()...),
-		}, nil
-	}
-	t.Cleanup(func() { clusterForwardHTTP = originalForward })
+	forwarded := recordForwards(t, ownerRouter)
 
 	topologies := []struct {
 		name     string
@@ -190,7 +153,7 @@ func TestReplicationSyncNowThroughEveryIngressQueuesOnlyOnFollowerOwner(t *testi
 			for _, node := range nodes {
 				nodePolicy := policy
 				nodePolicy.Targets = append([]clusterModels.ReplicationPolicyTarget(nil), policy.Targets...)
-				if err := clusterModels.UpsertReplicationPolicyTxn(
+				if err := seedReplicationPolicy(
 					node.service.DB, &nodePolicy, nodePolicy.Targets,
 				); err != nil {
 					t.Fatalf("seed policy on %s: %v", node.id, err)
@@ -221,7 +184,12 @@ func TestReplicationSyncNowThroughEveryIngressQueuesOnlyOnFollowerOwner(t *testi
 	if got := thirdRun.policyIDs(); len(got) != 0 {
 		t.Fatalf("third follower executed owner work: %v", got)
 	}
-	if forwardCalls != 2 {
-		t.Fatalf("forward calls=%d, want leader and third follower only", forwardCalls)
+	if len(*forwarded) != 2 {
+		t.Fatalf("forward calls=%d, want leader and third follower only", len(*forwarded))
+	}
+	for _, request := range *forwarded {
+		if !strings.HasPrefix(request.url, "https://"+owner.id+":8184/") {
+			t.Fatalf("forwarded to %q, want the owner %s", request.url, owner.id)
+		}
 	}
 }

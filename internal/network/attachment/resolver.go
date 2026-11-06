@@ -315,9 +315,8 @@ func (r Resolver) ValidateDesiredTarget(expected Contract) (ResolvedSwitch, erro
 
 func (r Resolver) ValidateEffectiveTargets(expectedKind Kind, entries []NamedContract) TargetResult {
 	result := TargetResult{
-		MissingSwitches:             []string{},
-		IncompatibleSwitches:        []string{},
-		NetworkCompatibilityChecked: true,
+		MissingSwitches:      []string{},
+		IncompatibleSwitches: []string{},
 	}
 	type cachedResolution struct {
 		switchState ResolvedSwitch

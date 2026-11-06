@@ -11,8 +11,6 @@ package clusterHandlers
 import (
 	"testing"
 	"time"
-
-	"github.com/alchemillahq/sylve/internal/services/auth"
 )
 
 func TestMeasureClockOffset(t *testing.T) {
@@ -71,8 +69,7 @@ func TestMeasureClockOffset(t *testing.T) {
 }
 
 func TestJoinClockDriftBlocked(t *testing.T) {
-	behindLimit := auth.ClusterTokenFutureSkew - joinClockBehindMargin
-	aheadLimit := -(auth.ClusterTokenTTL - joinClockAheadMargin)
+	aheadLimit, behindLimit := joinClockMaxAhead, -joinClockMaxBehind
 
 	tests := []struct {
 		name   string
@@ -80,12 +77,12 @@ func TestJoinClockDriftBlocked(t *testing.T) {
 		want   bool
 	}{
 		{name: "in sync", offset: 0},
-		{name: "inside behind", offset: behindLimit - time.Millisecond},
-		{name: "at behind limit", offset: behindLimit},
-		{name: "over behind", offset: behindLimit + time.Millisecond, want: true},
-		{name: "inside ahead", offset: aheadLimit + time.Millisecond},
-		{name: "at ahead limit", offset: aheadLimit},
-		{name: "over ahead", offset: aheadLimit - time.Millisecond, want: true},
+		{name: "leader a little ahead", offset: aheadLimit - time.Millisecond},
+		{name: "leader at the ahead limit", offset: aheadLimit},
+		{name: "leader too far ahead", offset: aheadLimit + time.Millisecond, want: true},
+		{name: "leader a little behind", offset: behindLimit + time.Millisecond},
+		{name: "leader at the behind limit", offset: behindLimit},
+		{name: "leader too far behind", offset: behindLimit - time.Millisecond, want: true},
 	}
 
 	for _, test := range tests {

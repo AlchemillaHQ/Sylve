@@ -10,12 +10,9 @@
 
 import type { ClusterDetails, ClusterNode } from '$lib/types/cluster/cluster';
 
-export type ClusterJoinPhaseTone = 'progress' | 'warning' | 'error';
-
 export interface ClusterJoinPhaseMeta {
 	label: string;
 	description: string;
-	tone: ClusterJoinPhaseTone;
 }
 
 export interface ClusterLeavePhaseMeta {
@@ -25,59 +22,25 @@ export interface ClusterLeavePhaseMeta {
 
 export function getClusterJoinPhaseMeta(phase: string): ClusterJoinPhaseMeta {
 	switch (phase.trim().toLowerCase()) {
-		case 'intent_saved':
-			return {
-				label: 'Preparing Join',
-				description: 'Saving the local cluster configuration.',
-				tone: 'progress'
-			};
-		case 'starting':
-			return {
-				label: 'Starting Cluster Services',
-				description: 'Starting local cluster services.',
-				tone: 'progress'
-			};
 		case 'submitting':
 			return {
 				label: 'Contacting Leader',
-				description: 'Requesting membership from the cluster leader.',
-				tone: 'progress'
-			};
-		case 'staged_nonvoter':
-			return {
-				label: 'Membership Accepted',
-				description: 'Membership was accepted. State synchronization will begin next.',
-				tone: 'progress'
+				description: 'Requesting membership from the cluster leader.'
 			};
 		case 'catching_up':
 			return {
 				label: 'Catching Up',
-				description: 'Synchronizing and verifying cluster state before promotion.',
-				tone: 'progress'
-			};
-		case 'stalled':
-			return {
-				label: 'Join Delayed',
-				description: 'The join is paused and will retry automatically.',
-				tone: 'warning'
-			};
-		case 'failed':
-			return {
-				label: 'Join Failed',
-				description: 'The join stopped and needs attention.',
-				tone: 'error'
+				description: 'Synchronizing cluster state before promotion.'
 			};
 		case 'voter':
 			return {
 				label: 'Join Complete',
-				description: 'This node is a voting cluster member.',
-				tone: 'progress'
+				description: 'This node is a voting cluster member.'
 			};
 		default:
 			return {
 				label: 'Joining Cluster',
-				description: 'Sylve is preparing this node for cluster membership.',
-				tone: 'progress'
+				description: 'Sylve is preparing this node for cluster membership.'
 			};
 	}
 }
@@ -89,16 +52,20 @@ export function getClusterJoinErrorMessage(error: string, retrying: boolean): st
 	if (contains('cluster_version_mismatch', 'version mismatch')) {
 		return 'This node and the cluster leader must run the same Sylve version.';
 	}
-	if (contains('cluster_version_check_unavailable')) {
-		return 'Sylve could not verify this node or the leader. Make sure the two can reach each other on the cluster ports.';
-	}
-	if (
-		contains('cluster_join_clock_drift', 'cluster_token_expired', 'cluster_token_future_issued')
-	) {
+	if (contains('cluster_join_clock_drift')) {
 		return 'The clocks on these nodes differ too much for a secure join. Synchronize time on both systems, then retry';
 	}
+	if (contains('cluster_join_key_node_mismatch')) {
+		return 'The node at this address did not issue the join key. Enter the address shown with the key.';
+	}
+	if (contains('cluster_join_key_invalid')) {
+		return 'This is not a join key. Copy the whole key from the node that generated it.';
+	}
 	if (contains('invalid_cluster_key', 'unauthorized', 'authentication failed')) {
-		return 'The cluster key was rejected. Reset this join and use the current key from the leader.';
+		return 'The join key was rejected. A key admits one node; generate a new one on a cluster node and try again.';
+	}
+	if (contains('joining_node_hostname_taken')) {
+		return 'A cluster node already has this hostname. Rename this node, then join again.';
 	}
 	if (contains('joining_node_id_already_in_use', 'joining_node_id_conflicts_with_leader')) {
 		return 'This node ID is already in use in the cluster. Check the existing member before retrying.';
@@ -108,17 +75,6 @@ export function getClusterJoinErrorMessage(error: string, retrying: boolean): st
 	}
 	if (contains('guest_identity_inventory_conflict', 'guest_identity_conflict')) {
 		return 'A VM or jail ID conflicts with the cluster. Change the conflicting local guest ID before joining.';
-	}
-	if (contains('cluster_leave_guest_id_release_pending')) {
-		return 'The previous leave is still releasing guest IDs. Sylve will retry after the surviving cluster completes it.';
-	}
-	if (
-		contains('joining_inventory_changed_before_start', 'joining_inventory_changed_before_promotion')
-	) {
-		return 'The local VM or jail inventory changed during validation. Try again after those changes finish.';
-	}
-	if (contains('inventory_unavailable', 'inventory_remote_', 'inventory_collection_canceled')) {
-		return 'Sylve could not verify VM and jail identities across the cluster. Make sure every member is reachable.';
 	}
 	if (contains('not_leader')) {
 		return retrying
@@ -143,9 +99,6 @@ export function getClusterJoinErrorMessage(error: string, retrying: boolean): st
 		)
 	) {
 		return 'The nodes cannot communicate reliably. Check bidirectional routing, firewalls, and cluster ports 8180 and 8184.';
-	}
-	if (contains('replicated_state_', 'join_progress_', 'repair_fenced')) {
-		return 'Cluster state could not be synchronized or verified. Check connectivity between the joining node and the leader.';
 	}
 	if (
 		contains(
@@ -211,35 +164,14 @@ export function getClusterLeaveErrorMessage(error: string): string {
 	if (contains('cluster_leave_active_mutations')) {
 		return 'Active work is still using this node. Close open consoles or wait for running operations, then retry.';
 	}
-	if (contains('cluster_leave_membership_unconfirmed', 'cluster_removal_start_uncertain')) {
+	if (contains('cluster_leave_membership_unconfirmed')) {
 		return 'Cluster membership could not be confirmed. Keep the node isolated while Sylve retries.';
 	}
 	if (contains('cluster_leave_already_removed')) {
 		return 'The leader already removed this node, so the leave can’t be cancelled. Sylve is finishing it.';
 	}
-	if (contains('cluster_leave_guest_id_release_pending')) {
-		return 'Membership is removed, but guest ID release is still pending. Sylve will retry automatically.';
-	}
-	if (contains('cluster_removal_cleanup_unconfirmed')) {
-		return 'Membership was removed, but the target has not confirmed local cleanup.';
-	}
 	if (contains('cluster_leave_leadership_transfer')) {
 		return 'Leadership could not move to another voter. Restore connectivity to another voter and retry.';
-	}
-	if (contains('cluster_version_mismatch')) {
-		return 'Every participating node must run the same Sylve version.';
-	}
-	if (contains('cluster_version_check_unavailable')) {
-		return 'Sylve could not verify member versions. Make sure the remaining members are online.';
-	}
-	if (contains('cluster_leave_inventory_changed')) {
-		return 'The local guest ID set changed after leave was fenced. Review the guests and leave status before retrying.';
-	}
-	if (contains('cluster_leave_inventory_claim_mismatch')) {
-		return 'This node’s guest IDs do not match the cluster’s claims. Review both lists before retrying.';
-	}
-	if (contains('cluster_leave_intent_mismatch')) {
-		return 'The leave already in progress has a different guest-retention choice. Resume it with the original choice.';
 	}
 	if (contains('peer_removal_blocked')) {
 		return 'This node still owns cluster resources. If they are only guests, use Leave and keep guests.';

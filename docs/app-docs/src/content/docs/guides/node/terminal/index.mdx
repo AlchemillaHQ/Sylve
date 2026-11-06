@@ -40,4 +40,6 @@ The terminal uses a standard `xterm-256color` environment, so usual FreeBSD comm
 
 Sylve authenticates the terminal connection using your active Sylve session. When the Sylve account is root, the host opens its root login shell. Other accounts receive a normal FreeBSD login prompt and cannot sign in directly as root; sign in as a regular host user, then use `su -` when you are authorised to become root.
 
+In a cluster, the root shell is only for root signed in on the node itself. If root is signed in on another member and opens this node's terminal, it gets the login prompt.
+
 Closing the browser tab or navigating away detaches the terminal. When the final viewer disconnects, Sylve closes the host PTY and its associated login process. Reopen **Terminal** whenever you need a new session.

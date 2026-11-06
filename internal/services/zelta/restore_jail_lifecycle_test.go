@@ -85,6 +85,7 @@ func TestJailRestoreFenceStopsAndBlocksMutations(t *testing.T) {
 	stub := &restoreJailLifecycleStub{ctID: 42, running: true}
 	svc := newRestoreJailLifecycleService(stub)
 	svc.DB = testutil.NewSQLiteTestDB(t, &clusterModels.ReplicationGuestOperation{})
+	svc.Cluster = newTestClusterService(svc.DB, "")
 
 	fence, err := svc.acquireJailRestoreFence(t.Context(), "tank/sylve/jails/42", 9)
 	if err != nil {
@@ -449,7 +450,7 @@ func TestVMRestoreFenceHoldsThroughFinalPlacementCheckAndBlocksMutations(t *test
 	if err := database.Create(&vmModels.VM{RID: 42, Name: "restore-vm-42"}).Error; err != nil {
 		t.Fatalf("seed restore VM: %v", err)
 	}
-	clusterSvc := &clusterService.Service{DB: database, NodeID: "node-a"}
+	clusterSvc := newTestClusterService(database, "node-a")
 	svc := &Service{
 		DB:      database,
 		Cluster: clusterSvc,

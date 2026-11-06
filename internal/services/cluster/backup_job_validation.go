@@ -10,17 +10,14 @@ package cluster
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/raft"
 	"gorm.io/gorm"
 )
@@ -43,15 +40,14 @@ type BackupJobPlacementAuthorization struct {
 }
 
 type BackupJobSafetyValidationRequest struct {
-	HostKeyRevision         uint64 `json:"hostKeyRevision,omitempty"`
-	ExpectedNodeID          string `json:"expectedNodeId"`
-	MinimumRaftAppliedIndex uint64 `json:"minimumRaftAppliedIndex,omitempty"`
-	Mode                    string `json:"mode"`
-	SourceDataset           string `json:"sourceDataset"`
-	JailRootDataset         string `json:"jailRootDataset"`
-	Recursive               bool   `json:"recursive"`
-	TargetID                uint   `json:"targetId,omitempty"`
-	TargetFingerprint       string `json:"targetFingerprint,omitempty"`
+	HostKeyRevision   uint64 `json:"hostKeyRevision,omitempty"`
+	ExpectedNodeID    string `json:"expectedNodeId"`
+	Mode              string `json:"mode"`
+	SourceDataset     string `json:"sourceDataset"`
+	JailRootDataset   string `json:"jailRootDataset"`
+	Recursive         bool   `json:"recursive"`
+	TargetID          uint   `json:"targetId,omitempty"`
+	TargetFingerprint string `json:"targetFingerprint,omitempty"`
 }
 
 type backupJobSafetyRejectionError struct {
@@ -66,10 +62,9 @@ func (e *backupJobSafetyRejectionError) Error() string {
 }
 
 type BackupJobSafetyValidationResult struct {
-	NodeID           string `json:"nodeId"`
-	RaftAppliedIndex uint64 `json:"raftAppliedIndex,omitempty"`
-	Valid            bool   `json:"valid"`
-	ValidationError  string `json:"validationError,omitempty"`
+	NodeID          string `json:"nodeId"`
+	Valid           bool   `json:"valid"`
+	ValidationError string `json:"validationError,omitempty"`
 
 	Mode            string `json:"mode"`
 	SourceDataset   string `json:"sourceDataset"`
@@ -95,11 +90,8 @@ func normalizeBackupJobSafetyValidationRequest(request BackupJobSafetyValidation
 	return request
 }
 
-func backupJobValidationRequest(job *clusterModels.BackupJob, expectedNodeID string, minimumIndex uint64) BackupJobSafetyValidationRequest {
-	request := BackupJobSafetyValidationRequest{
-		ExpectedNodeID:          strings.TrimSpace(expectedNodeID),
-		MinimumRaftAppliedIndex: minimumIndex,
-	}
+func backupJobValidationRequest(job *clusterModels.BackupJob, expectedNodeID string) BackupJobSafetyValidationRequest {
+	request := BackupJobSafetyValidationRequest{ExpectedNodeID: strings.TrimSpace(expectedNodeID)}
 	if job != nil {
 		request.Mode = job.Mode
 		request.SourceDataset = job.SourceDataset
@@ -180,35 +172,6 @@ func backupJobPlacementOwner(fence *clusterModels.BackupJobPlacementFence, local
 	return owner, fence.PolicyOwnerEpoch
 }
 
-func (s *Service) waitForBackupJobValidationAppliedIndex(ctx context.Context, minimum uint64) (uint64, error) {
-	if minimum == 0 {
-		if s != nil && s.Raft() != nil {
-			return s.Raft().AppliedIndex(), nil
-		}
-		return 0, nil
-	}
-	if s == nil || s.Raft() == nil || s.Raft().State() == raft.Shutdown {
-		return 0, fmt.Errorf("backup_runner_raft_unavailable")
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		applied := s.Raft().AppliedIndex()
-		if applied >= minimum {
-			return applied, nil
-		}
-		select {
-		case <-ctx.Done():
-			return applied, fmt.Errorf("backup_runner_raft_catchup_failed: %w", ctx.Err())
-		case <-ticker.C:
-		}
-	}
-}
-
 // ValidateBackupJobSafetyLocal evaluates runner-local durable inventory in one
 // database transaction and returns a typed receipt bound to this node.
 func (s *Service) ValidateBackupJobSafetyLocal(
@@ -228,7 +191,7 @@ func (s *Service) ValidateBackupJobSafetyLocal(
 		ctx = context.Background()
 	}
 
-	localNodeID := s.guestIdentityInventoryLocalNodeID()
+	localNodeID := s.LocalNodeID()
 	if localNodeID == "" {
 		return result, fmt.Errorf("backup_runner_local_node_id_unavailable")
 	}
@@ -243,15 +206,10 @@ func (s *Service) ValidateBackupJobSafetyLocal(
 		return result, nil
 	}
 
-	applied, err := s.waitForBackupJobValidationAppliedIndex(ctx, request.MinimumRaftAppliedIndex)
-	if err != nil {
-		return result, err
-	}
-	result.RaftAppliedIndex = applied
 	result.GuestType, result.GuestID = backupJobValidationIdentity(request)
 
 	var validationErr error
-	err = s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		job := &clusterModels.BackupJob{
 			RunnerNodeID:    localNodeID,
 			Mode:            request.Mode,
@@ -301,11 +259,10 @@ func (s *Service) ValidateBackupJobSafetyLocal(
 			return result, fmt.Errorf("backup_target_validation_scope_invalid")
 		}
 		targetReadiness, err := s.ValidateBackupTargetConnectivityLocal(ctx, BackupTargetValidationRequest{
-			HostKeyRevision:         request.HostKeyRevision,
-			ExpectedNodeID:          request.ExpectedNodeID,
-			MinimumRaftAppliedIndex: request.MinimumRaftAppliedIndex,
-			TargetID:                request.TargetID,
-			TargetFingerprint:       request.TargetFingerprint,
+			HostKeyRevision:   request.HostKeyRevision,
+			ExpectedNodeID:    request.ExpectedNodeID,
+			TargetID:          request.TargetID,
+			TargetFingerprint: request.TargetFingerprint,
 		})
 		if err != nil {
 			return result, err
@@ -321,13 +278,10 @@ func (s *Service) backupJobRunnerVoter(nodeID string) (raft.Server, bool, error)
 	if nodeID == "" {
 		return raft.Server{}, false, fmt.Errorf("backup_runner_node_id_required")
 	}
-	if s != nil && s.stateRepair.Load() {
-		return raft.Server{}, false, fmt.Errorf("backup_runner_local_node_repair_fenced")
-	}
 	if s == nil || s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		return raft.Server{}, false, fmt.Errorf("backup_runner_raft_unavailable")
 	}
-	localNodeID := s.guestIdentityInventoryLocalNodeID()
+	localNodeID := s.LocalNodeID()
 	if localNodeID == "" {
 		return raft.Server{}, false, fmt.Errorf("backup_runner_local_node_id_unavailable")
 	}
@@ -376,91 +330,21 @@ func (s *Service) RequireCurrentRaftVoter(nodeID string) error {
 	return err
 }
 
-// ResolveIntraClusterVoterAPI derives an authenticated control endpoint from
-// current Raft voter membership and the fixed embedded HTTPS port. It never
-// trusts asynchronous cluster-node health rows or the public API port.
-func (s *Service) ResolveIntraClusterVoterAPI(nodeID string) (string, error) {
-	server, _, err := s.backupJobRunnerVoter(nodeID)
-	if err != nil {
-		return "", err
-	}
-	return s.backupJobValidationAPI(strings.TrimSpace(nodeID), server.Address)
-}
-
-func (s *Service) backupJobValidationAPI(nodeID string, address raft.ServerAddress) (string, error) {
-	var endpoint string
-	var err error
-	if s.backupJobValidationAPIForNode != nil {
-		endpoint, err = s.backupJobValidationAPIForNode(nodeID, address)
-		if err != nil {
-			return "", fmt.Errorf("backup_runner_api_resolve_failed: node_id=%s: %w", nodeID, err)
-		}
-	} else {
-		host := strings.TrimSpace(raftAddressHost(string(address)))
-		if host == "" {
-			return "", fmt.Errorf("backup_runner_api_resolve_failed: node_id=%s: empty_raft_address", nodeID)
-		}
-		endpoint = ClusterAPIHost(host)
-	}
-	endpoint, err = normalizeGuestIdentityInventoryAPIEndpoint(endpoint)
-	if err != nil {
-		return "", fmt.Errorf("backup_runner_api_resolve_failed: node_id=%s: %w", nodeID, err)
-	}
-	return endpoint, nil
-}
-
 func (s *Service) fetchBackupJobSafetyValidation(
 	ctx context.Context,
-	nodeID, endpoint string,
+	nodeID string,
 	request BackupJobSafetyValidationRequest,
 ) (BackupJobSafetyValidationResult, error) {
-	var result BackupJobSafetyValidationResult
-	if s == nil || s.AuthService == nil {
-		return result, fmt.Errorf("backup_runner_auth_service_unavailable")
-	}
-	localNodeID := s.guestIdentityInventoryLocalNodeID()
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(localNodeID)
-	if err != nil {
-		return result, fmt.Errorf("backup_runner_cluster_token_failed: %w", err)
-	}
-	payload, err := json.Marshal(request)
-	if err != nil {
-		return result, fmt.Errorf("backup_runner_validation_marshal_failed: %w", err)
-	}
-	body, statusCode, err := utils.HTTPPostJSONWithTimeoutContext(
-		ctx,
-		fmt.Sprintf("https://%s/api/intra-cluster/backup-job-safety-validation", endpoint),
-		payload,
-		map[string]string{
-			"Accept":          "application/json",
-			"Content-Type":    "application/json",
-			"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-		},
-		backupJobValidationTimeout,
+	ctx, cancel := context.WithTimeout(ctx, backupJobValidationTimeout)
+	defer cancel()
+	result, err := CallNode[BackupJobSafetyValidationRequest, BackupJobSafetyValidationResult](
+		ctx, s, nodeID, "backup-job-safety-validation", request,
 	)
 	if err != nil {
-		return result, fmt.Errorf(
-			"backup_runner_validation_request_failed: node_id=%s status=%d: %w",
-			nodeID,
-			statusCode,
-			err,
-		)
+		return result, fmt.Errorf("backup_runner_validation_request_failed: node_id=%s: %w", nodeID, err)
 	}
-
-	var response internal.APIResponse[BackupJobSafetyValidationResult]
-	if err := json.Unmarshal(body, &response); err != nil {
-		return result, fmt.Errorf("backup_runner_validation_decode_failed: node_id=%s: %w", nodeID, err)
-	}
-	if !strings.EqualFold(strings.TrimSpace(response.Status), "success") {
-		return result, fmt.Errorf(
-			"backup_runner_validation_non_success: node_id=%s message=%s error=%s",
-			nodeID,
-			strings.TrimSpace(response.Message),
-			strings.TrimSpace(response.Error),
-		)
-	}
-	stampRemoteBackupTargetReadinessReceipt(response.Data.TargetReadiness)
-	return response.Data, nil
+	stampRemoteBackupTargetReadinessReceipt(result.TargetReadiness)
+	return result, nil
 }
 
 func validateBackupJobSafetyReceipt(
@@ -472,13 +356,6 @@ func validateBackupJobSafetyReceipt(
 			"backup_runner_identity_mismatch: expected=%s actual=%s",
 			request.ExpectedNodeID,
 			strings.TrimSpace(result.NodeID),
-		)
-	}
-	if result.RaftAppliedIndex < request.MinimumRaftAppliedIndex {
-		return fmt.Errorf(
-			"backup_runner_raft_state_stale: minimum=%d actual=%d",
-			request.MinimumRaftAppliedIndex,
-			result.RaftAppliedIndex,
 		)
 	}
 	if strings.ToLower(strings.TrimSpace(result.Mode)) != request.Mode ||
@@ -516,11 +393,10 @@ func validateBackupJobSafetyReceipt(
 	}
 	if request.TargetID != 0 || request.TargetFingerprint != "" {
 		targetRequest := BackupTargetValidationRequest{
-			HostKeyRevision:         request.HostKeyRevision,
-			ExpectedNodeID:          request.ExpectedNodeID,
-			MinimumRaftAppliedIndex: request.MinimumRaftAppliedIndex,
-			TargetID:                request.TargetID,
-			TargetFingerprint:       request.TargetFingerprint,
+			HostKeyRevision:   request.HostKeyRevision,
+			ExpectedNodeID:    request.ExpectedNodeID,
+			TargetID:          request.TargetID,
+			TargetFingerprint: request.TargetFingerprint,
 		}
 		if err := validateBackupTargetReadinessReceipt(targetRequest, result.TargetReadiness); err != nil {
 			return err
@@ -597,7 +473,7 @@ func (s *Service) backupJobPreviousPlacementFence(
 	if result.RowsAffected == 0 {
 		return nil, nil
 	}
-	request := backupJobValidationRequest(&existing, existing.RunnerNodeID, 0)
+	request := backupJobValidationRequest(&existing, existing.RunnerNodeID)
 	guestType, guestID := backupJobValidationIdentity(request)
 	if guestType == "" || guestID == 0 || strings.TrimSpace(existing.RunnerNodeID) == "" {
 		return nil, nil
@@ -621,16 +497,14 @@ func (s *Service) backupJobPreviousPlacementFence(
 func (s *Service) validateBackupJobOnRunner(
 	ctx context.Context,
 	job *clusterModels.BackupJob,
-	bypassRaft bool,
 	authorization BackupJobPlacementAuthorization,
 ) (BackupJobSafetyValidationResult, *clusterModels.BackupJobPlacementFence, error) {
-	return s.validateBackupJobOnRunnerWithTarget(ctx, job, bypassRaft, authorization, true)
+	return s.validateBackupJobOnRunnerWithTarget(ctx, job, authorization, true)
 }
 
 func (s *Service) validateBackupJobOnRunnerWithTarget(
 	ctx context.Context,
 	job *clusterModels.BackupJob,
-	bypassRaft bool,
 	authorization BackupJobPlacementAuthorization,
 	validateTarget bool,
 ) (BackupJobSafetyValidationResult, *clusterModels.BackupJobPlacementFence, error) {
@@ -682,14 +556,14 @@ func (s *Service) validateBackupJobOnRunnerWithTarget(
 		// Failed connectivity prevents a job mutation, so publish that exact
 		// node-scoped outcome separately. Successful receipts are committed
 		// atomically with the job/rebind command and its target fingerprint.
-		if err := s.UpdateBackupTargetNodeReadiness(*result.TargetReadiness, bypassRaft || s.Standalone()); err != nil {
+		if err := s.UpdateBackupTargetNodeReadiness(*result.TargetReadiness); err != nil {
 			return fmt.Errorf("backup_target_readiness_publish_failed: %w", err)
 		}
 		return receiptErr
 	}
 
-	if bypassRaft || s.Raft() == nil {
-		request := backupJobValidationRequest(job, runnerNodeID, 0)
+	if s.Raft() == nil {
+		request := backupJobValidationRequest(job, runnerNodeID)
 		if validateTarget {
 			request.TargetID = job.TargetID
 			request.TargetFingerprint = targetFingerprint
@@ -708,14 +582,13 @@ func (s *Service) validateBackupJobOnRunnerWithTarget(
 		return result, result.PlacementFence, nil
 	}
 
-	server, local, err := s.backupJobRunnerVoter(runnerNodeID)
+	_, local, err := s.backupJobRunnerVoter(runnerNodeID)
 	if err != nil {
 		return empty, nil, err
 	}
 
 	for attempt := 0; attempt < 3; attempt++ {
-		minimumIndex := s.Raft().AppliedIndex()
-		request := backupJobValidationRequest(job, runnerNodeID, minimumIndex)
+		request := backupJobValidationRequest(job, runnerNodeID)
 		if validateTarget {
 			request.TargetID = job.TargetID
 			request.TargetFingerprint = targetFingerprint
@@ -725,11 +598,7 @@ func (s *Service) validateBackupJobOnRunnerWithTarget(
 		if local {
 			result, err = s.ValidateBackupJobSafetyLocal(ctx, request)
 		} else {
-			endpoint, resolveErr := s.backupJobValidationAPI(runnerNodeID, server.Address)
-			if resolveErr != nil {
-				return empty, nil, resolveErr
-			}
-			result, err = s.fetchBackupJobSafetyValidation(ctx, runnerNodeID, endpoint, request)
+			result, err = s.fetchBackupJobSafetyValidation(ctx, runnerNodeID, request)
 		}
 		if err != nil {
 			return empty, nil, err

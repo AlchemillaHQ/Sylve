@@ -15,7 +15,7 @@ func backupJobRunnerRebindModels() []any {
 		&BackupTarget{}, &BackupJob{}, &BackupJobOperation{},
 		&BackupJobRunnerRebind{}, &BackupJobRunnerRebindItem{},
 		&ReplicationPolicy{}, &ReplicationPolicyTarget{}, &ReplicationLease{},
-		&ReplicationGuestOperation{}, &ReplicationGuestOperationReceipt{},
+		&ReplicationGuestOperation{}, &ReplicationGuestOperationReceipt{}, &GuestIdentityClaim{},
 	}
 }
 
@@ -64,7 +64,7 @@ func TestBackupJobRunnerRebindDurableTerminalDecisions(t *testing.T) {
 		t.Fatalf("replay plan: %v", err)
 	}
 	sealedAt := time.Now().UTC()
-	if err := SealReplicationGuestOperationTxn(db, &ReplicationGuestOperationTransition{
+	if err := sealReplicationGuestOperation(db, &ReplicationGuestOperationTransition{
 		GuestType: BackupJobModeVM, GuestID: 77, Operation: ReplicationGuestOperationMigration,
 		Token: token, OccurredAt: sealedAt,
 	}); err != nil {
@@ -73,7 +73,7 @@ func TestBackupJobRunnerRebindDurableTerminalDecisions(t *testing.T) {
 	if err := ReadyBackupJobRunnerRebindTxn(db, &BackupJobRunnerRebindReady{Token: token}); err != nil {
 		t.Fatalf("ready plan: %v", err)
 	}
-	if err := CompleteReplicationGuestOperationTxn(db, &ReplicationGuestOperationTransition{
+	if err := completeReplicationGuestOperation(db, &ReplicationGuestOperationTransition{
 		GuestType: BackupJobModeVM, GuestID: 77, Operation: ReplicationGuestOperationMigration,
 		Token: token, TargetNodeID: "node-b", OccurredAt: time.Now().UTC(),
 	}); err == nil || !strings.Contains(err.Error(), "backup_job_runner_rebind_not_terminal") {
@@ -117,7 +117,7 @@ func TestBackupJobRunnerRebindDurableTerminalDecisions(t *testing.T) {
 	if err := RequireBackupJobRunnerRebindTerminalTxn(db, token); err != nil {
 		t.Fatalf("terminal plan rejected: %v", err)
 	}
-	if err := CompleteReplicationGuestOperationTxn(db, &ReplicationGuestOperationTransition{
+	if err := completeReplicationGuestOperation(db, &ReplicationGuestOperationTransition{
 		GuestType: BackupJobModeVM, GuestID: 77, Operation: ReplicationGuestOperationMigration,
 		Token: token, TargetNodeID: "node-b", OccurredAt: time.Now().UTC(),
 	}); err != nil {
@@ -192,7 +192,7 @@ func TestBackupJobRunnerRebindDeletionRaceIsTerminal(t *testing.T) {
 	if err := DeleteBackupJobTxn(db, job.ID); err != nil {
 		t.Fatalf("delete planned job: %v", err)
 	}
-	if err := SealReplicationGuestOperationTxn(db, &ReplicationGuestOperationTransition{
+	if err := sealReplicationGuestOperation(db, &ReplicationGuestOperationTransition{
 		GuestType: BackupJobModeJail, GuestID: 88, Operation: ReplicationGuestOperationMigration,
 		Token: token, OccurredAt: time.Now().UTC(),
 	}); err != nil {
@@ -235,7 +235,7 @@ func TestBackupJobRunnerRebindZeroJobsCompletesAndPreCutoverAbortIsDurable(t *te
 		if err := PrepareBackupJobRunnerRebindTxn(db, &plan); err != nil {
 			t.Fatal(err)
 		}
-		if err := SealReplicationGuestOperationTxn(db, &ReplicationGuestOperationTransition{
+		if err := sealReplicationGuestOperation(db, &ReplicationGuestOperationTransition{
 			GuestType: BackupJobModeVM, GuestID: 55, Operation: ReplicationGuestOperationMigration,
 			Token: token, OccurredAt: time.Now().UTC(),
 		}); err != nil {
@@ -324,7 +324,7 @@ func TestBackupJobRunnerRebindObservedConfigurationChangeBecomesRepairRequired(t
 		t.Fatal(err)
 	}
 	observed := BackupJobConfigurationFingerprint(&job)
-	if err := SealReplicationGuestOperationTxn(db, &ReplicationGuestOperationTransition{
+	if err := sealReplicationGuestOperation(db, &ReplicationGuestOperationTransition{
 		GuestType: BackupJobModeVM, GuestID: 89, Operation: ReplicationGuestOperationMigration,
 		Token: token, OccurredAt: time.Now().UTC(),
 	}); err != nil {
@@ -352,7 +352,7 @@ func TestFailoverOwnershipCutoverRequiresReplicatedRebindPlan(t *testing.T) {
 	seedControlPlanePolicy(t, db)
 	payload := ownershipCommitPayload()
 	payload.BackupJobRunnerRebindToken = payload.ExpectedTransitionRunID
-	if err := ApplyReplicationOwnershipTransitionTxn(db, &payload); err == nil {
+	if err := applyReplicationOwnershipTransition(db, &payload); err == nil {
 		t.Fatal("ownership cutover without a rebind plan succeeded")
 	}
 	var policy ReplicationPolicy
@@ -401,7 +401,7 @@ func TestFailoverBackupJobRunnerRebindIsAtomicWithOwnershipAndRollback(t *testin
 
 	cutover := ownershipCommitPayload()
 	cutover.BackupJobRunnerRebindToken = plan.Token
-	if err := ApplyReplicationOwnershipTransitionTxn(db, &cutover); err != nil {
+	if err := applyReplicationOwnershipTransition(db, &cutover); err != nil {
 		t.Fatalf("atomic ownership/rebind cutover: %v", err)
 	}
 	var operation BackupJobRunnerRebind
@@ -457,7 +457,7 @@ func TestFailoverBackupJobRunnerRebindIsAtomicWithOwnershipAndRollback(t *testin
 		},
 		ProtectionState: ReplicationProtectionStateDegraded,
 	}
-	if err := ApplyReplicationOwnershipTransitionTxn(db, &rollback); err != nil {
+	if err := applyReplicationOwnershipTransition(db, &rollback); err != nil {
 		t.Fatalf("atomic ownership/rebind rollback: %v", err)
 	}
 	if err := db.First(&operation, "token = ?", plan.Token).Error; err != nil {

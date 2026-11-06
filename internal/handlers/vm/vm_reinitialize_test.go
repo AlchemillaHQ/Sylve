@@ -50,7 +50,7 @@ func TestReinitializeVMConfigHandler(t *testing.T) {
 		{name: "active action", rid: "916", err: errors.New("lifecycle_task_in_progress"), wantStatus: http.StatusConflict, wantCode: "lifecycle_task_in_progress", wantCalled: true},
 		{name: "non-owner", rid: "916", err: errors.New("replication_lease_not_owned"), wantStatus: http.StatusForbidden, wantCode: "replication_lease_not_owned", wantCalled: true},
 		{name: "claim conflict", rid: "916", err: errors.New("guest_identity_claim_conflict"), wantStatus: http.StatusConflict, wantCode: "guest_identity_claim_conflict", wantCalled: true},
-		{name: "registry initializing", rid: "916", err: errors.New("guest_identity_registry_initializing"), wantStatus: http.StatusServiceUnavailable, wantCode: "guest_identity_registry_initializing", wantCalled: true},
+		{name: "cluster formation", rid: "916", err: errors.New("guest_identity_cluster_formation_in_progress"), wantStatus: http.StatusServiceUnavailable, wantCode: "guest_identity_cluster_formation_in_progress", wantCalled: true},
 		{name: "cluster unavailable", rid: "916", err: errors.New("cluster_consensus_unavailable"), wantStatus: http.StatusServiceUnavailable, wantCode: "cluster_consensus_unavailable", wantCalled: true},
 		{name: "connection unavailable", rid: "916", err: errors.New("libvirt_connection_unavailable"), wantStatus: http.StatusServiceUnavailable, wantCode: "libvirt_connection_unavailable", wantCalled: true},
 		{name: "orphan check unavailable", rid: "916", err: errors.New("vm_orphan_check_unavailable"), wantStatus: http.StatusServiceUnavailable, wantCode: "libvirt_connection_unavailable", wantCalled: true},

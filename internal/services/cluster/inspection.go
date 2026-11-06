@@ -68,9 +68,11 @@ func (s *Service) CommandStatus() (CommandStatus, error) {
 	if err := s.DB.First(&record).Error; err != nil {
 		return CommandStatus{}, err
 	}
-	joinPhase := strings.TrimSpace(record.JoinPhase)
-	if !record.HasIncompleteJoin() {
-		joinPhase = ""
+	joinPhase := ""
+	if record.HasIncompleteJoin() {
+		if status, err := s.JoinStatus(); err == nil {
+			joinPhase = status.Phase
+		}
 	}
 	result := CommandStatus{
 		Enabled:        record.Enabled,

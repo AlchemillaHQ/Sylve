@@ -9,10 +9,6 @@
 package migrationHandlers
 
 import (
-	"bytes"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -21,20 +17,10 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
-	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-type checkJailTargetResponse struct {
-	Data struct {
-		MissingSwitches             []string `json:"missingSwitches"`
-		IncompatibleSwitches        []string `json:"incompatibleSwitches"`
-		NetworkCompatibilityChecked bool     `json:"networkCompatibilityChecked"`
-	} `json:"data"`
-}
-
-func TestIntraClusterCheckJailTarget(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+func TestCheckJailTarget(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &networkModels.StandardSwitch{})
 	switchModel := networkModels.StandardSwitch{Name: "LAN", BridgeName: "bridge0"}
 	if err := db.Create(&switchModel).Error; err != nil {
@@ -53,58 +39,42 @@ func TestIntraClusterCheckJailTarget(t *testing.T) {
 			t.Fatalf("target validation kind=%q, want jail", expectedKind)
 		}
 		return networkAttachment.TargetResult{
-			MissingSwitches:             []string{"vnet1"},
-			IncompatibleSwitches:        []string{"vnet0: filtered_switch_runtime_mismatch"},
-			NetworkCompatibilityChecked: true,
+			MissingSwitches:      []string{"vnet1"},
+			IncompatibleSwitches: []string{"vnet0: filtered_switch_runtime_mismatch"},
 		}
 	}
 	t.Cleanup(func() { validateTargetNetworkAttachments = originalValidate })
 
 	untagged := 10
 	policy := bridgevlan.PortPolicy{Mode: bridgevlan.ModeAccess, UntaggedVLAN: &untagged}
-	body, err := json.Marshal(CheckJailTargetRequest{Networks: []networkAttachment.NamedContract{
-		{
-			Name: "vnet0",
-			Attachment: networkAttachment.Contract{
-				Version: networkAttachment.CurrentVersion, Kind: networkAttachment.KindJail,
-				SwitchName: "LAN", SwitchType: "standard", VLANFiltering: true,
-				VLANPolicy: &policy,
+	result, err := checkJailTarget(&jail.Service{DB: db})(t.Context(), "", CheckJailTargetRequest{
+		Networks: []networkAttachment.NamedContract{
+			{
+				Name: "vnet0",
+				Attachment: networkAttachment.Contract{
+					Version: networkAttachment.CurrentVersion, Kind: networkAttachment.KindJail,
+					SwitchName: "LAN", SwitchType: "standard", VLANFiltering: true,
+					VLANPolicy: &policy,
+				},
+			},
+			{
+				Name: "vnet1",
+				Attachment: networkAttachment.Contract{
+					Version: networkAttachment.CurrentVersion, Kind: networkAttachment.KindJail,
+					SwitchName: "missing", SwitchType: "standard",
+				},
 			},
 		},
-		{
-			Name: "vnet1",
-			Attachment: networkAttachment.Contract{
-				Version: networkAttachment.CurrentVersion, Kind: networkAttachment.KindJail,
-				SwitchName: "missing", SwitchType: "standard",
-			},
-		},
-	}})
+	})
 	if err != nil {
-		t.Fatalf("marshal request: %v", err)
+		t.Fatalf("check jail target: %v", err)
 	}
-
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/intra-cluster/migration/check-jail-target", bytes.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
-	IntraClusterCheckJailTarget(&jail.Service{DB: db})(c)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	if len(result.MissingSwitches) != 1 || result.MissingSwitches[0] != "vnet1" {
+		t.Fatalf("missing switches = %v", result.MissingSwitches)
 	}
-	var response checkJailTargetResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if len(response.Data.MissingSwitches) != 1 || response.Data.MissingSwitches[0] != "vnet1" {
-		t.Fatalf("missing switches = %v", response.Data.MissingSwitches)
-	}
-	if len(response.Data.IncompatibleSwitches) != 1 ||
-		!strings.Contains(response.Data.IncompatibleSwitches[0], "filtered_switch_runtime_mismatch") {
-		t.Fatalf("incompatible switches = %v", response.Data.IncompatibleSwitches)
-	}
-	if !response.Data.NetworkCompatibilityChecked {
-		t.Fatal("expected explicit network compatibility acknowledgement")
+	if len(result.IncompatibleSwitches) != 1 ||
+		!strings.Contains(result.IncompatibleSwitches[0], "filtered_switch_runtime_mismatch") {
+		t.Fatalf("incompatible switches = %v", result.IncompatibleSwitches)
 	}
 	if len(validated) != 2 || validated[0].Attachment.SwitchName != switchModel.Name ||
 		validated[0].Attachment.SwitchType != "standard" || validated[0].Attachment.VLANPolicy == nil ||

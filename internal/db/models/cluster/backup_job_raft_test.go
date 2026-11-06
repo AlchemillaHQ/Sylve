@@ -21,11 +21,11 @@ func TestFSMDispatcherBackupJobCommands(t *testing.T) {
 	RegisterDefaultHandlers(fsm)
 
 	t.Run("create valid job dataset mode", func(t *testing.T) {
-		raw, _ := json.Marshal(BackupJob{
+		raw, _ := json.Marshal(BackupJobCommandPayload{Job: BackupJob{
 			ID: 1, Name: "daily-backup", TargetID: 10,
 			Mode: BackupJobModeDataset, SourceDataset: "tank/data",
 			CronExpr: "0 2 * * *", Enabled: true,
-		})
+		}})
 		if err := applyFSMCommand(t, fsm, Command{
 			Type: "backup_job", Action: "create", Data: raw,
 		}); err != nil {
@@ -48,11 +48,11 @@ func TestFSMDispatcherBackupJobCommands(t *testing.T) {
 	})
 
 	t.Run("create valid job jail mode", func(t *testing.T) {
-		raw, _ := json.Marshal(BackupJob{
+		raw, _ := json.Marshal(BackupJobCommandPayload{Job: BackupJob{
 			ID: 2, Name: "jail-backup", TargetID: 10,
 			Mode: BackupJobModeJail, JailRootDataset: "tank/jails",
 			CronExpr: "0 2 * * *", Enabled: true,
-		})
+		}})
 		err := applyFSMCommand(t, fsm, Command{
 			Type: "backup_job", Action: "create", Data: raw,
 		})
@@ -62,11 +62,11 @@ func TestFSMDispatcherBackupJobCommands(t *testing.T) {
 	})
 
 	t.Run("create valid job vm mode", func(t *testing.T) {
-		raw, _ := json.Marshal(BackupJob{
+		raw, _ := json.Marshal(BackupJobCommandPayload{Job: BackupJob{
 			ID: 3, Name: "vm-backup", TargetID: 10,
 			Mode: BackupJobModeVM, SourceDataset: "tank/vms/vm-1",
 			CronExpr: "0 2 * * *", Enabled: true,
-		})
+		}})
 		err := applyFSMCommand(t, fsm, Command{
 			Type: "backup_job", Action: "create", Data: raw,
 		})
@@ -76,11 +76,11 @@ func TestFSMDispatcherBackupJobCommands(t *testing.T) {
 	})
 
 	t.Run("create with invalid mode returns error", func(t *testing.T) {
-		raw, _ := json.Marshal(BackupJob{
+		raw, _ := json.Marshal(BackupJobCommandPayload{Job: BackupJob{
 			ID: 4, Name: "bad-mode", TargetID: 10,
 			Mode: "invalid", SourceDataset: "tank/data",
 			CronExpr: "0 2 * * *", Enabled: true,
-		})
+		}})
 		err := applyFSMCommand(t, fsm, Command{
 			Type: "backup_job", Action: "create", Data: raw,
 		})
@@ -93,11 +93,11 @@ func TestFSMDispatcherBackupJobCommands(t *testing.T) {
 	})
 
 	t.Run("create with empty mode returns error", func(t *testing.T) {
-		raw, _ := json.Marshal(BackupJob{
+		raw, _ := json.Marshal(BackupJobCommandPayload{Job: BackupJob{
 			ID: 5, Name: "empty-mode", TargetID: 10,
 			Mode: "", SourceDataset: "tank/data",
 			CronExpr: "0 2 * * *", Enabled: true,
-		})
+		}})
 		err := applyFSMCommand(t, fsm, Command{
 			Type: "backup_job", Action: "create", Data: raw,
 		})
@@ -107,12 +107,12 @@ func TestFSMDispatcherBackupJobCommands(t *testing.T) {
 	})
 
 	t.Run("update change name and prune settings", func(t *testing.T) {
-		raw, _ := json.Marshal(BackupJob{
+		raw, _ := json.Marshal(BackupJobCommandPayload{Job: BackupJob{
 			ID: 1, Name: "daily-backup-updated", TargetID: 10,
 			Mode: BackupJobModeDataset, SourceDataset: "tank/data-updated",
 			PruneKeepLast: 30, PruneTarget: true,
 			CronExpr: "0 3 * * *", Enabled: true,
-		})
+		}})
 		if err := applyFSMCommand(t, fsm, Command{
 			Type: "backup_job", Action: "update", Data: raw,
 		}); err != nil {
@@ -136,11 +136,11 @@ func TestFSMDispatcherBackupJobCommands(t *testing.T) {
 	})
 
 	t.Run("update set enabled=false persists boolean false", func(t *testing.T) {
-		raw, _ := json.Marshal(BackupJob{
+		raw, _ := json.Marshal(BackupJobCommandPayload{Job: BackupJob{
 			ID: 1, Name: "daily-backup-updated", TargetID: 10,
 			Mode: BackupJobModeDataset, SourceDataset: "tank/data-updated",
 			CronExpr: "0 3 * * *", Enabled: false,
-		})
+		}})
 		if err := applyFSMCommand(t, fsm, Command{
 			Type: "backup_job", Action: "update", Data: raw,
 		}); err != nil {
@@ -155,11 +155,11 @@ func TestFSMDispatcherBackupJobCommands(t *testing.T) {
 	})
 
 	t.Run("update with invalid mode returns error", func(t *testing.T) {
-		raw, _ := json.Marshal(BackupJob{
+		raw, _ := json.Marshal(BackupJobCommandPayload{Job: BackupJob{
 			ID: 1, Name: "bad-update", TargetID: 10,
 			Mode: "invalid", SourceDataset: "tank/data",
 			CronExpr: "0 2 * * *", Enabled: true,
-		})
+		}})
 		err := applyFSMCommand(t, fsm, Command{
 			Type: "backup_job", Action: "update", Data: raw,
 		})
@@ -184,14 +184,13 @@ func TestFSMDispatcherBackupJobCommands(t *testing.T) {
 	})
 
 	t.Run("replicated operation blocks delete", func(t *testing.T) {
-		acquireRaw, _ := json.Marshal(BackupJobOperationAcquire{
+		now := time.Now().UTC()
+		if err := db.Create(&BackupJobOperation{
 			JobID: 2, Token: "backup:node-a:2", Operation: BackupJobOperationBackup,
-			HolderNodeID: "node-a", AcquiredAt: time.Now().UTC(),
-		})
-		if err := applyFSMCommand(t, fsm, Command{
-			Type: "backup_job_operation", Action: "acquire", Data: acquireRaw,
-		}); err != nil {
-			t.Fatalf("acquire operation: %v", err)
+			State: BackupJobOperationQueued, HolderNodeID: "node-a", Revision: 1,
+			AcquiredAt: now, UpdatedAt: now,
+		}).Error; err != nil {
+			t.Fatalf("seed operation: %v", err)
 		}
 
 		deleteRaw, _ := json.Marshal(map[string]any{"id": 2})

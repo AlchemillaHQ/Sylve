@@ -13,7 +13,6 @@ import (
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
-	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 )
 
 type runtimeTruthJailStub struct {
@@ -241,7 +240,7 @@ func TestCommittedPromotionKeepsTargetOwnerWhenTargetIsOffline(t *testing.T) {
 		TransitionOriginalRunning:    &desiredRunning,
 		TransitionRecoveryDeadlineAt: &deadline,
 	}
-	service := &Service{Cluster: &clusterService.Service{DB: db, NodeID: "node-leader"}}
+	service := &Service{Cluster: newTestClusterService(db, "node-leader")}
 
 	err := service.resumePromotingTransition(context.Background(), policy)
 	if err == nil || err.Error() != "replication_target_node_offline" {

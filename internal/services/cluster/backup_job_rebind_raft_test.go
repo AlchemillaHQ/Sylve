@@ -109,17 +109,7 @@ func TestIntegrationRaftBackupJobRebindSurvivesLeadershipChange(t *testing.T) {
 	}
 	seedRemoteValidationVM(t, sourceA.service, 707, "fast", "source-vm")
 	seedRemoteValidationVM(t, targetB.service, 707, "fast", "migrated-vm")
-	preflightSim := newClusterPeerSimulator()
-	registerBackupJobValidationPeer(t, preflightSim, sourceA.service)
-	for _, node := range nodes {
-		node.service.AuthService = clusterAuthStub{}
-		node.service.backupJobValidationAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
-			if nodeID != sourceA.id {
-				return "", fmt.Errorf("unexpected preflight runner %s", nodeID)
-			}
-			return preflightSim.Addr(), nil
-		}
-	}
+	network := routeTestPeerRequests(nodes)
 
 	token := fmt.Sprintf("migration:%s:%d", sourceA.id, 7007)
 	leaderC = applyBackupJobRebindTestLeaderCommand(t, nodes, func(leader *clusterRaftTestNode) error {
@@ -127,11 +117,11 @@ func TestIntegrationRaftBackupJobRebindSurvivesLeadershipChange(t *testing.T) {
 			GuestType: clusterModels.BackupJobModeVM, GuestID: 707,
 			Operation: clusterModels.ReplicationGuestOperationMigration, Token: token,
 			OwnerNodeID: sourceA.id, TargetNodeID: targetB.id, TaskID: 7007,
-		}, false)
+		})
 	})
 	leaderC = applyBackupJobRebindTestLeaderCommand(t, nodes, func(leader *clusterRaftTestNode) error {
 		return leader.service.PrepareBackupJobRunnerRebind(
-			context.Background(), clusterModels.BackupJobModeVM, 707, targetB.id, token, false,
+			context.Background(), clusterModels.BackupJobModeVM, 707, targetB.id, token,
 		)
 	})
 	var plannedValid, plannedInvalid clusterModels.BackupJobRunnerRebindItem
@@ -150,15 +140,14 @@ func TestIntegrationRaftBackupJobRebindSurvivesLeadershipChange(t *testing.T) {
 		!strings.Contains(plannedInvalid.Error, "vm_backup_requires_recursive") {
 		t.Fatalf("invalid legacy job was not classified before cutover: %+v", plannedInvalid)
 	}
-	preflightSim.Close()
 	leaderC = applyBackupJobRebindTestLeaderCommand(t, nodes, func(leader *clusterRaftTestNode) error {
 		return leader.service.SealReplicationGuestOperation(clusterModels.ReplicationGuestOperationTransition{
 			GuestType: clusterModels.BackupJobModeVM, GuestID: 707,
 			Operation: clusterModels.ReplicationGuestOperationMigration, Token: token,
-		}, false)
+		})
 	})
 	leaderC = applyBackupJobRebindTestLeaderCommand(t, nodes, func(leader *clusterRaftTestNode) error {
-		return leader.service.ReadyBackupJobRunnerRebind(token, false)
+		return leader.service.ReadyBackupJobRunnerRebind(token)
 	})
 
 	// The replicated plan was prepared and marked ready by leader C. Move
@@ -179,13 +168,7 @@ func TestIntegrationRaftBackupJobRebindSurvivesLeadershipChange(t *testing.T) {
 			operation.State == clusterModels.BackupJobRunnerRebindStateReady
 	})
 	newLeader := sourceA
-	newLeader.service.AuthService = clusterAuthStub{}
-	newLeader.service.backupJobValidationAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
-		if nodeID != targetB.id {
-			return "", fmt.Errorf("unexpected runner %s", nodeID)
-		}
-		return "127.0.0.1:1", nil
-	}
+	network.setCut(targetB.id, true)
 	if err := newLeader.service.ReconcileBackupJobRunnerRebind(context.Background(), token); err == nil ||
 		!strings.Contains(err.Error(), "backup_job_runner_rebind_pending") {
 		t.Fatalf("transient runner failure did not remain pending: %v", err)
@@ -198,15 +181,7 @@ func TestIntegrationRaftBackupJobRebindSurvivesLeadershipChange(t *testing.T) {
 		t.Fatalf("transient failure closed plan: %+v", pendingOperation)
 	}
 
-	sim := newClusterPeerSimulator()
-	defer sim.Close()
-	registerBackupJobValidationPeer(t, sim, targetB.service)
-	newLeader.service.backupJobValidationAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
-		if nodeID != targetB.id {
-			return "", fmt.Errorf("unexpected runner %s", nodeID)
-		}
-		return sim.Addr(), nil
-	}
+	network.setCut(targetB.id, false)
 
 	if err := newLeader.service.ReconcileBackupJobRunnerRebind(context.Background(), token); err != nil {
 		t.Fatalf("reconcile rebind after leadership change: %v", err)
@@ -249,7 +224,7 @@ func TestIntegrationRaftBackupJobRebindSurvivesLeadershipChange(t *testing.T) {
 		GuestType: clusterModels.BackupJobModeVM, GuestID: 707,
 		Operation: clusterModels.ReplicationGuestOperationMigration,
 		Token:     token, TargetNodeID: targetB.id,
-	}, false); err != nil {
+	}); err != nil {
 		t.Fatalf("complete migration operation: %v", err)
 	}
 
@@ -262,7 +237,6 @@ func TestIntegrationRaftBackupJobRebindSurvivesLeadershipChange(t *testing.T) {
 			Mode: clusterModels.BackupJobModeVM, SourceDataset: "fast/sylve/virtual-machines/707",
 			Recursive: true, CronExpr: "0 1 * * *", Enabled: &enabled,
 		},
-		false,
 		BackupJobPlacementAuthorization{},
 	); err != nil {
 		t.Fatalf("repair job through normal validated update: %v", err)
@@ -322,6 +296,11 @@ func TestIntegrationRaftFailoverBackupJobRebindReconcilesOnNewLeader(t *testing.
 			t.Fatalf("seed target on %s: %v", node.id, err)
 		}
 		seedBackupTargetHostTrust(t, node.service.DB, &target, hostKey)
+		if err := node.service.DB.Create(&clusterModels.GuestIdentityClaim{
+			GuestID: 808, GuestKind: clusterModels.ReplicationGuestTypeVM, OwnerNodeID: sourceA.id,
+		}).Error; err != nil {
+			t.Fatalf("seed guest identity claim on %s: %v", node.id, err)
+		}
 		policy := clusterModels.ReplicationPolicy{
 			ID: 808, Name: "failover", GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 808,
 			SourceNodeID: sourceA.id, ActiveNodeID: sourceA.id, OwnerEpoch: 1,
@@ -369,23 +348,12 @@ func TestIntegrationRaftFailoverBackupJobRebindReconcilesOnNewLeader(t *testing.
 			t.Fatalf("seed jobs on %s: %v", node.id, err)
 		}
 	}
-	preflightSim := newClusterPeerSimulator()
-	registerBackupJobValidationPeer(t, preflightSim, sourceA.service)
-	for _, node := range nodes {
-		node.service.AuthService = clusterAuthStub{}
-		node.service.backupJobValidationAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
-			if nodeID != sourceA.id {
-				return "", fmt.Errorf("unexpected preflight runner %s", nodeID)
-			}
-			return preflightSim.Addr(), nil
-		}
-	}
+	network := routeTestPeerRequests(nodes)
 	leaderC = applyBackupJobRebindTestLeaderCommand(t, nodes, func(leader *clusterRaftTestNode) error {
 		return leader.service.PrepareBackupJobRunnerRebindForFailover(
-			context.Background(), clusterModels.BackupJobModeVM, 808, targetB.id, runID, false,
+			context.Background(), clusterModels.BackupJobModeVM, 808, targetB.id, runID,
 		)
 	})
-	preflightSim.Close()
 
 	cutoverAt := time.Now().UTC()
 	newSource := targetB.id
@@ -409,7 +377,7 @@ func TestIntegrationRaftFailoverBackupJobRebindReconcilesOnNewLeader(t *testing.
 		ProtectionState: clusterModels.ReplicationProtectionStateDegraded,
 	}
 	leaderC = applyBackupJobRebindTestLeaderCommand(t, nodes, func(leader *clusterRaftTestNode) error {
-		return leader.service.CommitReplicationOwnershipTransition(cutover, false)
+		return leader.service.CommitReplicationOwnershipTransition(cutover)
 	})
 	var pendingJob clusterModels.BackupJob
 	if err := leaderC.service.DB.First(&pendingJob, 201).Error; err != nil {
@@ -440,7 +408,7 @@ func TestIntegrationRaftFailoverBackupJobRebindReconcilesOnNewLeader(t *testing.
 			State: clusterModels.ReplicationTransitionStateDemoting, RunID: "failover-808-next",
 			Reason: "manual_failover", SourceNodeID: targetB.id, TargetNodeID: sourceA.id, OwnerEpoch: 2,
 		},
-	}, false); err == nil || !strings.Contains(err.Error(), "backup_job_runner_rebind_pending") {
+	}); err == nil || !strings.Contains(err.Error(), "backup_job_runner_rebind_pending") {
 		t.Fatalf("new ownership transition was not fenced by pending rebind: %v", err)
 	}
 	waitForClusterCondition(t, 8*time.Second, "leadership transfer", func() bool {
@@ -454,12 +422,7 @@ func TestIntegrationRaftFailoverBackupJobRebindReconcilesOnNewLeader(t *testing.
 		return false
 	})
 	newLeader := sourceA
-	newLeader.service.backupJobValidationAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
-		if nodeID != targetB.id {
-			return "", fmt.Errorf("unexpected target runner %s", nodeID)
-		}
-		return "127.0.0.1:1", nil
-	}
+	network.setCut(targetB.id, true)
 	if err := newLeader.service.ReconcileBackupJobRunnerRebind(context.Background(), runID); err == nil ||
 		!strings.Contains(err.Error(), "backup_job_runner_rebind_pending") {
 		t.Fatalf("post-completion transient failure did not remain pending: %v", err)
@@ -470,15 +433,7 @@ func TestIntegrationRaftFailoverBackupJobRebindReconcilesOnNewLeader(t *testing.
 		t.Fatalf("pending rebind not exposed in policy health: policies=%+v err=%v", policies, err)
 	}
 
-	targetSim := newClusterPeerSimulator()
-	defer targetSim.Close()
-	registerBackupJobValidationPeer(t, targetSim, targetB.service)
-	newLeader.service.backupJobValidationAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
-		if nodeID != targetB.id {
-			return "", fmt.Errorf("unexpected target runner %s", nodeID)
-		}
-		return targetSim.Addr(), nil
-	}
+	network.setCut(targetB.id, false)
 	if err := newLeader.service.ReconcileBackupJobRunnerRebind(context.Background(), runID); err != nil {
 		t.Fatalf("reconcile completed failover on new leader: %v", err)
 	}

@@ -25,7 +25,7 @@ func boolPtr(v bool) *bool {
 
 func TestListBackupTargetsOrdersByName(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.BackupTarget{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	targets := []clusterModels.BackupTarget{
 		{Name: "Zulu", SSHHost: "user@z", SSHPort: 22, BackupRoot: "tank/z", Enabled: true},
@@ -48,9 +48,9 @@ func TestListBackupTargetsOrdersByName(t *testing.T) {
 	}
 }
 
-func TestProposeBackupTargetCRUDBypassRaft(t *testing.T) {
+func TestProposeBackupTargetCRUDStandalone(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	createInput := clusterServiceInterfaces.BackupTargetReq{
 		Name:       "  target-one  ",
@@ -62,7 +62,7 @@ func TestProposeBackupTargetCRUDBypassRaft(t *testing.T) {
 		Description: "  first target  ",
 	}
 
-	if err := s.ProposeBackupTargetCreate(createInput, true, testutil.SSHHostKey(t)); err != nil {
+	if err := s.ProposeBackupTargetCreate(createInput, testutil.SSHHostKey(t)); err != nil {
 		t.Fatalf("ProposeBackupTargetCreate bypass failed: %v", err)
 	}
 
@@ -102,19 +102,19 @@ func TestProposeBackupTargetCRUDBypassRaft(t *testing.T) {
 		Description: " updated description ",
 		Enabled:     boolPtr(true),
 	}
-	if err := s.ProposeBackupTargetUpdate(metadataInput, true); err != nil {
+	if err := s.ProposeBackupTargetUpdate(metadataInput); err != nil {
 		t.Fatalf("metadata update bypass failed: %v", err)
 	}
 	disableInput := metadataInput
 	disableInput.Name = "target-updated"
 	disableInput.Description = "updated description"
 	disableInput.Enabled = boolPtr(false)
-	if err := s.ProposeBackupTargetUpdate(disableInput, true); err != nil {
+	if err := s.ProposeBackupTargetUpdate(disableInput); err != nil {
 		t.Fatalf("disable update bypass failed: %v", err)
 	}
 	rotationInput := disableInput
 	rotationInput.SSHKey = " updated-key "
-	if err := s.ProposeBackupTargetUpdate(rotationInput, true); err != nil {
+	if err := s.ProposeBackupTargetUpdate(rotationInput); err != nil {
 		t.Fatalf("key rotation bypass failed: %v", err)
 	}
 
@@ -133,7 +133,7 @@ func TestProposeBackupTargetCRUDBypassRaft(t *testing.T) {
 		t.Fatalf("unexpected updated backup target: %+v", updated)
 	}
 
-	if err := s.ProposeBackupTargetDelete(created.ID, true); err != nil {
+	if err := s.ProposeBackupTargetDelete(created.ID); err != nil {
 		t.Fatalf("ProposeBackupTargetDelete bypass failed: %v", err)
 	}
 
@@ -148,7 +148,7 @@ func TestProposeBackupTargetCRUDBypassRaft(t *testing.T) {
 
 func TestProposeBackupTargetCreateResolvesSSHKeyFromPath(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.BackupTarget{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	tmpDir := t.TempDir()
 	keyPath := filepath.Join(tmpDir, "target-key")
@@ -163,7 +163,7 @@ func TestProposeBackupTargetCreateResolvesSSHKeyFromPath(t *testing.T) {
 		SSHKeyPath: keyPath,
 	}
 
-	if err := s.ProposeBackupTargetCreate(input, true, testutil.SSHHostKey(t)); err != nil {
+	if err := s.ProposeBackupTargetCreate(input, testutil.SSHHostKey(t)); err != nil {
 		t.Fatalf("ProposeBackupTargetCreate bypass failed: %v", err)
 	}
 
@@ -178,7 +178,7 @@ func TestProposeBackupTargetCreateResolvesSSHKeyFromPath(t *testing.T) {
 
 func TestProposeBackupTargetDeleteBlockedWhenJobUsesTarget(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	target := clusterModels.BackupTarget{
 		Name:       "in-use-target",
@@ -203,7 +203,7 @@ func TestProposeBackupTargetDeleteBlockedWhenJobUsesTarget(t *testing.T) {
 		t.Fatalf("failed to create job using target: %v", err)
 	}
 
-	err := s.ProposeBackupTargetDelete(target.ID, true)
+	err := s.ProposeBackupTargetDelete(target.ID)
 	if err == nil {
 		t.Fatal("expected delete-in-use error, got nil")
 	}
@@ -220,9 +220,12 @@ func TestProposeBackupTargetDeleteBlockedWhenJobUsesTarget(t *testing.T) {
 	}
 }
 
-func TestProposeBackupTargetRequiresRaftWhenBypassDisabled(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-	s := &Service{DB: db}
+func TestProposeBackupTargetRequiresRaftWhenClustered(t *testing.T) {
+	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
+	if err := db.Create(&clusterModels.Cluster{Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	s := withFSM(&Service{DB: db})
 
 	createInput := clusterServiceInterfaces.BackupTargetReq{
 		Name:       "target-one",
@@ -231,11 +234,11 @@ func TestProposeBackupTargetRequiresRaftWhenBypassDisabled(t *testing.T) {
 		BackupRoot: "tank/backups",
 	}
 
-	err := s.ProposeBackupTargetCreate(createInput, false, testutil.SSHHostKey(t))
+	err := s.ProposeBackupTargetCreate(createInput, testutil.SSHHostKey(t))
 	if err == nil {
-		t.Fatal("expected raft_not_initialized error for create, got nil")
+		t.Fatal("expected cluster_consensus_unavailable for create, got nil")
 	}
-	if !strings.Contains(err.Error(), "raft_not_initialized") {
+	if !strings.Contains(err.Error(), "cluster_consensus_unavailable") {
 		t.Fatalf("unexpected create error: %v", err)
 	}
 
@@ -247,7 +250,7 @@ func TestProposeBackupTargetRequiresRaftWhenBypassDisabled(t *testing.T) {
 		BackupRoot: "tank/backups",
 	}
 
-	err = s.ProposeBackupTargetUpdate(updateInput, false)
+	err = s.ProposeBackupTargetUpdate(updateInput)
 	if err == nil {
 		t.Fatal("expected raft_not_initialized error for update, got nil")
 	}
@@ -255,18 +258,18 @@ func TestProposeBackupTargetRequiresRaftWhenBypassDisabled(t *testing.T) {
 		t.Fatalf("unexpected update error: %v", err)
 	}
 
-	err = s.ProposeBackupTargetDelete(1, false)
+	err = s.ProposeBackupTargetDelete(1)
 	if err == nil {
-		t.Fatal("expected raft_not_initialized error for delete, got nil")
+		t.Fatal("expected cluster_consensus_unavailable for delete, got nil")
 	}
-	if !strings.Contains(err.Error(), "raft_not_initialized") {
+	if !strings.Contains(err.Error(), "cluster_consensus_unavailable") {
 		t.Fatalf("unexpected delete error: %v", err)
 	}
 }
 
-func TestSyncBackupJobFriendlySourceByGuestBypassRaftUpdatesMatchingJobs(t *testing.T) {
+func TestSyncBackupJobFriendlySourceByGuestStandaloneUpdatesMatchingJobs(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.BackupJob{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	jobs := []clusterModels.BackupJob{
 		{
@@ -308,7 +311,7 @@ func TestSyncBackupJobFriendlySourceByGuestBypassRaftUpdatesMatchingJobs(t *test
 		GuestType:   clusterModels.ReplicationGuestTypeVM,
 		GuestID:     901,
 		FriendlySrc: "vm-new",
-	}, true); err != nil {
+	}); err != nil {
 		t.Fatalf("vm friendly source sync failed: %v", err)
 	}
 
@@ -316,7 +319,7 @@ func TestSyncBackupJobFriendlySourceByGuestBypassRaftUpdatesMatchingJobs(t *test
 		GuestType:   clusterModels.ReplicationGuestTypeJail,
 		GuestID:     903,
 		FriendlySrc: "jail-new",
-	}, true); err != nil {
+	}); err != nil {
 		t.Fatalf("jail friendly source sync failed: %v", err)
 	}
 

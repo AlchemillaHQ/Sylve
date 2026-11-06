@@ -3,12 +3,9 @@
 package migrationHandlers
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,37 +13,25 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	goLibvirt "github.com/digitalocean/go-libvirt"
-	"github.com/gin-gonic/gin"
 )
 
-func runTargetMigrationImportRequest(
+func runTargetMigrationImport(
 	t *testing.T,
-	handler gin.HandlerFunc,
+	ops targetMigrationImportOperations,
 	guestID uint,
 	operationToken string,
 	startGuest bool,
-) *httptest.ResponseRecorder {
+) (targetMigrationImportReceipt, error) {
 	t.Helper()
-	body, err := json.Marshal(targetMigrationImportRequest{
+	return targetMigrationImport(ops)(t.Context(), "", targetMigrationImportRequest{
 		GuestID:            guestID,
 		OperationToken:     operationToken,
 		StartGuest:         &startGuest,
 		SourceDatasetRoots: []string{"pool/sylve/virtual-machines/1"},
 	})
-	if err != nil {
-		t.Fatalf("marshal target import request: %v", err)
-	}
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/intra-cluster/migration/import", bytes.NewReader(body))
-	ctx.Request.Header.Set("Content-Type", "application/json")
-	handler(ctx)
-	return recorder
 }
 
 func TestTargetMigrationImportSerializesSameGuest(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	var active atomic.Bool
 	var imports atomic.Int32
 	var concurrent atomic.Int32
@@ -68,7 +53,7 @@ func TestTargetMigrationImportSerializesSameGuest(t *testing.T) {
 			}
 			return targetMigrationRuntimeInactive, nil
 		},
-		Import: func(context.Context, uint, []string, ...string) ([]string, error) {
+		Import: func(context.Context, uint, []string) ([]string, error) {
 			if imports.Add(1) == 1 {
 				close(entered)
 			}
@@ -89,23 +74,26 @@ func TestTargetMigrationImportSerializesSameGuest(t *testing.T) {
 			return nil
 		},
 	}
-	handler := targetMigrationImportHandler(ops)
+	call := targetMigrationImport(ops)
+	request := func() error {
+		startGuest := true
+		_, err := call(t.Context(), "", targetMigrationImportRequest{
+			GuestID: 1, OperationToken: "migration:source:1", StartGuest: &startGuest,
+			SourceDatasetRoots: []string{"pool/sylve/virtual-machines/1"},
+		})
+		return err
+	}
 
-	results := make(chan *httptest.ResponseRecorder, 2)
-	go func() {
-		results <- runTargetMigrationImportRequest(t, handler, 1, "migration:source:1", true)
-	}()
+	results := make(chan error, 2)
+	go func() { results <- request() }()
 	<-entered
-	go func() {
-		results <- runTargetMigrationImportRequest(t, handler, 1, "migration:source:1", true)
-	}()
+	go func() { results <- request() }()
 
 	time.Sleep(50 * time.Millisecond)
 	close(release)
 	for range 2 {
-		response := <-results
-		if response.Code != http.StatusOK {
-			t.Fatalf("serialized import returned %d: %s", response.Code, response.Body.String())
+		if err := <-results; err != nil {
+			t.Fatalf("serialized import failed: %v", err)
 		}
 	}
 	if got := maxConcurrent.Load(); got != 1 {
@@ -135,10 +123,7 @@ func TestTargetMigrationGuestLockSetReleasesEntries(t *testing.T) {
 }
 
 func TestTargetMigrationImportPreservesStoppedState(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	for _, initiallyActive := range []bool{false, true} {
-		initiallyActive := initiallyActive
 		name := "inactive_target"
 		if initiallyActive {
 			name = "active_target_rejected"
@@ -163,7 +148,7 @@ func TestTargetMigrationImportPreservesStoppedState(t *testing.T) {
 					}
 					return targetMigrationRuntimeInactive, nil
 				},
-				Import: func(context.Context, uint, []string, ...string) ([]string, error) {
+				Import: func(context.Context, uint, []string) ([]string, error) {
 					imports++
 					return nil, nil
 				},
@@ -178,12 +163,10 @@ func TestTargetMigrationImportPreservesStoppedState(t *testing.T) {
 				},
 			}
 
-			recorder := runTargetMigrationImportRequest(
-				t, targetMigrationImportHandler(ops), 1, "migration:source:1", false,
-			)
+			receipt, err := runTargetMigrationImport(t, ops, 1, "migration:source:1", false)
 			if initiallyActive {
-				if recorder.Code != http.StatusConflict {
-					t.Fatalf("active target status = %d, want conflict: %s", recorder.Code, recorder.Body.String())
+				if err == nil || !strings.Contains(err.Error(), "migration_target_runtime_state_not_safe_for_import") {
+					t.Fatalf("active target error = %v", err)
 				}
 				if imports != 0 || starts != 0 {
 					t.Fatalf("active target import/start calls = %d/%d, want 0/0", imports, starts)
@@ -191,8 +174,8 @@ func TestTargetMigrationImportPreservesStoppedState(t *testing.T) {
 				return
 			}
 
-			if recorder.Code != http.StatusOK {
-				t.Fatalf("stopped import status = %d, want OK: %s", recorder.Code, recorder.Body.String())
+			if err != nil {
+				t.Fatalf("stopped import: %v", err)
 			}
 			if imports != 1 || starts != 0 || active || !intentionalStop {
 				t.Fatalf(
@@ -200,15 +183,8 @@ func TestTargetMigrationImportPreservesStoppedState(t *testing.T) {
 					imports, starts, active, intentionalStop,
 				)
 			}
-			var response struct {
-				Message    string `json:"message"`
-				StartGuest *bool  `json:"startGuest"`
-			}
-			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-				t.Fatalf("parse stopped import response: %v", err)
-			}
-			if response.Message != "vm_imported_and_left_stopped" || response.StartGuest == nil || *response.StartGuest {
-				t.Fatalf("unexpected stopped import receipt: %+v", response)
+			if receipt.Message != "vm_imported_and_left_stopped" || receipt.StartGuest == nil || *receipt.StartGuest {
+				t.Fatalf("unexpected stopped import receipt: %+v", receipt)
 			}
 		})
 	}
@@ -295,13 +271,10 @@ func TestRequireExactMigrationTargetCutover(t *testing.T) {
 }
 
 func TestTargetMigrationImportIsTokenScopedAndIdempotentForVMAndJail(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	for _, guestType := range []string{
 		clusterModels.ReplicationGuestTypeVM,
 		clusterModels.ReplicationGuestTypeJail,
 	} {
-		guestType := guestType
 		t.Run(guestType, func(t *testing.T) {
 			tests := []struct {
 				name                  string
@@ -312,7 +285,7 @@ func TestTargetMigrationImportIsTokenScopedAndIdempotentForVMAndJail(t *testing.
 				unsafeRuntime         bool
 				importRemovesGuard    bool
 				startActivatesWithErr bool
-				wantStatus            int
+				wantOK                bool
 				wantMessage           string
 				wantActiveChecks      int
 				wantImports           int
@@ -321,52 +294,49 @@ func TestTargetMigrationImportIsTokenScopedAndIdempotentForVMAndJail(t *testing.
 				{
 					name: "first import", requestGuestID: 1, requestToken: "migration:source:1",
 					operationState: clusterModels.ReplicationGuestOperationCutover,
-					wantStatus:     http.StatusOK, wantMessage: guestType + "_imported_and_started",
+					wantOK:         true, wantMessage: guestType + "_imported_and_started",
 					wantActiveChecks: 2, wantImports: 1, wantStarts: 1,
 				},
 				{
 					name: "lost response retry already active", requestGuestID: 1, requestToken: "migration:source:1",
 					operationState: clusterModels.ReplicationGuestOperationCutover, initiallyActive: true,
-					wantStatus: http.StatusOK, wantMessage: guestType + "_already_imported_and_active",
+					wantOK: true, wantMessage: guestType + "_already_imported_and_active",
 					wantActiveChecks: 1,
 				},
 				{
 					name: "stale token cannot claim active guest", requestGuestID: 1, requestToken: "stale-token",
 					operationState: clusterModels.ReplicationGuestOperationCutover, initiallyActive: true,
-					wantStatus: http.StatusConflict, wantMessage: "migration_target_cutover_guard_rejected",
+					wantMessage: "migration_target_cutover_guard_rejected",
 				},
 				{
 					name: "wrong guest cannot reuse token", requestGuestID: 2, requestToken: "migration:source:1",
 					operationState: clusterModels.ReplicationGuestOperationCutover, initiallyActive: true,
-					wantStatus: http.StatusConflict, wantMessage: "migration_target_cutover_guard_rejected",
+					wantMessage: "migration_target_cutover_guard_rejected",
 				},
 				{
 					name: "pre-cutover cannot import", requestGuestID: 1, requestToken: "migration:source:1",
 					operationState: clusterModels.ReplicationGuestOperationPreCutover,
-					wantStatus:     http.StatusConflict, wantMessage: "migration_target_cutover_guard_rejected",
+					wantMessage:    "migration_target_cutover_guard_rejected",
 				},
 				{
 					name: "non-quiescent runtime cannot be re-imported", requestGuestID: 1, requestToken: "migration:source:1",
 					operationState: clusterModels.ReplicationGuestOperationCutover, unsafeRuntime: true,
-					wantStatus: http.StatusConflict, wantMessage: "migration_target_runtime_state_not_safe_for_import",
-					wantActiveChecks: 1,
+					wantMessage: "migration_target_runtime_state_not_safe_for_import", wantActiveChecks: 1,
 				},
 				{
 					name: "guard removed during import cannot start", requestGuestID: 1, requestToken: "migration:source:1",
 					operationState: clusterModels.ReplicationGuestOperationCutover, importRemovesGuard: true,
-					wantStatus: http.StatusConflict, wantMessage: "migration_target_cutover_guard_rejected",
-					wantActiveChecks: 1, wantImports: 1,
+					wantMessage: "migration_target_cutover_guard_rejected", wantActiveChecks: 1, wantImports: 1,
 				},
 				{
 					name: "start side effect wins over returned error", requestGuestID: 1, requestToken: "migration:source:1",
 					operationState: clusterModels.ReplicationGuestOperationCutover, startActivatesWithErr: true,
-					wantStatus: http.StatusOK, wantMessage: guestType + "_already_imported_and_active",
+					wantOK: true, wantMessage: guestType + "_already_imported_and_active",
 					wantActiveChecks: 2, wantImports: 1, wantStarts: 1,
 				},
 				{
 					name: "missing token", requestGuestID: 1,
 					operationState: clusterModels.ReplicationGuestOperationCutover,
-					wantStatus:     http.StatusBadRequest,
 					wantMessage:    "guest_id_operation_token_start_state_and_dataset_roots_required",
 				},
 			}
@@ -412,7 +382,7 @@ func TestTargetMigrationImportIsTokenScopedAndIdempotentForVMAndJail(t *testing.
 							}
 							return targetMigrationRuntimeInactive, nil
 						},
-						Import: func(context.Context, uint, []string, ...string) ([]string, error) {
+						Import: func(context.Context, uint, []string) ([]string, error) {
 							imports++
 							if test.importRemovesGuard {
 								if err := db.Where("guest_type = ? AND guest_id = ?", guestType, uint(1)).
@@ -433,26 +403,19 @@ func TestTargetMigrationImportIsTokenScopedAndIdempotentForVMAndJail(t *testing.
 						},
 					}
 
-					recorder := runTargetMigrationImportRequest(
-						t, targetMigrationImportHandler(ops), test.requestGuestID, test.requestToken, true,
-					)
-					if recorder.Code != test.wantStatus {
-						t.Fatalf("status = %d, want %d: %s", recorder.Code, test.wantStatus, recorder.Body.String())
-					}
-					var response map[string]any
-					if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-						t.Fatalf("parse response: %v", err)
-					}
-					if got, _ := response["message"].(string); got != test.wantMessage {
-						t.Fatalf("message = %q, want %q", got, test.wantMessage)
-					}
-					if recorder.Code == http.StatusOK {
-						if got, _ := response["operationToken"].(string); got != test.requestToken {
-							t.Fatalf("receipt token = %q, want %q", got, test.requestToken)
+					receipt, err := runTargetMigrationImport(t, ops, test.requestGuestID, test.requestToken, true)
+					if test.wantOK {
+						if err != nil {
+							t.Fatalf("import: %v", err)
 						}
-						if got, _ := response["guestId"].(float64); uint(got) != test.requestGuestID {
-							t.Fatalf("receipt guest id = %v, want %d", response["guestId"], test.requestGuestID)
+						if receipt.Message != test.wantMessage || receipt.OperationToken != test.requestToken ||
+							receipt.GuestID != test.requestGuestID {
+							t.Fatalf("receipt = %+v, want message %q", receipt, test.wantMessage)
 						}
+					} else if err == nil || !strings.Contains(err.Error(), test.wantMessage) {
+						t.Fatalf("import error = %v, want %q", err, test.wantMessage)
+					} else if test.wantImports != 0 && !strings.Contains(err.Error(), "test-warning") {
+						t.Fatalf("import error %v lost the import's warnings", err)
 					}
 					if activeChecks != test.wantActiveChecks || imports != test.wantImports || starts != test.wantStarts {
 						t.Fatalf(

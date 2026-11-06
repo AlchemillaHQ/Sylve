@@ -15,46 +15,32 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alchemillahq/sylve/internal/cmd"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	hub "github.com/alchemillahq/sylve/internal/events"
-	"github.com/google/uuid"
 	"github.com/hashicorp/raft"
 )
 
-func TestIntegrationRaftRemovePeerReportsDependenciesAndDrains(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(
-		t,
-		3,
-		&clusterModels.Cluster{},
-		&clusterModels.ClusterNode{},
-		&clusterModels.BackupTarget{},
-		&clusterModels.BackupJob{},
-		&clusterModels.ReplicationPolicy{},
-		&clusterModels.ReplicationPolicyTarget{},
-		&clusterModels.ReplicationLease{},
-	)
-	for _, node := range nodes {
-		if err := node.service.DB.Create(&clusterModels.Cluster{Enabled: true, Key: "cluster-key"}).Error; err != nil {
-			t.Fatalf("seed cluster record: %v", err)
+func raftVoterCount(t *testing.T, node *clusterRaftTestNode) int {
+	t.Helper()
+	future := node.raft.GetConfiguration()
+	if err := future.Error(); err != nil {
+		t.Fatal(err)
+	}
+	voters := 0
+	for _, server := range future.Configuration().Servers {
+		if server.Suffrage == raft.Voter {
+			voters++
 		}
 	}
+	return voters
+}
 
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	var removed *clusterRaftTestNode
-	for _, node := range nodes {
-		if node.id != leader.id {
-			removed = node
-			break
-		}
-	}
-	if removed == nil {
-		t.Fatal("removed peer not found")
-	}
+func TestIntegrationRaftRemoveMemberReportsDependencies(t *testing.T) {
+	nodes, leader, _ := newLeaveTestCluster(t, 3)
+	removed := leaveTestFollowers(nodes, leader)[0]
 
 	now := time.Now().UTC()
 	seed := []any{
-		&clusterModels.ClusterNode{NodeUUID: removed.id, GuestIDs: []uint{41}},
 		&clusterModels.BackupTarget{
 			ID: 1, Name: "target", SSHHost: "backup", BackupRoot: "tank/backups", Enabled: true,
 		},
@@ -87,22 +73,10 @@ func TestIntegrationRaftRemovePeerReportsDependenciesAndDrains(t *testing.T) {
 			t.Fatalf("seed %T: %v", value, err)
 		}
 	}
-
-	leader.service.joinVersionForNode = func(context.Context, raft.Server, string) (string, error) {
-		return cmd.Version, nil
-	}
-	request := RemoveMembershipRequest{
-		LeaveID:   uuid.NewString(),
-		NodeID:    removed.id,
-		Inventory: BuildGuestIdentityInventoryReport(nil),
-	}
-	err := leader.service.RemoveMembership(context.Background(), request, removed.id)
+	err := leader.service.RemoveMember(context.Background(), removed.id, true)
 	var blocked *PeerRemovalBlockedError
-	if !errors.As(err, &blocked) {
-		t.Fatalf("RemovePeer error = %v, want PeerRemovalBlockedError", err)
-	}
-	if blocked.Conflict.NodeID != removed.id {
-		t.Fatalf("blocked node = %q, want %q", blocked.Conflict.NodeID, removed.id)
+	if !errors.As(err, &blocked) || blocked.Conflict.NodeID != removed.id {
+		t.Fatalf("remove error = %v, want the node's dependencies", err)
 	}
 	wantKinds := map[string]bool{
 		PeerRemovalDependencyBackupJob:            true,
@@ -118,181 +92,103 @@ func TestIntegrationRaftRemovePeerReportsDependenciesAndDrains(t *testing.T) {
 		if !wantKinds[dependency.Kind] {
 			t.Fatalf("unexpected dependency %#v", dependency)
 		}
-		delete(wantKinds, dependency.Kind)
 	}
-	if len(wantKinds) != 0 {
-		t.Fatalf("missing dependency kinds: %#v", wantKinds)
+	if voters := raftVoterCount(t, leader); voters != 3 {
+		t.Fatalf("voters after a blocked removal = %d", voters)
 	}
-
-	var voterCount int
-	configuration := leader.raft.GetConfiguration()
-	if configuration.Error() != nil {
-		t.Fatalf("get blocked configuration: %v", configuration.Error())
-	}
-	for _, server := range configuration.Configuration().Servers {
-		if server.Suffrage == raft.Voter {
-			voterCount++
-		}
-	}
-	if voterCount != 3 {
-		t.Fatalf("voter count after blocked removal = %d, want 3", voterCount)
-	}
-
 	for _, value := range []any{
-		&clusterModels.ReplicationRunOperation{},
-		&clusterModels.BackupJobOperation{},
-		&clusterModels.ReplicationLease{},
-		&clusterModels.ReplicationPolicy{},
-		&clusterModels.BackupJob{},
-		&clusterModels.ClusterNode{},
+		&clusterModels.ReplicationRunOperation{}, &clusterModels.BackupJobOperation{},
+		&clusterModels.ReplicationLease{}, &clusterModels.ReplicationPolicy{}, &clusterModels.BackupJob{},
 	} {
 		if err := leader.service.DB.Where("1 = 1").Delete(value).Error; err != nil {
 			t.Fatalf("clear %T: %v", value, err)
 		}
 	}
 
+	seedGuestIdentityJoinTestClaim(t, leader, removed.id, clusterModels.ReplicationGuestTypeVM, 41)
+	if err := leader.service.apply("cluster_ssh_identity", "upsert", clusterModels.ClusterSSHIdentity{
+		NodeUUID: removed.id, SSHHost: removed.id, PublicKey: "key",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := leader.service.RemoveMember(context.Background(), removed.id, false); !errors.As(err, &blocked) ||
+		len(blocked.Conflict.Dependencies) != 1 || blocked.Conflict.Dependencies[0].Kind != PeerRemovalDependencyGuest {
+		t.Fatalf("unconfirmed removal of a node with guests = %v", err)
+	}
+
 	events, unsubscribe := hub.SSE.Subscribe()
 	defer unsubscribe()
-	if err := leader.service.RemoveMembership(context.Background(), request, removed.id); err != nil {
-		t.Fatalf("RemoveMembership after drain: %v", err)
+	if err := leader.service.RemoveMember(context.Background(), removed.id, true); err != nil {
+		t.Fatalf("remove keeping guests: %v", err)
 	}
 	waitForClusterEvent(t, events, "left-panel-refresh")
-	waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
-}
-
-func TestRemoveMembershipReportsAllSubmittedGuests(t *testing.T) {
-	service := &Service{mutationGate: newOpenTestMutationGate(t)}
-	report := BuildGuestIdentityInventoryReport([]GuestIdentityInventoryEntry{
-		{NodeID: "node-2", GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 10, Name: "vm"},
-		{NodeID: "node-2", GuestType: clusterModels.ReplicationGuestTypeJail, GuestID: 20, Name: "jail"},
-	})
-	err := service.RemoveMembership(context.Background(), RemoveMembershipRequest{
-		LeaveID: uuid.NewString(), NodeID: "node-2", Inventory: report,
-	}, "node-2")
-	var blocked *PeerRemovalBlockedError
-	if !errors.As(err, &blocked) || len(blocked.Conflict.Dependencies) != 2 {
-		t.Fatalf("error=%v conflict=%+v", err, blocked)
+	waitForClusterRaftVoterCount(t, []*clusterRaftTestNode{leader}, 2, 8*time.Second)
+	waitForGuestIdentityClaim(t, []*clusterRaftTestNode{leader}, 41, "")
+	var identities int64
+	if err := leader.service.DB.Model(&clusterModels.ClusterSSHIdentity{}).Where("node_uuid = ?", removed.id).Count(&identities).Error; err != nil || identities != 0 {
+		t.Fatalf("removed node's SSH identities = %d, %v", identities, err)
 	}
-}
-
-func TestRetainedLeaveRequiresExactClaimedIdentitySet(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.GuestIdentityClaim{})
-	for _, claim := range []clusterModels.GuestIdentityClaim{
-		{OwnerNodeID: "leaving", GuestKind: "vm", GuestID: 100, Token: "vm-token"},
-		{OwnerNodeID: "leaving", GuestKind: "jail", GuestID: 120, Token: "jail-token"},
-		{OwnerNodeID: "other", GuestKind: "vm", GuestID: 130, Token: "other-token"},
-	} {
-		if err := db.Create(&claim).Error; err != nil {
-			t.Fatal(err)
-		}
+	if err := leader.service.RemoveMember(context.Background(), removed.id, true); !errors.Is(err, ErrPeerNotFound) {
+		t.Fatalf("second removal = %v", err)
 	}
-	service := &Service{DB: db}
-	makeReport := func(entries ...GuestIdentityInventoryEntry) GuestIdentityInventoryReport {
-		return BuildGuestIdentityInventoryReport(entries)
-	}
-	matching := makeReport(
-		GuestIdentityInventoryEntry{NodeID: "leaving", GuestType: "vm", GuestID: 100},
-		GuestIdentityInventoryEntry{NodeID: "leaving", GuestType: "jail", GuestID: 120},
-	)
-	if err := service.compareLeaveInventoryWithClaims("leaving", matching); err != nil {
-		t.Fatalf("matching inventory: %v", err)
-	}
-	for _, altered := range []GuestIdentityInventoryReport{
-		makeReport(GuestIdentityInventoryEntry{NodeID: "leaving", GuestType: "vm", GuestID: 100}),
-		makeReport(matching.Entries[0], matching.Entries[1], GuestIdentityInventoryEntry{NodeID: "leaving", GuestType: "vm", GuestID: 140}),
-		makeReport(GuestIdentityInventoryEntry{NodeID: "leaving", GuestType: "jail", GuestID: 100}, matching.Entries[1]),
-	} {
-		var mismatch *LeaveInventoryMismatchError
-		if err := service.compareLeaveInventoryWithClaims("leaving", altered); !errors.As(err, &mismatch) {
-			t.Fatalf("altered inventory %+v: error=%v", altered.Entries, err)
-		}
+	if err := leader.service.RemoveMember(context.Background(), leader.id, true); !errors.Is(err, ErrRemoveSelf) {
+		t.Fatalf("self removal = %v", err)
 	}
 }
 
 func TestIntegrationRaftRemovedPeerCannotStartRuntimeWork(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(
-		t,
-		3,
-		&clusterModels.Cluster{},
-		&clusterModels.BackupJob{},
-		&clusterModels.ReplicationPolicy{},
-		&clusterModels.ReplicationLease{},
-		&clusterModels.ReplicationGuestOperation{},
-	)
-	for _, node := range nodes {
-		if err := node.service.DB.Create(&clusterModels.Cluster{Enabled: true, Key: "cluster-key"}).Error; err != nil {
-			t.Fatalf("seed cluster record: %v", err)
-		}
+	nodes, leader, _ := newLeaveTestCluster(t, 3)
+	removed := leaveTestFollowers(nodes, leader)[0]
+	if err := leader.service.RemoveMember(context.Background(), removed.id, true); err != nil {
+		t.Fatalf("remove: %v", err)
 	}
-
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	var removed *clusterRaftTestNode
-	for _, node := range nodes {
-		if node.id != leader.id {
-			removed = node
-			break
-		}
-	}
-	if removed == nil {
-		t.Fatal("removed peer not found")
-	}
-	leader.service.joinVersionForNode = func(context.Context, raft.Server, string) (string, error) {
-		return cmd.Version, nil
-	}
-	if err := leader.service.RemoveMembership(context.Background(), RemoveMembershipRequest{
-		LeaveID:   uuid.NewString(),
-		NodeID:    removed.id,
-		Inventory: BuildGuestIdentityInventoryReport(nil),
-	}, removed.id); err != nil {
-		t.Fatalf("RemoveMembership: %v", err)
-	}
-	waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
+	waitForClusterRaftVoterCount(t, []*clusterRaftTestNode{leader}, 2, 8*time.Second)
 	now := time.Now().UTC()
 	checks := map[string]func() error{
 		"backup acquire": func() error {
 			return leader.service.AcquireBackupJobOperation(clusterModels.BackupJobOperationAcquire{
 				JobID: 1, Token: "backup-acquire", Operation: clusterModels.BackupJobOperationBackup,
 				HolderNodeID: removed.id, AcquiredAt: now,
-			}, false)
+			})
 		},
 		"backup start": func() error {
 			return leader.service.TransitionBackupJobOperation("start", clusterModels.BackupJobOperationTransition{
 				JobID: 1, Token: "backup-start", Operation: clusterModels.BackupJobOperationBackup,
 				HolderNodeID: removed.id, OccurredAt: now,
-			}, false)
+			})
 		},
 		"backup schedule claim": func() error {
 			return leader.service.ApplyBackupJobScheduleDecision(clusterModels.BackupJobScheduleDecision{
 				JobID: 1, ClaimToken: "backup-schedule", HolderNodeID: removed.id, DecidedAt: now,
-			}, false)
+			})
 		},
 		"restore acquire": func() error {
 			return leader.service.AcquireBackupTargetRestoreOperation(clusterModels.BackupTargetRestoreOperationAcquire{
 				Token: "restore-acquire", TargetID: 1, HolderNodeID: removed.id,
 				DestinationDataset: "tank/restore", RequestPayload: `{}`, AcquiredAt: now,
-			}, false)
+			})
 		},
 		"restore start": func() error {
 			return leader.service.TransitionBackupTargetRestoreOperation("start", clusterModels.BackupTargetRestoreOperationTransition{
 				Token: "restore-start", TargetID: 1, HolderNodeID: removed.id,
 				DestinationDataset: "tank/restore", RequestPayload: `{}`, OccurredAt: now,
-			}, false)
+			})
 		},
 		"replication schedule claim": func() error {
 			return leader.service.ApplyReplicationPolicyScheduleDecision(clusterModels.ReplicationPolicyScheduleDecision{
 				PolicyID: 1, ClaimToken: "replication-schedule", HolderNodeID: removed.id, DecidedAt: now,
-			}, false)
+			})
 		},
 		"replication start": func() error {
 			return leader.service.StartReplicationRun(clusterModels.ReplicationRunOperationTransition{
 				PolicyID: 1, Token: "replication-start", HolderNodeID: removed.id, OccurredAt: now,
-			}, false)
+			})
 		},
 		"replication lease": func() error {
 			return leader.service.UpsertReplicationLease(clusterModels.ReplicationLease{
 				PolicyID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 1,
 				OwnerNodeID: removed.id, OwnerEpoch: 1, ExpiresAt: now.Add(time.Hour),
-			}, false)
+			})
 		},
 		"guest operation": func() error {
 			return leader.service.AcquireReplicationGuestOperation(clusterModels.ReplicationGuestOperationAcquire{
@@ -300,7 +196,7 @@ func TestIntegrationRaftRemovedPeerCannotStartRuntimeWork(t *testing.T) {
 				Operation: clusterModels.ReplicationGuestOperationMigration,
 				Token:     "migration", OwnerNodeID: removed.id, TargetNodeID: leader.id,
 				TaskID: 1, AcquiredAt: now,
-			}, false)
+			})
 		},
 	}
 	for name, check := range checks {
@@ -311,40 +207,6 @@ func TestIntegrationRaftRemovedPeerCannotStartRuntimeWork(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestIntegrationRaftForceRemovePeerRemovesExternallyFencedMember(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 3)
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	var target *clusterRaftTestNode
-	for _, node := range nodes {
-		if node.id != leader.id {
-			target = node
-			break
-		}
-	}
-	if target == nil {
-		t.Fatal("target unavailable")
-	}
-	if _, err := leader.service.ForceRemovePeer(context.Background(), ForceRemovePeerRequest{
-		NodeID: target.id,
-	}); err == nil || !strings.Contains(err.Error(), "cluster_force_target_fence_ack_required") {
-		t.Fatalf("missing acknowledgement error=%v", err)
-	}
-	events, unsubscribe := hub.SSE.Subscribe()
-	defer unsubscribe()
-	result, err := leader.service.ForceRemovePeer(context.Background(), ForceRemovePeerRequest{
-		NodeID:                 target.id,
-		TargetExternallyFenced: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.MembershipRemoved || result.CleanupAcknowledged {
-		t.Fatalf("result=%+v", result)
-	}
-	waitForClusterEvent(t, events, "left-panel-refresh")
-	waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
 }
 
 func waitForClusterEvent(t *testing.T, events <-chan hub.Event, eventType string) {
@@ -363,42 +225,25 @@ func waitForClusterEvent(t *testing.T, events <-chan hub.Event, eventType string
 	}
 }
 
-func TestForceRemovePeerRequiresConsensus(t *testing.T) {
-	service := &Service{NodeID: "node-1", mutationGate: newOpenTestMutationGate(t)}
-	_, err := service.ForceRemovePeer(context.Background(), ForceRemovePeerRequest{
-		NodeID:                 "node-2",
-		TargetExternallyFenced: true,
-	})
-	var consensusErr *ClusterConsensusError
-	if !errors.As(err, &consensusErr) {
-		t.Fatalf("error = %v, want ClusterConsensusError", err)
+func TestRemoveMemberRequiresALeader(t *testing.T) {
+	service := withFSM(&Service{DB: newClusterServiceTestDB(t), NodeID: "node-1", mutationGate: newOpenTestMutationGate(t)})
+	if err := service.RemoveMember(context.Background(), "node-2", true); !errors.Is(err, raft.ErrNotLeader) {
+		t.Fatalf("error = %v, want not leader", err)
 	}
 }
 
-func TestIntegrationRaftForceRemovePeerDoesNotBypassQuorum(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 2)
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	var target *clusterRaftTestNode
-	for _, node := range nodes {
-		if node.id != leader.id {
-			target = node
-			break
-		}
-	}
-	if target == nil {
-		t.Fatal("target unavailable")
-	}
+func TestIntegrationRaftRemoveMemberDoesNotBypassQuorum(t *testing.T) {
+	nodes, leader, _ := newLeaveTestCluster(t, 2)
+	target := leaveTestFollowers(nodes, leader)[0]
 	leader.transport.DisconnectAll()
 	target.transport.DisconnectAll()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Second)
 	defer cancel()
-	_, err := leader.service.ForceRemovePeer(ctx, ForceRemovePeerRequest{
-		NodeID:                 target.id,
-		TargetExternallyFenced: true,
-	})
-	var consensusErr *ClusterConsensusError
-	if !errors.As(err, &consensusErr) {
-		t.Fatalf("error = %v, want ClusterConsensusError", err)
+	if err := leader.service.RemoveMember(ctx, target.id, true); err == nil {
+		t.Fatal("a leader without quorum removed a member")
+	}
+	if voters := raftVoterCount(t, leader); voters != 2 {
+		t.Fatalf("voters = %d, want 2", voters)
 	}
 }

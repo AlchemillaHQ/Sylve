@@ -18,6 +18,8 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/google/uuid"
 	"github.com/hashicorp/raft"
 )
@@ -103,86 +105,17 @@ func (s *Service) applyBackupTargetRestoreOperation(
 		return fmt.Errorf("backup_target_restore_operation_service_unavailable")
 	}
 	action = strings.ToLower(strings.TrimSpace(action))
-
-	applyLocal := func() error {
-		switch action {
-		case "acquire":
-			return clusterModels.AcquireBackupTargetRestoreOperationV2Txn(s.DB, &acquire)
-		case "start":
-			return clusterModels.StartBackupTargetRestoreOperationV2Txn(s.DB, &transition)
-		case "finish":
-			return clusterModels.FinishBackupTargetRestoreOperationTxn(s.DB, &transition)
-		case "requeue":
-			return clusterModels.RequeueBackupTargetRestoreOperationTxn(s.DB, &transition)
-		case "abort":
-			return clusterModels.AbortBackupTargetRestoreOperationTxn(s.DB, &transition)
-		case "release":
-			return clusterModels.ReleaseBackupTargetRestoreOperationTxn(s.DB, &transition)
-		default:
-			return fmt.Errorf("invalid_backup_target_restore_operation_action")
-		}
-	}
-
-	if s.Cluster == nil {
-		return applyLocal()
-	}
-	if s.Cluster.Raft() == nil {
-		if action == "acquire" {
-			return s.Cluster.AcquireBackupTargetRestoreOperation(acquire, true)
-		}
-		return s.Cluster.TransitionBackupTargetRestoreOperation(action, transition, true)
-	}
-
-	payload := map[string]any{
-		"hostKeyRevision":    transition.HostKeyRevision,
-		"action":             action,
-		"token":              transition.Token,
-		"targetId":           transition.TargetID,
-		"holderNodeId":       transition.HolderNodeID,
-		"destinationDataset": transition.DestinationDataset,
-		"requestPayload":     transition.RequestPayload,
-		"occurredAt":         transition.OccurredAt,
-	}
-	if action == "acquire" {
-		payload = map[string]any{
-			"hostKeyRevision":    acquire.HostKeyRevision,
-			"action":             action,
-			"token":              acquire.Token,
-			"targetId":           acquire.TargetID,
-			"holderNodeId":       acquire.HolderNodeID,
-			"destinationDataset": acquire.DestinationDataset,
-			"requestPayload":     acquire.RequestPayload,
-			"occurredAt":         acquire.AcquiredAt,
-		}
-	}
-
+	request := cluster.BackupTargetRestoreOperationRequest{Action: action, Acquire: acquire, Transition: transition}
 	var lastErr error
 	for attempt := 0; attempt < replicationControlForwardAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if s.Cluster.Raft().State() == raft.Leader {
-			if action == "acquire" {
-				lastErr = s.Cluster.AcquireBackupTargetRestoreOperation(acquire, false)
-			} else {
-				lastErr = s.Cluster.TransitionBackupTargetRestoreOperation(action, transition, false)
-			}
-		} else {
-			_, leaderID := s.Cluster.Raft().LeaderWithID()
-			leaderNodeID := strings.TrimSpace(string(leaderID))
-			if leaderNodeID == "" {
-				lastErr = fmt.Errorf("leader_not_available")
-			} else if targetAPI, resolveErr := s.Cluster.ResolveIntraClusterVoterAPI(leaderNodeID); resolveErr != nil {
-				lastErr = resolveErr
-			} else {
-				_, lastErr = s.forwardReplicationPolicyControlReadAtAPI(
-					targetAPI,
-					"backup-target-restore-operation",
-					payload,
-					replicationControlDefaultTimeout,
-				)
-			}
-		}
+		callCtx, cancel := context.WithTimeout(ctx, replicationControlDefaultTimeout)
+		_, lastErr = cluster.CallLeader[cluster.BackupTargetRestoreOperationRequest, struct{}](
+			callCtx, s.Cluster, "backup-target-restore-operation", request,
+		)
+		cancel()
 		if lastErr == nil {
 			return nil
 		}
@@ -240,6 +173,10 @@ func backupTargetRestoreOperationStaleMessage(err error) bool {
 		strings.Contains(text, "backup_target_restore_operation_token_mismatch") ||
 		strings.Contains(text, "backup_target_restore_operation_already_started") ||
 		strings.Contains(text, "backup_target_restore_operation_already_completed")
+}
+
+func backupTargetRestoreOperationAlreadyStarted(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "backup_target_restore_operation_already_started")
 }
 
 func backupTargetRestoreOperationFinishing(err error) bool {
@@ -413,6 +350,30 @@ func (s *Service) releaseActiveBackupTargetRestoreToken(token string) {
 	delete(s.activeTargetRestoreTokens, token)
 }
 
+func (s *Service) setTargetRestoreToken(tokens *map[string]struct{}, token string, present bool) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return
+	}
+	s.targetRestoreOperationMu.Lock()
+	defer s.targetRestoreOperationMu.Unlock()
+	if !present {
+		delete(*tokens, token)
+		return
+	}
+	if *tokens == nil {
+		*tokens = make(map[string]struct{})
+	}
+	(*tokens)[token] = struct{}{}
+}
+
+func (s *Service) hasTargetRestoreToken(tokens *map[string]struct{}, token string) bool {
+	s.targetRestoreOperationMu.Lock()
+	defer s.targetRestoreOperationMu.Unlock()
+	_, ok := (*tokens)[strings.TrimSpace(token)]
+	return ok
+}
+
 func (s *Service) prepareQueuedBackupTargetRestoreOperation(
 	ctx context.Context,
 	payload restoreFromTargetPayload,
@@ -453,7 +414,14 @@ func (s *Service) prepareQueuedBackupTargetRestoreOperation(
 	}
 
 	err = s.transitionDurableBackupTargetRestoreOperation(ctx, "start", handle)
+	if backupTargetRestoreOperationAlreadyStarted(err) &&
+		!s.hasTargetRestoreToken(&s.startedTargetRestoreTokens, handle.Token) {
+		if err = s.transitionDurableBackupTargetRestoreOperation(ctx, "requeue", handle); err == nil {
+			err = s.transitionDurableBackupTargetRestoreOperation(ctx, "start", handle)
+		}
+	}
 	if err == nil {
+		s.setTargetRestoreToken(&s.startedTargetRestoreTokens, handle.Token, true)
 		return handle, normalizedPayload, true, nil
 	}
 	defer s.releaseActiveBackupTargetRestoreToken(handle.Token)
@@ -473,10 +441,9 @@ func (s *Service) prepareQueuedBackupTargetRestoreOperation(
 		// terminal outcome after removing the now-unexecutable reservation.
 		return handle, normalizedPayload, false, err
 	}
-	if strings.Contains(strings.ToLower(err.Error()), "backup_target_restore_operation_already_started") {
-		// No worker in this process owns the token (the local claim above won),
-		// so this is a retained message after an uncertain cleanup response.
-		// Finalize the same logical operation rather than executing it twice.
+	if backupTargetRestoreOperationAlreadyStarted(err) {
+		// Started by this process and no worker owns the token: a retained message
+		// after an uncertain cleanup response, so finalize rather than run it twice.
 		if finishErr := s.transitionDurableBackupTargetRestoreOperation(ctx, "finish", handle); finishErr != nil &&
 			!backupTargetRestoreOperationStaleMessage(finishErr) {
 			return handle, normalizedPayload, false, finishErr
@@ -494,14 +461,21 @@ func (s *Service) prepareQueuedBackupTargetRestoreOperation(
 }
 
 func (s *Service) enqueueRestoreFromTargetOperation(ctx context.Context, payload restoreFromTargetPayload) error {
+	enqueue := db.EnqueueJSON[any]
 	if s.restoreFromTargetOperationEnqueue != nil {
-		return s.restoreFromTargetOperationEnqueue(ctx, restoreFromTargetQueueName, payload)
+		enqueue = s.restoreFromTargetOperationEnqueue
 	}
-	return db.EnqueueJSON(ctx, restoreFromTargetQueueName, payload)
+	// Marked first: a handler may take the message before enqueue returns.
+	s.setTargetRestoreToken(&s.queuedTargetRestoreTokens, payload.OperationToken, true)
+	if err := enqueue(ctx, restoreFromTargetQueueName, payload); err != nil {
+		s.setTargetRestoreToken(&s.queuedTargetRestoreTokens, payload.OperationToken, false)
+		return err
+	}
+	return nil
 }
 
 func (s *Service) waitForBackupTargetRestoreRaftCatchUp(ctx context.Context) error {
-	if s == nil || s.Cluster == nil || s.Cluster.Raft() == nil {
+	if s == nil || s.Cluster.Raft() == nil {
 		return nil
 	}
 	r := s.Cluster.Raft()
@@ -549,11 +523,9 @@ func (s *Service) waitForBackupTargetRestoreRaftCatchUp(ctx context.Context) err
 	}
 }
 
-// ReconcileBackupTargetRestoreOperationsAfterRestart treats queued reservations
-// as an outbox. An interrupted running token is first reset to queued; if the
-// queue database still contains its old message, queued->running CAS ensures
-// that only one copy executes. Finishing rows are terminal and only released.
-func (s *Service) ReconcileBackupTargetRestoreOperationsAfterRestart(ctx context.Context) error {
+// A duplicate message is harmless (the claim and the queued->running CAS let one
+// copy run), and it skips what this process started or queued, so it can run any time.
+func (s *Service) ReconcileBackupTargetRestoreOperations(ctx context.Context) error {
 	if s == nil || s.DB == nil {
 		return nil
 	}
@@ -573,6 +545,9 @@ func (s *Service) ReconcileBackupTargetRestoreOperationsAfterRestart(ctx context
 
 	var result error
 	for _, operation := range operations {
+		if s.hasTargetRestoreToken(&s.queuedTargetRestoreTokens, operation.Token) {
+			continue
+		}
 		handle := backupTargetRestoreOperationHandle{
 			Token: operation.Token, TargetID: operation.TargetID, HolderNodeID: operation.HolderNodeID,
 			DestinationDataset: operation.DestinationDataset, RequestPayload: operation.RequestPayload,
@@ -585,8 +560,7 @@ func (s *Service) ReconcileBackupTargetRestoreOperationsAfterRestart(ctx context
 			}
 			continue
 		case clusterModels.BackupTargetRestoreOperationRunning:
-			if err := s.transitionDurableBackupTargetRestoreOperation(ctx, "requeue", handle); err != nil {
-				result = errors.Join(result, err)
+			if s.hasTargetRestoreToken(&s.startedTargetRestoreTokens, operation.Token) {
 				continue
 			}
 		case clusterModels.BackupTargetRestoreOperationQueued:
@@ -637,4 +611,31 @@ func (s *Service) ReconcileBackupTargetRestoreOperationsAfterRestart(ctx context
 		}
 	}
 	return result
+}
+
+// Periodic, so an interrupted restore runs whenever the cluster gets a leader.
+func (s *Service) StartBackupTargetRestoreReconciler(ctx context.Context) {
+	reconcile := func() {
+		admittedCtx, release, err := s.enterMutation(ctx)
+		if err != nil {
+			return
+		}
+		defer release()
+		passCtx, cancel := context.WithTimeout(admittedCtx, 30*time.Second)
+		defer cancel()
+		if err := s.ReconcileBackupTargetRestoreOperations(passCtx); err != nil {
+			logger.L.Warn().Err(err).Msg("backup_target_restore_reconcile_failed")
+		}
+	}
+	reconcile()
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			reconcile()
+		}
+	}
 }

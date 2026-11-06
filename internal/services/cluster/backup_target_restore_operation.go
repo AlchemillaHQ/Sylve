@@ -9,50 +9,32 @@
 package cluster
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	"github.com/hashicorp/raft"
 )
 
-func (s *Service) AcquireBackupTargetRestoreOperation(
-	payload clusterModels.BackupTargetRestoreOperationAcquire,
-	bypassRaft bool,
-) error {
+func (s *Service) AcquireBackupTargetRestoreOperation(payload clusterModels.BackupTargetRestoreOperationAcquire) error {
 	payload.RequireEnabledTarget = true
 	if payload.AcquiredAt.IsZero() {
 		payload.AcquiredAt = time.Now().UTC()
 	}
-	if bypassRaft {
-		return clusterModels.AcquireBackupTargetRestoreOperationV2Txn(s.DB, &payload)
+	if !s.Standalone() {
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+		if err := s.RequireCurrentRaftVoter(payload.HolderNodeID); err != nil {
+			return fmt.Errorf("backup_restore_holder_not_current_voter: %w", err)
+		}
 	}
-	if s.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-	if s.Raft().State() != raft.Leader {
-		return fmt.Errorf("not_leader")
-	}
-	s.clusterJoinMu.Lock()
-	defer s.clusterJoinMu.Unlock()
-	if err := s.RequireCurrentRaftVoter(payload.HolderNodeID); err != nil {
-		return fmt.Errorf("backup_restore_holder_not_current_voter: %w", err)
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_backup_target_restore_operation_acquire: %w", err)
-	}
-	return s.applyRaftCommand(clusterModels.Command{
-		Type: "backup_target_restore_operation", Action: "acquire_v2", Data: data,
-	})
+	return s.apply("backup_target_restore_operation", "acquire_v2", payload)
 }
 
 func (s *Service) TransitionBackupTargetRestoreOperation(
 	action string,
 	payload clusterModels.BackupTargetRestoreOperationTransition,
-	bypassRaft bool,
 ) error {
 	action = strings.ToLower(strings.TrimSpace(action))
 	payload.RequireEnabledTarget = true
@@ -64,42 +46,32 @@ func (s *Service) TransitionBackupTargetRestoreOperation(
 	if payload.OccurredAt.IsZero() {
 		payload.OccurredAt = time.Now().UTC()
 	}
-
-	if bypassRaft {
-		switch action {
-		case "start":
-			return clusterModels.StartBackupTargetRestoreOperationV2Txn(s.DB, &payload)
-		case "finish":
-			return clusterModels.FinishBackupTargetRestoreOperationTxn(s.DB, &payload)
-		case "requeue":
-			return clusterModels.RequeueBackupTargetRestoreOperationTxn(s.DB, &payload)
-		case "abort":
-			return clusterModels.AbortBackupTargetRestoreOperationTxn(s.DB, &payload)
-		default:
-			return clusterModels.ReleaseBackupTargetRestoreOperationTxn(s.DB, &payload)
-		}
-	}
-	if s.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-	if s.Raft().State() != raft.Leader {
-		return fmt.Errorf("not_leader")
-	}
-	if action == "start" || action == "requeue" {
+	if (action == "start" || action == "requeue") && !s.Standalone() {
 		s.clusterJoinMu.Lock()
 		defer s.clusterJoinMu.Unlock()
 		if err := s.RequireCurrentRaftVoter(payload.HolderNodeID); err != nil {
 			return fmt.Errorf("backup_restore_holder_not_current_voter: %w", err)
 		}
 	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_backup_target_restore_operation_%s: %w", action, err)
-	}
 	if action == "start" {
 		action = "start_v2"
 	}
-	return s.applyRaftCommand(clusterModels.Command{
-		Type: "backup_target_restore_operation", Action: action, Data: data,
-	})
+	return s.apply("backup_target_restore_operation", action, payload)
+}
+
+type BackupTargetRestoreOperationRequest struct {
+	Action     string                                               `json:"action"`
+	Acquire    clusterModels.BackupTargetRestoreOperationAcquire    `json:"acquire"`
+	Transition clusterModels.BackupTargetRestoreOperationTransition `json:"transition"`
+}
+
+func (s *Service) backupTargetRestoreOperationCall(
+	_ context.Context,
+	_ string,
+	req BackupTargetRestoreOperationRequest,
+) (struct{}, error) {
+	if strings.EqualFold(strings.TrimSpace(req.Action), "acquire") {
+		return struct{}{}, s.AcquireBackupTargetRestoreOperation(req.Acquire)
+	}
+	return struct{}{}, s.TransitionBackupTargetRestoreOperation(req.Action, req.Transition)
 }

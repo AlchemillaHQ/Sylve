@@ -149,7 +149,7 @@ func TestRestoreBackupTargetRejectsInvalidInputBeforeServiceUse(t *testing.T) {
 func TestBackupTargetsHandlerGet(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
@@ -191,7 +191,10 @@ func TestBackupTargetsHandlerGet(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t)
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
+		if err := db.Migrator().DropTable(&clusterModels.BackupTarget{}); err != nil {
+			t.Fatal(err)
+		}
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
@@ -223,7 +226,7 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 
 	t.Run("invalid request", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
@@ -235,7 +238,7 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 
 	t.Run("managed private key is required", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets", []byte(`{
@@ -249,7 +252,7 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 
 	t.Run("managed key staging failure", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{validateErr: errors.New("stage_backup_target_ssh_key_failed: disk full")}
 		r := newBackupTargetRouter(cS, zStub)
 		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets", baseBody)
@@ -260,7 +263,7 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 
 	t.Run("target validation failure", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{validateErr: errors.New("validation_failed")}
 		r := newBackupTargetRouter(cS, zStub)
 		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets", baseBody)
@@ -271,7 +274,7 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 
 	t.Run("propose failure", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
@@ -303,7 +306,7 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
@@ -338,7 +341,7 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 
 	t.Run("post-commit key materialization failure is reported without changing committed key", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{materializeErr: errors.New("materialize_target_ssh_key: disk full")}
 		r := newBackupTargetRouter(cS, zStub)
 		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets", baseBody)
@@ -358,7 +361,7 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 		db := newClusterHandlerTestDB(t,
 			&clusterModels.BackupTarget{}, &clusterModels.BackupTargetProvisionOperation{}, &clusterModels.BackupJob{},
 		)
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{inspection: zelta.BackupTargetValidationResult{RootProvisioningRequired: true}}
 		zStub.provisionFn = func(target *clusterModels.BackupTarget) error {
 			var pending int64
@@ -394,7 +397,7 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 		db := newClusterHandlerTestDB(t,
 			&clusterModels.BackupTarget{}, &clusterModels.BackupTargetProvisionOperation{}, &clusterModels.BackupJob{},
 		)
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{
 			inspection:   zelta.BackupTargetValidationResult{RootProvisioningRequired: true},
 			provisionErr: errors.New("backup_root_create_failed: permission denied"),
@@ -421,7 +424,7 @@ func TestBackupTargetsHandlerCreate(t *testing.T) {
 		db := newClusterHandlerTestDB(t,
 			&clusterModels.BackupTarget{}, &clusterModels.BackupTargetProvisionOperation{}, &clusterModels.BackupJob{},
 		)
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{
 			inspection: zelta.BackupTargetValidationResult{RootProvisioningRequired: true},
 			provisionErr: &zelta.BackupTargetProvisionError{
@@ -447,7 +450,7 @@ func TestBackupTargetCreateRejectsOversizedBody(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
 	r := gin.New()
 	r.Use(middleware.LimitRequestBody(64))
-	r.POST("/cluster/backups/targets", CreateBackupTarget(&cluster.Service{DB: db}, &backupTargetZeltaStub{}))
+	r.POST("/cluster/backups/targets", CreateBackupTarget(cluster.NewClusterService(db, nil, nil).(*cluster.Service), &backupTargetZeltaStub{}))
 
 	body := []byte(`{"name":"target-a","sshHost":"user@host","backupRoot":"tank/backups","sshKey":"` + strings.Repeat("x", 128) + `"}`)
 	rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets", body)
@@ -484,7 +487,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 
 	t.Run("invalid id", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
@@ -496,7 +499,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 
 	t.Run("invalid request", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
@@ -508,7 +511,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 
 	t.Run("not found", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
@@ -524,7 +527,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 
 	t.Run("legacy target metadata update does not require connectivity or key conversion", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		target := clusterModels.BackupTarget{
 			Name: "legacy", SSHHost: "user@host", SSHPort: 22,
 			SSHKeyPath: "/legacy/node-local/key", BackupRoot: "tank/old", Enabled: true,
@@ -547,7 +550,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 
 	t.Run("invalid replacement leaves committed key unchanged", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		target := seedTarget(t, cS)
 		if err := db.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Update("enabled", false).Error; err != nil {
 			t.Fatalf("disable target: %v", err)
@@ -578,7 +581,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 
 	t.Run("key activation failure leaves committed disabled key unchanged", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		target := seedTarget(t, cS)
 		if err := db.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Update("enabled", false).Error; err != nil {
 			t.Fatalf("disable target: %v", err)
@@ -603,7 +606,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 
 	t.Run("valid managed key replacement", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		target := seedTarget(t, cS)
 		if err := db.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Update("enabled", false).Error; err != nil {
 			t.Fatalf("disable target: %v", err)
@@ -634,7 +637,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 
 	t.Run("mutation failure leaves committed managed key usable", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		target := seedTarget(t, cS)
 		if err := db.Create(&clusterModels.BackupTarget{
 			Name: "name-conflict", SSHHost: "user@other", SSHKey: "other-key", BackupRoot: "tank/other",
@@ -673,7 +676,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 
 	t.Run("immutable endpoint and root changes are rejected before validation", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		target := seedTarget(t, cS)
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
@@ -697,7 +700,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 
 	t.Run("propose failure", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		target := seedTarget(t, cS)
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
@@ -725,7 +728,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 
 	t.Run("disable succeeds while unreachable and enable requires validation", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		target := seedTarget(t, cS)
 		zStub := &backupTargetZeltaStub{validateErr: errors.New("target_unreachable")}
 		r := newBackupTargetRouter(cS, zStub)
@@ -750,7 +753,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		target := seedTarget(t, cS)
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
@@ -784,7 +787,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 func TestBackupTargetsHandlerDelete(t *testing.T) {
 	t.Run("invalid id", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
@@ -796,7 +799,10 @@ func TestBackupTargetsHandlerDelete(t *testing.T) {
 
 	t.Run("propose failure", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t)
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
+		if err := db.Migrator().DropTable(&clusterModels.BackupTarget{}); err != nil {
+			t.Fatal(err)
+		}
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
@@ -816,7 +822,7 @@ func TestBackupTargetsHandlerDelete(t *testing.T) {
 
 	t.Run("missing target", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		r := newBackupTargetRouter(cS, &backupTargetZeltaStub{})
 
 		rr := performJSONRequest(t, r, http.MethodDelete, "/cluster/backups/targets/1", nil)
@@ -827,7 +833,7 @@ func TestBackupTargetsHandlerDelete(t *testing.T) {
 
 	t.Run("enabled target conflicts", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		r := newBackupTargetRouter(cS, &backupTargetZeltaStub{})
 		target := clusterModels.BackupTarget{
 			Name: "target-enabled", SSHHost: "user@enabled", BackupRoot: "tank/enabled", Enabled: true,
@@ -844,7 +850,7 @@ func TestBackupTargetsHandlerDelete(t *testing.T) {
 
 	t.Run("success and key cleanup", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
@@ -881,7 +887,7 @@ func TestBackupTargetsHandlerDelete(t *testing.T) {
 func TestBackupTargetsHandlerValidateEndpoint(t *testing.T) {
 	t.Run("invalid id", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
@@ -893,7 +899,7 @@ func TestBackupTargetsHandlerValidateEndpoint(t *testing.T) {
 
 	t.Run("not found", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
@@ -905,7 +911,7 @@ func TestBackupTargetsHandlerValidateEndpoint(t *testing.T) {
 
 	t.Run("validation failure", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		target := clusterModels.BackupTarget{
 			Name:       "target-validate",
 			SSHHost:    "user@validate",
@@ -929,7 +935,7 @@ func TestBackupTargetsHandlerValidateEndpoint(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-		cS := &cluster.Service{DB: db}
+		cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 		target := clusterModels.BackupTarget{
 			Name:       "target-validate",
 			SSHHost:    "user@validate",
@@ -1046,8 +1052,8 @@ func TestRestoreFromTargetEnqueueError(t *testing.T) {
 			wantMessage: "restore_guest_destination_conflict",
 		},
 		{
-			name:        "inventory unavailable",
-			err:         errors.New("guest_identity_inventory_unavailable: node offline"),
+			name:        "join in progress",
+			err:         errors.New("guest_identity_cluster_formation_in_progress"),
 			wantStatus:  http.StatusServiceUnavailable,
 			wantMessage: "restore_guest_identity_unavailable",
 		},

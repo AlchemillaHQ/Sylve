@@ -9,51 +9,30 @@
 package cluster
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	"github.com/hashicorp/raft"
 )
 
-func (s *Service) AcquireBackupJobOperation(payload clusterModels.BackupJobOperationAcquire, bypassRaft bool) error {
+func (s *Service) AcquireBackupJobOperation(payload clusterModels.BackupJobOperationAcquire) error {
 	payload.RequireEnabledTarget = true
 	if payload.AcquiredAt.IsZero() {
 		payload.AcquiredAt = time.Now().UTC()
 	}
-	if err := s.requireRuntimeWriteAuthority(bypassRaft); err != nil {
-		return err
+	if !s.Standalone() {
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+		if err := s.RequireCurrentRaftVoter(payload.HolderNodeID); err != nil {
+			return fmt.Errorf("backup_job_operation_holder_not_current_voter: %w", err)
+		}
 	}
-	if bypassRaft {
-		return clusterModels.AcquireBackupJobOperationV2Txn(s.DB, &payload)
-	}
-	if s.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-	if s.Raft().State() != raft.Leader {
-		return fmt.Errorf("not_leader")
-	}
-	s.clusterJoinMu.Lock()
-	defer s.clusterJoinMu.Unlock()
-	if err := s.RequireCurrentRaftVoter(payload.HolderNodeID); err != nil {
-		return fmt.Errorf("backup_job_operation_holder_not_current_voter: %w", err)
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_backup_job_operation_acquire: %w", err)
-	}
-	return s.applyRaftCommand(clusterModels.Command{
-		Type: "backup_job_operation", Action: "acquire_v2", Data: data,
-	})
+	return s.apply("backup_job_operation", "acquire_v2", payload)
 }
 
-func (s *Service) TransitionBackupJobOperation(
-	action string,
-	payload clusterModels.BackupJobOperationTransition,
-	bypassRaft bool,
-) error {
+func (s *Service) TransitionBackupJobOperation(action string, payload clusterModels.BackupJobOperationTransition) error {
 	action = strings.ToLower(strings.TrimSpace(action))
 	payload.RequireEnabledTarget = true
 	if action != "start" && action != "finish" && action != "abort" && action != "release" {
@@ -62,43 +41,28 @@ func (s *Service) TransitionBackupJobOperation(
 	if payload.OccurredAt.IsZero() {
 		payload.OccurredAt = time.Now().UTC()
 	}
-	if err := s.requireRuntimeWriteAuthority(bypassRaft); err != nil {
-		return err
-	}
-
-	if bypassRaft {
-		switch action {
-		case "start":
-			return clusterModels.StartBackupJobOperationV2Txn(s.DB, &payload)
-		case "finish":
-			return clusterModels.FinishBackupJobOperationTxn(s.DB, &payload)
-		case "abort":
-			return clusterModels.AbortBackupJobOperationTxn(s.DB, &payload)
-		default:
-			return clusterModels.ReleaseBackupJobOperationTxn(s.DB, &payload)
-		}
-	}
-	if s.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-	if s.Raft().State() != raft.Leader {
-		return fmt.Errorf("not_leader")
-	}
 	if action == "start" {
-		s.clusterJoinMu.Lock()
-		defer s.clusterJoinMu.Unlock()
-		if err := s.RequireCurrentRaftVoter(payload.HolderNodeID); err != nil {
-			return fmt.Errorf("backup_job_operation_holder_not_current_voter: %w", err)
+		if !s.Standalone() {
+			s.clusterJoinMu.Lock()
+			defer s.clusterJoinMu.Unlock()
+			if err := s.RequireCurrentRaftVoter(payload.HolderNodeID); err != nil {
+				return fmt.Errorf("backup_job_operation_holder_not_current_voter: %w", err)
+			}
 		}
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed_to_marshal_backup_job_operation_%s: %w", action, err)
-	}
-	if action == "start" {
 		action = "start_v2"
 	}
-	return s.applyRaftCommand(clusterModels.Command{
-		Type: "backup_job_operation", Action: action, Data: data,
-	})
+	return s.apply("backup_job_operation", action, payload)
+}
+
+type BackupJobOperationRequest struct {
+	Action     string                                     `json:"action"`
+	Acquire    clusterModels.BackupJobOperationAcquire    `json:"acquire"`
+	Transition clusterModels.BackupJobOperationTransition `json:"transition"`
+}
+
+func (s *Service) backupJobOperationCall(_ context.Context, _ string, req BackupJobOperationRequest) (struct{}, error) {
+	if strings.EqualFold(strings.TrimSpace(req.Action), "acquire") {
+		return struct{}{}, s.AcquireBackupJobOperation(req.Acquire)
+	}
+	return struct{}{}, s.TransitionBackupJobOperation(req.Action, req.Transition)
 }

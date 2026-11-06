@@ -426,6 +426,16 @@ func TestCreateVMStopsBeforeProvisioningWhenGuestIDCheckFails(t *testing.T) {
 	}
 }
 
+func newStandaloneGuestIdentityCoordinator(t *testing.T, db *gorm.DB, nodeID string) *clusterService.Service {
+	t.Helper()
+	identity := clusterService.NewClusterService(db, nil, nil).(*clusterService.Service)
+	identity.NodeID = nodeID
+	if err := identity.ReopenMutations(); err != nil {
+		t.Fatal(err)
+	}
+	return identity
+}
+
 func TestCreateVMFailureReleasesStandaloneGuestIdentityAfterRollback(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(
 		t,
@@ -440,7 +450,7 @@ func TestCreateVMFailureReleasesStandaloneGuestIdentityAfterRollback(t *testing.
 		t.Fatal(err)
 	}
 	svc := newVMCreatePrecheckTestService(db, nil, nil)
-	identity := &clusterService.Service{DB: db, NodeID: "standalone-node"}
+	identity := newStandaloneGuestIdentityCoordinator(t, db, "standalone-node")
 	svc.SetGuestIdentityCoordinator(identity)
 
 	req := testCreateRequest(517, 0)

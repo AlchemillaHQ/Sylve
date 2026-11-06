@@ -68,13 +68,13 @@ func TestIntegrationRaftReplicationDeleteFenceWaitsForFollower(t *testing.T) {
 	}
 
 	if err := leader.service.UpdateReplicationPolicyProtectionState(
-		91, 1, clusterModels.ReplicationProtectionStateDeleting, false,
+		91, 1, clusterModels.ReplicationProtectionStateDeleting,
 	); err != nil {
 		t.Fatalf("mark policy deleting: %v", err)
 	}
-	minimum := leader.raft.AppliedIndex()
-	if lagging.raft.AppliedIndex() >= minimum {
-		t.Fatalf("follower did not lag: follower=%d minimum=%d", lagging.raft.AppliedIndex(), minimum)
+	minimum := leader.service.AppliedIndex()
+	if lagging.service.AppliedIndex() >= minimum {
+		t.Fatalf("follower did not lag: follower=%d minimum=%d", lagging.service.AppliedIndex(), minimum)
 	}
 
 	type waitResult struct {
@@ -85,7 +85,7 @@ func TestIntegrationRaftReplicationDeleteFenceWaitsForFollower(t *testing.T) {
 	waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	go func() {
-		applied, waitErr := lagging.service.WaitForReplicatedStateAppliedIndex(waitCtx, minimum)
+		applied, waitErr := lagging.service.WaitForAppliedIndex(waitCtx, minimum)
 		resultCh <- waitResult{applied: applied, err: waitErr}
 	}()
 
@@ -130,7 +130,7 @@ func TestIntegrationRaftReplicationDeleteFenceTimeoutIsRetryable(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	_, err := leader.service.WaitForReplicatedStateAppliedIndex(ctx, leader.raft.AppliedIndex()+1000)
+	_, err := leader.service.WaitForAppliedIndex(ctx, leader.service.AppliedIndex()+1000)
 	if err == nil || !strings.Contains(err.Error(), "replicated_state_catchup_failed") ||
 		!strings.Contains(err.Error(), "deadline exceeded") {
 		t.Fatalf("unexpected fence timeout: %v", err)
@@ -247,7 +247,6 @@ func TestIntegrationRaftReplicationOwnershipAndTargetReadiness(t *testing.T) {
 		&clusterModels.ReplicationPolicy{},
 		&clusterModels.ReplicationPolicyTarget{},
 		&clusterModels.ReplicationLease{},
-		&clusterModels.GuestIdentityRegistry{},
 		&clusterModels.GuestIdentityClaim{},
 	)
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
@@ -276,15 +275,8 @@ func TestIntegrationRaftReplicationOwnershipAndTargetReadiness(t *testing.T) {
 		}).Error; err != nil {
 			t.Fatalf("seed lease on %s: %v", node.id, err)
 		}
-		if err := node.service.DB.Create(&clusterModels.GuestIdentityRegistry{
-			ID: clusterModels.GuestIdentityRegistryID, Version: clusterModels.GuestIdentityRegistryVersion,
-			Phase: clusterModels.GuestIdentityRegistryPhaseActive,
-		}).Error; err != nil {
-			t.Fatalf("seed guest identity registry on %s: %v", node.id, err)
-		}
 		if err := node.service.DB.Create(&clusterModels.GuestIdentityClaim{
 			GuestID: 100, GuestKind: clusterModels.ReplicationGuestTypeVM, OwnerNodeID: "node-1",
-			Token: "claim-generation-1",
 		}).Error; err != nil {
 			t.Fatalf("seed guest identity claim on %s: %v", node.id, err)
 		}
@@ -307,11 +299,7 @@ func TestIntegrationRaftReplicationOwnershipAndTargetReadiness(t *testing.T) {
 		},
 		ProtectionState: clusterModels.ReplicationProtectionStateSuspended,
 	}
-	expectedClaimToken, err := guestIdentityOwnershipMoveToken("replication:run-raft:node-1:node-2:2")
-	if err != nil {
-		t.Fatalf("build expected claim token: %v", err)
-	}
-	if err := leader.service.CommitReplicationOwnershipTransition(payload, false); err != nil {
+	if err := leader.service.CommitReplicationOwnershipTransition(payload); err != nil {
 		t.Fatalf("commit ownership through Raft: %v", err)
 	}
 
@@ -333,7 +321,7 @@ func TestIntegrationRaftReplicationOwnershipAndTargetReadiness(t *testing.T) {
 			}
 			var claim clusterModels.GuestIdentityClaim
 			if err := node.service.DB.First(&claim, 100).Error; err != nil ||
-				claim.OwnerNodeID != "node-2" || claim.Token != expectedClaimToken {
+				claim.OwnerNodeID != "node-2" {
 				return false
 			}
 		}
@@ -353,7 +341,7 @@ func TestIntegrationRaftReplicationOwnershipAndTargetReadiness(t *testing.T) {
 		GenerationID: "generation-2", ManifestHash: "manifest-2",
 		RequiredDatasetCount: 1, CompletedDatasetCount: 1,
 		LastVerifiedAt: &verified, ReadyUntil: &readyUntil,
-	}, false); err != nil {
+	}); err != nil {
 		t.Fatalf("publish readiness through Raft: %v", err)
 	}
 

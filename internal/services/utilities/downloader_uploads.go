@@ -190,11 +190,11 @@ func (s *Service) RegisterDownloaderUpload(
 	path string,
 	name string,
 	size int64,
-	userID uint,
+	owner string,
 	info os.FileInfo,
 	storage utilitiesModels.DownloadStorage,
 ) (utilitiesModels.Upload, error) {
-	if s == nil || s.DB == nil || userID == 0 || size < 0 {
+	if s == nil || s.DB == nil || owner == "" || size < 0 {
 		return utilitiesModels.Upload{}, fmt.Errorf("%w: missing upload metadata", ErrDownloaderUploadInvalid)
 	}
 	parsedID, err := uuid.Parse(strings.TrimSpace(uploadID))
@@ -248,7 +248,7 @@ func (s *Service) RegisterDownloaderUpload(
 		Path:            canonicalPath,
 		Name:            name,
 		Size:            size,
-		UserID:          userID,
+		Owner:           owner,
 		Node:            node,
 		Status:          utilitiesModels.UploadStatusStaged,
 		Device:          identity.Device,
@@ -281,14 +281,14 @@ func validDownloaderUploadType(value utilitiesModels.DownloadUType) bool {
 func (s *Service) CompleteDownloaderUpload(
 	ctx context.Context,
 	uploadID string,
-	userID uint,
+	owner string,
 	req utilitiesServiceInterfaces.CompleteDownloaderUploadRequest,
 ) (utilitiesServiceInterfaces.DownloaderUploadCompletion, error) {
 	result := utilitiesServiceInterfaces.DownloaderUploadCompletion{
 		UploadID: uploadID,
 		Status:   utilitiesModels.UploadStatusCompleted,
 	}
-	if s == nil || s.DB == nil || strings.TrimSpace(uploadID) == "" || userID == 0 {
+	if s == nil || s.DB == nil || strings.TrimSpace(uploadID) == "" || owner == "" {
 		return result, ErrDownloaderUploadNotFound
 	}
 	if !validDownloaderUploadType(req.DownloadType) {
@@ -304,10 +304,10 @@ func (s *Service) CompleteDownloaderUpload(
 
 	var record utilitiesModels.Upload
 	err = s.DB.WithContext(ctx).Where(
-		"id = ? AND scope = ? AND user_id = ? AND node = ?",
+		"id = ? AND scope = ? AND owner = ? AND node = ?",
 		uploadID,
 		utilitiesModels.UploadScopeDownloader,
-		userID,
+		owner,
 		node,
 	).First(&record).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -347,10 +347,10 @@ func (s *Service) CompleteDownloaderUpload(
 	err = s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var current utilitiesModels.Upload
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(
-			"id = ? AND scope = ? AND user_id = ? AND node = ?",
+			"id = ? AND scope = ? AND owner = ? AND node = ?",
 			uploadID,
 			utilitiesModels.UploadScopeDownloader,
-			userID,
+			owner,
 			node,
 		).First(&current).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -623,9 +623,9 @@ func copyFileNoReplace(sourcePath, destinationPath string, beforePublish func() 
 func (s *Service) AbortDownloaderUpload(
 	ctx context.Context,
 	uploadID string,
-	userID uint,
+	owner string,
 ) (bool, error) {
-	if s == nil || s.DB == nil || strings.TrimSpace(uploadID) == "" || userID == 0 {
+	if s == nil || s.DB == nil || strings.TrimSpace(uploadID) == "" || owner == "" {
 		return false, nil
 	}
 	node, err := s.uploadNode()
@@ -638,10 +638,10 @@ func (s *Service) AbortDownloaderUpload(
 
 	var record utilitiesModels.Upload
 	err = s.DB.WithContext(ctx).Where(
-		"id = ? AND scope = ? AND user_id = ? AND node = ?",
+		"id = ? AND scope = ? AND owner = ? AND node = ?",
 		uploadID,
 		utilitiesModels.UploadScopeDownloader,
-		userID,
+		owner,
 		node,
 	).First(&record).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {

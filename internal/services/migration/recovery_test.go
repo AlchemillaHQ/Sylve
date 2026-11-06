@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -255,19 +253,19 @@ func TestSealedMigrationTransfersOwnershipBeforeTargetImportAndRetry(t *testing.
 	for _, test := range []struct {
 		name      string
 		guestType string
-		path      string
+		call      string
 		dataset   string
 	}{
 		{
 			name:      "vm",
 			guestType: taskModels.GuestTypeVM,
-			path:      "/api/intra-cluster/migration/import-vm",
+			call:      "migration-import-vm",
 			dataset:   "zroot/sylve/virtual-machines/940",
 		},
 		{
 			name:      "jail",
 			guestType: taskModels.GuestTypeJail,
-			path:      "/api/intra-cluster/migration/import-jail",
+			call:      "migration-import-jail",
 			dataset:   "zroot/sylve/jails/940",
 		},
 	} {
@@ -307,52 +305,32 @@ func TestSealedMigrationTransfersOwnershipBeforeTargetImportAndRetry(t *testing.
 			}
 
 			importRequests := 0
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodPost || r.URL.Path != test.path {
-					t.Errorf("target import request = %s %s", r.Method, r.URL.Path)
-				}
+			target := clusterService.NewClusterService(db, nil, nil).(*clusterService.Service)
+			target.NodeID = "node-b"
+			clusterService.OnNode(target, test.call, func(
+				_ context.Context, _ string, request targetMigrationImportRequest,
+			) (targetMigrationImportReceipt, error) {
 				select {
 				case <-ownershipTransfers:
 				default:
 					t.Error("target import ran before ownership transfer")
 				}
-
-				var request struct {
-					GuestID            uint     `json:"guestId"`
-					OperationToken     string   `json:"operationToken"`
-					StartGuest         *bool    `json:"startGuest"`
-					SourceDatasetRoots []string `json:"sourceDatasetRoots"`
-				}
-				if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-					t.Errorf("decode target import request: %v", err)
-				}
 				importRequests++
 				if importRequests == 1 {
-					http.Error(w, "temporary target failure", http.StatusInternalServerError)
-					return
+					return targetMigrationImportReceipt{}, errors.New("temporary target failure")
 				}
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(targetMigrationImportReceipt{
-					Status:             "success",
+				return targetMigrationImportReceipt{
 					GuestID:            request.GuestID,
 					OperationToken:     request.OperationToken,
 					StartGuest:         request.StartGuest,
 					SourceDatasetRoots: request.SourceDatasetRoots,
-				})
-			}))
-			defer server.Close()
+				}, nil
+			})
 
-			if err := db.Create(&clusterModels.ClusterNode{
-				NodeUUID: "node-b",
-				API:      strings.TrimPrefix(server.URL, "https://"),
-			}).Error; err != nil {
+			if err := db.Create(&clusterModels.ClusterNode{NodeUUID: "node-b"}).Error; err != nil {
 				t.Fatalf("seed target node: %v", err)
 			}
-			svc := &Service{
-				DB:            db,
-				Cluster:       &clusterService.Service{AuthService: &migrationTargetAuthStub{}},
-				WorkloadGuard: guard,
-			}
+			svc := &Service{DB: db, Cluster: target, WorkloadGuard: guard}
 			originalRunning := false
 			payload := migrationPayload{
 				TargetNodeUUID:     "node-b",

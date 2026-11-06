@@ -366,7 +366,6 @@ func TestDeleteJailRevalidatesIdentityBeforeRuntime(t *testing.T) {
 		OwnerNodeID:         "node-a",
 		Token:               "raft-token",
 		LocalOperationToken: "local-token",
-		Clustered:           true,
 		Entries: []clusterServiceInterfaces.GuestIdentityReference{{
 			GuestKind: clusterModels.ReplicationGuestTypeJail,
 			GuestID:   ctID,

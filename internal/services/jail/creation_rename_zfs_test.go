@@ -18,7 +18,6 @@ import (
 	"github.com/alchemillahq/gzfs"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
-	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 	"gorm.io/gorm"
 )
@@ -193,7 +192,7 @@ func TestIntegrationZFSCreationRenameRollbackRestoresNestedTreeRealZFS(t *testin
 				}
 			} else {
 				restarted := &Service{DB: svc.DB, GZFS: svc.GZFS}
-				restarted.SetGuestIdentityCoordinator(&clusterService.Service{DB: svc.DB, NodeID: "creation-node"})
+				restarted.SetGuestIdentityCoordinator(newStandaloneGuestIdentityCoordinator(t, svc.DB, "creation-node"))
 				if err := restarted.RecoverCreations(t.Context()); err != nil {
 					t.Fatal(err)
 				}
@@ -241,7 +240,7 @@ func TestIntegrationZFSCreationRenameInterruptedBeforeConfigurationRealZFS(t *te
 				}
 			}()
 			restarted := &Service{DB: svc.DB, GZFS: svc.GZFS}
-			restarted.SetGuestIdentityCoordinator(&clusterService.Service{DB: svc.DB, NodeID: "creation-node"})
+			restarted.SetGuestIdentityCoordinator(newStandaloneGuestIdentityCoordinator(t, svc.DB, "creation-node"))
 			if err := restarted.RecoverCreations(t.Context()); err != nil {
 				t.Fatal(err)
 			}
@@ -384,7 +383,7 @@ func TestIntegrationZFSCreationRenameReadyRecoveryFinishesWithoutRollbackRealZFS
 		t.Fatalf("rollback snapshots were not cleaned before commit: %+v, %v", snapshots, err)
 	}
 	restarted := &Service{DB: svc.DB, GZFS: svc.GZFS}
-	restarted.SetGuestIdentityCoordinator(&clusterService.Service{DB: svc.DB, NodeID: "creation-node"})
+	restarted.SetGuestIdentityCoordinator(newStandaloneGuestIdentityCoordinator(t, svc.DB, "creation-node"))
 	if err := restarted.RecoverCreations(t.Context()); err != nil {
 		t.Fatal(err)
 	}

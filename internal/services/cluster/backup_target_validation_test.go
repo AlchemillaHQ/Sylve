@@ -10,55 +10,26 @@ package cluster
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"net/http"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/hashicorp/raft"
 )
-
-func registerBackupTargetValidationPeer(t *testing.T, sim *clusterPeerSimulator, service *Service) {
-	t.Helper()
-	sim.serveMux.HandleFunc(backupTargetValidationEndpoint, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		var request BackupTargetValidationRequest
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		result, err := service.ValidateBackupTargetConnectivityLocal(r.Context(), request)
-		if err != nil {
-			_ = json.NewEncoder(w).Encode(internal.APIResponse[any]{
-				Status: "error", Message: "backup_target_validation_failed", Error: err.Error(),
-			})
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(internal.APIResponse[clusterModels.BackupTargetNodeReadinessUpdate]{
-			Status: "success", Data: result,
-		})
-	})
-}
 
 func TestBackupTargetValidationRecordsPerNodeOutcomes(t *testing.T) {
 	target := clusterModels.BackupTarget{
 		ID: 41, Name: "asymmetric", SSHHost: "root@backup", SSHPort: 22,
 		BackupRoot: "tank/backups", Enabled: true,
 	}
-	leader := &Service{
+	leader := withFSM(&Service{
 		DB:          newClusterServiceTestDB(t, &clusterModels.BackupTarget{}),
 		NodeID:      "node-leader",
 		AuthService: clusterAuthStub{},
-	}
+	})
 	runner := &Service{
 		DB:     newClusterServiceTestDB(t, &clusterModels.BackupTarget{}),
 		NodeID: "node-runner",
@@ -71,27 +42,21 @@ func TestBackupTargetValidationRecordsPerNodeOutcomes(t *testing.T) {
 	}
 	runner.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error { return nil })
 
-	sim := newClusterPeerSimulator()
-	defer sim.Close()
-	registerBackupTargetValidationPeer(t, sim, runner)
+	routeNodeCalls(leader, runner)
 	request := BackupTargetValidationRequest{
 		HostKeyRevision: 1,
 		ExpectedNodeID:  "node-runner", TargetID: target.ID,
 		TargetFingerprint: clusterModels.BackupTargetConnectivityFingerprint(&target),
 	}
-	remote, err := leader.fetchBackupTargetValidation(t.Context(), "node-runner", sim.Addr(), request)
+	remote, err := leader.fetchBackupTargetValidation(t.Context(), "node-runner", request)
 	if err != nil {
 		t.Fatalf("validate remote target: %v", err)
 	}
 	if err := validateBackupTargetReadinessReceipt(request, &remote); err != nil {
 		t.Fatalf("validate remote receipt: %v", err)
 	}
-	if err := leader.UpdateBackupTargetNodeReadiness(remote, true); err != nil {
+	if err := leader.UpdateBackupTargetNodeReadiness(remote); err != nil {
 		t.Fatalf("record remote readiness: %v", err)
-	}
-	captured := sim.FindRequest(backupTargetValidationEndpoint)
-	if captured == nil || captured.Header.Get("X-Cluster-Token") != "Bearer test-cluster-token" {
-		t.Fatalf("authenticated request not observed: %+v", captured)
 	}
 
 	local, err := leader.ValidateBackupTargetOnNode(
@@ -201,7 +166,7 @@ func TestGuestBackupTargetMigrationPreflightCoversVMAndJail(t *testing.T) {
 			}
 
 			calls := make(map[uint]int)
-			service := &Service{DB: db, NodeID: "target-node"}
+			service := withFSM(&Service{DB: db, NodeID: "target-node"})
 			service.SetBackupTargetValidator(func(_ context.Context, target *clusterModels.BackupTarget) error {
 				calls[target.ID]++
 				return errors.New("SSH authentication failed")
@@ -234,7 +199,7 @@ func TestGuestBackupTargetMigrationPreflightRejectsDisabledTarget(t *testing.T) 
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
-	service := &Service{DB: db, NodeID: "target-node"}
+	service := withFSM(&Service{DB: db, NodeID: "target-node"})
 	err := service.CheckGuestBackupTargetsForMigration(
 		context.Background(), clusterModels.BackupJobModeJail, 23, "target-node",
 	)
@@ -282,16 +247,7 @@ func TestIntegrationGuestBackupTargetMigrationPreflightRunsFromFollower(t *testi
 	target.service.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error {
 		return errors.New("backup host rejected this node")
 	})
-	sim := newClusterPeerSimulator()
-	defer sim.Close()
-	registerBackupTargetValidationPeer(t, sim, target.service)
-	source.service.AuthService = clusterAuthStub{}
-	source.service.backupTargetValidationAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
-		if nodeID != target.id {
-			return "", errors.New("unexpected validation node")
-		}
-		return sim.Addr(), nil
-	}
+	routeTestPeerRequests(nodes)
 
 	err := source.service.CheckGuestBackupTargetsForMigration(
 		context.Background(), clusterModels.BackupJobModeVM, 300, target.id,
@@ -388,7 +344,7 @@ func TestIntegrationRaftBackupTargetReadinessSurvivesLeadershipChange(t *testing
 		TargetID:        target.ID, NodeID: nextLeader.id,
 		TargetFingerprint:   clusterModels.BackupTargetConnectivityFingerprint(&target),
 		ValidationSucceeded: true, LastVerifiedAt: verifiedAt, ReadyUntil: &readyUntil,
-	}, false); err != nil {
+	}); err != nil {
 		t.Fatalf("publish readiness: %v", err)
 	}
 	if err := leader.raft.LeadershipTransferToServer(raft.ServerID(nextLeader.id), nextLeader.addr).Error(); err != nil {
@@ -439,5 +395,54 @@ func TestBackupTargetReadinessEffectiveStatusHandlesExpiryAndRemovedVoter(t *tes
 	}
 	if byNode["never-validated"].LastVerifiedAt != nil || byNode["never-validated"].Ready {
 		t.Fatalf("never-validated status: %+v", byNode["never-validated"])
+	}
+}
+
+func TestIntegrationRaftHostKeyInstallFromFollower(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 3,
+		&clusterModels.BackupTarget{}, &clusterModels.BackupTargetSSHHostTrust{}, &clusterModels.ClusterOption{},
+	)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	routeTestPeerRequests(nodes)
+	follower := nodes[0]
+	if follower == leader {
+		follower = nodes[1]
+	}
+	target := clusterModels.BackupTarget{ID: 9, Name: "backup", SSHHost: "root@backup", BackupRoot: "tank/backups"}
+	for _, node := range nodes {
+		if err := node.service.DB.Create(&target).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := leader.service.InitializeBackupTargetHostTrust(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := follower.service.WaitForAppliedIndex(t.Context(), leader.service.AppliedIndex()); err != nil {
+		t.Fatal(err)
+	}
+	trust, err := clusterModels.GetBackupTargetSSHHostTrust(follower.service.DB, &target)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key := testutil.SSHHostKey(t)
+	change := clusterModels.BackupTargetSSHHostTrustChange{
+		TargetID: target.ID, EndpointFingerprint: trust.EndpointFingerprint, ExpectedRevision: 1, PublicKey: key,
+	}
+	if err := follower.service.InstallBackupTargetHostKey(t.Context(), change); err != nil {
+		t.Fatal(err)
+	}
+	current, err := clusterModels.GetBackupTargetSSHHostTrust(follower.service.DB, &target)
+	if err != nil || current.PublicKey != key || current.Revision != 2 {
+		t.Fatalf("follower's trust right after the install = %+v, %v", current, err)
+	}
+
+	change.ExpectedRevision, change.PublicKey = 2, testutil.SSHHostKey(t)
+	if err := follower.service.InstallBackupTargetHostKey(t.Context(), change); err == nil ||
+		!strings.Contains(err.Error(), "backup_target_host_key_already_trusted") {
+		t.Fatalf("replacing the key: %v", err)
+	}
+	if current, err := clusterModels.GetBackupTargetSSHHostTrust(leader.service.DB, &target); err != nil || current.PublicKey != key {
+		t.Fatalf("leader's trust after the refused replace = %+v, %v", current, err)
 	}
 }

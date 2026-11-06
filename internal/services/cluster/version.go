@@ -10,15 +10,16 @@ package cluster
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/cmd"
-	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/raft"
 )
 
@@ -61,28 +62,14 @@ func (s *Service) CheckUniformVersions(ctx context.Context, candidate *raft.Serv
 	return s.checkUniformVersionsLocked(ctx, candidate, exemptNodeID)
 }
 
+// checkUniformVersionsLocked compares every member's version with ours.
 func (s *Service) checkUniformVersionsLocked(ctx context.Context, candidate *raft.Server, exemptNodeID string) error {
-	return s.checkMemberVersionsLocked(ctx, candidate, exemptNodeID, false)
-}
-
-// checkMemberVersionsLocked compares every member's version with ours. With
-// skipUnreachable, members that can't be probed are ignored, which is what
-// force removal needs: some nodes are down, often more than the target.
-func (s *Service) checkMemberVersionsLocked(
-	ctx context.Context,
-	candidate *raft.Server,
-	exemptNodeID string,
-	skipUnreachable bool,
-) error {
-	expected, results, err := s.probeClusterVersions(ctx, candidate, exemptNodeID, nil)
+	expected, results, err := s.probeClusterVersions(ctx, candidate, exemptNodeID)
 	if err != nil {
 		return err
 	}
 	for _, result := range results {
 		if result.err != nil {
-			if skipUnreachable {
-				continue
-			}
 			return &ClusterVersionError{
 				Code:   "cluster_version_check_unavailable",
 				NodeID: result.nodeID,
@@ -102,104 +89,16 @@ func (s *Service) checkMemberVersionsLocked(
 	return nil
 }
 
-type ClusterVersionWarning struct {
-	NodeID string `json:"nodeId"`
-	Reason string `json:"reason"`
-}
-
 type clusterVersionProbeResult struct {
 	nodeID  string
 	version string
 	err     error
 }
 
-type joinVersionObservation struct {
-	server  raft.Server
-	version string
-}
-
-func (s *Service) checkJoinVersionCompatibility(
-	ctx context.Context,
-	candidate *raft.Server,
-	requiredNodeID string,
-	observedVersion *joinVersionObservation,
-) ([]ClusterVersionWarning, error) {
-	expected, results, err := s.probeClusterVersions(ctx, candidate, "", observedVersion)
-	if err != nil {
-		return nil, err
-	}
-	requiredNodeID = strings.TrimSpace(requiredNodeID)
-	warnings := make([]ClusterVersionWarning, 0)
-	for _, result := range results {
-		if result.err == nil {
-			actual := strings.TrimSpace(result.version)
-			if actual != "" && actual == expected {
-				continue
-			}
-			if result.nodeID == requiredNodeID {
-				return warnings, &ClusterVersionError{
-					Code:     "cluster_version_mismatch",
-					NodeID:   result.nodeID,
-					Expected: expected,
-					Actual:   actual,
-				}
-			}
-			reason := fmt.Sprintf("cluster_version_mismatch: leader=%s,node=%s", expected, actual)
-			warnings = append(warnings, ClusterVersionWarning{NodeID: result.nodeID, Reason: reason})
-			continue
-		}
-		if result.nodeID == requiredNodeID {
-			return warnings, &ClusterVersionError{
-				Code:   "cluster_version_check_unavailable",
-				NodeID: result.nodeID,
-				Cause:  result.err,
-			}
-		}
-		warnings = append(warnings, ClusterVersionWarning{
-			NodeID: result.nodeID,
-			Reason: fmt.Sprintf("cluster_version_check_unavailable: %v", result.err),
-		})
-	}
-	return warnings, nil
-}
-
-func (s *Service) recordJoinVersionWarnings(warnings []ClusterVersionWarning) {
-	if s == nil {
-		return
-	}
-	s.joinVersionWarnMu.Lock()
-	defer s.joinVersionWarnMu.Unlock()
-	if s.joinVersionWarnings == nil {
-		s.joinVersionWarnings = make(map[string]string)
-	}
-	active := make(map[string]struct{}, len(warnings))
-	for _, warning := range warnings {
-		nodeID := strings.TrimSpace(warning.NodeID)
-		if nodeID == "" {
-			continue
-		}
-		active[nodeID] = struct{}{}
-		if s.joinVersionWarnings[nodeID] == warning.Reason {
-			continue
-		}
-		s.joinVersionWarnings[nodeID] = warning.Reason
-		logger.L.Warn().
-			Str("node_id", nodeID).
-			Str("reason", warning.Reason).
-			Msg("cluster_join_version_warning")
-	}
-	for nodeID := range s.joinVersionWarnings {
-		if _, exists := active[nodeID]; !exists {
-			delete(s.joinVersionWarnings, nodeID)
-		}
-	}
-}
-
 func (s *Service) probeClusterVersions(
 	ctx context.Context,
 	candidate *raft.Server,
 	exemptNodeID string,
-	observedVersion *joinVersionObservation,
 ) (string, []clusterVersionProbeResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -262,40 +161,48 @@ func (s *Service) probeClusterVersions(
 		return expected, nil, nil
 	}
 
-	clusterKey := ""
-	if s.DB != nil {
-		var record clusterModels.Cluster
-		if err := s.DB.First(&record).Error; err == nil {
-			clusterKey = strings.TrimSpace(record.Key)
-		} else if s.joinVersionForNode == nil {
-			return "", nil, &ClusterVersionError{Code: "cluster_version_check_unavailable", Cause: err}
-		}
-	}
-	if clusterKey == "" && s.joinVersionForNode == nil {
-		return "", nil, &ClusterVersionError{
-			Code:  "cluster_version_check_unavailable",
-			Cause: fmt.Errorf("cluster_key_unavailable"),
-		}
-	}
-
 	results := make([]clusterVersionProbeResult, len(remote))
 	var wg sync.WaitGroup
 	for index, server := range remote {
 		results[index].nodeID = strings.TrimSpace(string(server.ID))
-		if observedVersion != nil && server.ID == observedVersion.server.ID &&
-			server.Address == observedVersion.server.Address {
-			results[index].version = observedVersion.version
-			continue
-		}
 		index, server := index, server
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			probeCtx, cancel := context.WithTimeout(ctx, clusterVersionProbeTimeout)
 			defer cancel()
-			results[index].version, results[index].err = s.fetchJoinerVersion(probeCtx, server, clusterKey)
+			results[index].version, results[index].err = s.fetchMemberVersion(probeCtx, server)
 		}()
 	}
 	wg.Wait()
 	return expected, results, nil
+}
+
+func (s *Service) fetchMemberVersion(ctx context.Context, server raft.Server) (string, error) {
+	if s.joinVersionForNode != nil {
+		return s.joinVersionForNode(ctx, server)
+	}
+	host := strings.TrimSpace(raftAddressHost(string(server.Address)))
+	if host == "" {
+		return "", fmt.Errorf("member_address_invalid")
+	}
+	body, statusCode, err := utils.HTTPGetJSONReadContext(
+		ctx,
+		fmt.Sprintf("https://%s/api/health/basic", ClusterAPIHost(host)),
+		map[string]string{"Accept": "application/json"},
+	)
+	if err != nil {
+		return "", fmt.Errorf("member_health_failed: node_id=%s status=%d: %w", strings.TrimSpace(string(server.ID)), statusCode, err)
+	}
+	var response internal.APIResponse[struct {
+		SylveVersion string `json:"sylveVersion"`
+	}]
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", fmt.Errorf("member_health_decode_failed: %w", err)
+	}
+	version := strings.TrimSpace(response.Data.SylveVersion)
+	if response.Status != "success" || version == "" {
+		return "", fmt.Errorf("member_version_unavailable: message=%s error=%s", response.Message, response.Error)
+	}
+	return version, nil
 }

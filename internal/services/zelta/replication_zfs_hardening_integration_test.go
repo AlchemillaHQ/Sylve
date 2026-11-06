@@ -25,6 +25,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/remoteexec"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -436,6 +437,76 @@ func TestIntegrationCleanupPolicyOwnedReplicationSnapshotCloneFailsClosedRealZFS
 	}
 }
 
+type crashRestartJail struct {
+	jailServiceInterfaces.JailServiceInterface
+	t       *testing.T
+	root    string
+	started []string
+}
+
+func (*crashRestartJail) IsJailRunning(uint) (bool, error) { return false, nil }
+
+func (j *crashRestartJail) JailAction(_ int, action string) error {
+	output, err := exec.Command("zfs", "get", "-H", "-o", "value", "readonly", j.root).Output()
+	if err != nil {
+		j.t.Fatalf("read readonly: %v", err)
+	}
+	j.started = append(j.started, action+" readonly="+strings.TrimSpace(string(output)))
+	return nil
+}
+
+func TestIntegrationCrashRecoveryUnfencesBeforeRestartRealZFS(t *testing.T) {
+	zfstest.SkipIfUnavailable(t)
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	installZeltaCounterCache(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
+	const guestID = 817
+	root := fmt.Sprintf("%s/sylve/jails/%d", pool, guestID)
+	zfstest.EnsureDataset(t, client, root)
+	setRealZFSProperties(t, root, map[string]string{"readonly": "on"})
+
+	database := newZeltaServiceTestDB(t,
+		&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{},
+		&clusterModels.ReplicationLease{}, &clusterModels.ReplicationGuestOperation{}, &jailModels.Jail{},
+	)
+	if err := database.Create(&jailModels.Jail{CTID: guestID, Name: "crashed"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	policy := clusterModels.ReplicationPolicy{
+		ID: guestID, Name: "crash-restart", GuestType: clusterModels.ReplicationGuestTypeJail, GuestID: guestID,
+		SourceNodeID: "node-a", ActiveNodeID: "node-a", OwnerEpoch: 1, Enabled: true, CrashRecovery: true,
+		ProtectionState: clusterModels.ReplicationProtectionStateArmed,
+	}
+	if err := database.Create(&policy).Error; err != nil {
+		t.Fatal(err)
+	}
+	lease := clusterModels.ReplicationLease{
+		PolicyID: guestID, GuestType: policy.GuestType, GuestID: guestID,
+		OwnerNodeID: "node-a", OwnerEpoch: 1, Version: 2, ExpiresAt: time.Now().UTC().Add(time.Hour),
+	}
+	if err := database.Create(&lease).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	jail := &crashRestartJail{t: t, root: root}
+	service := newTestZeltaService(database)
+	service.Cluster = newTestClusterService(database, "node-a")
+	service.GZFS = client
+	service.Jail = jail
+	scopeLocalDatasetsToPool(t, service, pool)
+	baseline := lease
+	baseline.Version = 1
+	service.observeReplicationLeaseAuthority(guestID, "node-a", 1, &baseline)
+
+	if err := service.recoverCrashedReplicationGuests(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(jail.started) != 1 || jail.started[0] != "start readonly=off" {
+		t.Fatalf("restarts %v, want one start into a writable dataset", jail.started)
+	}
+}
+
 func TestIntegrationReplicationPolicyDeleteHeldSnapshotKeepsDeletingRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 
@@ -467,10 +538,11 @@ func TestIntegrationReplicationPolicyDeleteHeldSnapshotKeepsDeletingRealZFS(t *t
 	database := newZeltaServiceTestDB(t,
 		&clusterModels.ReplicationPolicy{},
 		&clusterModels.ReplicationPolicyTarget{},
+		&clusterModels.ReplicationEvent{},
 		&clusterModels.ClusterNode{},
 		&vmModels.VM{},
 	)
-	clusterSvc := &clusterService.Service{DB: database}
+	clusterSvc := clusterService.NewClusterService(database, nil, nil).(*clusterService.Service)
 	localNodeID := strings.TrimSpace(clusterSvc.LocalNodeID())
 	if localNodeID == "" {
 		t.Fatal("local node identity unavailable")
@@ -486,6 +558,20 @@ func TestIntegrationReplicationPolicyDeleteHeldSnapshotKeepsDeletingRealZFS(t *t
 	}
 	if err := database.Create(&vmModels.VM{RID: guestID, Name: "still-present"}).Error; err != nil {
 		t.Fatalf("seed VM metadata: %v", err)
+	}
+	otherPolicyID := guestID + 1
+	if err := database.Create(&[]clusterModels.ReplicationEvent{
+		{PolicyID: &policy.ID, EventType: "replication", Status: "success", StartedAt: time.Now().UTC()},
+		{PolicyID: &otherPolicyID, EventType: "replication", Status: "success", StartedAt: time.Now().UTC()},
+	}).Error; err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+	policyEvents := func(policyID uint) int64 {
+		var count int64
+		if err := database.Model(&clusterModels.ReplicationEvent{}).Where("policy_id = ?", policyID).Count(&count).Error; err != nil {
+			t.Fatalf("count events: %v", err)
+		}
+		return count
 	}
 
 	service := newTestZeltaService(database)
@@ -516,6 +602,9 @@ func TestIntegrationReplicationPolicyDeleteHeldSnapshotKeepsDeletingRealZFS(t *t
 	if err := database.First(&retainedVM, "rid = ?", guestID).Error; err != nil || retainedVM.Name != "still-present" {
 		t.Fatalf("held cleanup VM metadata=%+v err=%v", retainedVM, err)
 	}
+	if policyEvents(policy.ID) != 1 {
+		t.Fatal("a failed cleanup removed the policy's events")
+	}
 
 	if output, err := exec.Command("zfs", "release", holdTag, root+"@"+snapshot).CombinedOutput(); err != nil {
 		t.Fatalf("release policy snapshot hold: %v\n%s", err, output)
@@ -541,6 +630,9 @@ func TestIntegrationReplicationPolicyDeleteHeldSnapshotKeepsDeletingRealZFS(t *t
 	}
 	if err := database.First(&retainedVM, "rid = ?", guestID).Error; err != nil || retainedVM.Name != "still-present" {
 		t.Fatalf("retry cleanup VM metadata=%+v err=%v", retainedVM, err)
+	}
+	if policyEvents(policy.ID) != 0 || policyEvents(otherPolicyID) != 1 {
+		t.Fatalf("events after cleanup: policy=%d other=%d, want 0 and 1", policyEvents(policy.ID), policyEvents(otherPolicyID))
 	}
 }
 
@@ -617,7 +709,7 @@ func testPolicyGenerationCancellationCleansSourceSnapshotRealZFS(t *testing.T, b
 	if err := db.Create(&jailModels.Jail{CTID: guestID, Name: "replication-cancellation"}).Error; err != nil {
 		t.Fatalf("seed replicated jail: %v", err)
 	}
-	clusterSvc := &clusterService.Service{DB: db}
+	clusterSvc := clusterService.NewClusterService(db, nil, nil).(*clusterService.Service)
 	localNodeID := strings.TrimSpace(clusterSvc.LocalNodeID())
 	if localNodeID == "" {
 		t.Fatal("local node identity unavailable")
@@ -641,7 +733,7 @@ func testPolicyGenerationCancellationCleansSourceSnapshotRealZFS(t *testing.T, b
 			{NodeID: "target-node", Weight: 100},
 		},
 	}
-	if err := clusterModels.UpsertReplicationPolicyTxn(db, policy, policy.Targets); err != nil {
+	if err := seedReplicationPolicy(db, policy, policy.Targets); err != nil {
 		t.Fatalf("seed replication policy: %v", err)
 	}
 	if err := db.Create(&clusterModels.ReplicationLease{
@@ -953,7 +1045,7 @@ func TestIntegrationColdStartDatabaseFailureFencesCanonicalGuestsRealZFS(t *test
 
 	svc := &Service{
 		DB:      db,
-		Cluster: &clusterService.Service{DB: db},
+		Cluster: clusterService.NewClusterService(db, nil, nil).(*clusterService.Service),
 		GZFS:    client,
 	}
 	scopeLocalDatasetsToPool(t, svc, pool)
@@ -1045,7 +1137,7 @@ func TestIntegrationColdStartEmergencyReadonlyRestoredAfterPolicyRecoveryRealZFS
 		GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 706,
 		Operation: clusterModels.ReplicationGuestOperationEmergencyRestore,
 		Token:     emergencyRestoreOperationToken(vmFenceToken), OwnerNodeID: fx.LocalNodeID,
-	}, false); err != nil {
+	}); err != nil {
 		t.Fatalf("seed crash-retry emergency restore guard: %v", err)
 	}
 	migrationToken := "migration:test:jail-707"
@@ -1053,13 +1145,13 @@ func TestIntegrationColdStartEmergencyReadonlyRestoredAfterPolicyRecoveryRealZFS
 		GuestType: clusterModels.ReplicationGuestTypeJail, GuestID: 707,
 		Operation: clusterModels.ReplicationGuestOperationMigration,
 		Token:     migrationToken, OwnerNodeID: fx.LocalNodeID, TargetNodeID: migrationTargetNodeID, TaskID: 707,
-	}, false); err != nil {
+	}); err != nil {
 		t.Fatalf("seed migration guard: %v", err)
 	}
 	if err := fx.ClusterSvc.SealReplicationGuestOperation(clusterModels.ReplicationGuestOperationTransition{
 		GuestType: clusterModels.ReplicationGuestTypeJail, GuestID: 707,
 		Operation: clusterModels.ReplicationGuestOperationMigration, Token: migrationToken,
-	}, false); err != nil {
+	}); err != nil {
 		t.Fatalf("seal migration guard: %v", err)
 	}
 	recoveredService := fx.NewZeltaService()
@@ -1089,7 +1181,7 @@ func TestIntegrationColdStartEmergencyReadonlyRestoredAfterPolicyRecoveryRealZFS
 		GuestType: clusterModels.ReplicationGuestTypeJail, GuestID: 707,
 		Operation: clusterModels.ReplicationGuestOperationMigration,
 		Token:     migrationToken, TargetNodeID: migrationTargetNodeID,
-	}, false); err != nil {
+	}); err != nil {
 		t.Fatalf("complete migration guard: %v", err)
 	}
 	if err := recoveredService.selfFenceExpiredLeases(t.Context()); err != nil {

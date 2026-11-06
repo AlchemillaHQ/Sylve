@@ -164,15 +164,18 @@ type Service struct {
 	replicationFenceMu           sync.Mutex
 	replicationFenceObservations map[uint]replicationFenceObservation
 	replicationLeaseAuthorities  map[uint]replicationLeaseAuthority
+	replicationAuthorityEpochs   map[uint]uint64
 	replicationStartupReady      bool
 
 	workloadOpMu      sync.Mutex
 	runningWorkloadOp map[string]string
 
-	restoreDestinationMu      sync.Mutex
-	runningRestoreDestination map[string]struct{}
-	targetRestoreOperationMu  sync.Mutex
-	activeTargetRestoreTokens map[string]struct{}
+	restoreDestinationMu       sync.Mutex
+	runningRestoreDestination  map[string]struct{}
+	targetRestoreOperationMu   sync.Mutex
+	activeTargetRestoreTokens  map[string]struct{}
+	startedTargetRestoreTokens map[string]struct{}
+	queuedTargetRestoreTokens  map[string]struct{}
 
 	backupTargetKeyMu    sync.Mutex
 	backupTargetKeyUsers map[string]uint
@@ -195,7 +198,6 @@ type Service struct {
 
 	backupOperationEnqueue            func(context.Context, string, any) error
 	replicationOperationEnqueue       func(context.Context, string, any) error
-	replicationRunClaimForward        func(context.Context, string, clusterModels.ReplicationPolicyScheduleDecision) error
 	replicationGuestDriverFactory     func(string) (replicationGuestDriver, error)
 	restoreJobRun                     func(context.Context, *clusterModels.BackupJob, string, string) error
 	restoreFromTargetOperationEnqueue func(context.Context, string, any) error
@@ -331,6 +333,7 @@ func NewService(
 	if clusterService != nil {
 		clusterService.SetBackupTargetValidator(service.ValidateTargetReadiness)
 		clusterService.SetBackupTargetHostKeyEnroller(service.EnsureBackupTargetHostKey)
+		service.registerCalls(clusterService)
 	}
 	return service
 }
@@ -444,88 +447,92 @@ func (s *Service) backupWithEventProgressSnapshotNameRecursive(
 }
 
 func (s *Service) RegisterJobs() {
-	db.QueueRegisterJSON(backupJobQueueName, func(ctx context.Context, payload backupJobPayload) (retErr error) {
-		admittedCtx, release, err := s.enterMutation(ctx)
-		if err != nil {
-			return err
-		}
-		defer release()
-		ctx = admittedCtx
-		if payload.JobID == 0 {
-			logger.L.Warn().Msg("queued_backup_job_invalid_payload_job_id")
-			return nil
-		}
-
-		handle, execute, err := s.prepareQueuedBackupJobOperation(
-			ctx,
-			payload.JobID,
-			clusterModels.BackupJobOperationBackup,
-			payload.OperationToken,
-			payload.HolderNodeID,
-			"",
-		)
-		if err != nil {
-			return err
-		}
-		if !execute {
-			s.releaseReservedJob(payload.JobID)
-			return nil
-		}
-
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				s.releaseReservedJob(payload.JobID)
-				panicErr := fmt.Errorf("queued_backup_job_panicked: %v", recovered)
-				logger.L.Error().
-					Interface("panic", recovered).
-					Uint("job_id", payload.JobID).
-					Err(panicErr).
-					Msg("queued_backup_job_panicked")
-				// Keep the durable running token. The queue retry or restart
-				// reconciler can resume it, while a terminal outbox (if one was
-				// already written) prevents the data plane from running again.
-				retErr = panicErr
-			}
-		}()
-
-		var job clusterModels.BackupJob
-		if err := s.DB.Preload("Target").First(&job, payload.JobID).Error; err != nil {
-			s.releaseReservedJob(payload.JobID)
-			logger.L.Warn().Err(err).Uint("job_id", payload.JobID).Msg("queued_backup_job_not_found")
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return err
-			}
-			if cleanupErr := s.finishDurableBackupJobOperation(handle); cleanupErr != nil {
-				return cleanupErr
-			}
-			return nil
-		}
-
-		runErr := s.runBackupJobWithToken(ctx, &job, payload.OperationToken)
-		if errors.Is(runErr, errScheduledRunOperationRevalidation) {
-			s.releaseReservedJob(payload.JobID)
-			return runErr
-		}
-		if isJobAlreadyRunningErr(runErr) {
-			// A duplicate message for the same operation token lost the local
-			// execution race. The winning worker still owns the durable row.
-			s.releaseReservedJob(payload.JobID)
-			logger.L.Info().Uint("job_id", payload.JobID).Msg("queued_backup_job_duplicate_discarded")
-			return nil
-		}
-		if runErr != nil {
-			logger.L.Warn().Err(runErr).Uint("job_id", payload.JobID).Msg("queued_backup_job_failed")
-		}
-		// Terminal-result delivery owns deletion of the durable operation. If
-		// delivery is deferred, the operation and node-local outbox must remain
-		// paired so a later retry can finalize without rerunning the backup.
-		return nil
-	})
-
+	db.QueueRegisterJSON(backupJobQueueName, s.handleBackupJobQueue)
 	s.registerRestoreJob()
 	s.registerRestoreFromTargetJob()
 	s.registerReplicationJob()
 	s.registerReplicationFailoverJob()
+}
+
+func (s *Service) handleBackupJobQueue(ctx context.Context, payload backupJobPayload) (retErr error) {
+	admittedCtx, release, err := s.enterMutation(ctx)
+	if err != nil {
+		// Give the reservation back, or the scheduler won't queue the job again until a restart.
+		s.releaseReservedJob(payload.JobID)
+		return err
+	}
+	defer release()
+	ctx = admittedCtx
+	if payload.JobID == 0 {
+		logger.L.Warn().Msg("queued_backup_job_invalid_payload_job_id")
+		return nil
+	}
+
+	handle, execute, err := s.prepareQueuedBackupJobOperation(
+		ctx,
+		payload.JobID,
+		clusterModels.BackupJobOperationBackup,
+		payload.OperationToken,
+		payload.HolderNodeID,
+		"",
+	)
+	if err != nil {
+		s.releaseReservedJob(payload.JobID)
+		return err
+	}
+	if !execute {
+		s.releaseReservedJob(payload.JobID)
+		return nil
+	}
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			s.releaseReservedJob(payload.JobID)
+			panicErr := fmt.Errorf("queued_backup_job_panicked: %v", recovered)
+			logger.L.Error().
+				Interface("panic", recovered).
+				Uint("job_id", payload.JobID).
+				Err(panicErr).
+				Msg("queued_backup_job_panicked")
+			// Keep the durable running token. The queue retry or restart
+			// reconciler can resume it, while a terminal outbox (if one was
+			// already written) prevents the data plane from running again.
+			retErr = panicErr
+		}
+	}()
+
+	var job clusterModels.BackupJob
+	if err := s.DB.Preload("Target").First(&job, payload.JobID).Error; err != nil {
+		s.releaseReservedJob(payload.JobID)
+		logger.L.Warn().Err(err).Uint("job_id", payload.JobID).Msg("queued_backup_job_not_found")
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if cleanupErr := s.finishDurableBackupJobOperation(handle); cleanupErr != nil {
+			return cleanupErr
+		}
+		return nil
+	}
+
+	runErr := s.runBackupJobWithToken(ctx, &job, payload.OperationToken)
+	if errors.Is(runErr, errScheduledRunOperationRevalidation) {
+		s.releaseReservedJob(payload.JobID)
+		return runErr
+	}
+	if isJobAlreadyRunningErr(runErr) {
+		// A duplicate message for the same operation token lost the local
+		// execution race. The winning worker still owns the durable row.
+		s.releaseReservedJob(payload.JobID)
+		logger.L.Info().Uint("job_id", payload.JobID).Msg("queued_backup_job_duplicate_discarded")
+		return nil
+	}
+	if runErr != nil {
+		logger.L.Warn().Err(runErr).Uint("job_id", payload.JobID).Msg("queued_backup_job_failed")
+	}
+	// Terminal-result delivery owns deletion of the durable operation. If
+	// delivery is deferred, the operation and node-local outbox must remain
+	// paired so a later retry can finalize without rerunning the backup.
+	return nil
 }
 
 func (s *Service) archiveActiveTargetDatasetForReseed(
@@ -716,7 +723,7 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 	if err := s.drainScheduledRunResultOutbox(); err != nil {
 		logger.L.Debug().Err(err).Msg("scheduled_run_result_outbox_pending")
 	}
-	if !bypassRaft && (s.Cluster == nil || s.Cluster.Raft() == nil || s.Cluster.Raft().State() != raft.Leader) {
+	if !bypassRaft && (s.Cluster.Raft() == nil || s.Cluster.Raft().State() != raft.Leader) {
 		return nil
 	}
 
@@ -743,7 +750,7 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 				ExpectedNextRunAt: job.NextRunAt, DecidedAt: now,
 				SetRuntime: true, LastStatus: "failed", LastError: "invalid_cron_expr",
 			}
-			if applyErr := s.applyBackupJobScheduleDecision(decision, bypassRaft); applyErr != nil {
+			if applyErr := s.Cluster.ApplyBackupJobScheduleDecision(decision); applyErr != nil {
 				logger.L.Debug().Err(applyErr).Uint("job_id", job.ID).Msg("backup_invalid_cron_decision_rejected")
 			}
 			continue
@@ -754,7 +761,7 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 				JobID: job.ID, ExpectedScheduleRevision: job.ScheduleRevision,
 				ExpectedNextRunAt: nil, NextRunAt: &nextAt, DecidedAt: now,
 			}
-			if applyErr := s.applyBackupJobScheduleDecision(decision, bypassRaft); applyErr != nil {
+			if applyErr := s.Cluster.ApplyBackupJobScheduleDecision(decision); applyErr != nil {
 				logger.L.Debug().Err(applyErr).Uint("job_id", job.ID).Msg("backup_initial_schedule_decision_rejected")
 			}
 			continue
@@ -787,7 +794,7 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 				JobID: job.ID, ExpectedScheduleRevision: job.ScheduleRevision,
 				ExpectedNextRunAt: job.NextRunAt, NextRunAt: &nextAt, DecidedAt: now,
 			}
-			if applyErr := s.applyBackupJobScheduleDecision(decision, bypassRaft); applyErr != nil {
+			if applyErr := s.Cluster.ApplyBackupJobScheduleDecision(decision); applyErr != nil {
 				logger.L.Debug().Err(applyErr).Uint("job_id", job.ID).Msg("backup_catchup_skip_decision_rejected")
 			}
 			continue
@@ -805,7 +812,7 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 				JobID: job.ID, ExpectedScheduleRevision: job.ScheduleRevision,
 				ExpectedNextRunAt: job.NextRunAt, NextRunAt: &nextAt, DecidedAt: now,
 			}
-			if applyErr := s.applyBackupJobScheduleDecision(decision, bypassRaft); applyErr != nil {
+			if applyErr := s.Cluster.ApplyBackupJobScheduleDecision(decision); applyErr != nil {
 				logger.L.Debug().Err(applyErr).Uint("job_id", job.ID).Msg("backup_coalesce_decision_rejected")
 			}
 			continue
@@ -814,9 +821,6 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 		holderNodeID := strings.TrimSpace(job.RunnerNodeID)
 		if holderNodeID == "" {
 			holderNodeID = strings.TrimSpace(localNodeID)
-		}
-		if holderNodeID == "" && bypassRaft {
-			holderNodeID = "local"
 		}
 		if holderNodeID == "" {
 			logger.L.Warn().Uint("job_id", job.ID).Msg("scheduled_backup_holder_unavailable")
@@ -841,7 +845,7 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 			ClaimToken:   fmt.Sprintf("backup:%s:%s", holderNodeID, uuid.NewString()),
 			HolderNodeID: holderNodeID, OccurrenceAt: &occurrenceAt, PublishAfter: &publishAfter,
 		}
-		if applyErr := s.applyBackupJobScheduleDecision(decision, bypassRaft); applyErr != nil {
+		if applyErr := s.Cluster.ApplyBackupJobScheduleDecision(decision); applyErr != nil {
 			logger.L.Debug().Err(applyErr).Uint("job_id", job.ID).Msg("scheduled_backup_claim_rejected")
 		}
 	}
@@ -974,7 +978,7 @@ func (s *Service) runBackupJobCore(
 		jobGuestID = datasetHash(strings.TrimSpace(job.SourceDataset))
 	}
 
-	if jobGuestType != "" && jobGuestID > 0 && s.Cluster != nil {
+	if jobGuestType != "" && jobGuestID > 0 {
 		localNodeID := s.localNodeID()
 		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, jobGuestType, jobGuestID, localNodeID)
 		if leaseErr != nil {
@@ -1325,7 +1329,7 @@ func (s *Service) runBackupJobCore(
 	// Re-verify the replication lease immediately before the
 	// transfer starts. The lease may have expired or been
 	// transferred to another node since the initial check.
-	if jobGuestType != "" && jobGuestID > 0 && s.Cluster != nil {
+	if jobGuestType != "" && jobGuestID > 0 {
 		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, jobGuestType, jobGuestID, s.localNodeID())
 		if leaseErr != nil {
 			runErr = fmt.Errorf("pre_transfer_lease_check_failed: %w", leaseErr)
@@ -1411,7 +1415,7 @@ func (s *Service) runBackupJobCore(
 	// Stopping a guest can take long enough for an HA lease to change hands.
 	// Check once more at the actual transfer boundary and let the restart defer
 	// restore the original running state on failure.
-	if jobGuestType != "" && jobGuestID > 0 && s.Cluster != nil {
+	if jobGuestType != "" && jobGuestID > 0 {
 		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, jobGuestType, jobGuestID, s.localNodeID())
 		if leaseErr != nil {
 			runErr = fmt.Errorf("pre_transfer_lease_check_failed: %w", leaseErr)
@@ -2413,40 +2417,9 @@ func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr err
 		logger.L.Warn().Uint("job_id", job.ID).Msg("unfenced_cluster_backup_result_ignored")
 		return
 	}
-	if s.Cluster != nil {
-		if err := s.Cluster.UpdateBackupJobRuntimeState(update, true); err != nil {
-			logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_update_backup_job_state")
-		}
-		return
-	}
-	updates := map[string]any{
-		"last_run_at": update.LastRunAt, "last_status": update.LastStatus,
-		"last_error": update.LastError, "next_run_at": update.NextRunAt,
-	}
-	if encrypted != nil {
-		updates["encrypted"] = *encrypted
-	}
-	if err := s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Updates(updates).Error; err != nil {
+	if err := s.Cluster.UpdateBackupJobRuntimeState(update); err != nil {
 		logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_update_backup_job_state")
 	}
-}
-
-func (s *Service) forwardBackupJobStateToLeader(update cluster.BackupJobRuntimeStateUpdate) error {
-	if s == nil || s.Cluster == nil {
-		return fmt.Errorf("cluster_service_unavailable")
-	}
-	if s.Cluster.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-
-	_, leaderID := s.Cluster.Raft().LeaderWithID()
-	leaderNodeID := strings.TrimSpace(string(leaderID))
-	if leaderNodeID == "" {
-		return fmt.Errorf("leader_unknown")
-	}
-
-	update.Version = cluster.BackupJobRuntimeStateVersion
-	return s.forwardReplicationPolicyControl(leaderNodeID, "backup-job-state", update, 5*time.Second)
 }
 
 func (s *Service) finalizeBackupEvent(event *clusterModels.BackupEvent, runErr error, output string) {
@@ -2961,14 +2934,7 @@ func (s *Service) ReleaseGuestLock(guestType string, guestID uint) {
 }
 
 func (s *Service) localNodeID() string {
-	if s.Cluster == nil {
-		return ""
-	}
-	detail := s.Cluster.Detail()
-	if detail == nil {
-		return ""
-	}
-	return strings.TrimSpace(detail.NodeID)
+	return s.Cluster.LocalNodeID()
 }
 
 func (s *Service) isLocalBackupJobRunner(job *clusterModels.BackupJob, localNodeID string) bool {
@@ -2978,7 +2944,7 @@ func (s *Service) isLocalBackupJobRunner(job *clusterModels.BackupJob, localNode
 
 	runner := strings.TrimSpace(job.RunnerNodeID)
 	if runner == "" {
-		if s.Cluster != nil && s.Cluster.Raft() != nil {
+		if s.Cluster.Raft() != nil {
 			return s.Cluster.Raft().State() == raft.Leader
 		}
 		return true

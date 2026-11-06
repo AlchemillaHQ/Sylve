@@ -97,7 +97,7 @@ func newFileExplorerUploadHandler(
 			c.Request.Context(),
 			reader,
 			destination,
-			c.GetUint("UserID"),
+			c.GetString("Owner"),
 			systemService,
 			policy.maxFileBytes,
 		)
@@ -195,7 +195,7 @@ func receiveFileExplorerMultipartUpload(
 	ctx context.Context,
 	reader *multipart.Reader,
 	destination string,
-	userID uint,
+	owner string,
 	systemService *system.Service,
 	maxFileBytes int64,
 ) (UploadFileResponse, *uploadCore.Failure) {
@@ -254,7 +254,7 @@ func receiveFileExplorerMultipartUpload(
 	}
 	staged.PartialPath = ""
 
-	uploadID, err := systemService.RegisterFileExplorerUpload(staged.FinalPath, userID)
+	uploadID, err := systemService.RegisterFileExplorerUpload(staged.FinalPath, owner)
 	if err != nil {
 		cleanupErr := removePublishedUpload(staged.FinalPath, staged.FileInfo)
 		if cleanupErr != nil {

@@ -12,8 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	"github.com/alchemillahq/sylve/internal/testutil"
+	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
@@ -42,7 +41,7 @@ func TestPublicSignedDownloadRoutesOnlyToKnownNodeAndStripsCredentials(t *testin
 	var forwardedRange string
 	remote := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		forwardedAuthorization = request.Header.Get("Authorization")
-		forwardedClusterToken = request.Header.Get("X-Cluster-Token")
+		forwardedClusterToken = request.Header.Get(authService.ProxyUserHeader)
 		forwardedCookie = request.Header.Get("Cookie")
 		forwardedNode = request.URL.Query().Get("node")
 		forwardedRange = request.Header.Get("Range")
@@ -52,26 +51,14 @@ func TestPublicSignedDownloadRoutesOnlyToKnownNodeAndStripsCredentials(t *testin
 	}))
 	defer remote.Close()
 
-	database := testutil.NewSQLiteTestDB(t, &clusterModels.ClusterNode{})
-	if err := database.Create(&clusterModels.ClusterNode{
-		NodeUUID: "remote-node-id",
-		Status:   "online",
-		Hostname: "remote-node",
-		API:      strings.TrimPrefix(remote.URL, "https://"),
-	}).Error; err != nil {
-		t.Fatal(err)
-	}
-
-	previousHostname := hostname
-	hostname = "origin-node"
-	t.Cleanup(func() { hostname = previousHostname })
+	useRoutingTestHostname(t, "origin-node")
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	downloadUUID := utils.GenerateRandomUUID()
 	router.GET(
 		"/api/utilities/downloads/:uuid",
-		EnsurePublicDownloadHost(database),
+		EnsurePublicDownloadHost(remoteMember(strings.TrimPrefix(remote.URL, "https://"))),
 		func(c *gin.Context) { c.String(http.StatusTeapot, "origin") },
 	)
 	query := url.Values{
@@ -88,7 +75,7 @@ func TestPublicSignedDownloadRoutesOnlyToKnownNodeAndStripsCredentials(t *testin
 	request.Header.Set("Authorization", "Bearer browser-token")
 	request.Header.Set("Cookie", "session=browser")
 	request.Header.Set("Range", "bytes=0-5")
-	request.Header.Set("X-Cluster-Token", "Bearer cluster-token")
+	request.Header.Set(authService.ProxyUserHeader, `{"id":1,"username":"admin","authType":"sylve"}`)
 	response := newCloseNotifyRecorder()
 	router.ServeHTTP(response, request)
 

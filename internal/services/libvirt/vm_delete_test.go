@@ -592,7 +592,6 @@ func TestRemoveVMWithWarningsRevalidatesIdentityBeforeRuntime(t *testing.T) {
 		OwnerNodeID:         "node-a",
 		Token:               "raft-token",
 		LocalOperationToken: "local-token",
-		Clustered:           true,
 		Entries: []clusterServiceInterfaces.GuestIdentityReference{{
 			GuestKind: clusterModels.ReplicationGuestTypeVM,
 			GuestID:   seed.VM.RID,

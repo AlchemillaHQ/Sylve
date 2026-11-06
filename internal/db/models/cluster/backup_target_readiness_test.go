@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 func seedBackupTargetReadinessTestTarget(t *testing.T) (*BackupTarget, *FSMDispatcher) {
@@ -51,15 +53,24 @@ func TestBackupTargetConnectivityFingerprintIgnoresManagedNodeLocalPath(t *testi
 func TestFSMBackupTargetReadinessUpdateIsFingerprintBound(t *testing.T) {
 	target, fsm := seedBackupTargetReadinessTestTarget(t)
 	verified := time.Date(2026, time.February, 3, 4, 5, 6, 0, time.UTC)
+	endpoint, err := BackupTargetSSHEndpointFingerprint(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyBackupTargetSSHHostTrustTxn(fsm.DB, "initialize_v1", &BackupTargetSSHHostTrustChange{
+		TargetID: target.ID, EndpointFingerprint: endpoint, PublicKey: testutil.SSHHostKey(t), OccurredAt: verified,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	readyUntil := verified.Add(10 * time.Minute)
 	update := BackupTargetNodeReadinessUpdate{
 		TargetID: target.ID, NodeID: "node-a",
-		TargetFingerprint:   BackupTargetConnectivityFingerprint(target),
+		TargetFingerprint: BackupTargetConnectivityFingerprint(target), HostKeyRevision: 1,
 		ValidationSucceeded: true, LastVerifiedAt: verified, ReadyUntil: &readyUntil,
 	}
 	payload, _ := json.Marshal(update)
 	if err := applyFSMCommand(t, fsm, Command{
-		Type: "backup_target_readiness", Action: "update", Data: payload,
+		Type: "backup_target_readiness", Action: "update_v2", Data: payload,
 	}); err != nil {
 		t.Fatalf("apply readiness: %v", err)
 	}
@@ -73,15 +84,15 @@ func TestFSMBackupTargetReadinessUpdateIsFingerprintBound(t *testing.T) {
 
 	update.TargetFingerprint = strings.Repeat("0", 64)
 	payload, _ = json.Marshal(update)
-	err := applyFSMCommand(t, fsm, Command{
-		Type: "backup_target_readiness", Action: "update", Data: payload,
+	err = applyFSMCommand(t, fsm, Command{
+		Type: "backup_target_readiness", Action: "update_v2", Data: payload,
 	})
 	if err == nil || !strings.Contains(err.Error(), "fingerprint_mismatch") {
 		t.Fatalf("stale fingerprint error = %v", err)
 	}
 }
 
-func TestBackupTargetConnectivityEditInvalidatesReadinessButMetadataEditPreservesIt(t *testing.T) {
+func TestBackupTargetMetadataEditKeepsReadiness(t *testing.T) {
 	target, fsm := seedBackupTargetReadinessTestTarget(t)
 	verified := time.Now().UTC()
 	readyUntil := verified.Add(time.Hour)
@@ -93,24 +104,16 @@ func TestBackupTargetConnectivityEditInvalidatesReadinessButMetadataEditPreserve
 		t.Fatalf("seed readiness: %v", err)
 	}
 
-	metadataOnly := *target
-	metadataOnly.Name = "target-renamed"
-	metadataOnly.Description = "new description"
-	if err := UpsertBackupTargetTxn(fsm.DB, &metadataOnly); err != nil {
+	renamed := *target
+	renamed.Name = "target-renamed"
+	renamed.Description = "new description"
+	update := backupTargetUpdateV2Command(*target, renamed, BackupTargetUpdateKindMetadata)
+	if err := ApplyBackupTargetUpdateV2Txn(fsm.DB, &update); err != nil {
 		t.Fatalf("metadata update: %v", err)
 	}
 	var count int64
 	if err := fsm.DB.Model(&BackupTargetNodeReadiness{}).Count(&count).Error; err != nil || count != 1 {
 		t.Fatalf("metadata edit readiness count=%d err=%v", count, err)
-	}
-
-	connectivityEdit := metadataOnly
-	connectivityEdit.SSHHost = "root@new-backup"
-	if err := UpsertBackupTargetTxn(fsm.DB, &connectivityEdit); err != nil {
-		t.Fatalf("connectivity update: %v", err)
-	}
-	if err := fsm.DB.Model(&BackupTargetNodeReadiness{}).Count(&count).Error; err != nil || count != 0 {
-		t.Fatalf("connectivity edit readiness count=%d err=%v", count, err)
 	}
 }
 

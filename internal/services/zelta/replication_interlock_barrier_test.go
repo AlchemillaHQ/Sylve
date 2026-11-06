@@ -17,7 +17,7 @@ import (
 
 func TestGuestMigrationInterlockApplyBarriersUseExactLocalState(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &clusterModels.ReplicationGuestOperation{})
-	clusterSvc := &clusterService.Service{DB: db}
+	clusterSvc := clusterService.NewClusterService(db, nil, nil).(*clusterService.Service)
 	localNodeID := strings.TrimSpace(clusterSvc.LocalNodeID())
 	if localNodeID == "" {
 		t.Skip("local system UUID is unavailable")
@@ -69,12 +69,7 @@ func TestGuestMigrationInterlockApplyBarriersUseExactLocalState(t *testing.T) {
 	}
 }
 func TestIntegrationMoveGuestIdentityOwnerMovesDisabledPolicyAtomically(t *testing.T) {
-	fx := SetupZeltaClusterFixture(
-		t,
-		2,
-		&clusterModels.GuestIdentityRegistry{},
-		&clusterModels.GuestIdentityClaim{},
-	)
+	fx := SetupZeltaClusterFixture(t, 2, &clusterModels.GuestIdentityClaim{})
 	leader := fx.LeaderNode()
 	if leader == nil {
 		t.Fatal("leader unavailable")
@@ -110,16 +105,8 @@ func TestIntegrationMoveGuestIdentityOwnerMovesDisabledPolicyAtomically(t *testi
 		TaskID: 501, AcquiredAt: now, SealedAt: &now,
 	}
 	for _, node := range fx.Nodes {
-		if err := node.db.Create(&clusterModels.GuestIdentityRegistry{
-			ID:      clusterModels.GuestIdentityRegistryID,
-			Version: clusterModels.GuestIdentityRegistryVersion,
-			Phase:   clusterModels.GuestIdentityRegistryPhaseActive,
-		}).Error; err != nil {
-			t.Fatalf("seed registry on %s: %v", node.id, err)
-		}
 		if err := node.db.Create(&clusterModels.GuestIdentityClaim{
-			GuestID: policy.GuestID, GuestKind: policy.GuestType,
-			OwnerNodeID: leader.id, Token: "claim-generation-1",
+			GuestID: policy.GuestID, GuestKind: policy.GuestType, OwnerNodeID: leader.id,
 		}).Error; err != nil {
 			t.Fatalf("seed claim on %s: %v", node.id, err)
 		}
@@ -132,6 +119,7 @@ func TestIntegrationMoveGuestIdentityOwnerMovesDisabledPolicyAtomically(t *testi
 	}
 
 	service := &Service{DB: leader.db, Cluster: leader.cService}
+	service.registerCalls(leader.cService)
 	if err := service.MoveGuestIdentityOwner(
 		context.Background(), policy.GuestType, policy.GuestID, target.id, operation.Token,
 	); err != nil {

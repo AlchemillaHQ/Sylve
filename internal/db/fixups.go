@@ -91,8 +91,47 @@ func Fixups(db *gorm.DB) error {
 	seedMdnsSettings(db)
 	preserveAppleExtensionsToMdns(db)
 	cleanupStaleAvahi(db)
+	dropRetiredClusterColumns(db)
+	bindOldReaddressPhases(db)
+	carryLegacyJailVLANs(db)
 
 	return nil
+}
+
+// The old column is zeroed, so a cleared VLAN stays cleared.
+func carryLegacyJailVLANs(db *gorm.DB) {
+	if !db.Migrator().HasColumn("jail_networks", "vlan") {
+		return
+	}
+	if err := db.Exec(
+		`UPDATE jail_networks SET vlan_mode = 'access', vlan_untagged_vlan = vlan, vlan_tagged_vlans = '[]', vlan = 0
+		WHERE vlan > 0 AND COALESCE(vlan_mode, '') = ''`,
+	).Error; err != nil {
+		logger.L.Err(err).Msg("failed carrying legacy jail VLANs")
+	}
+}
+
+func bindOldReaddressPhases(db *gorm.DB) {
+	if err := db.Exec(
+		`UPDATE clusters SET raft_ip = readdress_new_ip, readdress_phase = 'local_rebound'
+		WHERE readdress_phase IN ('prepared', 'membership_committed')`,
+	).Error; err != nil {
+		logger.L.Err(err).Msg("failed binding old readdress phases")
+	}
+}
+
+func dropRetiredClusterColumns(db *gorm.DB) {
+	for _, column := range []string{
+		"join_node_id", "join_node_ip", "join_node_version", "join_inventory", "join_phase", "join_last_error", "join_attempts",
+		"leave_id", "leave_leader_ip", "leave_peer_addrs", "leave_retain_guests", "leave_inventory_digest", "leave_attempts",
+	} {
+		if !db.Migrator().HasColumn(&clusterModels.Cluster{}, column) {
+			continue
+		}
+		if err := db.Migrator().DropColumn(&clusterModels.Cluster{}, column); err != nil {
+			logger.L.Warn().Err(err).Str("column", column).Msg("failed to drop retired cluster column")
+		}
+	}
 }
 
 func seedISCSISettings(db *gorm.DB) error {
@@ -601,6 +640,28 @@ func enforceBasicSettingsSingleton(db *gorm.DB) error {
 func PreMigrationFixups(db *gorm.DB) {
 	deduplicateJailHooks(db)
 	deduplicateMdnsRecords(db)
+	keyUploadsByOwner(db)
+}
+
+func keyUploadsByOwner(db *gorm.DB) {
+	if !db.Migrator().HasColumn("uploads", "user_id") {
+		return
+	}
+	err := db.Transaction(func(tx *gorm.DB) error {
+		for _, statement := range []string{
+			`DROP INDEX IF EXISTS idx_uploads_user_id`,
+			`ALTER TABLE uploads RENAME COLUMN user_id TO owner`,
+			`UPDATE uploads SET owner = 'user:' || owner`,
+		} {
+			if err := tx.Exec(statement).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		logger.L.Err(err).Msg("failed keying uploads by owner")
+	}
 }
 
 func runNetworkDeltaMigration(db *gorm.DB) {

@@ -9,6 +9,7 @@ under sponsorship from the FreeBSD Foundation.
 -->
 
 <script lang="ts">
+	import { nodePath } from '$lib/api/common';
 	import { toHex } from '$lib/utils/string';
 	import { useResizeObserver, PersistedState, useDebounce, watch } from 'runed';
 	import { onMount, untrack } from 'svelte';
@@ -199,9 +200,9 @@ under sponsorship from the FreeBSD Foundation.
 
 		const activeConnectionToken = ++connectionToken;
 		const activeTerminal = terminal;
-		const wsAuth = toHex(JSON.stringify({ hash, hostname: node }));
+		const wsAuth = toHex(JSON.stringify({ hash }));
 
-		const socket = new WebSocket(`${url}?auth=${encodeURIComponent(wsAuth)}`);
+		const socket = new WebSocket(`${nodePath(url, node)}?auth=${encodeURIComponent(wsAuth)}`);
 		socket.binaryType = 'arraybuffer';
 		ws = socket;
 		let opened = false;

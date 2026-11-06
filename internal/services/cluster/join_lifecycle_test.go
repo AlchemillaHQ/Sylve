@@ -15,379 +15,362 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/cmd"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/hashicorp/raft"
 )
 
-func TestPollJoinIntentSurfacesLeaderDeferralWithoutBumpingAttempts(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &vmModels.VM{}, &jailModels.Jail{})
-	if err := db.Create(&clusterModels.Cluster{
-		Enabled: false, Key: "cluster-key", RaftPort: ClusterRaftPort,
-	}).Error; err != nil {
-		t.Fatalf("seed cluster: %v", err)
-	}
-	if err := db.Create(&vmModels.VM{RID: 42, Name: "vm-42"}).Error; err != nil {
-		t.Fatalf("seed joining VM: %v", err)
-	}
-	service := &Service{DB: db, NodeID: "joining-node", mutationGate: newOpenTestMutationGate(t)}
-	report := BuildGuestIdentityInventoryReport([]GuestIdentityInventoryEntry{{
-		NodeID: "joining-node", GuestType: clusterModels.ReplicationGuestTypeVM,
-		GuestID: 42, RecordID: 7, Name: "vm-42",
-	}})
-	if err := service.SaveJoinIntent("192.0.2.10", "cluster-key", JoinAdmissionRequest{
-		NodeID: "joining-node", NodeIP: "192.0.2.20", NodeVersion: "1.2.3", Inventory: report,
-	}); err != nil {
-		t.Fatalf("save join intent: %v", err)
-	}
-	if err := service.MarkJoinIntentPhase(JoinPhaseStaged, nil); err != nil {
-		t.Fatalf("mark staged intent: %v", err)
-	}
-
-	leaderReason := "replicated_state_digest_mismatch: expected=deadbeef actual=feedface"
-	failureBody, err := json.Marshal(internal.APIResponse[GuestIdentityInventoryReport]{
-		Status: "error", Message: "cluster_join_promotion_deferred", Error: leaderReason,
-	})
-	if err != nil {
-		t.Fatalf("marshal failure response: %v", err)
-	}
-	service.peerRequest = func(
-		context.Context,
-		string,
-		string,
-		[]byte,
-		map[string]string,
-	) (int, []byte, error) {
-		return http.StatusBadRequest, failureBody, nil
-	}
-
-	result := service.pollJoinIntent(t.Context())
-	if result.Err == nil || !strings.Contains(result.Err.Error(), "replicated_state_digest_mismatch") {
-		t.Fatalf("poll error = %v, want the leader's deferral reason", result.Err)
-	}
-	if !result.Retryable {
-		t.Fatal("deferred promotion must be retryable for the joining node")
-	}
-
-	var persisted clusterModels.Cluster
-	if err := db.First(&persisted).Error; err != nil {
-		t.Fatalf("load join intent: %v", err)
-	}
-	if !strings.HasPrefix(persisted.JoinLastError, "cluster_join_promotion_deferred: ") ||
-		!strings.Contains(persisted.JoinLastError, leaderReason) {
-		t.Fatalf(
-			"stored join error = %q, want the response message and %q",
-			persisted.JoinLastError,
-			leaderReason,
-		)
-	}
-	if persisted.JoinAttempts != 0 {
-		t.Fatalf("poll bumped join attempts to %d, want 0", persisted.JoinAttempts)
-	}
-	if persisted.JoinPhase != JoinPhaseStaged {
-		t.Fatalf("poll moved durable phase to %q, want %q", persisted.JoinPhase, JoinPhaseStaged)
-	}
-	status, err := service.JoinStatus()
-	if err != nil {
-		t.Fatalf("join status: %v", err)
-	}
-	if !strings.Contains(status.LastError, leaderReason) || !status.Retrying {
-		t.Fatalf("join status = %+v, want the leader's reason and retrying", status)
-	}
-
-	successBody, err := json.Marshal(internal.APIResponse[ClusterJoinStatus]{
-		Status: "success", Message: "cluster_join_started",
-		Data: ClusterJoinStatus{TargetIndex: 42},
-	})
-	if err != nil {
-		t.Fatalf("marshal success response: %v", err)
-	}
-	service.peerRequest = func(
-		context.Context,
-		string,
-		string,
-		[]byte,
-		map[string]string,
-	) (int, []byte, error) {
-		return http.StatusAccepted, successBody, nil
-	}
-	if result := service.pollJoinIntent(t.Context()); result.Err != nil {
-		t.Fatalf("successful poll error = %v", result.Err)
-	}
-	if err := db.First(&persisted).Error; err != nil {
-		t.Fatalf("reload join intent: %v", err)
-	}
-	if persisted.JoinLastError != "" || persisted.JoinPhase != JoinPhaseStaged || persisted.JoinAttempts != 0 {
-		t.Fatalf("successful poll state = %+v", persisted)
-	}
-	if got := service.joinLeaderTarget(); got != 42 {
-		t.Fatalf("leader target after successful poll = %d, want 42", got)
-	}
-	if err := service.SaveJoinIntent("192.0.2.10", "cluster-key", JoinAdmissionRequest{
-		NodeID: "joining-node", NodeIP: "192.0.2.20", NodeVersion: "1.2.3", Inventory: report,
-	}); err != nil {
-		t.Fatalf("save a new join intent: %v", err)
-	}
-	if got := service.joinLeaderTarget(); got != 0 {
-		t.Fatalf("leader target after a new join intent = %d, want 0", got)
-	}
-}
-
-func TestJoinIntentPersistsRecoveryInputsAndResetClearsThem(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &vmModels.VM{}, &jailModels.Jail{})
-	if err := db.Create(&clusterModels.Cluster{
-		Enabled: false, Key: "standalone-key", RaftPort: ClusterRaftPort,
-	}).Error; err != nil {
-		t.Fatalf("seed cluster: %v", err)
-	}
-	if err := db.Create(&vmModels.VM{RID: 42, Name: "vm-42"}).Error; err != nil {
-		t.Fatalf("seed joining VM: %v", err)
-	}
-	service := &Service{DB: db, NodeID: "joining-node", mutationGate: newOpenTestMutationGate(t)}
-	report := BuildGuestIdentityInventoryReport([]GuestIdentityInventoryEntry{{
-		NodeID: "joining-node", GuestType: clusterModels.ReplicationGuestTypeVM,
-		GuestID: 42, RecordID: 7, Name: "vm-42",
-	}})
-	request := JoinAdmissionRequest{
-		NodeID: "joining-node", NodeIP: "192.0.2.20", NodeVersion: "1.2.3", Inventory: report,
-	}
-	if err := service.SaveJoinIntent("192.0.2.10", "cluster-key", request); err != nil {
-		t.Fatalf("save join intent: %v", err)
-	}
-
-	var persisted clusterModels.Cluster
-	if err := db.First(&persisted).Error; err != nil {
-		t.Fatalf("load join intent: %v", err)
-	}
-	if persisted.Enabled {
-		t.Fatal("saving intent enabled clustering before local Raft startup")
-	}
-	if persisted.Key != "cluster-key" || persisted.JoinLeaderIP != "192.0.2.10" ||
-		persisted.JoinNodeID != "joining-node" || persisted.JoinNodeIP != "192.0.2.20" ||
-		persisted.JoinNodeVersion != "1.2.3" || persisted.JoinPhase != JoinPhaseIntentSaved {
-		t.Fatalf("persisted join intent = %+v", persisted)
-	}
-	var persistedReport GuestIdentityInventoryReport
-	if err := json.Unmarshal(persisted.JoinInventory, &persistedReport); err != nil {
-		t.Fatalf("decode persisted inventory: %v", err)
-	}
-	if persistedReport.Digest != report.Digest {
-		t.Fatalf("persisted inventory digest = %s, want %s", persistedReport.Digest, report.Digest)
-	}
-
-	restarted := &Service{DB: db, NodeID: "joining-node", mutationGate: newOpenTestMutationGate(t)}
-	status, err := restarted.JoinStatus()
-	if err != nil {
-		t.Fatalf("join status after restart: %v", err)
-	}
-	if status.Phase != JoinPhaseIntentSaved || status.NodeID != "joining-node" || !status.Retrying {
-		t.Fatalf("join status after restart = %+v", status)
-	}
-	if _, err := restarted.ReserveGuestIdentities(
-		t.Context(), clusterModels.ReplicationGuestTypeJail, []uint{43},
-	); err == nil || !strings.Contains(err.Error(), "cluster_formation_in_progress") {
-		t.Fatalf("create during durable join intent error = %v", err)
-	}
-	if _, err := restarted.GuestIdentityClaim(
-		t.Context(), clusterModels.ReplicationGuestTypeVM, 42, "",
-	); err == nil || !strings.Contains(err.Error(), "cluster_formation_in_progress") {
-		t.Fatalf("delete during durable join intent error = %v", err)
-	}
-
-	if err := restarted.MarkJoinIntentPhase(JoinPhaseStalled, errors.New("temporary outage")); err != nil {
-		t.Fatalf("mark stalled intent: %v", err)
-	}
-	status, err = restarted.JoinStatus()
-	if err != nil {
-		t.Fatalf("stalled join status: %v", err)
-	}
-	if status.Phase != JoinPhaseStalled || status.LastError != "temporary outage" || !status.Retrying {
-		t.Fatalf("stalled join status = %+v", status)
-	}
-
-	if err := restarted.MarkDeclustered(); err != nil {
-		t.Fatalf("clear cluster state: %v", err)
-	}
-	if err := db.First(&persisted).Error; err != nil {
-		t.Fatalf("reload reset cluster: %v", err)
-	}
-	if persisted.JoinNodeID != "" || persisted.JoinLeaderIP != "" || len(persisted.JoinInventory) != 0 ||
-		persisted.JoinPhase != "" || persisted.JoinLastError != "" {
-		t.Fatalf("reset retained join intent: %+v", persisted)
-	}
-}
-
-func TestJoinIntentFinalInventoryCheckRejectsChangedOrInFlightInventory(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &vmModels.VM{}, &jailModels.Jail{})
-	if err := db.Create(&clusterModels.Cluster{RaftPort: ClusterRaftPort}).Error; err != nil {
-		t.Fatalf("seed cluster: %v", err)
-	}
-	service := &Service{DB: db, NodeID: "joining-node"}
-	request := JoinAdmissionRequest{
-		NodeID: "joining-node", NodeIP: "192.0.2.20", NodeVersion: "1.2.3",
-		Inventory: BuildGuestIdentityInventoryReport(nil),
-	}
-
-	if err := db.Create(&vmModels.VM{RID: 44, Name: "late-vm"}).Error; err != nil {
-		t.Fatalf("seed changed inventory: %v", err)
-	}
-	if err := service.SaveJoinIntent("192.0.2.10", "cluster-key", request); err == nil ||
-		!strings.Contains(err.Error(), "joining_inventory_changed_before_start") {
-		t.Fatalf("changed inventory join error = %v", err)
-	}
-	if err := db.Delete(&vmModels.VM{}, "rid = ?", 44).Error; err != nil {
-		t.Fatalf("remove changed inventory: %v", err)
-	}
-
-	reservation, err := service.ReserveGuestIdentities(
-		t.Context(), clusterModels.ReplicationGuestTypeVM, []uint{45},
-	)
-	if err != nil {
-		t.Fatalf("reserve in-flight identity: %v", err)
-	}
-	if err := service.SaveJoinIntent("192.0.2.10", "cluster-key", request); err == nil ||
-		!strings.Contains(err.Error(), "guest_identity_mutation_in_progress") {
-		t.Fatalf("in-flight inventory join error = %v", err)
-	}
-	if err := service.ReleaseGuestIdentities(t.Context(), reservation); err != nil {
-		t.Fatalf("release in-flight identity: %v", err)
-	}
-
-	var record clusterModels.Cluster
-	if err := db.First(&record).Error; err != nil {
-		t.Fatalf("reload rejected join: %v", err)
-	}
-	if record.HasIncompleteJoin() {
-		t.Fatalf("rejected join intent was persisted: %+v", record)
-	}
-}
-
-func TestJoinIntentRejectsIPv6WithoutPersisting(t *testing.T) {
+func newJoinTestService(t *testing.T) *Service {
+	t.Helper()
 	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &vmModels.VM{}, &jailModels.Jail{})
 	if err := db.Create(&clusterModels.Cluster{RaftPort: ClusterRaftPort}).Error; err != nil {
 		t.Fatal(err)
 	}
-	service := &Service{DB: db, NodeID: "joining-node"}
-	request := JoinAdmissionRequest{
-		NodeID: "joining-node", NodeIP: "192.0.2.20", NodeVersion: "1.2.3",
-		Inventory: BuildGuestIdentityInventoryReport(nil),
-	}
-	if err := service.SaveJoinIntent("2001:db8::10", "cluster-key", request); err == nil ||
-		err.Error() != "cluster_ipv6_unsupported" {
-		t.Fatalf("leader IPv6 error = %v", err)
-	}
-	request.NodeIP = "2001:db8::20"
-	if err := service.SaveJoinIntent("192.0.2.10", "cluster-key", request); err == nil ||
-		err.Error() != "cluster_ipv6_unsupported" {
-		t.Fatalf("node IPv6 error = %v", err)
-	}
-	var record clusterModels.Cluster
-	if err := db.First(&record).Error; err != nil {
-		t.Fatal(err)
-	}
-	if record.JoinPhase != "" || record.JoinLeaderIP != "" || record.JoinNodeIP != "" {
-		t.Fatalf("IPv6 join intent was persisted: %+v", record)
+	return withFSM(&Service{DB: db, NodeID: "joining-node", mutationGate: newOpenTestMutationGate(t)})
+}
+
+func requireNoJoin(t *testing.T, service *Service) {
+	t.Helper()
+	record, err := service.loadClusterRecord()
+	if err != nil || record.Enabled || record.HasIncompleteJoin() || record.Key != "" || record.RaftIP != "" {
+		t.Fatalf("cluster record = %+v, %v; want a standalone node", record, err)
 	}
 }
 
-func TestLeaderIPFromNotLeaderError(t *testing.T) {
-	tests := map[string]string{
-		"not_leader; leader_addr=10.1.32.230:8180; leader_id=node-a": "10.1.32.230",
-		"not_leader; leader_addr=[fd00::10]:8180; leader_id=node-b":  "fd00::10",
-		"not_leader; leader_addr=hostname:8180; leader_id=node-c":    "",
-		"unrelated": "",
+// Node IDs are Raft addresses, as the leader derives a joining node's ID from its IP.
+func newJoinTestCluster(t *testing.T, size int) ([]*clusterRaftTestNode, *testPeerNetwork) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("requires real in-memory Raft; covered by the native integration lane")
 	}
-	for input, expected := range tests {
-		if actual := leaderIPFromNotLeaderError(input); actual != expected {
-			t.Errorf("leaderIPFromNotLeaderError(%q) = %q, want %q", input, actual, expected)
+	nodes := make([]*clusterRaftTestNode, 0, size+1)
+	for i := 1; i <= size+1; i++ {
+		nodes = append(nodes, newClusterRaftTestNode(t, RaftServerAddress(fmt.Sprintf("127.0.0.%d", i)), guestIdentityJoinTestModels()...))
+	}
+	members, joiner := nodes[:size], nodes[size]
+	connectClusterRaftTestNodes(members)
+	if err := members[0].raft.BootstrapCluster(raft.Configuration{Servers: []raft.Server{{
+		ID: raft.ServerID(members[0].id), Address: members[0].addr,
+	}}}).Error(); err != nil {
+		t.Fatal(err)
+	}
+	waitForClusterRaftLeader(t, members, 8*time.Second)
+	for _, member := range members[1:] {
+		addClusterRaftVoterWithRetry(t, members, member)
+	}
+	waitForClusterRaftVoterCount(t, members, size, 8*time.Second)
+	for _, member := range members {
+		seedGuestIdentityJoinTestCluster(t, member)
+	}
+	if err := joiner.service.DB.Create(&clusterModels.Cluster{RaftPort: ClusterRaftPort}).Error; err != nil {
+		t.Fatal(err)
+	}
+	joiner.service.joinRaftStarter = func(ip, clusterKey string) error {
+		if err := joiner.service.clearClusteredData(); err != nil {
+			return err
+		}
+		record, err := joiner.service.loadClusterRecord()
+		if err != nil {
+			return err
+		}
+		if err := joiner.service.DB.Model(&record).Updates(map[string]any{
+			"enabled": true, "key": clusterKey, "raft_ip": ip,
+		}).Error; err != nil {
+			return err
+		}
+		connectClusterRaftTestNodes(nodes)
+		return nil
+	}
+	return nodes, routeTestPeerRequests(nodes)
+}
+
+func joinTestCluster(t *testing.T, joiner, through *clusterRaftTestNode) (ClusterJoinStatus, error) {
+	t.Helper()
+	return joiner.service.Join(t.Context(), raftAddressHost(through.id), raftAddressHost(joiner.id), guestIdentityJoinTestKey)
+}
+
+func reconcileJoinsUntilVoter(t *testing.T, nodes []*clusterRaftTestNode, joiner *clusterRaftTestNode) {
+	t.Helper()
+	waitForClusterCondition(t, 10*time.Second, "join to finish", func() bool {
+		for _, node := range nodes {
+			node.service.reconcileJoins(t.Context(), time.Now())
+		}
+		status, err := joiner.service.JoinStatus()
+		record, recordErr := joiner.service.loadClusterRecord()
+		return err == nil && recordErr == nil && status.Phase == JoinPhaseComplete && !record.HasIncompleteJoin()
+	})
+}
+
+func TestJoinRejectsIPv6WithoutPersisting(t *testing.T) {
+	service := newJoinTestService(t)
+	for _, ips := range [][2]string{{"2001:db8::10", "192.0.2.20"}, {"192.0.2.10", "2001:db8::20"}} {
+		if _, err := service.Join(t.Context(), ips[0], ips[1], guestIdentityJoinTestKey); err == nil || err.Error() != "cluster_ipv6_unsupported" {
+			t.Fatalf("join %v error = %v", ips, err)
 		}
 	}
+	requireNoJoin(t, service)
 }
 
-func TestSubmitJoinIntentKeepsRetryableTransportFailure(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &vmModels.VM{}, &jailModels.Jail{})
-	if err := db.Create(&clusterModels.Cluster{
-		RaftPort: ClusterRaftPort,
-	}).Error; err != nil {
-		t.Fatalf("seed cluster: %v", err)
-	}
-	service := &Service{DB: db, NodeID: "joining-node", mutationGate: newOpenTestMutationGate(t)}
-	request := JoinAdmissionRequest{
-		NodeID: "joining-node", NodeIP: "192.0.2.20", NodeVersion: "1.2.3",
-		Inventory: BuildGuestIdentityInventoryReport(nil),
-	}
-	if err := service.SaveJoinIntent("127.0.0.254", "cluster-key", request); err != nil {
-		t.Fatalf("save intent: %v", err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	result := service.SubmitJoinIntent(ctx)
-	if result.Err == nil || !result.Retryable {
-		t.Fatalf("submission result = %+v, want retryable transport failure", result)
-	}
-	if result.Status.Phase != JoinPhaseStalled || !result.Status.Retrying {
-		t.Fatalf("join status = %+v", result.Status)
-	}
-
-	var persisted clusterModels.Cluster
-	if err := db.First(&persisted).Error; err != nil {
-		t.Fatalf("reload intent: %v", err)
-	}
-	if persisted.JoinAttempts != 1 || persisted.JoinPhase != JoinPhaseStalled ||
-		len(persisted.JoinInventory) == 0 || persisted.JoinLastError == "" {
-		t.Fatalf("retryable failure was not retained: %+v", persisted)
-	}
-}
-
-func TestRecordJoinPromotionFailureIgnoresCatchup(t *testing.T) {
-	service := &Service{}
-	service.recordJoinPromotionFailure("joining-node", errors.New("replicated_state_digest_mismatch"))
-	service.recordJoinPromotionFailure(
-		"joining-node",
-		fmt.Errorf("%w: target=9 applied=4", errJoinCatchupPending),
-	)
-	if reason := service.joinPromotionFailures["joining-node"]; reason != "" {
-		t.Fatalf("catch-up recorded as a promotion deferral: %q", reason)
-	}
-}
-
-func TestIntegrationReconcileLocalJoinIntentClearsCompletedJoin(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 1, &clusterModels.Cluster{})
-	node := nodes[0]
-	if err := node.service.DB.Create(&clusterModels.Cluster{
-		Enabled: true, Key: "cluster-key", RaftIP: "192.0.2.20", RaftPort: ClusterRaftPort,
-		JoinLeaderIP: "192.0.2.10", JoinNodeID: node.id, JoinNodeIP: "192.0.2.20",
-		JoinNodeVersion: "1.2.3", JoinInventory: []byte("{}"), JoinPhase: JoinPhaseStaged,
-		JoinLastError: "stale", JoinAttempts: 3,
-	}).Error; err != nil {
-		t.Fatalf("seed join intent: %v", err)
-	}
-
-	status, err := node.service.JoinStatus()
-	if err != nil || status.Phase != JoinPhaseComplete {
-		t.Fatalf("join status = %+v, %v; want complete", status, err)
-	}
-	var record clusterModels.Cluster
-	if err := node.service.DB.First(&record).Error; err != nil {
+func TestJoinRefusesWhileAGuestIDIsInFlight(t *testing.T) {
+	service := newJoinTestService(t)
+	reservation, err := service.ReserveGuestIdentities(t.Context(), clusterModels.ReplicationGuestTypeVM, []uint{45})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if record.JoinPhase != JoinPhaseStaged {
-		t.Fatalf("JoinStatus wrote phase %q", record.JoinPhase)
+	if _, err := service.Join(t.Context(), "192.0.2.10", "192.0.2.20", guestIdentityJoinTestKey); err == nil ||
+		err.Error() != "guest_identity_mutation_in_progress" {
+		t.Fatalf("join error = %v", err)
 	}
-
-	node.service.reconcileLocalJoinIntent(t.Context())
-	if err := node.service.DB.First(&record).Error; err != nil {
+	requireNoJoin(t, service)
+	if err := service.ReleaseGuestIdentities(t.Context(), reservation); err != nil {
 		t.Fatal(err)
 	}
-	if record.JoinLeaderIP != "" || record.JoinNodeID != "" || record.JoinNodeIP != "" ||
-		record.JoinNodeVersion != "" || len(record.JoinInventory) != 0 || record.JoinPhase != "" ||
-		record.JoinLastError != "" || record.JoinAttempts != 0 {
-		t.Fatalf("completed join intent left behind: %+v", record)
+}
+
+func TestJoinKeepsItsIntentUnlessRefused(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  int
+		err     error
+		refused bool
+	}{
+		{name: "unreachable", err: errors.New("dial tcp: connection refused")},
+		{name: "unavailable", status: http.StatusServiceUnavailable},
+		{name: "fenced", status: http.StatusLocked},
+		{name: "refused", status: http.StatusConflict, refused: true},
 	}
-	if !record.Enabled || record.Key != "cluster-key" || record.RaftIP != "192.0.2.20" {
-		t.Fatalf("clearing the join intent touched cluster state: %+v", record)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			service := newJoinTestService(t)
+			service.peerRequest = func(context.Context, string, string, []byte, map[string]string) (int, []byte, error) {
+				body, err := json.Marshal(internal.APIResponse[any]{Status: "error", Message: "test_" + test.name})
+				if err != nil {
+					return 0, nil, err
+				}
+				return test.status, body, test.err
+			}
+			service.joinRaftStarter = func(string, string) error {
+				t.Error("Raft started without an admission")
+				return nil
+			}
+
+			status, err := service.Join(t.Context(), "192.0.2.10", "192.0.2.20", guestIdentityJoinTestKey)
+			if test.refused {
+				var refused *JoinAdmissionError
+				if !errors.As(err, &refused) || refused.StatusCode != test.status {
+					t.Fatalf("join error = %v, want a refusal", err)
+				}
+				requireNoJoin(t, service)
+				return
+			}
+			if err != nil || status.Phase != JoinPhaseSubmitting || !status.Retrying || status.LastError == "" || status.Attempts != 1 {
+				t.Fatalf("join = %+v, %v; want one that retries", status, err)
+			}
+			record, err := service.loadClusterRecord()
+			if err != nil || record.JoinLeaderIP != "192.0.2.10" || record.RaftIP != "192.0.2.20" || record.Key != guestIdentityJoinTestKey || record.Enabled {
+				t.Fatalf("cluster record = %+v, %v", record, err)
+			}
+		})
 	}
+}
+
+func TestJoinRefusesAClusteredNode(t *testing.T) {
+	service := newJoinTestService(t)
+	if err := service.DB.Model(&clusterModels.Cluster{}).Where("1 = 1").Updates(map[string]any{
+		"enabled": true, "key": guestIdentityJoinTestKey, "raft_ip": "192.0.2.20",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Join(t.Context(), "192.0.2.10", "192.0.2.20", guestIdentityJoinTestKey); err == nil || err.Error() != "clustered_already" {
+		t.Fatalf("join error = %v", err)
+	}
+}
+
+func TestIntegrationJoinThroughAFollowerEndsAsVoter(t *testing.T) {
+	nodes, _ := newJoinTestCluster(t, 2)
+	members, joiner := nodes[:2], nodes[2]
+	leader := waitForClusterRaftLeader(t, members, 8*time.Second)
+	follower := members[0]
+	if follower == leader {
+		follower = members[1]
+	}
+	if err := leader.service.ProposeNoteCreate(t.Context(), "cluster-note", "kept"); err != nil {
+		t.Fatal(err)
+	}
+	if err := joiner.service.DB.Create(&clusterModels.ClusterNote{Title: "standalone-note"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := joiner.service.DB.Create(&vmModels.VM{RID: 300, Name: "joiner-vm"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	status, err := joinTestCluster(t, joiner, follower)
+	if err != nil || status.Phase != JoinPhaseCatchingUp || status.LastError != "" {
+		t.Fatalf("join = %+v, %v", status, err)
+	}
+	if record, err := joiner.service.loadClusterRecord(); err != nil || record.JoinLeaderIP != raftAddressHost(follower.id) {
+		t.Fatalf("joined through %q, %v; want the member it asked, %s", record.JoinLeaderIP, err, raftAddressHost(follower.id))
+	}
+	reconcileJoinsUntilVoter(t, nodes, joiner)
+	waitForClusterRaftVoterCount(t, nodes, 3, 8*time.Second)
+	waitForGuestIdentityClaim(t, nodes, 300, joiner.id)
+	var notes []clusterModels.ClusterNote
+	if err := joiner.service.DB.Find(&notes).Error; err != nil || len(notes) != 1 || notes[0].Title != "cluster-note" {
+		t.Fatalf("joiner notes = %+v, %v; want only the cluster's", notes, err)
+	}
+}
+
+func TestIntegrationRefusedJoinLeavesTheNodeUntouched(t *testing.T) {
+	nodes, _ := newJoinTestCluster(t, 1)
+	leader, joiner := nodes[0], nodes[1]
+	seedGuestIdentityJoinTestClaim(t, leader, leader.id, clusterModels.ReplicationGuestTypeVM, 300)
+	if err := joiner.service.DB.Create(&vmModels.VM{RID: 300, Name: "clashing-vm"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := joiner.service.DB.Create(&clusterModels.ClusterNote{Title: "standalone-note"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	joiner.service.joinRaftStarter = func(string, string) error {
+		t.Error("Raft started for a refused join")
+		return nil
+	}
+
+	_, err := joinTestCluster(t, joiner, leader)
+	var refused *JoinAdmissionError
+	if !errors.As(err, &refused) || refused.StatusCode != http.StatusConflict || refused.Message != "guest_identity_inventory_conflict" {
+		t.Fatalf("join error = %v, want the conflict", err)
+	}
+	var report GuestIdentityInventoryReport
+	if err := json.Unmarshal(refused.Data, &report); err != nil || len(report.Conflicts) != 1 || report.Conflicts[0].GuestID != 300 {
+		t.Fatalf("conflict report = %+v, %v", report, err)
+	}
+	requireNoJoin(t, joiner.service)
+	var notes []clusterModels.ClusterNote
+	if err := joiner.service.DB.Find(&notes).Error; err != nil || len(notes) != 1 || notes[0].Title != "standalone-note" {
+		t.Fatalf("joiner notes = %+v, %v", notes, err)
+	}
+	if servers := raftConfigurationForGuestIdentityJoinTest(t, leader).Servers; len(servers) != 1 {
+		t.Fatalf("leader configuration = %+v", servers)
+	}
+}
+
+func TestIntegrationJoinResumesAfterAnInterruptedStart(t *testing.T) {
+	nodes, _ := newJoinTestCluster(t, 1)
+	leader, joiner := nodes[0], nodes[1]
+	if err := joiner.service.DB.Create(&vmModels.VM{RID: 300, Name: "joiner-vm"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	start := joiner.service.joinRaftStarter
+	joiner.service.joinRaftStarter = func(string, string) error { return errors.New("raft_start_interrupted") }
+
+	status, err := joinTestCluster(t, joiner, leader)
+	if err != nil || status.Phase != JoinPhaseSubmitting || !strings.Contains(status.LastError, "raft_start_interrupted") {
+		t.Fatalf("join = %+v, %v; want one to go on with", status, err)
+	}
+	waitForGuestIdentityClaim(t, []*clusterRaftTestNode{leader}, 300, joiner.id)
+	if _, err := joiner.service.ReserveGuestIdentities(t.Context(), clusterModels.ReplicationGuestTypeJail, []uint{301}); err == nil ||
+		!strings.Contains(err.Error(), "cluster_formation_in_progress") {
+		t.Fatalf("guest creation during the join: %v", err)
+	}
+
+	joiner.service.joinRaftStarter = start
+	reconcileJoinsUntilVoter(t, nodes, joiner)
+	waitForGuestIdentityClaim(t, nodes, 300, joiner.id)
+}
+
+func TestIntegrationGoneJoinerIsRemovedAndComesBackStandalone(t *testing.T) {
+	nodes, network := newJoinTestCluster(t, 1)
+	leader, joiner := nodes[0], nodes[1]
+	if err := joiner.service.DB.Create(&vmModels.VM{RID: 300, Name: "joiner-vm"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	start := joiner.service.joinRaftStarter
+	joiner.service.joinRaftStarter = func(ip, clusterKey string) error {
+		if err := start(ip, clusterKey); err != nil {
+			return err
+		}
+		joiner.transport.DisconnectAll()
+		leader.transport.Disconnect(joiner.addr)
+		network.setCut(joiner.id, true)
+		return nil
+	}
+	if _, err := joinTestCluster(t, joiner, leader); err != nil {
+		t.Fatal(err)
+	}
+	waitForGuestIdentityClaim(t, []*clusterRaftTestNode{leader}, 300, joiner.id)
+
+	now := time.Now()
+	leader.service.promoteNonvoters(t.Context(), now)
+	leader.service.promoteNonvoters(t.Context(), now.Add(nonvoterAbandonAfter))
+	if servers := raftConfigurationForGuestIdentityJoinTest(t, leader).Servers; len(servers) != 1 {
+		t.Fatalf("leader configuration after giving up = %+v", servers)
+	}
+	waitForGuestIdentityClaim(t, []*clusterRaftTestNode{leader}, 300, "")
+
+	connectClusterRaftTestNodes(nodes)
+	network.setCut(joiner.id, false)
+	waitForClusterCondition(t, 10*time.Second, "joiner to run standalone", func() bool {
+		joiner.service.reconcileJoins(t.Context(), time.Now())
+		record, err := joiner.service.loadClusterRecord()
+		return err == nil && !record.Enabled && !record.HasIncompleteJoin()
+	})
+	var vm vmModels.VM
+	if err := joiner.service.DB.First(&vm, "rid = ?", 300).Error; err != nil {
+		t.Fatalf("joiner lost its guest: %v", err)
+	}
+	waitForGuestIdentityClaim(t, []*clusterRaftTestNode{leader}, 300, "")
+}
+
+func TestIntegrationPromoterWaitsOnASlowNonvoter(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 1, guestIdentityJoinTestModels()...)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	seedGuestIdentityJoinTestCluster(t, leader)
+	leader.service.AuthService = &guestIdentityInventoryAuthStub{}
+	if _, err := leader.service.AdmitJoiner(t.Context(), JoinAdmissionRequest{
+		NodeID: "slow-node", NodeIP: "127.0.0.9", NodeVersion: cmd.Version, SSHPublicKey: "ssh-ed25519 AAAA",
+		Inventory: BuildGuestIdentityInventoryReport([]GuestIdentityInventoryEntry{{
+			NodeID: "slow-node", GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 500, RecordID: 1, Name: "vm-500",
+		}}),
+	}, guestIdentityJoinTestSecret, testJoinPin); err != nil {
+		t.Fatal(err)
+	}
+	var applied atomic.Uint64
+	leader.service.peerRequest = func(context.Context, string, string, []byte, map[string]string) (int, []byte, error) {
+		progress, err := json.Marshal(ClusterJoinProgress{NodeID: "slow-node", AppliedIndex: applied.Load()})
+		if err != nil {
+			return 0, nil, err
+		}
+		body, err := json.Marshal(internal.APIResponse[CallResult]{Status: "success", Data: CallResult{Data: progress}})
+		return http.StatusOK, body, err
+	}
+	present := func() bool {
+		for _, server := range raftConfigurationForGuestIdentityJoinTest(t, leader).Servers {
+			if server.ID == "slow-node" {
+				return true
+			}
+		}
+		return false
+	}
+
+	start := time.Now()
+	applied.Store(1)
+	leader.service.promoteNonvoters(t.Context(), start)
+	applied.Store(2)
+	leader.service.promoteNonvoters(t.Context(), start.Add(nonvoterAbandonAfter-time.Minute))
+	leader.service.promoteNonvoters(t.Context(), start.Add(nonvoterAbandonAfter+time.Minute))
+	if !present() {
+		t.Fatal("a nonvoter that kept applying was given up on")
+	}
+	leader.service.promoteNonvoters(t.Context(), start.Add(2*nonvoterAbandonAfter))
+	if present() {
+		t.Fatal("a nonvoter that stopped applying was kept")
+	}
+	waitForGuestIdentityClaim(t, nodes, 500, "")
 }

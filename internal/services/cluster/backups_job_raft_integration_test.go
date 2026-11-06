@@ -17,6 +17,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 func TestIntegrationRaftBackupJobEncryptionUpdateReplicates(t *testing.T) {
@@ -28,7 +29,7 @@ func TestIntegrationRaftBackupJobEncryptionUpdateReplicates(t *testing.T) {
 		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/encrypted",
 		CronExpr: "0 0 * * *", Enabled: true,
 	}
-	createRaw, err := json.Marshal(job)
+	createRaw, err := json.Marshal(clusterModels.BackupJobCommandPayload{Job: job})
 	if err != nil {
 		t.Fatalf("marshal create: %v", err)
 	}
@@ -69,11 +70,11 @@ func TestIntegrationRaftBackupJobDeleteAndReservationAreAtomicallyOrdered(t *tes
 
 	for iteration := uint(1); iteration <= 12; iteration++ {
 		jobID := 100 + iteration
-		createRaw, _ := json.Marshal(clusterModels.BackupJob{
+		createRaw, _ := json.Marshal(clusterModels.BackupJobCommandPayload{Job: clusterModels.BackupJob{
 			ID: jobID, Name: "delete-acquire-race", TargetID: 10,
 			Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/data",
 			CronExpr: "* * * * *", Enabled: true,
-		})
+		}})
 		if err := leader.service.applyRaftCommand(clusterModels.Command{
 			Type: "backup_job", Action: "create", Data: createRaw,
 		}); err != nil {
@@ -84,7 +85,7 @@ func TestIntegrationRaftBackupJobDeleteAndReservationAreAtomicallyOrdered(t *tes
 		acquireRaw, _ := json.Marshal(clusterModels.BackupJobOperationAcquire{
 			JobID: jobID, Token: operationToken,
 			Operation:    clusterModels.BackupJobOperationBackup,
-			HolderNodeID: "node-a", AcquiredAt: time.Now().UTC(),
+			HolderNodeID: "node-a", AcquiredAt: time.Now().UTC(), HostKeyRevision: 1,
 		})
 		deleteRaw, _ := json.Marshal(map[string]any{"id": jobID})
 		var acquireErr, deleteErr error
@@ -93,7 +94,7 @@ func TestIntegrationRaftBackupJobDeleteAndReservationAreAtomicallyOrdered(t *tes
 		go func() {
 			defer wg.Done()
 			acquireErr = leader.service.applyRaftCommand(clusterModels.Command{
-				Type: "backup_job_operation", Action: "acquire", Data: acquireRaw,
+				Type: "backup_job_operation", Action: "acquire_v2", Data: acquireRaw,
 			})
 		}()
 		go func() {
@@ -164,11 +165,19 @@ func TestIntegrationRaftRunningJobIDsReadsOperationOnNonRunnerLeader(t *testing.
 	if runnerNodeID == "" {
 		t.Fatal("remote runner not found")
 	}
-	targetRaw, _ := json.Marshal(clusterModels.BackupTargetToReplicationPayload(clusterModels.BackupTarget{
+	target := clusterModels.BackupTarget{
 		ID: 9, Name: "target", SSHHost: "root@backup", SSHKey: "key", BackupRoot: "tank/backups", Enabled: true,
-	}))
+	}
+	targetRaw, _ := json.Marshal(clusterModels.BackupTargetCreateV3{
+		BackupTargetCreateV2: clusterModels.BackupTargetCreateV2{
+			Target:              clusterModels.BackupTargetToReplicationPayload(target),
+			ProposedFingerprint: clusterModels.BackupTargetConfigurationFingerprint(&target),
+		},
+		HostKey:    testutil.SSHHostKey(t),
+		OccurredAt: time.Now().UTC(),
+	})
 	if err := leader.service.applyRaftCommand(clusterModels.Command{
-		Type: "backup_target", Action: "create", Data: targetRaw,
+		Type: "backup_target", Action: "create_v3", Data: targetRaw,
 	}); err != nil {
 		t.Fatalf("create target: %v", err)
 	}
@@ -185,7 +194,7 @@ func TestIntegrationRaftRunningJobIDsReadsOperationOnNonRunnerLeader(t *testing.
 			CronExpr: "0 0 * * *", Enabled: true,
 		},
 	} {
-		raw, _ := json.Marshal(job)
+		raw, _ := json.Marshal(clusterModels.BackupJobCommandPayload{Job: job})
 		if err := leader.service.applyRaftCommand(clusterModels.Command{
 			Type: "backup_job", Action: "create", Data: raw,
 		}); err != nil {
@@ -196,10 +205,10 @@ func TestIntegrationRaftRunningJobIDsReadsOperationOnNonRunnerLeader(t *testing.
 	acquireRaw, _ := json.Marshal(clusterModels.BackupJobOperationAcquire{
 		JobID: 41, Token: "backup:" + runnerNodeID + ":active",
 		Operation: clusterModels.BackupJobOperationBackup, HolderNodeID: runnerNodeID,
-		AcquiredAt: time.Now().UTC(),
+		AcquiredAt: time.Now().UTC(), HostKeyRevision: 1,
 	})
 	if err := leader.service.applyRaftCommand(clusterModels.Command{
-		Type: "backup_job_operation", Action: "acquire", Data: acquireRaw,
+		Type: "backup_job_operation", Action: "acquire_v2", Data: acquireRaw,
 	}); err != nil {
 		t.Fatalf("acquire remote operation: %v", err)
 	}

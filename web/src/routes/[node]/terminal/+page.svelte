@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { storage } from '$lib';
+	import { nodePath } from '$lib/api/common';
 	import { sha256, toHex } from '$lib/utils/string';
 	import { useResizeObserver, PersistedState, useDebounce } from 'runed';
 	import { onMount } from 'svelte';
@@ -170,16 +171,13 @@
 		const hash = await sha256(storage.token || '', 1);
 		const selectedHostname = page.url.pathname.split('/').filter(Boolean)[0] || '';
 		if (!selectedHostname) return;
-		const wsAuth = toHex(
-			JSON.stringify({
-				hash,
-				hostname: selectedHostname
-			})
-		);
+		const wsAuth = toHex(JSON.stringify({ hash }));
 
 		const activeConnectionToken = ++connectionToken;
 		const activeTerminal = terminal;
-		const socket = new WebSocket(`/api/info/terminal?auth=${encodeURIComponent(wsAuth)}`);
+		const socket = new WebSocket(
+			`${nodePath('/api/info/terminal', selectedHostname)}?auth=${encodeURIComponent(wsAuth)}`
+		);
 		socket.binaryType = 'arraybuffer';
 		ws = socket;
 

@@ -406,7 +406,7 @@ func DeleteUpload(systemService *system.Service) gin.HandlerFunc {
 			return
 		}
 
-		err := systemService.DeleteFileExplorerUpload(req.Data.UploadID, c.GetUint("UserID"))
+		err := systemService.DeleteFileExplorerUpload(req.Data.UploadID, c.GetString("Owner"))
 		if err != nil {
 			writeDeleteUploadError(c, err)
 			return

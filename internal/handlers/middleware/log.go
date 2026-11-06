@@ -34,9 +34,10 @@ import (
 var importantGetPaths = []string{"/api/vnc", "/api/info/terminal", "/api/vm/console", "/api/cluster/join-key"}
 
 type claim struct {
-	UserID   *uint
-	Username string
-	AuthType string
+	UserID     *uint
+	Username   string
+	AuthType   string
+	OriginNode string
 }
 
 type action struct {
@@ -581,26 +582,14 @@ func parseClaimUserID(raw interface{}) (*uint, bool) {
 func getClaims(c *gin.Context, authService *authService.Service) (claim, error) {
 	var claims claim
 
-	if uidAny, hasUserID := c.Get("UserID"); hasUserID {
-		usernameAny, hasUsername := c.Get("Username")
-		authTypeAny, hasAuthType := c.Get("AuthType")
-		if hasUsername && hasAuthType {
-			var uid *uint
-			if parsed, ok := parseClaimUserID(uidAny); ok {
-				uid = parsed
-			}
-
-			claims = claim{
-				UserID:   uid,
-				Username: fmt.Sprintf("%v", usernameAny),
-				AuthType: fmt.Sprintf("%v", authTypeAny),
-			}
-
-			if strings.TrimSpace(claims.Username) != "" && strings.TrimSpace(claims.AuthType) != "" {
-				return claims, nil
-			}
+	claims = claim{Username: c.GetString("Username"), AuthType: c.GetString("AuthType"), OriginNode: c.GetString("IssuerNodeID")}
+	if strings.TrimSpace(claims.Username) != "" && strings.TrimSpace(claims.AuthType) != "" {
+		if uidAny, hasUserID := c.Get("UserID"); hasUserID {
+			claims.UserID, _ = parseClaimUserID(uidAny)
 		}
+		return claims, nil
 	}
+	claims = claim{}
 
 	token := c.GetString("Token")
 
@@ -830,14 +819,15 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 		}
 
 		log := &infoModels.AuditRecord{
-			UserID:   claims.UserID,
-			User:     claims.Username,
-			AuthType: claims.AuthType,
-			Node:     nodeHostname,
-			Started:  time.Now(),
-			Action:   string(actJSON),
-			Status:   "started",
-			Version:  2,
+			UserID:     claims.UserID,
+			User:       claims.Username,
+			AuthType:   claims.AuthType,
+			OriginNode: claims.OriginNode,
+			Node:       nodeHostname,
+			Started:    time.Now(),
+			Action:     string(actJSON),
+			Status:     "started",
+			Version:    2,
 		}
 
 		if err := auditDB.Create(log).Error; err != nil {

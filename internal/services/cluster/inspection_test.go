@@ -18,23 +18,22 @@ import (
 func TestCommandStatusReportsOnlyIncompleteJoinPhase(t *testing.T) {
 	tests := []struct {
 		name      string
-		phase     string
+		leaderIP  string
 		wantPhase string
 	}{
-		{name: "complete", phase: JoinPhaseComplete},
-		{name: "active", phase: JoinPhaseCatchingUp, wantPhase: JoinPhaseCatchingUp},
-		{name: "failed", phase: JoinPhaseFailed, wantPhase: JoinPhaseFailed},
+		{name: "none"},
+		{name: "joining", leaderIP: "192.0.2.1", wantPhase: JoinPhaseSubmitting},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			database := newClusterServiceTestDB(t, &clusterModels.Cluster{})
 			if err := database.Create(&clusterModels.Cluster{
-				Enabled: true, RaftIP: "192.0.2.10", JoinNodeID: "node-2", JoinPhase: test.phase,
+				Enabled: true, RaftIP: "192.0.2.10", JoinLeaderIP: test.leaderIP,
 			}).Error; err != nil {
 				t.Fatal(err)
 			}
-			status, err := (&Service{DB: database, NodeID: "node-2"}).CommandStatus()
+			status, err := (withFSM(&Service{DB: database, NodeID: "node-2"})).CommandStatus()
 			if err != nil {
 				t.Fatal(err)
 			}

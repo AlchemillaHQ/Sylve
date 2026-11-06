@@ -53,8 +53,7 @@
 		restore_operation: 'Restore Operation',
 		guest_operation: 'Guest Operation',
 		runner_rebind: 'Runner Rebind',
-		lifecycle_task: 'Lifecycle Task',
-		state_repair: 'State Repair'
+		lifecycle_task: 'Lifecycle Task'
 	};
 
 	watch(

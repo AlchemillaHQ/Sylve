@@ -39,7 +39,7 @@ func seedReplicationProcessPolicy(t *testing.T, db *gorm.DB, policyID uint, node
 		Enabled:      true, ProtectionState: clusterModels.ReplicationProtectionStateInitializing,
 		CronExpr: "*/5 * * * *",
 	}
-	if err := clusterModels.UpsertReplicationPolicyTxn(db, policy, nil); err != nil {
+	if err := seedReplicationPolicy(db, policy, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Create(&clusterModels.ReplicationLease{
@@ -130,6 +130,11 @@ func TestPrepareReplicationStartupFenceFailureStaysClosed(t *testing.T) {
 	)
 	const localNodeID = "fence-failure-node"
 	seedReplicationProcessPolicy(t, database, 9205, localNodeID)
+	target := completeReplicationTarget("other-node", 1)
+	target.PolicyID = 9205
+	if err := database.Create(&target).Error; err != nil {
+		t.Fatal(err)
+	}
 	service := NewService(database, nil, &clusterService.Service{DB: database, NodeID: localNodeID}, nil, nil, nil, nil)
 	service.localFilesystemDatasetLister = func(context.Context) ([]string, error) {
 		return nil, errors.New("zfs unavailable")

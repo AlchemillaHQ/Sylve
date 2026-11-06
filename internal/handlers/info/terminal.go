@@ -160,6 +160,15 @@ func (ts *hostTerminalSession) PumpOutput() {
 	}
 }
 
+// Only root signed in here skips the password: an admin a member forwards
+// signed in there, so root or not, they log in like anyone else.
+func hostTerminalUser(c *gin.Context) string {
+	if c.GetString("AuthScope") != "local" {
+		return ""
+	}
+	return c.GetString("Username")
+}
+
 // @Summary Open a host terminal WebSocket
 // @Description Upgrade the connection to an authenticated host terminal WebSocket
 // @Tags Info
@@ -180,12 +189,7 @@ func HandleHostTerminal(c *gin.Context) {
 		return conn.SetReadDeadline(time.Now().Add(hostWSPongWait))
 	})
 
-	username, _ := c.Get("Username")
-	usernameStr, _ := username.(string)
-	if usernameStr == "" {
-		usernameStr = "root"
-	}
-
+	usernameStr := hostTerminalUser(c)
 	observer := &hostObserver{Conn: conn}
 	if usernameStr != "root" {
 		banner := "\r\n\x1b[33mNote: Direct root login is disabled on this terminal.\x1b[0m\r\n" +

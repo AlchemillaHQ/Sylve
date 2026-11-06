@@ -31,50 +31,9 @@ func newBackupsRouter(cS *cluster.Service) *gin.Engine {
 	return r
 }
 
-func TestUpdateBackupJobStateInternalPreservesLegacyEncryption(t *testing.T) {
-	db := newClusterHandlerTestDB(t, &clusterModels.BackupJob{})
-	service := &cluster.Service{DB: db}
-	job := clusterModels.BackupJob{
-		ID: 71, Name: "forwarded-state", TargetID: 9,
-		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/data",
-		CronExpr: "0 0 * * *", Enabled: true, Encrypted: true,
-	}
-	if err := db.Create(&job).Error; err != nil {
-		t.Fatalf("seed job: %v", err)
-	}
-
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.POST("/intra-cluster/backup-job-state", UpdateBackupJobStateInternal(service))
-
-	legacy := []byte(`{"jobId":71,"lastStatus":"failed","lastError":"legacy follower"}`)
-	rr := performJSONRequest(t, router, http.MethodPost, "/intra-cluster/backup-job-state", legacy)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("legacy update status=%d body=%s", rr.Code, rr.Body.String())
-	}
-	if err := db.First(&job, job.ID).Error; err != nil {
-		t.Fatalf("reload legacy update: %v", err)
-	}
-	if !job.Encrypted {
-		t.Fatal("legacy forwarded update cleared encrypted state")
-	}
-
-	current := []byte(`{"version":1,"jobId":71,"lastStatus":"success","encrypted":false}`)
-	rr = performJSONRequest(t, router, http.MethodPost, "/intra-cluster/backup-job-state", current)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("current update status=%d body=%s", rr.Code, rr.Body.String())
-	}
-	if err := db.First(&job, job.ID).Error; err != nil {
-		t.Fatalf("reload current update: %v", err)
-	}
-	if job.Encrypted {
-		t.Fatal("forwarded encrypted=false was not applied")
-	}
-}
-
 func TestBackupJobsHandlerGet(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	r := newBackupsRouter(cS)
 
 	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/backups/jobs", nil)
@@ -150,7 +109,7 @@ func TestBackupJobsHandlerRejectsInvalidTargetFilter(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed job: %v", err)
 	}
-	router := newBackupsRouter(&cluster.Service{DB: db})
+	router := newBackupsRouter(cluster.NewClusterService(db, nil, nil).(*cluster.Service))
 
 	tests := map[string]string{
 		"empty":       "?targetId=",
@@ -186,7 +145,7 @@ func TestBackupJobsHandlerRejectsInvalidTargetFilter(t *testing.T) {
 
 func TestBackupJobsHandlerFiltersByGuest(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	r := newBackupsRouter(cS)
 
 	target := clusterModels.BackupTarget{
@@ -248,7 +207,7 @@ func TestBackupJobsHandlerFiltersByGuest(t *testing.T) {
 
 func TestBackupTargetRunningJobIDsUsesDurableRemoteRunnerOperations(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{}, &clusterModels.BackupEvent{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	r := newBackupsRouter(cS)
 	if err := db.Create(&[]clusterModels.BackupTarget{
 		{ID: 1, Name: "target-one", SSHHost: "user@one", BackupRoot: "tank/one"},
@@ -301,10 +260,10 @@ func TestBackupTargetRunningJobIDsFailsWhenDurableStatusIsUnavailable(t *testing
 	}).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	if err := db.Migrator().DropTable(&clusterModels.BackupJobOperation{}); err != nil {
 		t.Fatalf("drop operation table: %v", err)
 	}
-	cS := &cluster.Service{DB: db}
 	r := newBackupsRouter(cS)
 
 	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/backups/targets/1/running-jobs", nil)
@@ -315,7 +274,7 @@ func TestBackupTargetRunningJobIDsFailsWhenDurableStatusIsUnavailable(t *testing
 
 func TestBackupTargetRunningJobIDsReturnsNotFoundForMissingTarget(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-	r := newBackupsRouter(&cluster.Service{DB: db})
+	r := newBackupsRouter(cluster.NewClusterService(db, nil, nil).(*cluster.Service))
 
 	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/backups/targets/99/running-jobs", nil)
 	if rr.Code != http.StatusNotFound {
@@ -325,7 +284,7 @@ func TestBackupTargetRunningJobIDsReturnsNotFoundForMissingTarget(t *testing.T) 
 
 func TestCreateBackupJobHandlerValidation(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupJob{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	r := newBackupsRouter(cS)
 
 	rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/jobs",
@@ -339,7 +298,7 @@ func TestBackupJobCreateRejectsOversizedBody(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
 	r := gin.New()
 	r.Use(middleware.LimitRequestBody(64))
-	r.POST("/cluster/backups/jobs", CreateBackupJob(&cluster.Service{DB: db}))
+	r.POST("/cluster/backups/jobs", CreateBackupJob(cluster.NewClusterService(db, nil, nil).(*cluster.Service)))
 
 	body := []byte(`{"name":"` + strings.Repeat("x", 128) + `","targetId":1,"mode":"dataset"}`)
 	rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/jobs", body)
@@ -357,7 +316,7 @@ func TestBackupJobCreateRejectsOversizedBody(t *testing.T) {
 
 func TestDeleteBackupJobHandlerValidation(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	r := newBackupsRouter(cS)
 
 	rr := performJSONRequest(t, r, http.MethodDelete, "/cluster/backups/jobs/abc", nil)

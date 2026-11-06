@@ -93,47 +93,29 @@ func TestFSMDispatcherClusterSSHIdentityCommands(t *testing.T) {
 		}
 	})
 
-	t.Run("delete existing identity", func(t *testing.T) {
-		db2 := newClusterModelTestDB(t, &ClusterSSHIdentity{})
-		fsm2 := NewFSMDispatcher(db2)
-		RegisterDefaultHandlers(fsm2)
-
-		if err := db2.Create(&ClusterSSHIdentity{
-			NodeUUID: "to-delete", SSHHost: "host-x",
-			SSHUser: "root", PublicKey: "key",
-		}).Error; err != nil {
-			t.Fatalf("seed: %v", err)
+	t.Run("cert pin is stored, replaced and validated", func(t *testing.T) {
+		pin := strings.Repeat("ab", 32)
+		for _, want := range []string{pin, strings.Repeat("cd", 32)} {
+			raw, _ := json.Marshal(ClusterSSHIdentity{
+				NodeUUID: "node-uuid-3", SSHHost: "10.0.0.3", PublicKey: "ssh-ed25519 CCCC...",
+				CertPin: strings.ToUpper(want),
+			})
+			if err := applyFSMCommand(t, fsm, Command{Type: "cluster_ssh_identity", Action: "upsert", Data: raw}); err != nil {
+				t.Fatalf("upsert pin: %v", err)
+			}
+			var identity ClusterSSHIdentity
+			if err := db.First(&identity, "node_uuid = ?", "node-uuid-3").Error; err != nil || identity.CertPin != want {
+				t.Fatalf("pin = %q (err %v), want %q", identity.CertPin, err, want)
+			}
 		}
-
-		deleteRaw, _ := json.Marshal(map[string]any{"nodeUUID": "to-delete"})
-		if err := applyFSMCommand(t, fsm2, Command{
-			Type: "cluster_ssh_identity", Action: "delete", Data: deleteRaw,
-		}); err != nil {
-			t.Fatalf("delete failed: %v", err)
-		}
-
-		var count int64
-		db2.Model(&ClusterSSHIdentity{}).Where("node_uuid = ?", "to-delete").Count(&count)
-		if count != 0 {
-			t.Fatalf("expected 0 identities, got %d", count)
-		}
-	})
-
-	t.Run("delete empty nodeUUID is no-op", func(t *testing.T) {
-		deleteRaw, _ := json.Marshal(map[string]any{"nodeUUID": "   "})
-		if err := applyFSMCommand(t, fsm, Command{
-			Type: "cluster_ssh_identity", Action: "delete", Data: deleteRaw,
-		}); err != nil {
-			t.Fatalf("delete empty nodeUUID should be no-op: %v", err)
-		}
-	})
-
-	t.Run("delete non-existent is no error", func(t *testing.T) {
-		deleteRaw, _ := json.Marshal(map[string]any{"nodeUUID": "does-not-exist"})
-		if err := applyFSMCommand(t, fsm, Command{
-			Type: "cluster_ssh_identity", Action: "delete", Data: deleteRaw,
-		}); err != nil {
-			t.Fatalf("delete non-existent should not error: %v", err)
+		for _, bad := range []string{"abcd", strings.Repeat("zz", 32)} {
+			raw, _ := json.Marshal(ClusterSSHIdentity{
+				NodeUUID: "node-uuid-3", SSHHost: "10.0.0.3", PublicKey: "ssh-ed25519 CCCC...", CertPin: bad,
+			})
+			err := applyFSMCommand(t, fsm, Command{Type: "cluster_ssh_identity", Action: "upsert", Data: raw})
+			if err == nil || !strings.Contains(err.Error(), "cert_pin_invalid") {
+				t.Fatalf("pin %q: error %v, want cert_pin_invalid", bad, err)
+			}
 		}
 	})
 

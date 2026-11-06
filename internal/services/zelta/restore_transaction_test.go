@@ -354,7 +354,7 @@ func TestIntegrationScheduledEncryptedRestoreActivationFailureRollsBackRealZFS(t
 
 	extractZeltaToTemp(t)
 	database := newZeltaServiceTestDB(t, &clusterModels.BackupEvent{})
-	service := &Service{DB: database, GZFS: client}
+	service := &Service{DB: database, Cluster: newTestClusterService(database, ""), GZFS: client}
 	target := &clusterModels.BackupTarget{
 		SSHHostKey: hostKey,
 		ID:         57,

@@ -4,151 +4,83 @@ package migration
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
-	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
-	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
-type migrationTargetAuthStub struct {
-	serviceInterfaces.AuthServiceInterface
-	username string
-}
-
-func (s *migrationTargetAuthStub) CreateInternalClusterJWT(username string) (string, error) {
-	s.username = username
-	return "migration-target-test-token", nil
-}
-
-func newTargetInventoryTestServer(
+func newTargetInventoryCluster(
 	t *testing.T,
-	nodeID string,
-	entries []clusterService.GuestIdentityInventoryEntry,
-) *httptest.Server {
+	snapshot clusterService.GuestIdentityInventorySnapshot,
+) *clusterService.Service {
 	t.Helper()
-	return newTargetInventoryReportTestServer(
-		t,
-		nodeID,
-		clusterService.BuildGuestIdentityInventoryReport(entries),
-	)
-}
-
-func newTargetInventoryReportTestServer(
-	t *testing.T,
-	nodeID string,
-	report clusterService.GuestIdentityInventoryReport,
-) *httptest.Server {
-	t.Helper()
-	return httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/api/intra-cluster/guest-identity-inventory" {
-			http.NotFound(w, r)
-			return
-		}
-		if got := r.Header.Get("X-Cluster-Token"); got != "Bearer migration-target-test-token" {
-			t.Errorf("cluster token header = %q", got)
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(internal.APIResponse[clusterService.GuestIdentityInventorySnapshot]{
-			Status: "success",
-			Data: clusterService.GuestIdentityInventorySnapshot{
-				NodeID: nodeID,
-				Report: report,
-			},
+	target := clusterService.NewClusterService(testutil.NewSQLiteTestDB(t), nil, nil).(*clusterService.Service)
+	target.NodeID = "target-node"
+	clusterService.OnNode(target, "guest-identity-inventory",
+		func(context.Context, string, struct{}) (clusterService.GuestIdentityInventorySnapshot, error) {
+			return snapshot, nil
 		})
-	}))
+	return target
+}
+
+func requireTargetGuestRecordAbsent(t *testing.T, snapshot clusterService.GuestIdentityInventorySnapshot) error {
+	t.Helper()
+	svc := &Service{Cluster: newTargetInventoryCluster(t, snapshot)}
+	return svc.requireTargetGuestRecordAbsent(t.Context(), clusterModels.ClusterNode{NodeUUID: "target-node"}, 107)
 }
 
 func TestRequireTargetGuestRecordAbsentBlocksSharedNumericID(t *testing.T) {
-	const targetNodeID = "target-node"
-	server := newTargetInventoryTestServer(t, targetNodeID, []clusterService.GuestIdentityInventoryEntry{
-		{
-			NodeID:    targetNodeID,
-			GuestType: clusterModels.ReplicationGuestTypeJail,
-			GuestID:   107,
-			RecordID:  9,
-			Name:      "existing-jail",
-		},
+	err := requireTargetGuestRecordAbsent(t, clusterService.GuestIdentityInventorySnapshot{
+		NodeID: "target-node",
+		Report: clusterService.BuildGuestIdentityInventoryReport([]clusterService.GuestIdentityInventoryEntry{{
+			NodeID: "target-node", GuestType: clusterModels.ReplicationGuestTypeJail,
+			GuestID: 107, RecordID: 9, Name: "existing-jail",
+		}}),
 	})
-	defer server.Close()
-
-	auth := &migrationTargetAuthStub{}
-	svc := &Service{Cluster: &clusterService.Service{AuthService: auth}}
-	err := svc.requireTargetGuestRecordAbsent(context.Background(), clusterModels.ClusterNode{
-		NodeUUID: targetNodeID,
-		API:      strings.TrimPrefix(server.URL, "https://"),
-	}, 107)
-
 	if !errors.Is(err, ErrTargetAlreadyHasGuest) {
 		t.Fatalf("error = %v, want target guest conflict", err)
 	}
 	if !strings.Contains(err.Error(), "guest_type=jail") {
 		t.Fatalf("error does not identify conflicting guest type: %v", err)
 	}
-	if auth.username != "migration" {
-		t.Fatalf("cluster token username = %q, want migration", auth.username)
-	}
 }
 
 func TestRequireTargetGuestRecordAbsentAllowsUnclaimedID(t *testing.T) {
-	const targetNodeID = "target-node"
-	server := newTargetInventoryTestServer(t, targetNodeID, []clusterService.GuestIdentityInventoryEntry{
-		{
-			NodeID:    targetNodeID,
-			GuestType: clusterModels.ReplicationGuestTypeVM,
-			GuestID:   106,
-			RecordID:  8,
-			Name:      "other-vm",
-		},
+	err := requireTargetGuestRecordAbsent(t, clusterService.GuestIdentityInventorySnapshot{
+		NodeID: "target-node",
+		Report: clusterService.BuildGuestIdentityInventoryReport([]clusterService.GuestIdentityInventoryEntry{{
+			NodeID: "target-node", GuestType: clusterModels.ReplicationGuestTypeVM,
+			GuestID: 106, RecordID: 8, Name: "other-vm",
+		}}),
 	})
-	defer server.Close()
-
-	svc := &Service{Cluster: &clusterService.Service{AuthService: &migrationTargetAuthStub{}}}
-	err := svc.requireTargetGuestRecordAbsent(context.Background(), clusterModels.ClusterNode{
-		NodeUUID: targetNodeID,
-		API:      strings.TrimPrefix(server.URL, "https://"),
-	}, 107)
 	if err != nil {
 		t.Fatalf("unclaimed target ID was rejected: %v", err)
 	}
 }
 
 func TestRequireTargetGuestRecordAbsentFailsClosedOnWrongNodeInventory(t *testing.T) {
-	server := newTargetInventoryTestServer(t, "different-node", nil)
-	defer server.Close()
-
-	svc := &Service{Cluster: &clusterService.Service{AuthService: &migrationTargetAuthStub{}}}
-	err := svc.requireTargetGuestRecordAbsent(context.Background(), clusterModels.ClusterNode{
-		NodeUUID: "target-node",
-		API:      strings.TrimPrefix(server.URL, "https://"),
-	}, 107)
+	err := requireTargetGuestRecordAbsent(t, clusterService.GuestIdentityInventorySnapshot{
+		NodeID: "different-node", Report: clusterService.BuildGuestIdentityInventoryReport(nil),
+	})
 	if err == nil || !strings.Contains(err.Error(), "target_identity_inventory_node_mismatch") {
 		t.Fatalf("wrong-node inventory error = %v", err)
 	}
 }
 
 func TestRequireTargetGuestRecordAbsentFailsClosedOnInventoryDigestMismatch(t *testing.T) {
-	const targetNodeID = "target-node"
 	report := clusterService.BuildGuestIdentityInventoryReport(nil)
 	report.Digest = "not-the-empty-inventory-digest"
-	server := newTargetInventoryReportTestServer(t, targetNodeID, report)
-	defer server.Close()
-
-	svc := &Service{Cluster: &clusterService.Service{AuthService: &migrationTargetAuthStub{}}}
-	err := svc.requireTargetGuestRecordAbsent(context.Background(), clusterModels.ClusterNode{
-		NodeUUID: targetNodeID,
-		API:      strings.TrimPrefix(server.URL, "https://"),
-	}, 107)
+	err := requireTargetGuestRecordAbsent(t, clusterService.GuestIdentityInventorySnapshot{
+		NodeID: "target-node", Report: report,
+	})
 	if err == nil || !strings.Contains(err.Error(), "target_identity_inventory_digest_mismatch") {
 		t.Fatalf("digest mismatch error = %v", err)
 	}
@@ -244,5 +176,24 @@ func TestPhasePreflightRejectsUnreachableGuestBackupTarget(t *testing.T) {
 				t.Fatalf("preflight error = %v", err)
 			}
 		})
+	}
+}
+
+func TestVMTargetPreflightReturnsHelperBootErrors(t *testing.T) {
+	target := clusterService.NewClusterService(testutil.NewSQLiteTestDB(t), nil, nil).(*clusterService.Service)
+	target.NodeID = "target-node"
+	clusterService.OnNode(target, "migration-check-vm-target",
+		func(_ context.Context, _ string, probe vmTargetProbe) (vmTargetResult, error) {
+			if probe.BootRequirement == nil {
+				t.Errorf("helper requirement omitted: %+v", probe)
+			}
+			return vmTargetResult{BootErrors: []string{"csmwrap_requires_two_vcpus"}}, nil
+		})
+
+	reasons := (&Service{Cluster: target}).vmTargetPreflightReasons(t.Context(), vmModels.VM{
+		RID: 91, BootROM: vmModels.VMBootROMUEFICSMWrap, CPUSockets: 1, CPUCores: 1, CPUThreads: 1,
+	}, clusterModels.ClusterNode{NodeUUID: "target-node"})
+	if !slices.Equal(reasons, []string{"csmwrap_requires_two_vcpus"}) {
+		t.Fatalf("reasons = %v", reasons)
 	}
 }

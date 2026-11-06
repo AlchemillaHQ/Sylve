@@ -112,7 +112,7 @@ func (s *Service) recordForcedPromotionObservation(
 }
 
 func (s *Service) forcedPromotionLeaderTerm() (string, error) {
-	if s == nil || s.Cluster == nil || s.Cluster.Raft() == nil || s.Cluster.Raft().State() != raft.Leader {
+	if s == nil || s.Cluster.Raft() == nil || s.Cluster.Raft().State() != raft.Leader {
 		return "", fmt.Errorf("not_leader")
 	}
 	term := strings.TrimSpace(s.Cluster.Raft().Stats()["term"])

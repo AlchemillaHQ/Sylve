@@ -9,19 +9,16 @@
 package cluster
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"net"
 	"strings"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/alchemillahq/sylve/pkg/utils"
-	"github.com/hashicorp/raft"
-	"gorm.io/gorm/clause"
 )
 
-func (s *Service) ProposeEncryptionKeyUpsert(uuid, keyData, keyFormat string, bypassRaft bool) error {
+// The periodic key scan sends every key it finds; keys the store already holds
+// unchanged aren't proposed again.
+func (s *Service) PublishEncryptionKey(ctx context.Context, uuid, keyData, keyFormat string) error {
 	uuid = strings.TrimSpace(uuid)
 	if uuid == "" {
 		return fmt.Errorf("encryption_key_uuid_required")
@@ -32,24 +29,14 @@ func (s *Service) ProposeEncryptionKeyUpsert(uuid, keyData, keyFormat string, by
 	if strings.TrimSpace(keyFormat) == "" {
 		keyFormat = "passphrase"
 	}
-
-	key := clusterModels.EncryptionKey{
-		UUID:      uuid,
-		KeyData:   keyData,
-		KeyFormat: keyFormat,
+	var existing clusterModels.EncryptionKey
+	if err := s.DB.Where("uuid = ?", uuid).Limit(1).Find(&existing).Error; err == nil &&
+		existing.ID != 0 && existing.KeyData == keyData && existing.KeyFormat == keyFormat {
+		return nil
 	}
-
-	if bypassRaft || s.Raft() == nil {
-		return s.UpsertEncryptionKeyLocally(uuid, keyData, keyFormat)
-	}
-
-	data, err := json.Marshal(key)
-	if err != nil {
-		return fmt.Errorf("marshal_encryption_key_failed: %w", err)
-	}
-
-	cmd := clusterModels.Command{Type: "encryption_key", Action: "upsert", Data: data}
-	return s.applyRaftCommand(cmd)
+	return s.Propose(ctx, "encryption_key", "upsert", clusterModels.EncryptionKey{
+		UUID: uuid, KeyData: keyData, KeyFormat: keyFormat,
+	})
 }
 
 func (s *Service) ListEncryptionKeys() ([]clusterModels.EncryptionKey, error) {
@@ -71,82 +58,4 @@ func (s *Service) GetEncryptionKeyByUUID(uuid string) (*clusterModels.Encryption
 		return nil, fmt.Errorf("encryption_key_not_found: %s", uuid)
 	}
 	return &key, nil
-}
-
-func (s *Service) UpsertEncryptionKeyLocally(uuid, keyData, keyFormat string) error {
-	uuid = strings.TrimSpace(uuid)
-	if uuid == "" {
-		return fmt.Errorf("encryption_key_uuid_required")
-	}
-	if strings.TrimSpace(keyFormat) == "" {
-		keyFormat = "passphrase"
-	}
-
-	key := clusterModels.EncryptionKey{
-		UUID:      uuid,
-		KeyData:   keyData,
-		KeyFormat: keyFormat,
-	}
-
-	return s.DB.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "uuid"}},
-		DoUpdates: clause.AssignmentColumns([]string{"key_data", "key_format"}),
-	}).Create(&key).Error
-}
-
-func (s *Service) ForwardEncryptionKeyToLeader(uuid, keyData, keyFormat string) error {
-	// The periodic key scan re-sends every dataset key; skip the ones the
-	// cluster already holds unchanged instead of committing a no-op entry.
-	var existing clusterModels.EncryptionKey
-	if err := s.DB.Where("uuid = ?", strings.TrimSpace(uuid)).Limit(1).Find(&existing).Error; err == nil &&
-		existing.ID != 0 && existing.KeyData == keyData && existing.KeyFormat == keyFormat {
-		return nil
-	}
-	if s.Raft() == nil || s.Raft().State() == raft.Leader {
-		return s.ProposeEncryptionKeyUpsert(uuid, keyData, keyFormat, false)
-	}
-
-	leaderAddr, _ := s.Raft().LeaderWithID()
-	if leaderAddr == "" {
-		return fmt.Errorf("leader_unknown")
-	}
-
-	host, _, err := net.SplitHostPort(string(leaderAddr))
-	if err != nil {
-		host = string(leaderAddr)
-	}
-	host = strings.TrimSpace(host)
-	if host == "" {
-		return fmt.Errorf("leader_host_unknown")
-	}
-
-	hostname, err := utils.GetSystemHostname()
-	if err != nil || strings.TrimSpace(hostname) == "" {
-		hostname = "cluster"
-	}
-
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(hostname)
-	if err != nil {
-		return fmt.Errorf("create_cluster_token_failed: %w", err)
-	}
-
-	payload := struct {
-		UUID      string `json:"uuid"`
-		KeyData   string `json:"keyData"`
-		KeyFormat string `json:"keyFormat"`
-	}{UUID: uuid, KeyData: keyData, KeyFormat: keyFormat}
-
-	url := fmt.Sprintf("https://%s:%d/api/intra-cluster/encryption-key/discover", host, ClusterEmbeddedHTTPSPort)
-	headers := map[string]string{
-		"Accept":          "application/json",
-		"Content-Type":    "application/json",
-		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-	}
-
-	// Best-effort forwarding: if it fails, the key will be discovered on
-	// the next reconcile cycle or when this node becomes leader.
-	if err := utils.HTTPPostJSON(url, payload, headers); err != nil {
-		logger.L.Warn().Err(err).Str("uuid", uuid).Msg("forward_encryption_key_http_failed")
-	}
-	return nil
 }

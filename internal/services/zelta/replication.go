@@ -16,9 +16,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,7 +32,6 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/db/replicationguard"
-	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
 	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
@@ -154,6 +153,7 @@ var replicationEmergencyReadonlyMu sync.Mutex
 const (
 	replicationFenceObservationFile  = "replication-fence-observations.json"
 	replicationEmergencyReadonlyFile = "replication-emergency-readonly.json"
+	replicationAuthorityEpochFile    = "replication-authority-epochs.json"
 	replicationEmergencyReadonlyProp = "sylve:emergency-readonly-token"
 )
 
@@ -218,9 +218,64 @@ func (s *Service) observeReplicationLeaseAuthority(
 		authority.acceptedVersion = observedVersion
 		authority.authorityDeadline = now.Add(replicationLeaseTTL)
 		s.replicationLeaseAuthorities[policyID] = authority
+		s.recordReplicationAuthorityEpochLocked(policyID, expectedEpoch)
 		return true
 	}
 	return !authority.authorityDeadline.IsZero() && now.Before(authority.authorityDeadline)
+}
+
+// Must be durable before anything acts on the authority.
+func (s *Service) recordReplicationAuthorityEpochLocked(policyID uint, epoch uint64) {
+	epochs, err := s.replicationAuthorityEpochsLocked()
+	if err != nil || epochs[policyID] >= epoch {
+		return
+	}
+	epochs[policyID] = epoch
+	path, err := replicationAuthorityEpochPath()
+	if err == nil {
+		err = writeReplicationStateFile(path, epochs)
+	}
+	if err != nil {
+		logger.L.Warn().Err(err).Uint("policy_id", policyID).Msg("replication_authority_epoch_persist_failed")
+	}
+}
+
+func (s *Service) replicationAuthorityEpochsLocked() (map[uint]uint64, error) {
+	if s.replicationAuthorityEpochs != nil {
+		return s.replicationAuthorityEpochs, nil
+	}
+	path, err := replicationAuthorityEpochPath()
+	if err != nil {
+		return nil, err
+	}
+	epochs := make(map[uint]uint64)
+	data, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, &epochs); err != nil {
+			return nil, fmt.Errorf("decode_replication_authority_epochs_failed: %w", err)
+		}
+	}
+	s.replicationAuthorityEpochs = epochs
+	return epochs, nil
+}
+
+// Safe only while no other node can be promoted: promotion needs a target with a
+// complete generation at the owner epoch, which only sends made under authority
+// produce. The durable record covers sends not yet visible; unreadable counts as held.
+func (s *Service) replicationOwnerMayRunUnfenced(policy *clusterModels.ReplicationPolicy) bool {
+	epoch := replicationPolicyOwnerEpoch(policy)
+	for i := range policy.Targets {
+		if replicationTargetGenerationComplete(&policy.Targets[i], epoch) {
+			return false
+		}
+	}
+	s.replicationFenceMu.Lock()
+	defer s.replicationFenceMu.Unlock()
+	epochs, err := s.replicationAuthorityEpochsLocked()
+	return err == nil && epochs[policy.ID] < epoch
 }
 
 func (s *Service) invalidateReplicationLeaseAuthority(policyID uint) {
@@ -325,6 +380,14 @@ func replicationEmergencyReadonlyPath() (string, error) {
 	return filepath.Join(filepath.Dir(observationPath), replicationEmergencyReadonlyFile), nil
 }
 
+func replicationAuthorityEpochPath() (string, error) {
+	observationPath, err := replicationFenceObservationPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(observationPath), replicationAuthorityEpochFile), nil
+}
+
 func loadDurableReplicationEmergencyReadonlyChanges() (map[string]replicationEmergencyReadonlyChange, error) {
 	path, err := replicationEmergencyReadonlyPath()
 	if err != nil {
@@ -352,7 +415,11 @@ func persistDurableReplicationEmergencyReadonlyChanges(changes map[string]replic
 	if err != nil {
 		return err
 	}
-	data, err := json.Marshal(changes)
+	return writeReplicationStateFile(path, changes)
+}
+
+func writeReplicationStateFile(path string, value any) error {
+	data, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
@@ -572,9 +639,6 @@ func (s *Service) EnqueueReplicationPolicyRun(ctx context.Context, policyID uint
 	if policyID == 0 {
 		return fmt.Errorf("invalid_policy_id")
 	}
-	if s.Cluster == nil {
-		return fmt.Errorf("cluster_service_unavailable")
-	}
 
 	policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
 	if err != nil {
@@ -651,7 +715,7 @@ func (s *Service) StartReplicationScheduler(ctx context.Context) {
 }
 
 func (s *Service) ReconcileReplicationEventsAfterRestart() error {
-	if s == nil || s.Cluster == nil {
+	if s == nil {
 		return nil
 	}
 	startupCutoff := s.startedAt
@@ -788,7 +852,7 @@ func (s *Service) runReplicationLeaderControlLoop(ctx context.Context) {
 	s.resetForcedPromotionObservations()
 	defer s.resetForcedPromotionObservations()
 	runReplicationPeriodicLoop(ctx, replicationFailoverControllerInterval, func(ctx context.Context) {
-		if s.Cluster == nil || s.Cluster.Raft() == nil || s.Cluster.Raft().State() != raft.Leader {
+		if s.Cluster.Raft() == nil || s.Cluster.Raft().State() != raft.Leader {
 			s.resetForcedPromotionObservations()
 			return
 		}
@@ -804,10 +868,10 @@ func (s *Service) runReplicationLeaderControlLoop(ctx context.Context) {
 func (s *Service) runReplicationMaintenanceLoop(ctx context.Context) {
 	lastSSHSync := time.Time{}
 	runReplicationPeriodicLoop(ctx, 5*time.Second, func(ctx context.Context) {
-		s.runReplicationMutation(ctx, "replication_maintenance_tick_failed", func(context.Context) error {
+		s.runReplicationMutation(ctx, "replication_maintenance_tick_failed", func(ctx context.Context) error {
 			now := s.now().UTC()
-			if s.Cluster != nil && now.Sub(lastSSHSync) > 30*time.Second {
-				if err := s.Cluster.EnsureAndPublishLocalSSHIdentity(); err != nil {
+			if now.Sub(lastSSHSync) > 30*time.Second {
+				if err := s.Cluster.EnsureAndPublishLocalSSHIdentity(ctx); err != nil {
 					return err
 				}
 				lastSSHSync = now
@@ -1094,7 +1158,7 @@ func (s *Service) ensureReplicationTransitionEvent(
 	status string,
 	message string,
 ) (*clusterModels.ReplicationEvent, error) {
-	if policy == nil || policy.ID == 0 || s == nil || s.Cluster == nil {
+	if policy == nil || policy.ID == 0 || s == nil {
 		return nil, fmt.Errorf("replication_transition_event_context_unavailable")
 	}
 
@@ -1121,7 +1185,7 @@ func (s *Service) ensureReplicationTransitionEvent(
 		GuestID:         policy.GuestID,
 		StartedAt:       startedAt,
 	}
-	eventID, err := s.Cluster.CreateOrUpdateReplicationEvent(event, false)
+	eventID, err := s.Cluster.CreateOrUpdateReplicationEvent(event)
 	if err != nil {
 		return nil, err
 	}
@@ -1150,7 +1214,7 @@ func (s *Service) reconcileReplicationTransitionEvent(
 	policy *clusterModels.ReplicationPolicy,
 	recoveryErr error,
 ) error {
-	if policy == nil || policy.ID == 0 || s == nil || s.Cluster == nil {
+	if policy == nil || policy.ID == 0 || s == nil {
 		return nil
 	}
 
@@ -1242,7 +1306,7 @@ func (s *Service) reconcileReplicationTransitionEvent(
 			StartedAt:       startedAt,
 			CompletedAt:     &completedAt,
 		}
-		eventID, createErr := s.Cluster.CreateOrUpdateReplicationEvent(missing, false)
+		eventID, createErr := s.Cluster.CreateOrUpdateReplicationEvent(missing)
 		if createErr != nil {
 			return createErr
 		}
@@ -1301,7 +1365,7 @@ func (s *Service) reconcileReplicationTransitionEvent(
 		event.Error = recoveryErr.Error()
 	}
 
-	if _, err := s.Cluster.CreateOrUpdateReplicationEvent(*event, false); err != nil {
+	if _, err := s.Cluster.CreateOrUpdateReplicationEvent(*event); err != nil {
 		return err
 	}
 	if event.CompletedAt != nil && s.TelemetryDB != nil {
@@ -1322,7 +1386,7 @@ func (s *Service) reconcileReplicationTransitionEvent(
 }
 
 func (s *Service) failPolicyTransition(policy *clusterModels.ReplicationPolicy, transitionErr error) error {
-	if policy == nil || policy.ID == 0 || s.Cluster == nil {
+	if policy == nil || policy.ID == 0 {
 		return transitionErr
 	}
 
@@ -1354,7 +1418,6 @@ func (s *Service) failPolicyTransition(policy *clusterModels.ReplicationPolicy, 
 		policy.ID,
 		replicationPolicyOwnerEpoch(policy),
 		restoreState,
-		false,
 	); err != nil {
 		if transitionErr != nil {
 			return fmt.Errorf("%v; transition_protection_state_restore_failed: %v", transitionErr, err)
@@ -1514,7 +1577,6 @@ func (s *Service) resumeRollingBackTransition(ctx context.Context, policy *clust
 		policy.ID,
 		replicationPolicyOwnerEpoch(policy),
 		clusterModels.ReplicationProtectionStateDegraded,
-		false,
 	); err != nil {
 		return err
 	}
@@ -1591,7 +1653,7 @@ func (s *Service) resumePolicyTransition(ctx context.Context, policy *clusterMod
 }
 
 func (s *Service) runTransitionRecoveryTick(ctx context.Context) error {
-	if s.Cluster == nil || s.Cluster.Raft() == nil || s.Cluster.Raft().State() != raft.Leader {
+	if s.Cluster.Raft() == nil || s.Cluster.Raft().State() != raft.Leader {
 		return nil
 	}
 
@@ -1691,7 +1753,7 @@ func (s *Service) runReplicationSchedulerTickWithHA(
 	}
 	defer release()
 	ctx = admittedCtx
-	if s.DB == nil || s.Cluster == nil {
+	if s.DB == nil {
 		return nil
 	}
 
@@ -1755,7 +1817,7 @@ func (s *Service) runReplicationSchedulerTickWithHA(
 				DecidedAt: now, SetRuntime: true, LastStatus: "failed",
 				LastError: "invalid_cron_expr",
 			}
-			if applyErr := s.applyReplicationPolicyScheduleDecision(decision, bypassRaft); applyErr != nil {
+			if applyErr := s.Cluster.ApplyReplicationPolicyScheduleDecision(decision); applyErr != nil {
 				logger.L.Debug().Err(applyErr).Uint("policy_id", policy.ID).
 					Msg("replication_invalid_cron_decision_rejected")
 			}
@@ -1774,7 +1836,7 @@ func (s *Service) runReplicationSchedulerTickWithHA(
 				decision.LastError = haErr.Error()
 				decision.LastRunAt = &now
 			}
-			if applyErr := s.applyReplicationPolicyScheduleDecision(decision, bypassRaft); applyErr != nil {
+			if applyErr := s.Cluster.ApplyReplicationPolicyScheduleDecision(decision); applyErr != nil {
 				logger.L.Debug().Err(applyErr).Uint("policy_id", policy.ID).
 					Msg("replication_initial_schedule_decision_rejected")
 			}
@@ -1792,7 +1854,7 @@ func (s *Service) runReplicationSchedulerTickWithHA(
 				NextRunAt: &nextAt, DecidedAt: now, SetRuntime: true,
 				LastRunAt: &now, LastStatus: "blocked", LastError: haErr.Error(),
 			}
-			if applyErr := s.applyReplicationPolicyScheduleDecision(decision, bypassRaft); applyErr != nil {
+			if applyErr := s.Cluster.ApplyReplicationPolicyScheduleDecision(decision); applyErr != nil {
 				logger.L.Warn().
 					Err(applyErr).
 					Uint("policy_id", policy.ID).
@@ -1812,7 +1874,7 @@ func (s *Service) runReplicationSchedulerTickWithHA(
 				ExpectedOwnerEpoch: policy.OwnerEpoch, ExpectedNextRunAt: policy.NextRunAt,
 				NextRunAt: &nextAt, DecidedAt: now,
 			}
-			if applyErr := s.applyReplicationPolicyScheduleDecision(decision, bypassRaft); applyErr != nil {
+			if applyErr := s.Cluster.ApplyReplicationPolicyScheduleDecision(decision); applyErr != nil {
 				logger.L.Debug().Err(applyErr).Uint("policy_id", policy.ID).
 					Msg("replication_coalesce_decision_rejected")
 			}
@@ -1909,7 +1971,7 @@ func (s *Service) renewReplicationTransitionLease(
 		Version:     version,
 		LastReason:  strings.TrimSpace(reason) + "_transition_hold",
 		LastActor:   s.Cluster.LocalNodeID(),
-	}, false)
+	})
 }
 
 func (s *Service) withReplicationTransitionLeaseKeeper(
@@ -1970,10 +2032,6 @@ func (s *Service) withReplicationTransitionLeaseKeeper(
 func (s *Service) validateLocalReplicationPolicyLease(policy *clusterModels.ReplicationPolicy) error {
 	if policy == nil || policy.ID == 0 {
 		return fmt.Errorf("invalid_policy")
-	}
-	if s.Cluster == nil {
-		s.invalidateReplicationLeaseAuthority(policy.ID)
-		return fmt.Errorf("cluster_service_unavailable")
 	}
 
 	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
@@ -2236,7 +2294,7 @@ func (s *Service) adoptReturnedForceFailoverSourceAsStandby(
 	if !returnedForceFailoverSource(policy, localNodeID, expectedOwner) {
 		return nil
 	}
-	if s == nil || s.Cluster == nil {
+	if s == nil {
 		return fmt.Errorf("replication_returned_source_cluster_unavailable")
 	}
 	expectedEpoch := replicationPolicyOwnerEpoch(policy)
@@ -2565,9 +2623,6 @@ func (s *Service) runReplicationPolicyCore(ctx context.Context, policy *clusterM
 	if !replicationPolicyAllowsRuns(policy) {
 		return fmt.Errorf("replication_policy_not_runnable")
 	}
-	if s.Cluster == nil {
-		return fmt.Errorf("cluster_service_unavailable")
-	}
 	if ok, holder := s.acquireWorkloadOperation(
 		policy.GuestType,
 		policy.GuestID,
@@ -2584,9 +2639,7 @@ func (s *Service) runReplicationPolicyCore(ctx context.Context, policy *clusterM
 	defer s.releaseWorkloadOperation(policy.GuestType, policy.GuestID)
 
 	localNodeID := ""
-	if s.Cluster != nil {
-		localNodeID = strings.TrimSpace(s.Cluster.LocalNodeID())
-	}
+	localNodeID = strings.TrimSpace(s.Cluster.LocalNodeID())
 
 	runner := s.replicationRunnerNodeID(policy)
 	if runner != "" && localNodeID != "" && runner != localNodeID {
@@ -3334,7 +3387,7 @@ func (s *Service) replicationTargetSpec(
 	if identity.NodeUUID != strings.TrimSpace(targetNodeID) {
 		return nil, "", fmt.Errorf("cluster_ssh_identity_invalid: node=%s", targetNodeID)
 	}
-	if s.Cluster != nil && s.Cluster.Raft() != nil {
+	if s.Cluster.Raft() != nil {
 		if _, err := s.Cluster.ResolveCurrentRaftMember(targetNodeID); err != nil {
 			return nil, "", err
 		}
@@ -3371,8 +3424,7 @@ type replicationJailTargetProbe struct {
 
 type replicationNetworkTargetResult struct {
 	networkAttachment.TargetResult
-	BootCompatibilityChecked bool     `json:"bootCompatibilityChecked"`
-	BootErrors               []string `json:"bootErrors"`
+	BootErrors []string `json:"bootErrors"`
 }
 
 type replicationTargetNetworkCheck struct {
@@ -3496,7 +3548,7 @@ func (s *Service) buildGuestTargetNetworkCheck(
 			return replicationTargetNetworkCheck{}, nil
 		}
 		return replicationTargetNetworkCheck{
-			action: "migration/check-vm-target", payload: probe,
+			action: "migration-check-vm-target", payload: probe,
 		}, nil
 	case clusterModels.ReplicationGuestTypeJail:
 		probe, err := s.buildReplicationJailTargetProbe(guestID)
@@ -3507,7 +3559,7 @@ func (s *Service) buildGuestTargetNetworkCheck(
 			return replicationTargetNetworkCheck{}, nil
 		}
 		return replicationTargetNetworkCheck{
-			action: "migration/check-jail-target", payload: probe,
+			action: "migration-check-jail-target", payload: probe,
 		}, nil
 	default:
 		return replicationTargetNetworkCheck{}, fmt.Errorf("invalid_replication_guest_type")
@@ -3532,54 +3584,23 @@ func (s *Service) validateReplicationTargetNetworkCheck(
 		return nil
 	}
 
-	targetAPI, err := s.resolveReplicationNodeAPI(targetNodeID)
-	if err != nil {
-		return fmt.Errorf("replication_target_network_api_lookup_failed: %w", err)
-	}
-	body, err := s.forwardReplicationPolicyControlReadAtAPIContext(
-		ctx,
-		targetAPI,
-		check.action,
-		check.payload,
-		10*time.Second,
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	result, err := clusterService.CallNode[any, replicationNetworkTargetResult](
+		ctx, s.Cluster, targetNodeID, check.action, check.payload,
 	)
 	if err != nil {
 		return fmt.Errorf("replication_target_network_check_failed: %w", err)
 	}
-
-	var response struct {
-		Status  string                         `json:"status"`
-		Message string                         `json:"message"`
-		Error   string                         `json:"error"`
-		Data    replicationNetworkTargetResult `json:"data"`
-	}
-	if err := json.Unmarshal(body, &response); err != nil {
-		return fmt.Errorf("replication_target_network_check_decode_failed: %w", err)
-	}
-	if !strings.EqualFold(strings.TrimSpace(response.Status), "success") {
-		return fmt.Errorf(
-			"replication_target_network_check_rejected: message=%s error=%s",
-			strings.TrimSpace(response.Message),
-			strings.TrimSpace(response.Error),
-		)
-	}
-	if !response.Data.NetworkCompatibilityChecked {
-		return fmt.Errorf("replication_target_network_check_unsupported")
-	}
-	if probe, ok := check.payload.(replicationVMTargetProbe); ok && probe.BootRequirement != nil {
-		if !response.Data.BootCompatibilityChecked {
-			return fmt.Errorf("replication_target_boot_check_unsupported")
-		}
-		if len(response.Data.BootErrors) > 0 {
-			return fmt.Errorf("replication_target_boot_incompatible: %s", strings.Join(response.Data.BootErrors, "; "))
-		}
+	if probe, ok := check.payload.(replicationVMTargetProbe); ok && probe.BootRequirement != nil && len(result.BootErrors) > 0 {
+		return fmt.Errorf("replication_target_boot_incompatible: %s", strings.Join(result.BootErrors, "; "))
 	}
 
-	problems := make([]string, 0, len(response.Data.MissingSwitches)+len(response.Data.IncompatibleSwitches))
-	for _, item := range response.Data.MissingSwitches {
+	problems := make([]string, 0, len(result.MissingSwitches)+len(result.IncompatibleSwitches))
+	for _, item := range result.MissingSwitches {
 		problems = append(problems, "missing_switch="+strings.TrimSpace(item))
 	}
-	for _, item := range response.Data.IncompatibleSwitches {
+	for _, item := range result.IncompatibleSwitches {
 		problems = append(problems, "incompatible_switch="+strings.TrimSpace(item))
 	}
 	if len(problems) != 0 {
@@ -4247,84 +4268,16 @@ func (s *Service) updateReplicationPolicyResult(policy *clusterModels.Replicatio
 		ID: policy.ID, LastRunAt: &now, LastStatus: lastStatus,
 		LastError: lastError, NextRunAt: next,
 	}
-	if s.Cluster != nil {
-		if err := s.Cluster.ProposeReplicationPolicyStateUpdate(update, true); err != nil {
-			logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Msg("failed_to_update_replication_policy_state")
-		}
-		return
+	if err := s.Cluster.ProposeReplicationPolicyStateUpdate(update); err != nil {
+		logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Msg("failed_to_update_replication_policy_state")
 	}
-	_ = s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Updates(map[string]any{
-		"last_run_at": now, "last_status": lastStatus, "last_error": lastError, "next_run_at": next,
-	}).Error
-}
-
-func (s *Service) forwardReplicationPolicyStateToLeader(update clusterService.ReplicationPolicyRuntimeState) error {
-	if s == nil || s.Cluster == nil {
-		return fmt.Errorf("cluster_service_unavailable")
-	}
-	if s.Cluster.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-
-	_, leaderID := s.Cluster.Raft().LeaderWithID()
-	leaderNodeID := strings.TrimSpace(string(leaderID))
-	if leaderNodeID == "" {
-		return fmt.Errorf("leader_unknown")
-	}
-
-	return s.forwardReplicationPolicyControl(leaderNodeID, "replication-policy-state", update, 5*time.Second)
 }
 
 func (s *Service) publishReplicationTargetReadiness(update clusterModels.ReplicationTargetReadinessUpdate) error {
-	if s == nil || s.Cluster == nil {
+	if s == nil {
 		return fmt.Errorf("cluster_service_unavailable")
 	}
-	bypassRaft := s.Cluster.Standalone()
-	err := s.Cluster.UpdateReplicationTargetReadiness(update, bypassRaft)
-	if err == nil {
-		return nil
-	}
-	if bypassRaft || !isReplicationRaftNotLeaderError(err) {
-		return err
-	}
-	_, leaderID := s.Cluster.Raft().LeaderWithID()
-	leaderNodeID := strings.TrimSpace(string(leaderID))
-	if leaderNodeID == "" {
-		return fmt.Errorf("leader_unknown")
-	}
-	return s.forwardReplicationPolicyControlWithRetry(
-		leaderNodeID,
-		"replication-target-readiness",
-		map[string]any{
-			"policyId":              update.PolicyID,
-			"nodeId":                update.NodeID,
-			"expectedOwnerEpoch":    update.ExpectedOwnerEpoch,
-			"evaluatedAt":           update.EvaluatedAt,
-			"ready":                 update.Ready,
-			"generationId":          update.GenerationID,
-			"manifestHash":          update.ManifestHash,
-			"requiredDatasetCount":  update.RequiredDatasetCount,
-			"completedDatasetCount": update.CompletedDatasetCount,
-			"lastVerifiedAt":        update.LastVerifiedAt,
-			"readyUntil":            update.ReadyUntil,
-			"lastError":             update.LastError,
-			"transitionRunId":       update.TransitionRunID,
-		},
-		5*time.Second,
-	)
-}
-
-func isReplicationRaftNotLeaderError(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, raft.ErrNotLeader) {
-		return true
-	}
-	message := strings.ToLower(strings.TrimSpace(err.Error()))
-	return strings.Contains(message, "not_leader") ||
-		strings.Contains(message, "not the leader") ||
-		strings.Contains(message, "not leader")
+	return s.callLeaderWithRetry(context.Background(), "replication-target-readiness", update)
 }
 
 func (s *Service) finalizeReplicationEvent(event *clusterModels.ReplicationEvent, runErr error) error {
@@ -4677,10 +4630,10 @@ func (s *Service) createFailoverWarningOnce(
 	ownerNodeID string,
 	event clusterModels.ReplicationEvent,
 ) {
-	if s == nil || s.Cluster == nil || !s.reserveFailoverWarning(policyID, ownerNodeID, event.Message) {
+	if s == nil || !s.reserveFailoverWarning(policyID, ownerNodeID, event.Message) {
 		return
 	}
-	if _, err := s.Cluster.CreateOrUpdateReplicationEvent(event, false); err != nil {
+	if _, err := s.Cluster.CreateOrUpdateReplicationEvent(event); err != nil {
 		s.releaseFailoverWarning(policyID, ownerNodeID, event.Message)
 		logger.L.Warn().Err(err).
 			Uint("policy_id", policyID).
@@ -4708,7 +4661,7 @@ func replicationPolicyAllowsLeaseRenewal(policy *clusterModels.ReplicationPolicy
 }
 
 func (s *Service) runReplicationLeaseRenewalTick(ctx context.Context) error {
-	if s.Cluster == nil || s.Cluster.Raft() == nil || s.Cluster.Raft().State() != raft.Leader {
+	if s.Cluster.Raft() == nil || s.Cluster.Raft().State() != raft.Leader {
 		return nil
 	}
 	if ctx != nil {
@@ -4801,7 +4754,6 @@ func (s *Service) runReplicationLeaseRenewalTick(ctx context.Context) error {
 			policy.ID,
 			replicationPolicyOwnerEpoch(policy),
 			desiredState,
-			false,
 		); err != nil {
 			logger.L.Warn().Err(err).
 				Uint("policy_id", policy.ID).
@@ -4813,7 +4765,7 @@ func (s *Service) runReplicationLeaseRenewalTick(ctx context.Context) error {
 }
 
 func (s *Service) runFailoverControllerTick(ctx context.Context) error {
-	if s.Cluster == nil || s.Cluster.Raft() == nil || s.Cluster.Raft().State() != raft.Leader {
+	if s.Cluster.Raft() == nil || s.Cluster.Raft().State() != raft.Leader {
 		s.resetForcedPromotionObservations()
 		return nil
 	}
@@ -5261,9 +5213,6 @@ func (s *Service) isClusterNodeOnline(nodeID string) (bool, error) {
 	if nodeID == "" {
 		return false, fmt.Errorf("replication_target_node_required")
 	}
-	if s.Cluster == nil {
-		return false, fmt.Errorf("cluster_service_unavailable")
-	}
 
 	nodes, err := s.Cluster.Nodes()
 	if err != nil {
@@ -5308,7 +5257,7 @@ func replicationPolicyHasTargetNode(policy *clusterModels.ReplicationPolicy, nod
 }
 
 func (s *Service) hasFailoverQuorum(nodeByID map[string]clusterModels.ClusterNode) (bool, error) {
-	if s.Cluster == nil || s.Cluster.Raft() == nil || s.Cluster.Raft().State() != raft.Leader {
+	if s.Cluster.Raft() == nil || s.Cluster.Raft().State() != raft.Leader {
 		return false, fmt.Errorf("not_leader")
 	}
 	if err := s.Cluster.Raft().VerifyLeader().Error(); err != nil {
@@ -5352,9 +5301,6 @@ func (s *Service) EnqueueReplicationPolicyFailover(
 ) error {
 	if policyID == 0 {
 		return fmt.Errorf("invalid_policy_id")
-	}
-	if s.Cluster == nil {
-		return fmt.Errorf("cluster_service_unavailable")
 	}
 	if s.Cluster.Raft() != nil && s.Cluster.Raft().State() != raft.Leader {
 		return fmt.Errorf("not_leader")
@@ -5487,7 +5433,6 @@ func (s *Service) EnqueueReplicationPolicyFailover(
 			Transition:         transition,
 			ProtectionState:    clusterModels.ReplicationProtectionStateSuspended,
 		},
-		false,
 	); err != nil {
 		return err
 	}
@@ -5535,9 +5480,6 @@ func (s *Service) requestReplicationPolicyFailover(
 ) error {
 	if policyID == 0 {
 		return fmt.Errorf("invalid_policy_id")
-	}
-	if s.Cluster == nil {
-		return fmt.Errorf("cluster_service_unavailable")
 	}
 	if s.Cluster.Raft() != nil && s.Cluster.Raft().State() != raft.Leader {
 		return fmt.Errorf("not_leader")
@@ -5808,7 +5750,7 @@ func (s *Service) runPolicyOwnershipTransition(
 				})
 			}
 		}
-		if _, err := s.Cluster.CreateOrUpdateReplicationEvent(*transitionEvent, false); err != nil {
+		if _, err := s.Cluster.CreateOrUpdateReplicationEvent(*transitionEvent); err != nil {
 			logger.L.Warn().Err(err).
 				Uint("policy_id", policy.ID).
 				Uint("event_id", transitionEvent.ID).
@@ -5926,7 +5868,6 @@ func (s *Service) runPolicyOwnershipTransition(
 			policy.ID,
 			replicationPolicyOwnerEpoch(policy),
 			restoreState,
-			false,
 		); stateErr != nil {
 			return appendStepError(transitionErr, "transition_protection_state_restore_failed", stateErr)
 		}
@@ -5964,7 +5905,6 @@ func (s *Service) runPolicyOwnershipTransition(
 			Transition:         transition,
 			ProtectionState:    clusterModels.ReplicationProtectionStateSuspended,
 		},
-		false,
 	); err != nil {
 		completedAt := s.now().UTC()
 		failedEvent, findErr := s.findReplicationTransitionEvent(
@@ -5997,7 +5937,7 @@ func (s *Service) runPolicyOwnershipTransition(
 			failedEvent.Message = reason + "_transition_checkpoint_failed"
 			failedEvent.Error = err.Error()
 			failedEvent.CompletedAt = &completedAt
-			if eventID, eventErr := s.Cluster.CreateOrUpdateReplicationEvent(*failedEvent, false); eventErr != nil {
+			if eventID, eventErr := s.Cluster.CreateOrUpdateReplicationEvent(*failedEvent); eventErr != nil {
 				logger.L.Warn().Err(eventErr).
 					Uint("policy_id", policy.ID).
 					Msg("replication_rejected_transition_event_create_failed")
@@ -6039,7 +5979,6 @@ func (s *Service) runPolicyOwnershipTransition(
 		policy.GuestID,
 		targetNodeID,
 		transition.RunID,
-		false,
 	); err != nil {
 		updateTransitionEvent(
 			replicationEventStatusDemoting,
@@ -6207,6 +6146,7 @@ func (s *Service) runPolicyOwnershipTransition(
 						)
 					}
 					return s.forwardCatchupReplicationPolicy(
+						operationCtx,
 						previousOwner,
 						policy.ID,
 						targetNodeID,
@@ -6346,7 +6286,6 @@ func (s *Service) runPolicyOwnershipTransition(
 			Transition:                   transition,
 			ProtectionState:              clusterModels.ReplicationProtectionStateDegraded,
 		},
-		false,
 	)
 	if commitErr != nil {
 		// Raft can report leadership loss after the command was accepted. Its
@@ -6472,23 +6411,20 @@ func (s *Service) forwardActivateReplicationPolicy(
 	transitionRunID string,
 	desiredRunning *bool,
 ) error {
-	return s.forwardReplicationPolicyControlWithRetry(nodeID, "activate", map[string]any{
-		"policyId":        policyID,
-		"ownerEpoch":      ownerEpoch,
-		"transitionRunId": strings.TrimSpace(transitionRunID),
-		"desiredRunning":  desiredRunning,
+	return s.callNodeWithRetry(context.Background(), nodeID, "replication-activate", transitionRequest{
+		PolicyID: policyID, OwnerEpoch: ownerEpoch,
+		TransitionRunID: strings.TrimSpace(transitionRunID), DesiredRunning: desiredRunning,
 	}, replicationControlDefaultTimeout)
 }
 
 func (s *Service) forwardDemoteReplicationPolicy(nodeID string, policyID uint, ownerEpoch uint64, transitionRunID string) error {
-	return s.forwardReplicationPolicyControlWithRetry(nodeID, "demote", map[string]any{
-		"policyId":        policyID,
-		"ownerEpoch":      ownerEpoch,
-		"transitionRunId": strings.TrimSpace(transitionRunID),
+	return s.callNodeWithRetry(context.Background(), nodeID, "replication-demote", transitionRequest{
+		PolicyID: policyID, OwnerEpoch: ownerEpoch, TransitionRunID: strings.TrimSpace(transitionRunID),
 	}, replicationControlDefaultTimeout)
 }
 
 func (s *Service) forwardCatchupReplicationPolicy(
+	ctx context.Context,
 	nodeID string,
 	policyID uint,
 	targetNodeID string,
@@ -6496,12 +6432,9 @@ func (s *Service) forwardCatchupReplicationPolicy(
 	transitionRunID string,
 	generationID string,
 ) error {
-	return s.forwardReplicationPolicyControlWithRetry(nodeID, "catchup", map[string]any{
-		"policyId":        policyID,
-		"targetNodeId":    targetNodeID,
-		"ownerEpoch":      ownerEpoch,
-		"transitionRunId": strings.TrimSpace(transitionRunID),
-		"generationId":    strings.TrimSpace(generationID),
+	return s.callNodeWithRetry(ctx, nodeID, "replication-catchup", transitionRequest{
+		PolicyID: policyID, TargetNodeID: targetNodeID, OwnerEpoch: ownerEpoch,
+		TransitionRunID: strings.TrimSpace(transitionRunID), GenerationID: strings.TrimSpace(generationID),
 	}, replicationControlCatchupTimeout)
 }
 
@@ -6511,92 +6444,41 @@ func (s *Service) forwardReplicationPolicyRuntimeState(
 	ownerEpoch uint64,
 	transitionRunID string,
 ) (bool, error) {
-	body, err := s.forwardReplicationPolicyControlRead(
-		nodeID,
-		"replication-runtime-state",
-		map[string]any{
-			"policyId":        policyID,
-			"ownerEpoch":      ownerEpoch,
-			"transitionRunId": strings.TrimSpace(transitionRunID),
-		},
-		replicationControlDefaultTimeout,
-	)
-	if err != nil {
-		return false, err
-	}
-	var response struct {
-		Data struct {
-			Running bool `json:"running"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &response); err != nil {
-		return false, fmt.Errorf("decode_replication_runtime_state_failed: %w", err)
-	}
-	return response.Data.Running, nil
+	ctx, cancel := context.WithTimeout(context.Background(), replicationControlDefaultTimeout)
+	defer cancel()
+	return clusterService.CallNode[transitionRequest, bool](ctx, s.Cluster, nodeID, "replication-runtime-state", transitionRequest{
+		PolicyID: policyID, OwnerEpoch: ownerEpoch, TransitionRunID: strings.TrimSpace(transitionRunID),
+	})
 }
 
-func (s *Service) forwardCleanupReplicationPolicyDelete(
+func (s *Service) cleanupReplicationPolicyDeleteOn(
 	ctx context.Context,
 	nodeID string,
 	policyID uint,
 	expectedOwnerEpoch uint64,
-	minimumRaftAppliedIndex uint64,
 ) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	payload := clusterServiceInterfaces.ReplicationPolicyDeleteCleanupRequest{
-		PolicyID:                policyID,
-		ExpectedOwnerEpoch:      expectedOwnerEpoch,
-		MinimumRaftAppliedIndex: minimumRaftAppliedIndex,
-	}
-	var lastErr error
+	request := transitionRequest{PolicyID: policyID, OwnerEpoch: expectedOwnerEpoch}
+	var err error
 	for attempt := 0; attempt < replicationControlForwardAttempts; attempt++ {
-		lastErr = s.forwardReplicationPolicyControlContext(
-			ctx,
-			nodeID,
-			"cleanup-policy-delete",
-			payload,
-			replicationControlDefaultTimeout,
-		)
-		if lastErr == nil || !replicationPolicyDeleteCleanupForwardRetryable(lastErr) {
-			return lastErr
-		}
-		if attempt == replicationControlForwardAttempts-1 {
+		err = s.callNode(ctx, nodeID, "replication-delete-cleanup", request, replicationControlDefaultTimeout)
+		if err == nil || !replicationPolicyDeleteCleanupRetryable(err) || attempt == replicationControlForwardAttempts-1 {
 			break
 		}
-
-		backoff := replicationControlForwardBackoff * time.Duration(attempt+1)
-		timer := time.NewTimer(backoff)
+		timer := time.NewTimer(replicationControlForwardBackoff * time.Duration(attempt+1))
 		select {
 		case <-ctx.Done():
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
+			timer.Stop()
 			return fmt.Errorf("replication_policy_delete_cleanup_forward_canceled: %w", ctx.Err())
 		case <-timer.C:
 		}
 	}
-	return lastErr
+	return err
 }
 
-func replicationPolicyDeleteCleanupForwardRetryable(err error) bool {
-	if err == nil {
-		return false
-	}
-	lowerErr := strings.ToLower(err.Error())
-	for _, marker := range []string{
-		"failed_status_400",
-		"failed_status_401",
-		"failed_status_403",
-		"failed_status_404",
-		"failed_status_409",
-		"failed_status_422",
-	} {
-		if strings.Contains(lowerErr, marker) {
+func replicationPolicyDeleteCleanupRetryable(err error) bool {
+	text := err.Error()
+	for _, final := range []string{"invalid_request", "invalid_policy_id", "delete_authority", "policy_not_deleting"} {
+		if strings.Contains(text, final) {
 			return false
 		}
 	}
@@ -6612,7 +6494,7 @@ func (s *Service) rebindReplicationGuestBackupJobRunners(
 	policy *clusterModels.ReplicationPolicy,
 	runnerNodeID string,
 ) error {
-	if s == nil || s.Cluster == nil || policy == nil || policy.ID == 0 {
+	if s == nil || policy == nil || policy.ID == 0 {
 		return nil
 	}
 	if strings.TrimSpace(runnerNodeID) == "" ||
@@ -6636,41 +6518,34 @@ func (s *Service) PrepareGuestBackupJobRunnerRebind(
 	newRunnerNodeID string,
 	operationToken string,
 ) error {
-	guestType = strings.ToLower(strings.TrimSpace(guestType))
-	newRunnerNodeID = strings.TrimSpace(newRunnerNodeID)
-	operationToken = strings.TrimSpace(operationToken)
-	if guestType == "" || guestID == 0 || newRunnerNodeID == "" || operationToken == "" {
+	request := clusterService.BackupJobRunnerRebindPrepareRequest{
+		GuestType:       strings.ToLower(strings.TrimSpace(guestType)),
+		GuestID:         guestID,
+		NewRunnerNodeID: strings.TrimSpace(newRunnerNodeID),
+		OperationToken:  strings.TrimSpace(operationToken),
+	}
+	if request.GuestType == "" || guestID == 0 || request.NewRunnerNodeID == "" || request.OperationToken == "" {
 		return fmt.Errorf("invalid_backup_job_runner_rebind_input")
 	}
-	if s == nil || s.Cluster == nil {
+	if s == nil {
 		return fmt.Errorf("cluster_service_unavailable")
 	}
-	if s.Cluster.Raft() == nil {
-		return s.Cluster.PrepareBackupJobRunnerRebind(
-			ctx, guestType, guestID, newRunnerNodeID, operationToken, true,
-		)
+	return s.callLeaderWithRetry(ctx, "backup-job-runner-rebind-prepare", request)
+}
+
+type reassignOwnerRequest struct {
+	GuestType      string `json:"guestType"`
+	GuestID        uint   `json:"guestId"`
+	NewOwnerNodeID string `json:"newOwnerNodeId"`
+	OperationToken string `json:"operationToken"`
+	OwnershipOnly  bool   `json:"ownershipOnly"`
+}
+
+func (s *Service) reassignOwnerCall(ctx context.Context, _ string, req reassignOwnerRequest) (struct{}, error) {
+	if req.OwnershipOnly {
+		return struct{}{}, s.moveGuestPlacementOwnership(ctx, req.GuestType, req.GuestID, req.NewOwnerNodeID, req.OperationToken)
 	}
-	if s.Cluster.Raft().State() != raft.Leader {
-		_, leaderID := s.Cluster.Raft().LeaderWithID()
-		leaderNodeID := strings.TrimSpace(string(leaderID))
-		if leaderNodeID == "" {
-			return fmt.Errorf("leader_not_available")
-		}
-		return s.forwardRaftVoterControlWithRetry(
-			leaderNodeID,
-			"backup-job-runner-rebind-prepare",
-			map[string]any{
-				"guestType":       guestType,
-				"guestId":         guestID,
-				"newRunnerNodeId": newRunnerNodeID,
-				"operationToken":  operationToken,
-			},
-			replicationControlDefaultTimeout,
-		)
-	}
-	return s.Cluster.PrepareBackupJobRunnerRebind(
-		ctx, guestType, guestID, newRunnerNodeID, operationToken, false,
-	)
+	return struct{}{}, s.migrateGuestOwnershipOnLeader(ctx, req.GuestType, req.GuestID, req.NewOwnerNodeID, req.OperationToken)
 }
 
 func (s *Service) MoveGuestIdentityOwner(
@@ -6680,36 +6555,20 @@ func (s *Service) MoveGuestIdentityOwner(
 	newOwnerNodeID string,
 	operationToken string,
 ) error {
-	guestType = strings.ToLower(strings.TrimSpace(guestType))
-	newOwnerNodeID = strings.TrimSpace(newOwnerNodeID)
-	operationToken = strings.TrimSpace(operationToken)
-	if guestType == "" || guestID == 0 || newOwnerNodeID == "" || operationToken == "" {
+	request := reassignOwnerRequest{
+		GuestType:      strings.ToLower(strings.TrimSpace(guestType)),
+		GuestID:        guestID,
+		NewOwnerNodeID: strings.TrimSpace(newOwnerNodeID),
+		OperationToken: strings.TrimSpace(operationToken),
+		OwnershipOnly:  true,
+	}
+	if request.GuestType == "" || guestID == 0 || request.NewOwnerNodeID == "" || request.OperationToken == "" {
 		return fmt.Errorf("invalid_migrate_identity_ownership_input")
 	}
-	if s == nil || s.DB == nil || s.Cluster == nil || s.Cluster.Raft() == nil {
+	if s == nil || s.DB == nil || s.Cluster.Raft() == nil {
 		return fmt.Errorf("cluster_service_unavailable")
 	}
-
-	if s.Cluster.Raft().State() != raft.Leader {
-		_, leaderID := s.Cluster.Raft().LeaderWithID()
-		leaderNodeID := strings.TrimSpace(string(leaderID))
-		if leaderNodeID == "" {
-			return fmt.Errorf("leader_not_available")
-		}
-		return s.forwardRaftVoterControlWithRetry(
-			leaderNodeID,
-			"replication-reassign-owner",
-			map[string]any{
-				"guest_type":        guestType,
-				"guest_id":          guestID,
-				"new_owner_node_id": newOwnerNodeID,
-				"operation_token":   operationToken,
-				"ownership_only":    true,
-			},
-			replicationControlDefaultTimeout,
-		)
-	}
-	return s.moveGuestPlacementOwnership(ctx, guestType, guestID, newOwnerNodeID, operationToken)
+	return s.callLeaderWithRetry(ctx, "replication-reassign-owner", request)
 }
 
 func (s *Service) moveGuestPlacementOwnership(
@@ -6757,33 +6616,30 @@ func (s *Service) MigrateGuestOwnership(
 	newOwnerNodeID string,
 	operationTokens ...string,
 ) error {
-	guestType = strings.ToLower(strings.TrimSpace(guestType))
-	newOwnerNodeID = strings.TrimSpace(newOwnerNodeID)
-	operationToken := ""
-	if len(operationTokens) == 1 {
-		operationToken = strings.TrimSpace(operationTokens[0])
+	request := reassignOwnerRequest{
+		GuestType:      strings.ToLower(strings.TrimSpace(guestType)),
+		GuestID:        guestID,
+		NewOwnerNodeID: strings.TrimSpace(newOwnerNodeID),
 	}
-	if guestType == "" || guestID == 0 || newOwnerNodeID == "" || operationToken == "" {
+	if len(operationTokens) == 1 {
+		request.OperationToken = strings.TrimSpace(operationTokens[0])
+	}
+	if request.GuestType == "" || guestID == 0 || request.NewOwnerNodeID == "" || request.OperationToken == "" {
 		return fmt.Errorf("invalid_migrate_ownership_input")
 	}
-	if s == nil || s.DB == nil || s.Cluster == nil || s.Cluster.Raft() == nil {
+	if s == nil || s.DB == nil || s.Cluster.Raft() == nil {
 		return fmt.Errorf("cluster_service_unavailable")
 	}
+	return s.callLeaderWithRetry(ctx, "replication-reassign-owner", request)
+}
 
-	if s.Cluster.Raft().State() != raft.Leader {
-		_, leaderID := s.Cluster.Raft().LeaderWithID()
-		leaderNodeID := strings.TrimSpace(string(leaderID))
-		if leaderNodeID == "" {
-			return fmt.Errorf("leader_not_available")
-		}
-		return s.forwardRaftVoterControlWithRetry(leaderNodeID, "replication-reassign-owner", map[string]any{
-			"guest_type":        guestType,
-			"guest_id":          guestID,
-			"new_owner_node_id": newOwnerNodeID,
-			"operation_token":   operationToken,
-		}, replicationControlDefaultTimeout)
-	}
-
+func (s *Service) migrateGuestOwnershipOnLeader(
+	ctx context.Context,
+	guestType string,
+	guestID uint,
+	newOwnerNodeID string,
+	operationToken string,
+) error {
 	// Normal migrations prepared this plan before cutover. Preparing here as
 	// well safely upgrades/reconciles a cutover task that predates the plan or
 	// whose original proposal outcome was ambiguous.
@@ -6792,7 +6648,7 @@ func (s *Service) MigrateGuestOwnership(
 	); err != nil {
 		return fmt.Errorf("prepare_backup_job_runner_rebind_failed: %w", err)
 	}
-	if err := s.Cluster.ReadyBackupJobRunnerRebind(operationToken, false); err != nil {
+	if err := s.Cluster.ReadyBackupJobRunnerRebind(operationToken); err != nil {
 		return fmt.Errorf("ready_backup_job_runner_rebind_failed: %w", err)
 	}
 
@@ -6827,7 +6683,7 @@ func (s *Service) AcquireGuestMigrationInterlock(
 	if guestType == "" || guestID == 0 || targetNodeID == "" || taskID == 0 || token == "" {
 		return fmt.Errorf("invalid_migration_interlock_input")
 	}
-	if s.Cluster == nil || s.Cluster.Raft() == nil {
+	if s.Cluster.Raft() == nil {
 		return fmt.Errorf("cluster_service_unavailable")
 	}
 	ownerNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
@@ -6903,50 +6759,28 @@ func (s *Service) waitGuestMigrationInterlockApplied(
 	targetNodeID = strings.TrimSpace(targetNodeID)
 	token = strings.TrimSpace(token)
 	expectedState = strings.TrimSpace(expectedState)
-	if guestType == "" || guestID == 0 || targetNodeID == "" || token == "" || expectedState == "" || s.DB == nil || s.Cluster == nil {
+	if guestType == "" || guestID == 0 || targetNodeID == "" || token == "" || expectedState == "" || s.DB == nil {
 		return fmt.Errorf("invalid_migration_interlock_barrier_input")
 	}
 	barrierCtx, cancel := context.WithTimeout(ctx, replicationControlDefaultTimeout)
 	defer cancel()
 	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
+	request := migrationInterlockRequest{
+		GuestType: guestType, GuestID: guestID, State: expectedState, Token: token, TargetNodeID: targetNodeID,
+	}
 	var lastErr error
 	for {
-		var localOperation clusterModels.ReplicationGuestOperation
-		localErr := s.DB.Where("guest_type = ? AND guest_id = ?", guestType, guestID).
-			First(&localOperation).Error
-		localApplied := localErr == nil &&
-			localOperation.Operation == clusterModels.ReplicationGuestOperationMigration &&
-			localOperation.State == expectedState &&
-			strings.TrimSpace(localOperation.Token) == token &&
-			strings.TrimSpace(localOperation.TargetNodeID) == targetNodeID
-		if !localApplied {
-			lastErr = localErr
-			if lastErr == nil {
-				lastErr = fmt.Errorf("local_migration_interlock_not_applied")
-			}
-		} else if !waitForTarget || targetNodeID == localNodeID {
-			return nil
-		} else {
-			_, remoteErr := s.forwardReplicationPolicyControlRead(
-				targetNodeID,
-				"replication-guest-operation-status",
-				map[string]any{
-					"guestType": guestType, "guestId": guestID, "operation": clusterModels.ReplicationGuestOperationMigration,
-					"state": expectedState, "token": token, "targetNodeId": targetNodeID,
-				},
-				5*time.Second,
-			)
-			if remoteErr == nil {
+		if lastErr = s.migrationInterlockApplied(request); lastErr == nil {
+			if !waitForTarget || targetNodeID == localNodeID {
 				return nil
 			}
-			lastErr = remoteErr
+			if lastErr = s.callNode(barrierCtx, targetNodeID, "migration-interlock-applied", request, 5*time.Second); lastErr == nil {
+				return nil
+			}
 		}
 
 		select {
 		case <-barrierCtx.Done():
-			if lastErr == nil {
-				lastErr = barrierCtx.Err()
-			}
 			return fmt.Errorf("migration_interlock_apply_barrier_timeout: %w", lastErr)
 		case <-time.After(250 * time.Millisecond):
 		}
@@ -6961,7 +6795,7 @@ func (s *Service) acquireReplicationEmergencyRestoreGuard(
 ) error {
 	guestType = strings.ToLower(strings.TrimSpace(guestType))
 	token = strings.TrimSpace(token)
-	if s == nil || s.Cluster == nil || s.Cluster.Raft() == nil || guestType == "" || guestID == 0 || token == "" {
+	if s == nil || s.Cluster.Raft() == nil || guestType == "" || guestID == 0 || token == "" {
 		return fmt.Errorf("replication_emergency_restore_guard_unavailable")
 	}
 	ownerNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
@@ -7077,62 +6911,17 @@ func (s *Service) applyGuestMigrationInterlock(
 	acquire clusterModels.ReplicationGuestOperationAcquire,
 	transition clusterModels.ReplicationGuestOperationTransition,
 ) error {
-	if s.Cluster == nil || s.Cluster.Raft() == nil {
-		return fmt.Errorf("cluster_service_unavailable")
-	}
-	payload := map[string]any{
-		"action":       "acquire",
-		"guestType":    acquire.GuestType,
-		"guestId":      acquire.GuestID,
-		"operation":    acquire.Operation,
-		"token":        acquire.Token,
-		"ownerNodeId":  acquire.OwnerNodeID,
-		"targetNodeId": acquire.TargetNodeID,
-		"taskId":       acquire.TaskID,
-	}
-	if action != "acquire" {
-		payload = map[string]any{
-			"action":       action,
-			"guestType":    transition.GuestType,
-			"guestId":      transition.GuestID,
-			"operation":    transition.Operation,
-			"token":        transition.Token,
-			"targetNodeId": transition.TargetNodeID,
-		}
-	}
-
+	request := clusterService.ReplicationGuestOperationRequest{Action: action, Acquire: acquire, Transition: transition}
 	var lastErr error
 	for attempt := 0; attempt < replicationControlForwardAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if s.Cluster.Raft().State() == raft.Leader {
-			switch action {
-			case "acquire":
-				lastErr = s.Cluster.AcquireReplicationGuestOperation(acquire, false)
-			case "seal":
-				lastErr = s.Cluster.SealReplicationGuestOperation(transition, false)
-			case "abort":
-				lastErr = s.Cluster.AbortReplicationGuestOperation(transition, false)
-			case "complete":
-				lastErr = s.Cluster.CompleteReplicationGuestOperation(transition, false)
-			default:
-				return fmt.Errorf("invalid_replication_guest_operation_action")
-			}
-		} else {
-			_, leaderID := s.Cluster.Raft().LeaderWithID()
-			leaderNodeID := strings.TrimSpace(string(leaderID))
-			if leaderNodeID == "" {
-				lastErr = fmt.Errorf("leader_not_available")
-			} else {
-				lastErr = s.forwardReplicationPolicyControl(
-					leaderNodeID,
-					"replication-guest-operation",
-					payload,
-					replicationControlDefaultTimeout,
-				)
-			}
-		}
+		callCtx, cancel := context.WithTimeout(ctx, replicationControlDefaultTimeout)
+		_, lastErr = clusterService.CallLeader[clusterService.ReplicationGuestOperationRequest, struct{}](
+			callCtx, s.Cluster, "replication-guest-operation", request,
+		)
+		cancel()
 		if lastErr == nil {
 			return nil
 		}
@@ -7177,7 +6966,7 @@ func (s *Service) reassignDisabledReplicationPolicyOwner(
 		OperationToken:       strings.TrimSpace(operationToken),
 		OccurredAt:           now,
 	}
-	if err := s.Cluster.ReassignDisabledReplicationPolicyOwner(payload, false); err != nil {
+	if err := s.Cluster.ReassignDisabledReplicationPolicyOwner(payload); err != nil {
 		latest, lookupErr := s.Cluster.GetReplicationPolicyByID(policy.ID)
 		if lookupErr != nil || latest == nil || latest.Enabled ||
 			replicationPolicyOwnerNode(latest) != newOwnerNodeID ||
@@ -7198,175 +6987,12 @@ func (s *Service) enqueueReplicationValidationRun(ctx context.Context, policyID 
 	if targetNodeID == "" {
 		return fmt.Errorf("replication_target_node_required")
 	}
-	if s.Cluster == nil {
-		return fmt.Errorf("cluster_service_unavailable")
-	}
 
 	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
 	if localNodeID != "" && targetNodeID == localNodeID {
 		return s.EnqueueReplicationPolicyRun(ctx, policyID)
 	}
-	forwardTimeout, err := replicationValidationForwardTimeout(ctx)
-	if err != nil {
-		return err
-	}
-	return s.forwardReplicationPolicyControl(targetNodeID, "run", map[string]any{
-		"policyId": policyID,
-	}, forwardTimeout)
-}
-
-func replicationValidationForwardTimeout(ctx context.Context) (time.Duration, error) {
-	timeout := replicationControlDefaultTimeout
-	if ctx == nil {
-		return timeout, nil
-	}
-	if err := ctx.Err(); err != nil {
-		return 0, err
-	}
-	deadline, ok := ctx.Deadline()
-	if !ok {
-		return timeout, nil
-	}
-	remaining := time.Until(deadline)
-	if remaining <= 0 {
-		return 0, context.DeadlineExceeded
-	}
-	if remaining < timeout {
-		timeout = remaining
-	}
-	return timeout, nil
-}
-
-func (s *Service) forwardRaftVoterControlWithRetry(
-	nodeID string,
-	action string,
-	payload map[string]any,
-	timeout time.Duration,
-) error {
-	var lastErr error
-	for attempt := 0; attempt < replicationControlForwardAttempts; attempt++ {
-		targetAPI, resolveErr := s.Cluster.ResolveIntraClusterVoterAPI(nodeID)
-		if resolveErr != nil {
-			lastErr = resolveErr
-		} else {
-			_, lastErr = s.forwardReplicationPolicyControlReadAtAPI(targetAPI, action, payload, timeout)
-			if lastErr == nil {
-				return nil
-			}
-		}
-		if attempt < replicationControlForwardAttempts-1 {
-			time.Sleep(replicationControlForwardBackoff * time.Duration(attempt+1))
-		}
-	}
-	return lastErr
-}
-
-func (s *Service) forwardReplicationPolicyControlWithRetry(
-	nodeID string,
-	action string,
-	payload map[string]any,
-	timeout time.Duration,
-) error {
-	var lastErr error
-	for attempt := 0; attempt < replicationControlForwardAttempts; attempt++ {
-		if err := s.forwardReplicationPolicyControl(nodeID, action, payload, timeout); err == nil {
-			return nil
-		} else {
-			lastErr = err
-		}
-		if attempt < replicationControlForwardAttempts-1 {
-			time.Sleep(replicationControlForwardBackoff * time.Duration(attempt+1))
-		}
-	}
-	return lastErr
-}
-
-func (s *Service) forwardReplicationPolicyControl(nodeID string, action string, payload any, timeout time.Duration) error {
-	_, err := s.forwardReplicationPolicyControlRead(nodeID, action, payload, timeout)
-	return err
-}
-
-func (s *Service) forwardReplicationPolicyControlContext(
-	ctx context.Context,
-	nodeID string,
-	action string,
-	payload any,
-	timeout time.Duration,
-) error {
-	targetAPI, err := s.resolveReplicationNodeAPI(nodeID)
-	if err != nil {
-		return err
-	}
-	_, err = s.forwardReplicationPolicyControlReadAtAPIContext(ctx, targetAPI, action, payload, timeout)
-	return err
-}
-
-func (s *Service) forwardReplicationPolicyControlRead(
-	nodeID string,
-	action string,
-	payload any,
-	timeout time.Duration,
-) ([]byte, error) {
-	targetAPI, err := s.resolveReplicationNodeAPI(nodeID)
-	if err != nil {
-		return nil, err
-	}
-	return s.forwardReplicationPolicyControlReadAtAPI(targetAPI, action, payload, timeout)
-}
-
-func (s *Service) forwardReplicationPolicyControlReadAtAPI(
-	targetAPI string,
-	action string,
-	payload any,
-	timeout time.Duration,
-) ([]byte, error) {
-	return s.forwardReplicationPolicyControlReadAtAPIContext(
-		context.Background(), targetAPI, action, payload, timeout,
-	)
-}
-
-func (s *Service) forwardReplicationPolicyControlReadAtAPIContext(
-	ctx context.Context,
-	targetAPI string,
-	action string,
-	payload any,
-	timeout time.Duration,
-) ([]byte, error) {
-	targetAPI = strings.TrimSpace(targetAPI)
-	if targetAPI == "" {
-		return nil, fmt.Errorf("replication_control_target_api_required")
-	}
-	if s == nil || s.Cluster == nil || s.Cluster.AuthService == nil {
-		return nil, fmt.Errorf("replication_control_auth_service_unavailable")
-	}
-	hostname, err := utils.GetSystemHostname()
-	if err != nil || strings.TrimSpace(hostname) == "" {
-		hostname = "cluster"
-	}
-
-	clusterToken, err := s.Cluster.AuthService.CreateInternalClusterJWT(hostname)
-	if err != nil {
-		return nil, fmt.Errorf("create_cluster_token_failed: %w", err)
-	}
-
-	url := fmt.Sprintf("https://%s/api/intra-cluster/%s", targetAPI, strings.TrimSpace(action))
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("marshal_replication_control_payload_failed: %w", err)
-	}
-	if timeout <= 0 {
-		timeout = replicationControlDefaultTimeout
-	}
-
-	responseBody, statusCode, err := utils.HTTPPostJSONWithTimeoutContext(ctx, url, body, map[string]string{
-		"Accept":          "application/json",
-		"Content-Type":    "application/json",
-		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-	}, timeout)
-	if err != nil {
-		return nil, fmt.Errorf("replication_control_%s_failed_status_%d: %w", strings.TrimSpace(action), statusCode, err)
-	}
-	return responseBody, nil
+	return s.callNode(ctx, targetNodeID, "replication-run", transitionRequest{PolicyID: policyID}, replicationControlDefaultTimeout)
 }
 
 // CleanupReplicationPolicyDeleteBestEffort retains its historical name, but
@@ -7374,22 +7000,9 @@ func (s *Service) forwardReplicationPolicyControlReadAtAPIContext(
 // acknowledgement leaves the durable policy in deleting for a safe retry.
 const replicationPolicyDeleteCleanupTimeout = 45 * time.Second
 
-func (s *Service) CleanupReplicationPolicyDeleteBestEffort(
-	ctx context.Context,
-	policyID uint,
-	minimumRaftAppliedIndex uint64,
-) error {
+func (s *Service) CleanupReplicationPolicyDeleteBestEffort(ctx context.Context, policyID uint) error {
 	if policyID == 0 {
 		return fmt.Errorf("invalid_policy_id")
-	}
-	if s.Cluster == nil {
-		return fmt.Errorf("cluster_service_unavailable")
-	}
-	if s.Cluster.Raft() != nil && minimumRaftAppliedIndex == 0 {
-		return fmt.Errorf("replication_policy_delete_applied_index_required")
-	}
-	if s.Cluster.Raft() == nil && minimumRaftAppliedIndex != 0 {
-		return fmt.Errorf("replication_policy_delete_applied_index_invalid_standalone")
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -7437,49 +7050,42 @@ func (s *Service) CleanupReplicationPolicyDeleteBestEffort(
 		addNode(localNodeID)
 	}
 
-	sort.Strings(nodes)
 	type cleanupResult struct {
 		nodeID string
 		err    error
 	}
-	results := make(chan cleanupResult, len(nodes))
-	for _, nodeID := range nodes {
-		nodeID := nodeID
-		go func() {
-			var cleanupErr error
-			if localNodeID != "" && nodeID == localNodeID {
-				cleanupErr = s.CleanupReplicationPolicyDeleteLocalBestEffort(
-					cleanupCtx,
-					policyID,
-					expectedOwnerEpoch,
-				)
-			} else {
-				cleanupErr = s.forwardCleanupReplicationPolicyDelete(
-					cleanupCtx,
-					nodeID,
-					policyID,
-					expectedOwnerEpoch,
-					minimumRaftAppliedIndex,
-				)
-			}
-			results <- cleanupResult{nodeID: nodeID, err: cleanupErr}
-		}()
-	}
-
-	cleanupErrs := make([]string, 0)
-	for range nodes {
-		result := <-results
-		if result.err == nil {
-			continue
-		}
-
+	cleanupFailed := func(result cleanupResult) string {
 		logger.L.Warn().
 			Uint("policy_id", policyID).
 			Uint64("owner_epoch", expectedOwnerEpoch).
 			Str("node_id", result.nodeID).
 			Err(result.err).
 			Msg("replication_policy_delete_cleanup_node_failed")
-		cleanupErrs = append(cleanupErrs, fmt.Sprintf("%s: %v", result.nodeID, result.err))
+		return fmt.Sprintf("%s: %v", result.nodeID, result.err)
+	}
+
+	// The owner goes first: its cleanup stops its in-flight transfer, which
+	// would otherwise recreate the replica on an already cleaned target.
+	ownerNodeID := replicationPolicyOwnerNode(policy)
+	if err := s.cleanupReplicationPolicyDeleteOn(cleanupCtx, ownerNodeID, policyID, expectedOwnerEpoch); err != nil {
+		return fmt.Errorf("replication_policy_delete_cleanup_partial_failure: %s",
+			cleanupFailed(cleanupResult{nodeID: ownerNodeID, err: err}))
+	}
+
+	nodes = slices.DeleteFunc(nodes, func(nodeID string) bool { return nodeID == ownerNodeID })
+	results := make(chan cleanupResult, len(nodes))
+	for _, nodeID := range nodes {
+		go func() {
+			err := s.cleanupReplicationPolicyDeleteOn(cleanupCtx, nodeID, policyID, expectedOwnerEpoch)
+			results <- cleanupResult{nodeID: nodeID, err: err}
+		}()
+	}
+
+	cleanupErrs := make([]string, 0)
+	for range nodes {
+		if result := <-results; result.err != nil {
+			cleanupErrs = append(cleanupErrs, cleanupFailed(result))
+		}
 	}
 
 	if len(cleanupErrs) > 0 {
@@ -7576,7 +7182,7 @@ func (s *Service) validateLocalReplicationPolicyDeleteAuthority(
 	policyID uint,
 	expectedOwnerEpoch uint64,
 ) (*clusterModels.ReplicationPolicy, error) {
-	if s == nil || s.Cluster == nil {
+	if s == nil {
 		return nil, fmt.Errorf("cluster_service_unavailable")
 	}
 	policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
@@ -7854,7 +7460,10 @@ func (s *Service) CleanupReplicationPolicyDeleteLocalBestEffort(
 	if len(cleanupErrs) > 0 {
 		return fmt.Errorf("replication_policy_delete_local_cleanup_failed: %s", strings.Join(cleanupErrs, "; "))
 	}
-
+	// Replication events are per-node records; the replicated delete leaves them alone.
+	if err := s.DB.Where("policy_id = ?", policyID).Delete(&clusterModels.ReplicationEvent{}).Error; err != nil {
+		return fmt.Errorf("replication_policy_delete_events_failed: %w", err)
+	}
 	return nil
 }
 
@@ -7924,9 +7533,6 @@ func (s *Service) validateLocalTransitionOwner(
 	if transitionRunID == "" {
 		return nil, fmt.Errorf("replication_transition_run_id_required")
 	}
-	if s.Cluster == nil {
-		return nil, fmt.Errorf("cluster_service_unavailable")
-	}
 	policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
 	if err != nil {
 		return nil, err
@@ -7972,9 +7578,6 @@ func (s *Service) demoteReplicationPolicy(
 ) error {
 	if policyID == 0 {
 		return fmt.Errorf("invalid_policy_id")
-	}
-	if s.Cluster == nil {
-		return fmt.Errorf("cluster_service_unavailable")
 	}
 
 	policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
@@ -8100,9 +7703,6 @@ func (s *Service) catchupReplicationPolicyToNode(
 	if targetNodeID == "" {
 		return fmt.Errorf("replication_target_node_required")
 	}
-	if s.Cluster == nil {
-		return fmt.Errorf("cluster_service_unavailable")
-	}
 
 	policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
 	if err != nil {
@@ -8196,44 +7796,6 @@ func (s *Service) catchupReplicationPolicyToNode(
 	)
 }
 
-func (s *Service) resolveReplicationNodeAPI(nodeID string) (string, error) {
-	nodeID = strings.TrimSpace(nodeID)
-	if nodeID == "" {
-		return "", fmt.Errorf("replication_target_node_required")
-	}
-
-	nodes, err := s.Cluster.Nodes()
-	if err == nil {
-		for _, node := range nodes {
-			if strings.TrimSpace(node.NodeUUID) == nodeID && strings.TrimSpace(node.API) != "" {
-				return strings.TrimSpace(node.API), nil
-			}
-		}
-	}
-
-	if s.Cluster.Raft() != nil {
-		fut := s.Cluster.Raft().GetConfiguration()
-		if fut.Error() == nil {
-			for _, server := range fut.Configuration().Servers {
-				if string(server.ID) != nodeID {
-					continue
-				}
-				host, _, splitErr := net.SplitHostPort(string(server.Address))
-				if splitErr != nil {
-					host = string(server.Address)
-				}
-				host = strings.TrimSpace(host)
-				if host == "" {
-					continue
-				}
-				return net.JoinHostPort(host, strconv.Itoa(clusterService.ClusterEmbeddedHTTPSPort)), nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("replication_target_node_not_found")
-}
-
 func (s *Service) waitForLocalReplicationOwnershipForTransition(
 	ctx context.Context,
 	policyID uint,
@@ -8243,9 +7805,6 @@ func (s *Service) waitForLocalReplicationOwnershipForTransition(
 ) error {
 	if policyID == 0 {
 		return fmt.Errorf("invalid_policy_id")
-	}
-	if s.Cluster == nil {
-		return fmt.Errorf("cluster_service_unavailable")
 	}
 	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
 	if localNodeID == "" {
@@ -8330,9 +7889,6 @@ func (s *Service) activateReplicationPolicy(
 ) error {
 	if policyID == 0 {
 		return fmt.Errorf("invalid_policy_id")
-	}
-	if s.Cluster == nil {
-		return fmt.Errorf("cluster_service_unavailable")
 	}
 
 	if err := s.waitForLocalReplicationOwnershipForTransition(
@@ -10002,7 +9558,7 @@ func (s *Service) reconcileReplicationEmergencyRestoreOperations(
 	ctx context.Context,
 	changes map[string]replicationEmergencyReadonlyChange,
 ) error {
-	if s == nil || s.DB == nil || s.Cluster == nil {
+	if s == nil || s.DB == nil {
 		return nil
 	}
 	var operations []clusterModels.ReplicationGuestOperation
@@ -10322,9 +9878,6 @@ func (s *Service) handleReplicationPolicyReadFailure(
 }
 
 func (s *Service) selfFenceExpiredLeases(ctx context.Context) error {
-	if s.Cluster == nil {
-		return nil
-	}
 	return s.selfFenceExpiredLeasesForLocalNode(ctx, strings.TrimSpace(s.Cluster.LocalNodeID()))
 }
 
@@ -10357,7 +9910,7 @@ func (s *Service) selfFenceReplicationLeasesForLocalNode(
 	}
 
 	var policies []clusterModels.ReplicationPolicy
-	if err := s.DB.WithContext(ctx).Where("enabled = ?", true).Find(&policies).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Preload("Targets").Where("enabled = ?", true).Find(&policies).Error; err != nil {
 		return s.handleReplicationPolicyReadFailure(
 			ctx,
 			err,
@@ -10424,6 +9977,9 @@ func (s *Service) selfFenceReplicationLeasesForLocalNode(
 			}
 			if leaseLookupErr != nil || lease == nil {
 				s.invalidateReplicationLeaseAuthority(policy.ID)
+			}
+			if s.replicationOwnerMayRunUnfenced(&policy) {
+				continue
 			}
 			fenceReason = replicationFenceReasonOwnerLeaseInvalid
 		} else {
@@ -10499,9 +10055,6 @@ func (s *Service) isReplicationGuestIntentionallyStopped(guestType string, guest
 }
 
 func (s *Service) recoverCrashedReplicationGuests(ctx context.Context) error {
-	if s.Cluster == nil {
-		return nil
-	}
 
 	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
 	if localNodeID == "" {
@@ -10610,7 +10163,12 @@ func (s *Service) recoverCrashedReplicationGuests(ctx context.Context) error {
 				Int("crash_miss", int(crashVal)).
 				Msg("replication_guest_crashed_attempting_local_restart")
 
-			if err := s.restartReplicationGuestLocally(ctx, policy.GuestType, policy.GuestID); err != nil {
+			// Unfence first rather than restart into a read-only dataset.
+			err := s.unfenceReplicationGuestDatasetsIfNeeded(ctx, &policy)
+			if err == nil {
+				err = s.restartReplicationGuestLocally(ctx, policy.GuestType, policy.GuestID)
+			}
+			if err != nil {
 				logger.L.Warn().
 					Err(err).
 					Uint("policy_id", policy.ID).
@@ -10696,25 +10254,26 @@ func (s *Service) selectCrashRecoveryFailoverTarget(policy *clusterModels.Replic
 	return s.selectFailoverTarget(policy, localNodeID, nodeByID)
 }
 
+type failoverEnqueueRequest struct {
+	PolicyID         uint   `json:"policyId"`
+	TargetNodeID     string `json:"targetNodeId"`
+	Mode             string `json:"mode"`
+	ConfirmDataLoss  bool   `json:"confirmDataLoss"`
+	MovePinnedSource bool   `json:"movePinnedSource"`
+}
+
+func (s *Service) failoverEnqueueCall(_ context.Context, _ string, req failoverEnqueueRequest) (struct{}, error) {
+	return struct{}{}, s.EnqueueReplicationPolicyFailover(req.PolicyID, req.TargetNodeID, req.Mode, req.ConfirmDataLoss, req.MovePinnedSource)
+}
+
 func (s *Service) enqueueFailoverToLeader(policyID uint, targetNodeID string, mode string, confirmDataLoss bool, movePinnedSource bool) error {
-	if s.Cluster == nil || s.Cluster.Raft() == nil {
+	if s.Cluster.Raft() == nil {
 		return fmt.Errorf("cluster_service_unavailable")
 	}
-	if s.Cluster.Raft().State() == raft.Leader {
-		return s.EnqueueReplicationPolicyFailover(policyID, targetNodeID, mode, confirmDataLoss, movePinnedSource)
-	}
-	_, leaderID := s.Cluster.Raft().LeaderWithID()
-	leaderNodeID := strings.TrimSpace(string(leaderID))
-	if leaderNodeID == "" {
-		return fmt.Errorf("leader_not_available")
-	}
-	return s.forwardReplicationPolicyControl(leaderNodeID, "replication-failover-enqueue", map[string]any{
-		"policy_id":          policyID,
-		"target_node_id":     targetNodeID,
-		"mode":               mode,
-		"confirm_data_loss":  confirmDataLoss,
-		"move_pinned_source": movePinnedSource,
-	}, replicationControlDefaultTimeout)
+	return s.callLeader(context.Background(), "replication-failover-enqueue", failoverEnqueueRequest{
+		PolicyID: policyID, TargetNodeID: targetNodeID, Mode: mode,
+		ConfirmDataLoss: confirmDataLoss, MovePinnedSource: movePinnedSource,
+	})
 }
 
 func replicationPoolHealthCounterKey(policyID uint, pool string) string {

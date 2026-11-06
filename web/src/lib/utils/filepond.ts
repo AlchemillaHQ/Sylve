@@ -10,6 +10,7 @@
 
 import { browser } from '$app/environment';
 import { storage } from '$lib';
+import { nodePath } from '$lib/api/common';
 import { resolveNodeHostname } from '$lib/utils/enabled-services';
 
 export function getFilePondRequestHostname(selectedHostname?: string): string {
@@ -25,15 +26,16 @@ export function getFilePondRequestHostname(selectedHostname?: string): string {
 	);
 }
 
-export function getFilePondRequestHeaders(selectedHostname?: string): Record<string, string> {
+export function getFilePondRequestURL(path: string, selectedHostname?: string): string {
+	return nodePath(path, getFilePondRequestHostname(selectedHostname));
+}
+
+export function getFilePondRequestHeaders(): Record<string, string> {
 	if (!browser) return {};
 
-	const hostname = getFilePondRequestHostname(selectedHostname);
 	const headers: Record<string, string> = {};
 	const token = storage.token?.trim();
-
 	if (token) headers.Authorization = `Bearer ${token}`;
-	if (hostname) headers['X-Current-Hostname'] = hostname;
 
 	return headers;
 }

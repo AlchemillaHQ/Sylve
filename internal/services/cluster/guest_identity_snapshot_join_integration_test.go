@@ -3,7 +3,6 @@
 package cluster
 
 import (
-	"context"
 	"errors"
 	"testing"
 	"time"
@@ -18,11 +17,7 @@ func newGuestIdentitySnapshotTestNode(
 	nodeID string,
 ) (*clusterRaftTestNode, *raft.InmemStore) {
 	t.Helper()
-	models := append(
-		replicatedStateTestModels(),
-		guestIdentityRaftIntegrationModels()...,
-	)
-	database := newClusterServiceTestDB(t, models...)
+	database := newClusterServiceTestDB(t, replicatedStateTestModels()...)
 	fsm := clusterModels.NewFSMDispatcher(database)
 	clusterModels.RegisterDefaultHandlers(fsm)
 
@@ -56,8 +51,7 @@ func newGuestIdentitySnapshotTestNode(
 		service: withRaft(&Service{
 			DB:           database,
 			NodeID:       nodeID,
-			raftFSM:      fsm,
-			stateFSM:     fsm,
+			fsm:          fsm,
 			mutationGate: newOpenTestMutationGate(t),
 		}, raftNode),
 	}
@@ -76,37 +70,21 @@ func TestIntegrationRaftGuestIdentitySnapshotAndJoinConverge(t *testing.T) {
 		t.Fatalf("bootstrap snapshot leader: %v", err)
 	}
 	waitForClusterRaftLeader(t, []*clusterRaftTestNode{leader}, 8*time.Second)
-	if err := leader.service.initializeGuestIdentityRegistryForFoundingNode(
-		leader.id,
-		BuildGuestIdentityInventoryReport(nil),
-	); err != nil {
-		t.Fatalf("initialize registry before snapshot: %v", err)
-	}
-	seed := guestIdentityControlReservation(
-		leader.id,
-		"snapshot-existing-claim",
-		clusterModels.ReplicationGuestTypeVM,
-		540,
-	)
-	if _, err := leader.service.HandleGuestIdentityControl(context.Background(), leader.id, GuestIdentityControlRequest{
-		Operation: guestIdentityControlReserve, Reservation: seed,
-	}); err != nil {
-		t.Fatalf("reserve seed snapshot claim: %v", err)
-	}
+	seedGuestIdentityJoinTestClaim(t, leader, leader.id, clusterModels.ReplicationGuestTypeVM, 540)
 
 	snapshotFuture := leader.raft.Snapshot()
 	if err := snapshotFuture.Error(); err != nil {
-		t.Fatalf("take registry snapshot: %v", err)
+		t.Fatalf("take claims snapshot: %v", err)
 	}
 	metadata, reader, err := snapshotFuture.Open()
 	if err != nil {
-		t.Fatalf("open registry snapshot: %v", err)
+		t.Fatalf("open claims snapshot: %v", err)
 	}
 	if err := reader.Close(); err != nil {
-		t.Fatalf("close registry snapshot: %v", err)
+		t.Fatalf("close claims snapshot: %v", err)
 	}
 	if metadata.Index == 0 {
-		t.Fatal("registry snapshot has zero index")
+		t.Fatal("claims snapshot has zero index")
 	}
 	if firstIndex, err := leaderLogs.FirstIndex(); err != nil {
 		t.Fatalf("read compacted leader log: %v", err)
@@ -121,24 +99,12 @@ func TestIntegrationRaftGuestIdentitySnapshotAndJoinConverge(t *testing.T) {
 	).Error(); err != nil {
 		t.Fatalf("stage snapshot joiner: %v", err)
 	}
-	waitForClusterCondition(t, 8*time.Second, "snapshot registry installed on staged joiner", func() bool {
-		var registry clusterModels.GuestIdentityRegistry
+	waitForClusterCondition(t, 8*time.Second, "snapshot claim installed on staged joiner", func() bool {
 		var claim clusterModels.GuestIdentityClaim
-		return joiner.service.DB.First(&registry, clusterModels.GuestIdentityRegistryID).Error == nil &&
-			registry.Phase == clusterModels.GuestIdentityRegistryPhaseActive &&
-			joiner.service.DB.First(&claim, 540).Error == nil &&
-			claim.Token == seed.Token
+		return joiner.service.DB.First(&claim, 540).Error == nil && claim.OwnerNodeID == leader.id
 	})
 
-	joiningReport := BuildGuestIdentityInventoryReport([]GuestIdentityInventoryEntry{{
-		NodeID: joiner.id, GuestType: clusterModels.ReplicationGuestTypeJail,
-		GuestID: 541, RecordID: 1, Name: "joining-jail",
-	}})
-	if err := leader.service.admitStagedJoinGuestIdentities(
-		context.Background(), joiner.id, joiningReport, nil,
-	); err != nil {
-		t.Fatalf("admit staged joiner claims: %v", err)
-	}
+	seedGuestIdentityJoinTestClaim(t, leader, joiner.id, clusterModels.ReplicationGuestTypeJail, 541)
 	targetIndex := leader.raft.AppliedIndex()
 	waitForClusterCondition(t, 8*time.Second, "joining claim caught up before promotion", func() bool {
 		if joiner.raft.AppliedIndex() < targetIndex {
@@ -149,15 +115,6 @@ func TestIntegrationRaftGuestIdentitySnapshotAndJoinConverge(t *testing.T) {
 			claim.OwnerNodeID == joiner.id &&
 			claim.GuestKind == clusterModels.ReplicationGuestTypeJail
 	})
-	configuration := leader.raft.GetConfiguration()
-	if err := configuration.Error(); err != nil {
-		t.Fatalf("read staged configuration: %v", err)
-	}
-	for _, server := range configuration.Configuration().Servers {
-		if server.ID == raft.ServerID(joiner.id) && server.Suffrage != raft.Nonvoter {
-			t.Fatalf("joiner promoted before claim convergence: suffrage=%s", server.Suffrage)
-		}
-	}
 
 	if err := leader.raft.AddVoter(
 		raft.ServerID(joiner.id), joiner.addr, 0, 5*time.Second,
@@ -166,17 +123,9 @@ func TestIntegrationRaftGuestIdentitySnapshotAndJoinConverge(t *testing.T) {
 	}
 	waitForClusterRaftVoterCount(t, []*clusterRaftTestNode{leader, joiner}, 2, 8*time.Second)
 	for _, node := range []*clusterRaftTestNode{leader, joiner} {
-		var registry clusterModels.GuestIdentityRegistry
-		var existing, joining clusterModels.GuestIdentityClaim
-		if err := node.service.DB.First(&registry, clusterModels.GuestIdentityRegistryID).Error; err != nil ||
-			registry.Phase != clusterModels.GuestIdentityRegistryPhaseActive {
-			t.Fatalf("%s registry after promotion = %+v, error=%v", node.id, registry, err)
-		}
-		if err := node.service.DB.First(&existing, 540).Error; err != nil {
-			t.Fatalf("%s existing snapshot claim: %v", node.id, err)
-		}
-		if err := node.service.DB.First(&joining, 541).Error; err != nil {
-			t.Fatalf("%s joining claim: %v", node.id, err)
+		claims, err := node.service.ListGuestIdentityClaims(t.Context())
+		if err != nil || len(claims) != 2 || claims[0].GuestID != 540 || claims[1].GuestID != 541 {
+			t.Fatalf("%s claims after promotion = %+v, error=%v", node.id, claims, err)
 		}
 	}
 }

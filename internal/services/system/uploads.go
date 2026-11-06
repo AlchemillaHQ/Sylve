@@ -34,8 +34,8 @@ var (
 // be used to revert exactly the file created by a successful upload. The path
 // remains server-side and is never accepted back from the client as deletion
 // authority.
-func (s *Service) RegisterFileExplorerUpload(path string, userID uint) (string, error) {
-	if s == nil || s.DB == nil || strings.TrimSpace(path) == "" || userID == 0 {
+func (s *Service) RegisterFileExplorerUpload(path, owner string) (string, error) {
+	if s == nil || s.DB == nil || strings.TrimSpace(path) == "" || owner == "" {
 		return "", fmt.Errorf("invalid_file_explorer_upload")
 	}
 	info, err := os.Lstat(path)
@@ -72,7 +72,7 @@ func (s *Service) RegisterFileExplorerUpload(path string, userID uint) (string, 
 		Path:      canonicalPath,
 		Name:      filepath.Base(canonicalPath),
 		Size:      info.Size(),
-		UserID:    userID,
+		Owner:     owner,
 		Node:      node,
 		Status:    utilitiesModels.UploadStatusStaged,
 		Device:    identity.Device,
@@ -88,9 +88,9 @@ func (s *Service) RegisterFileExplorerUpload(path string, userID uint) (string, 
 // DeleteFileExplorerUpload consumes a server-issued upload identity and removes
 // the associated regular file. Unknown, expired, and foreign-user identities
 // are intentionally indistinguishable.
-func (s *Service) DeleteFileExplorerUpload(uploadID string, userID uint) error {
+func (s *Service) DeleteFileExplorerUpload(uploadID, owner string) error {
 	uploadID = strings.TrimSpace(uploadID)
-	if s == nil || s.DB == nil || uploadID == "" || userID == 0 {
+	if s == nil || s.DB == nil || uploadID == "" || owner == "" {
 		return ErrFileExplorerUploadNotFound
 	}
 
@@ -104,10 +104,10 @@ func (s *Service) DeleteFileExplorerUpload(uploadID string, userID uint) error {
 
 	var record utilitiesModels.Upload
 	err = s.DB.Where(
-		"id = ? AND scope = ? AND user_id = ? AND node = ?",
+		"id = ? AND scope = ? AND owner = ? AND node = ?",
 		uploadID,
 		utilitiesModels.UploadScopeFileExplorer,
-		userID,
+		owner,
 		node,
 	).First(&record).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {

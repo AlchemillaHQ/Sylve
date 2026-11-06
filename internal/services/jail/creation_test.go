@@ -32,6 +32,16 @@ import (
 	"gorm.io/gorm"
 )
 
+func newStandaloneGuestIdentityCoordinator(t *testing.T, db *gorm.DB, nodeID string) *clusterService.Service {
+	t.Helper()
+	identity := clusterService.NewClusterService(db, nil, nil).(*clusterService.Service)
+	identity.NodeID = nodeID
+	if err := identity.ReopenMutations(); err != nil {
+		t.Fatal(err)
+	}
+	return identity
+}
+
 func newCreationTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{}, &jailModels.Jail{},
@@ -51,7 +61,7 @@ func newCreationTestService(t *testing.T) (*Service, *jailCreateTestZFSRunner, j
 	db := newCreationTestDB(t)
 	runner := newJailCreateTestZFSRunner(t, nil)
 	svc := newJailCreateTestService(db, runner, "testpool")
-	svc.SetGuestIdentityCoordinator(&clusterService.Service{DB: db, NodeID: "creation-node"})
+	svc.SetGuestIdentityCoordinator(newStandaloneGuestIdentityCoordinator(t, db, "creation-node"))
 	base := t.TempDir()
 	seedCreationRoot(t, base)
 	seedBaseDownload(t, db, "creation-base", base)
@@ -120,7 +130,7 @@ func TestRecoverQueuedCreationReleasesExactReservation(t *testing.T) {
 	if err := svc.PrepareCreateJail(t.Context(), taskID, req); err != nil {
 		t.Fatal(err)
 	}
-	svc.SetGuestIdentityCoordinator(&clusterService.Service{DB: svc.DB, NodeID: "creation-node"})
+	svc.SetGuestIdentityCoordinator(newStandaloneGuestIdentityCoordinator(t, svc.DB, "creation-node"))
 	if err := svc.RecoverCreations(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +168,7 @@ func TestRecoverReadyCreationAfterIdentityFinalizeAndTaskCommitFailure(t *testin
 		t.Fatal(err)
 	}
 	assertModelCount(t, svc.DB, &jailModels.Jail{}, 1, "creation_pending = ?", true)
-	svc.SetGuestIdentityCoordinator(&clusterService.Service{DB: svc.DB, NodeID: "creation-node"})
+	svc.SetGuestIdentityCoordinator(newStandaloneGuestIdentityCoordinator(t, svc.DB, "creation-node"))
 	if err := svc.RecoverCreations(t.Context()); err != nil {
 		t.Fatal(err)
 	}

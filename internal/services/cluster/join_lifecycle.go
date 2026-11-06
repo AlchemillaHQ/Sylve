@@ -13,54 +13,44 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/cmd"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/raft"
-	"gorm.io/gorm"
 )
 
 const (
-	JoinPhaseNotStarted  = "not_started"
-	JoinPhaseIntentSaved = "intent_saved"
-	JoinPhaseStarting    = "starting"
-	JoinPhaseSubmitting  = "submitting"
-	JoinPhaseStaged      = "staged_nonvoter"
-	JoinPhaseCatchingUp  = "catching_up"
-	JoinPhaseComplete    = clusterModels.JoinPhaseComplete
-	JoinPhaseStalled     = "stalled"
-	JoinPhaseFailed      = "failed"
+	JoinPhaseNotStarted = "not_started"
+	JoinPhaseSubmitting = "submitting"
+	JoinPhaseCatchingUp = "catching_up"
+	JoinPhaseComplete   = clusterModels.JoinPhaseComplete
 
 	joinAdmissionRequestTimeout = 30 * time.Second
 	joinAdmissionResponseLimit  = 1 << 20
+	joinProgressTimeout         = 5 * time.Second
 )
 
 type JoinAdmissionRequest struct {
-	NodeID      string                       `json:"nodeId" binding:"required"`
-	NodeIP      string                       `json:"nodeIp" binding:"required,ip"`
-	NodeVersion string                       `json:"nodeVersion" binding:"required"`
-	Preflight   bool                         `json:"preflight"`
-	Inventory   GuestIdentityInventoryReport `json:"inventory"`
+	NodeID      string `json:"nodeId" binding:"required"`
+	NodeIP      string `json:"nodeIp" binding:"required,ip"`
+	NodeVersion string `json:"nodeVersion" binding:"required"`
+	// NodeHostname names the node in requests, so no two members share one.
+	NodeHostname string                       `json:"nodeHostname" binding:"required"`
+	Inventory    GuestIdentityInventoryReport `json:"inventory"`
+	// SSHPublicKey is the joiner's cluster SSH key, recorded with its pin.
+	SSHPublicKey string `json:"sshPublicKey" binding:"required"`
 }
 
 type ClusterJoinProgress struct {
-	NodeID        string `json:"nodeId"`
-	RaftState     string `json:"raftState"`
-	LeaderID      string `json:"leaderId,omitempty"`
-	LeaderAddress string `json:"leaderAddress,omitempty"`
-	AppliedIndex  uint64 `json:"appliedIndex"`
-	FSMIndex      uint64 `json:"fsmIndex,omitempty"`
-	FSMIndexKnown bool   `json:"fsmIndexKnown,omitempty"`
-	LastIndex     uint64 `json:"lastIndex"`
-	RepairFenced  bool   `json:"repairFenced"`
+	NodeID       string `json:"nodeId"`
+	AppliedIndex uint64 `json:"appliedIndex"`
 }
 
 type ClusterJoinStatus struct {
@@ -78,622 +68,298 @@ type ClusterJoinStatus struct {
 	Retrying          bool   `json:"retrying"`
 	AwaitingPromotion bool   `json:"awaitingPromotion,omitempty"`
 	LastError         string `json:"lastError,omitempty"`
+	// Pins are the members' cert pins by node ID, which an admitted node trusts
+	// until it catches up.
+	Pins map[string]string `json:"pins,omitempty"`
 }
 
-type JoinIntentSubmissionResult struct {
-	Status     ClusterJoinStatus
-	Response   internal.APIResponse[GuestIdentityInventoryReport]
+type JoinAdmissionError struct {
 	StatusCode int
-	Retryable  bool
-	Err        error
+	Message    string
+	Detail     string
+	Data       json.RawMessage
 }
 
-func (s *Service) SaveJoinIntent(
-	leaderIP string,
-	clusterKey string,
-	request JoinAdmissionRequest,
-) error {
-	if s == nil || s.DB == nil {
-		return fmt.Errorf("cluster_service_not_initialized")
+func (e *JoinAdmissionError) Error() string {
+	return fmt.Sprintf("%s: %s", e.Message, e.Detail)
+}
+
+func (s *Service) Join(ctx context.Context, leaderIP, nodeIP, clusterKey string) (ClusterJoinStatus, error) {
+	ctx, release, err := s.EnterMutation(ctx)
+	if err != nil {
+		return ClusterJoinStatus{}, err
 	}
+	defer release()
 	s.membershipLifecycleMu.Lock()
 	defer s.membershipLifecycleMu.Unlock()
-	var err error
-	leaderIP, err = normalizeClusterIPv4(leaderIP, "invalid_leader_ip")
+	if err := s.saveJoinIntent(leaderIP, nodeIP, clusterKey); err != nil {
+		return ClusterJoinStatus{}, err
+	}
+	var refused *JoinAdmissionError
+	if err := s.advanceJoin(ctx); errors.As(err, &refused) {
+		return ClusterJoinStatus{}, err
+	}
+	return s.JoinStatus()
+}
+
+// No guest may change while a join is open: the leader claims this node's guest
+// IDs from the inventory sent with the admission.
+func (s *Service) saveJoinIntent(leaderIP, nodeIP, clusterKey string) error {
+	leaderIP, err := normalizeClusterIPv4(leaderIP, "invalid_leader_ip")
+	if err != nil {
+		return err
+	}
+	nodeIP, err = normalizeClusterIPv4(nodeIP, "invalid_joining_node_ip")
 	if err != nil {
 		return err
 	}
 	clusterKey = strings.TrimSpace(clusterKey)
-	if clusterKey == "" {
-		return fmt.Errorf("invalid_cluster_key")
-	}
-	request.NodeID = strings.TrimSpace(request.NodeID)
-	request.NodeIP, err = normalizeClusterIPv4(request.NodeIP, "invalid_joining_node_ip")
-	if err != nil {
+	if _, err := ParseJoinKey(clusterKey); err != nil {
 		return err
 	}
-	request.NodeVersion = strings.TrimSpace(request.NodeVersion)
-	canonical, err := canonicalSubmittedGuestIdentityInventory(request.NodeID, request.Inventory)
-	if err != nil {
-		return err
-	}
-	inventoryJSON, err := json.Marshal(canonical)
-	if err != nil {
-		return fmt.Errorf("marshal_join_inventory: %w", err)
-	}
-
 	s.guestIdentityRuntimeMu.Lock()
 	defer s.guestIdentityRuntimeMu.Unlock()
-	if s.guestIdentityClusterFormation || len(s.guestIdentityLocalReservations) != 0 {
+	if len(s.guestIdentityLocalReservations) != 0 {
 		return fmt.Errorf("guest_identity_mutation_in_progress")
 	}
 	if err := s.requireNoDurableGuestIdentityOperations(context.Background()); err != nil {
 		return err
 	}
-	latest, err := ScanLocalGuestIdentityInventory(s.DB, request.NodeID)
+	record, err := s.loadClusterRecord()
 	if err != nil {
-		return fmt.Errorf("guest_identity_inventory_scan_failed: %w", err)
-	}
-	if err := requireCleanGuestIdentityInventory(latest); err != nil {
 		return err
 	}
-	if latest.Digest != canonical.Digest {
-		return fmt.Errorf("joining_inventory_changed_before_start")
-	}
-
-	var record clusterModels.Cluster
-	if err := s.DB.First(&record).Error; err != nil {
-		return err
-	}
-	// A clustered node may only resume its own unfinished join. Anything else
-	// would overwrite the key its peers use to reach it.
-	if record.Enabled && (!record.HasIncompleteJoin() || !auth.ClusterKeyMatches(clusterKey, strings.TrimSpace(record.Key))) {
+	if record.Enabled {
+		// A clustered node may only go on with its own unfinished join.
+		if record.HasIncompleteJoin() && auth.ClusterKeyMatches(clusterKey, strings.TrimSpace(record.Key)) {
+			return nil
+		}
 		return fmt.Errorf("clustered_already")
 	}
-	if err := s.DB.Model(&record).Updates(map[string]any{
-		"key":               clusterKey,
-		"join_leader_ip":    leaderIP,
-		"join_node_id":      request.NodeID,
-		"join_node_ip":      request.NodeIP,
-		"join_node_version": request.NodeVersion,
-		"join_inventory":    inventoryJSON,
-		"join_phase":        JoinPhaseIntentSaved,
-		"join_last_error":   "",
-		"join_attempts":     0,
-	}).Error; err != nil {
-		return err
-	}
-	s.resetJoinLeaderTarget()
+	s.joinMu.Lock()
+	s.joinAttempts, s.joinLastError = 0, ""
+	s.joinMu.Unlock()
 	s.joinComplete.Store(false)
-	return nil
-}
-
-func (s *Service) updateJoinIntent(
-	phase, lastError string,
-	incrementAttempt bool,
-	leaderIP string,
-) error {
-	if s == nil || s.DB == nil {
-		return fmt.Errorf("cluster_service_not_initialized")
-	}
-	var record clusterModels.Cluster
-	if err := s.DB.First(&record).Error; err != nil {
-		return err
-	}
-	updates := map[string]any{
-		"join_phase":      phase,
-		"join_last_error": strings.TrimSpace(lastError),
-	}
-	if incrementAttempt {
-		updates["join_attempts"] = gorm.Expr("join_attempts + 1")
-	}
-	if strings.TrimSpace(leaderIP) != "" {
-		updates["join_leader_ip"] = strings.TrimSpace(leaderIP)
-	}
-	return s.DB.Model(&record).Updates(updates).Error
-}
-
-// finishJoinIntent drops the join intent once this node is a voter, so a stale
-// join leader is never reused as a leave seed or mistaken for a pending join.
-func (s *Service) finishJoinIntent(record clusterModels.Cluster) error {
 	return s.DB.Model(&record).Updates(map[string]any{
-		"join_leader_ip":    "",
-		"join_node_id":      "",
-		"join_node_ip":      "",
-		"join_node_version": "",
-		"join_inventory":    nil,
-		"join_phase":        "",
-		"join_last_error":   "",
-		"join_attempts":     0,
+		"key": clusterKey, "join_leader_ip": leaderIP, "raft_ip": nodeIP,
 	}).Error
 }
 
-func (s *Service) MarkJoinIntentPhase(phase string, err error) error {
-	lastError := ""
-	if err != nil {
-		lastError = err.Error()
+func (s *Service) advanceJoin(ctx context.Context) error {
+	record, err := s.loadClusterRecord()
+	if err != nil || !record.HasIncompleteJoin() {
+		return err
 	}
-	return s.updateJoinIntent(phase, lastError, false, "")
+	if record.Enabled {
+		r := s.Raft()
+		if r == nil || r.State() == raft.Shutdown {
+			return nil
+		}
+		if server, err := s.joinServer(s.LocalNodeID()); err == nil && server != nil && server.Suffrage == raft.Voter {
+			return s.finishJoin(record)
+		}
+		if leaderAddress, _ := r.LeaderWithID(); leaderAddress != "" {
+			return nil
+		}
+	}
+	err = s.requestAdmission(ctx, record)
+	s.recordJoinError(err)
+	var refused *JoinAdmissionError
+	switch {
+	case errors.As(err, &refused) && !record.Enabled:
+		return errors.Join(err, s.dropJoinIntent(record))
+	case errors.As(err, &refused):
+		// Refused after it started Raft: the cluster gave the join up. Drop cluster
+		// state only once a leader confirms it isn't listed.
+		if removed, checkErr := s.removedFromCluster(ctx); checkErr == nil && removed {
+			logger.L.Warn().Err(err).Msg("cluster_join_given_up_by_cluster")
+			return errors.Join(err, s.finishLeave())
+		}
+		return err
+	case err != nil:
+		return err
+	case !record.Enabled:
+		err = s.startJoinerRaft(record.RaftIP, record.Key)
+		s.recordJoinError(err)
+		return err
+	}
+	return nil
+}
+
+func (s *Service) recordJoinError(err error) {
+	s.joinMu.Lock()
+	defer s.joinMu.Unlock()
+	s.joinLastError = ""
+	if err != nil {
+		s.joinLastError = err.Error()
+	}
+}
+
+func (s *Service) dropJoinIntent(record clusterModels.Cluster) error {
+	return s.DB.Model(&record).Updates(map[string]any{"key": "", "join_leader_ip": "", "raft_ip": ""}).Error
+}
+
+func (s *Service) finishJoin(record clusterModels.Cluster) error {
+	if err := s.DB.Model(&record).Updates(map[string]any{"join_leader_ip": "", "key": ""}).Error; err != nil {
+		return err
+	}
+	s.recordJoinError(nil)
+	s.notifyJoinComplete()
+	if err := s.PopulateClusterNodes(); err != nil {
+		logger.L.Warn().Err(err).Msg("cluster_node_population_deferred_after_join")
+	}
+	return nil
+}
+
+func (s *Service) startJoinerRaft(ip, clusterKey string) error {
+	if s.joinRaftStarter != nil {
+		return s.joinRaftStarter(ip, clusterKey)
+	}
+	return s.StartAsJoiner(ip, clusterKey)
+}
+
+func (s *Service) requestAdmission(ctx context.Context, record clusterModels.Cluster) error {
+	localNodeID := s.LocalNodeID()
+	inventory, err := ScanLocalGuestIdentityInventory(s.DB.WithContext(ctx), localNodeID)
+	if err != nil {
+		return fmt.Errorf("guest_identity_inventory_scan_failed: %w", err)
+	}
+	_, _, sshPublicKey, err := s.ensureLocalClusterSSHKeyPair()
+	if err != nil {
+		return fmt.Errorf("cluster_join_ssh_key_unavailable: %w", err)
+	}
+	hostname, err := utils.GetSystemHostname()
+	if err != nil {
+		return fmt.Errorf("cluster_join_hostname_unavailable: %w", err)
+	}
+	payload, err := json.Marshal(JoinAdmissionRequest{
+		NodeID: localNodeID, NodeIP: record.RaftIP, NodeVersion: cmd.Version, NodeHostname: hostname,
+		Inventory: inventory, SSHPublicKey: sshPublicKey,
+	})
+	if err != nil {
+		return err
+	}
+	s.joinMu.Lock()
+	s.joinAttempts++
+	s.joinMu.Unlock()
+	key, err := ParseJoinKey(record.Key)
+	if err != nil {
+		return &JoinAdmissionError{StatusCode: http.StatusBadRequest, Message: "cluster_join_key_invalid", Detail: err.Error()}
+	}
+	// Only the member that issued the key gets the request, which it forwards
+	// to the leader.
+	response, err := s.peerHTTP(
+		utils.ForJoin(ctx, key.VerifyPin),
+		http.MethodPost,
+		fmt.Sprintf("https://%s/api/cluster/accept-join", ClusterAPIHost(strings.TrimSpace(record.JoinLeaderIP))),
+		payload,
+		map[string]string{
+			"Accept": "application/json", "Content-Type": "application/json", auth.ClusterKeyHeader: key.Secret,
+		},
+		joinAdmissionRequestTimeout,
+		joinAdmissionResponseLimit,
+	)
+	if err != nil {
+		return fmt.Errorf("cluster_join_admission_request_failed: %w", err)
+	}
+	var apiResponse internal.APIResponse[json.RawMessage]
+	if err := json.Unmarshal(response.Body, &apiResponse); err != nil {
+		return fmt.Errorf("cluster_join_admission_response_invalid: status=%d: %w", response.StatusCode, err)
+	}
+	switch {
+	case response.StatusCode >= 200 && response.StatusCode < 300 && apiResponse.Status == "success":
+		var status ClusterJoinStatus
+		if err := json.Unmarshal(apiResponse.Data, &status); err != nil {
+			return fmt.Errorf("cluster_join_admission_response_invalid: %w", err)
+		}
+		s.seedJoinPins(status.Pins)
+		return nil
+	// A fenced member is leaving or changing its address, or no leader is known;
+	// ask again later.
+	case response.StatusCode >= http.StatusInternalServerError || response.StatusCode == http.StatusLocked ||
+		response.StatusCode == http.StatusRequestTimeout || response.StatusCode == http.StatusTooManyRequests:
+		return fmt.Errorf(
+			"cluster_join_admission_unavailable: status=%d message=%s error=%s",
+			response.StatusCode, apiResponse.Message, apiResponse.Error,
+		)
+	default:
+		return &JoinAdmissionError{
+			StatusCode: response.StatusCode, Message: apiResponse.Message, Detail: apiResponse.Error, Data: apiResponse.Data,
+		}
+	}
 }
 
 func (s *Service) joinServer(nodeID string) (*raft.Server, error) {
-	if s == nil || s.Raft() == nil || s.Raft().State() == raft.Shutdown {
+	if s.Raft() == nil || s.Raft().State() == raft.Shutdown {
 		return nil, nil
 	}
 	future := s.Raft().GetConfiguration()
 	if err := future.Error(); err != nil {
 		return nil, err
 	}
-	nodeID = strings.TrimSpace(nodeID)
-	for _, server := range future.Configuration().Servers {
-		if strings.TrimSpace(string(server.ID)) == nodeID {
-			copy := server
-			return &copy, nil
-		}
+	server, present, err := resolveRaftMember(future.Configuration(), nodeID)
+	if err != nil || !present {
+		return nil, err
 	}
-	return nil, nil
-}
-
-func joinPhaseIsRetrying(phase string) bool {
-	switch phase {
-	case JoinPhaseIntentSaved, JoinPhaseStarting, JoinPhaseSubmitting,
-		JoinPhaseStaged, JoinPhaseCatchingUp, JoinPhaseStalled:
-		return true
-	default:
-		return false
-	}
+	return &server, nil
 }
 
 func (s *Service) JoinStatus() (ClusterJoinStatus, error) {
-	if s == nil || s.DB == nil {
-		return ClusterJoinStatus{}, fmt.Errorf("cluster_service_not_initialized")
-	}
-	var record clusterModels.Cluster
-	if err := s.DB.First(&record).Error; err != nil {
+	record, err := s.loadClusterRecord()
+	if err != nil {
 		return ClusterJoinStatus{}, err
 	}
-	localNodeID := strings.TrimSpace(s.guestIdentityInventoryLocalNodeID())
-	nodeID := strings.TrimSpace(record.JoinNodeID)
-	if nodeID == "" {
-		nodeID = localNodeID
-	}
-
 	status := ClusterJoinStatus{
-		NodeID:    nodeID,
-		NodeIP:    strings.TrimSpace(record.JoinNodeIP),
-		LeaderIP:  strings.TrimSpace(record.JoinLeaderIP),
-		Phase:     strings.TrimSpace(record.JoinPhase),
-		Attempts:  record.JoinAttempts,
-		LastError: strings.TrimSpace(record.JoinLastError),
+		NodeID:   strings.TrimSpace(s.LocalNodeID()),
+		NodeIP:   strings.TrimSpace(record.RaftIP),
+		LeaderIP: strings.TrimSpace(record.JoinLeaderIP),
+		Phase:    JoinPhaseNotStarted,
 	}
-	if status.Phase == "" {
-		status.Phase = JoinPhaseNotStarted
+	s.joinMu.Lock()
+	status.Attempts, status.LastError = s.joinAttempts, s.joinLastError
+	s.joinMu.Unlock()
+	if record.HasIncompleteJoin() {
+		status.Phase, status.Retrying = JoinPhaseSubmitting, true
 	}
-	if status.NodeIP == "" && nodeID == localNodeID {
-		status.NodeIP = strings.TrimSpace(record.RaftIP)
+	r := s.Raft()
+	if !record.Enabled || r == nil || r.State() == raft.Shutdown {
+		return status, nil
 	}
-
-	if s.Raft() != nil && s.Raft().State() != raft.Shutdown {
-		status.RaftState = s.Raft().State().String()
-		status.AppliedIndex = s.replicatedStateFSMIndex()
-		status.TargetIndex = s.joinLeaderTarget()
-		leaderAddress, leaderID := s.Raft().LeaderWithID()
-		status.LeaderID = strings.TrimSpace(string(leaderID))
-		status.LeaderAddress = strings.TrimSpace(string(leaderAddress))
-		server, err := s.joinServer(nodeID)
-		if err == nil && server != nil {
-			status.Suffrage = raftSuffrageName(server.Suffrage)
-			switch server.Suffrage {
-			case raft.Voter:
-				status.Phase = JoinPhaseComplete
-				status.LastError = ""
-			case raft.Nonvoter:
-				status.Phase = JoinPhaseCatchingUp
-				if status.TargetIndex > 0 && status.AppliedIndex >= status.TargetIndex &&
-					strings.TrimSpace(status.LastError) == "" {
-					status.AwaitingPromotion = true
-				}
-			}
-		}
+	status.RaftState = r.State().String()
+	status.AppliedIndex = r.AppliedIndex()
+	status.TargetIndex = r.CommitIndex()
+	leaderAddress, leaderID := r.LeaderWithID()
+	status.LeaderID = strings.TrimSpace(string(leaderID))
+	status.LeaderAddress = strings.TrimSpace(string(leaderAddress))
+	server, err := s.joinServer(status.NodeID)
+	if err == nil && server != nil {
+		status.Suffrage = raftSuffrageName(server.Suffrage)
 	}
-	status.Retrying = joinPhaseIsRetrying(status.Phase)
+	switch {
+	case server != nil && server.Suffrage == raft.Voter:
+		status.Phase, status.Retrying, status.LastError = JoinPhaseComplete, false, ""
+	case record.HasIncompleteJoin():
+		status.Phase = JoinPhaseCatchingUp
+		status.AwaitingPromotion = status.TargetIndex > 0 && status.AppliedIndex >= status.TargetIndex
+	}
 	return status, nil
 }
 
-func (s *Service) setJoinLeaderTarget(index uint64) {
-	if s == nil || index == 0 {
-		return
+func (s *Service) LocalJoinProgress() (ClusterJoinProgress, error) {
+	r := s.Raft()
+	if r == nil || r.State() == raft.Shutdown {
+		return ClusterJoinProgress{}, fmt.Errorf("join_progress_raft_unavailable")
 	}
-	s.joinLeaderTargetMu.Lock()
-	if index > s.joinLeaderTargetIndex {
-		s.joinLeaderTargetIndex = index
-	}
-	s.joinLeaderTargetMu.Unlock()
+	return ClusterJoinProgress{NodeID: s.LocalNodeID(), AppliedIndex: r.AppliedIndex()}, nil
 }
 
-func (s *Service) resetJoinLeaderTarget() {
-	s.joinLeaderTargetMu.Lock()
-	s.joinLeaderTargetIndex = 0
-	s.joinLeaderTargetMu.Unlock()
-}
-
-func (s *Service) joinLeaderTarget() uint64 {
-	if s == nil {
-		return 0
-	}
-	s.joinLeaderTargetMu.Lock()
-	defer s.joinLeaderTargetMu.Unlock()
-	return s.joinLeaderTargetIndex
-}
-
-func (s *Service) beginJoinProgressNudge(nodeID string) bool {
-	if s == nil {
-		return false
-	}
-	nodeID = strings.TrimSpace(nodeID)
-	if nodeID == "" {
-		return false
-	}
-	s.joinNudgeMu.Lock()
-	defer s.joinNudgeMu.Unlock()
-	if s.joinProgressNudges == nil {
-		s.joinProgressNudges = make(map[string]struct{})
-	}
-	if _, outstanding := s.joinProgressNudges[nodeID]; outstanding {
-		return false
-	}
-	s.joinProgressNudges[nodeID] = struct{}{}
-	return true
-}
-
-func (s *Service) clearJoinProgressNudge(nodeID string) {
-	if s == nil {
-		return
-	}
-	nodeID = strings.TrimSpace(nodeID)
-	if nodeID == "" {
-		return
-	}
-	s.joinNudgeMu.Lock()
-	delete(s.joinProgressNudges, nodeID)
-	s.joinNudgeMu.Unlock()
-}
-
-func (s *Service) pruneJoinProgressNudges(activeNodeIDs map[string]struct{}) {
-	if s == nil {
-		return
-	}
-	s.joinNudgeMu.Lock()
-	defer s.joinNudgeMu.Unlock()
-	for nodeID := range s.joinProgressNudges {
-		if _, active := activeNodeIDs[nodeID]; !active {
-			delete(s.joinProgressNudges, nodeID)
-		}
-	}
-}
-
-func (s *Service) LocalJoinProgress(
-	ctx context.Context,
-	expectedNodeID string,
-	minimumIndex uint64,
-) (ClusterJoinProgress, error) {
-	progress := ClusterJoinProgress{}
-	if s == nil || s.Raft() == nil || s.Raft().State() == raft.Shutdown {
-		return progress, fmt.Errorf("join_progress_raft_unavailable")
-	}
-	progress.NodeID = strings.TrimSpace(s.guestIdentityInventoryLocalNodeID())
-	expectedNodeID = strings.TrimSpace(expectedNodeID)
-	if progress.NodeID == "" || (expectedNodeID != "" && expectedNodeID != progress.NodeID) {
-		return progress, fmt.Errorf(
-			"join_progress_node_id_mismatch: expected=%s actual=%s",
-			expectedNodeID,
-			progress.NodeID,
-		)
-	}
-	if _, err := s.WaitForReplicatedStateAppliedIndex(ctx, minimumIndex); err != nil {
-		return progress, err
-	}
-	progress.RaftState = s.Raft().State().String()
-	progress.AppliedIndex = s.Raft().AppliedIndex()
-	progress.FSMIndex = s.replicatedStateFSMIndex()
-	progress.FSMIndexKnown = s.stateFSM != nil
-	progress.LastIndex = s.Raft().LastIndex()
-	progress.RepairFenced = s.stateRepair.Load()
-	leaderAddress, leaderID := s.Raft().LeaderWithID()
-	progress.LeaderID = strings.TrimSpace(string(leaderID))
-	progress.LeaderAddress = strings.TrimSpace(string(leaderAddress))
-	return progress, nil
-}
-
-func (s *Service) fetchJoinProgress(
-	ctx context.Context,
-	nodeID string,
-	address raft.ServerAddress,
-	minimumIndex uint64,
-) (ClusterJoinProgress, error) {
-	if s.joinProgressForNode != nil {
-		return s.joinProgressForNode(ctx, nodeID, address, minimumIndex)
-	}
-	if s.stateDigestForNode != nil {
-		digest, err := s.fetchReplicatedStateDigest(ctx, nodeID, address, minimumIndex)
-		return ClusterJoinProgress{
-			NodeID:        digest.NodeID,
-			AppliedIndex:  digest.AppliedIndex,
-			FSMIndex:      digest.FSMIndex,
-			FSMIndexKnown: digest.FSMIndexKnown,
-			LastIndex:     digest.AppliedIndex,
-			RepairFenced:  digest.RepairFenced,
-		}, err
-	}
-	endpoint, err := s.replicatedStateRemoteAPI(nodeID, address)
-	if err != nil {
-		return ClusterJoinProgress{}, err
-	}
-	token, err := s.replicatedStateInternalToken()
-	if err != nil {
-		return ClusterJoinProgress{}, err
-	}
-	query := url.Values{}
-	query.Set("expectedNodeId", nodeID)
-	query.Set("minimumRaftAppliedIndex", fmt.Sprint(minimumIndex))
-	requestURL := fmt.Sprintf(
-		"https://%s/api/intra-cluster/join-progress?%s",
-		endpoint,
-		query.Encode(),
-	)
-	body, statusCode, err := utils.HTTPGetJSONReadContextBudget(
-		ctx,
-		requestURL,
-		map[string]string{
-			"Accept":                "application/json",
-			auth.ClusterTokenHeader: fmt.Sprintf("Bearer %s", token),
-		},
-	)
-	if err != nil {
-		return ClusterJoinProgress{}, fmt.Errorf(
-			"join_progress_remote_request_failed: node_id=%s status=%d: %w",
-			nodeID,
-			statusCode,
-			err,
-		)
-	}
-	var response internal.APIResponse[ClusterJoinProgress]
-	if err := json.Unmarshal(body, &response); err != nil {
-		return ClusterJoinProgress{}, fmt.Errorf("join_progress_remote_decode_failed: %w", err)
-	}
-	if strings.ToLower(strings.TrimSpace(response.Status)) != "success" {
-		return ClusterJoinProgress{}, fmt.Errorf(
-			"join_progress_remote_non_success: message=%s error=%s",
-			response.Message,
-			response.Error,
-		)
-	}
-	if strings.TrimSpace(response.Data.NodeID) != strings.TrimSpace(nodeID) {
-		return ClusterJoinProgress{}, fmt.Errorf(
-			"join_progress_remote_node_id_mismatch: expected=%s actual=%s",
-			nodeID,
-			response.Data.NodeID,
-		)
-	}
-	return response.Data, nil
-}
-
-func leaderIPFromNotLeaderError(value string) string {
-	const marker = "leader_addr="
-	index := strings.Index(value, marker)
-	if index < 0 {
-		return ""
-	}
-	address := strings.TrimSpace(value[index+len(marker):])
-	if end := strings.IndexByte(address, ';'); end >= 0 {
-		address = strings.TrimSpace(address[:end])
-	}
-	host, _, err := net.SplitHostPort(address)
-	if err != nil || net.ParseIP(strings.TrimSpace(host)) == nil {
-		return ""
-	}
-	return strings.TrimSpace(host)
-}
-
-func retryableJoinAdmissionStatus(statusCode int, response internal.APIResponse[GuestIdentityInventoryReport]) bool {
-	if statusCode == http.StatusRequestTimeout || statusCode == http.StatusTooManyRequests || statusCode >= 500 {
-		return true
-	}
-	switch strings.TrimSpace(response.Message) {
-	case "not_leader", "cluster_version_mismatch", "cluster_join_failed",
-		"cluster_join_promotion_deferred":
-		return true
-	default:
-		return false
-	}
-}
-
-func (s *Service) SubmitJoinIntent(ctx context.Context) JoinIntentSubmissionResult {
-	return s.submitJoinIntent(ctx, false)
-}
-
-func (s *Service) pollJoinIntent(ctx context.Context) JoinIntentSubmissionResult {
-	return s.submitJoinIntent(ctx, true)
-}
-
-func (s *Service) submitJoinIntent(
-	ctx context.Context,
-	poll bool,
-) JoinIntentSubmissionResult {
-	result := JoinIntentSubmissionResult{}
-	if s == nil || s.DB == nil {
-		result.Err = fmt.Errorf("cluster_service_not_initialized")
-		return result
-	}
-	admittedCtx, release, err := s.EnterMutation(ctx)
-	if err != nil {
-		result.Err = err
-		return result
-	}
-	defer release()
-	ctx = admittedCtx
-	s.membershipLifecycleMu.Lock()
-	defer s.membershipLifecycleMu.Unlock()
-	var record clusterModels.Cluster
-	if err := s.DB.First(&record).Error; err != nil {
-		result.Err = err
-		return result
-	}
-	if strings.TrimSpace(record.JoinNodeID) == "" || len(record.JoinInventory) == 0 {
-		result.Err = fmt.Errorf("cluster_join_intent_not_found")
-		return result
-	}
-	if status, err := s.JoinStatus(); err == nil {
-		result.Status = status
-		if status.Phase == JoinPhaseComplete {
-			return result
-		}
-	}
-
-	var inventory GuestIdentityInventoryReport
-	if err := json.Unmarshal(record.JoinInventory, &inventory); err != nil {
-		result.Err = fmt.Errorf("decode_join_inventory: %w", err)
-		_ = s.updateJoinIntent(JoinPhaseFailed, result.Err.Error(), false, "")
-		return result
-	}
-	// Send the running version, not the one saved with the intent: after both
-	// nodes upgrade mid-join the saved one never matches the leader again.
-	request := JoinAdmissionRequest{
-		NodeID:      strings.TrimSpace(record.JoinNodeID),
-		NodeIP:      strings.TrimSpace(record.JoinNodeIP),
-		NodeVersion: strings.TrimSpace(cmd.Version),
-		Preflight:   false,
-		Inventory:   inventory,
-	}
-	payload, err := json.Marshal(request)
-	if err != nil {
-		result.Err = fmt.Errorf("marshal_join_admission: %w", err)
-		return result
-	}
-	if !poll {
-		if err := s.updateJoinIntent(JoinPhaseSubmitting, "", true, ""); err != nil {
-			result.Err = err
-			return result
-		}
-	}
-
-	requestContext := ctx
-	if requestContext == nil {
-		requestContext = context.Background()
-	}
-	response, requestErr := s.requestJoinAdmission(
-		requestContext,
-		fmt.Sprintf(
-			"https://%s/api/cluster/accept-join",
-			ClusterAPIHost(strings.TrimSpace(record.JoinLeaderIP)),
-		),
-		payload,
-		map[string]string{
-			"Accept":              "application/json",
-			"Content-Type":        "application/json",
-			auth.ClusterKeyHeader: strings.TrimSpace(record.Key),
-		},
-	)
-	if requestErr != nil {
-		result.Err = requestErr
-		result.Retryable = true
-		_ = s.storeJoinIntentFailure(poll, record, requestErr.Error(), true, "")
-		result.Status, _ = s.JoinStatus()
-		return result
-	}
-	result.StatusCode = response.StatusCode
-	if len(response.Body) != 0 {
-		if err := json.Unmarshal(response.Body, &result.Response); err != nil {
-			result.Err = fmt.Errorf("decode_join_admission_response_failed: %w", err)
-			result.Retryable = true
-			_ = s.storeJoinIntentFailure(poll, record, result.Err.Error(), true, "")
-			result.Status, _ = s.JoinStatus()
-			return result
-		}
-	}
-	if response.StatusCode >= 200 && response.StatusCode < 300 &&
-		strings.ToLower(strings.TrimSpace(result.Response.Status)) == "success" {
-		var statusEnvelope internal.APIResponse[ClusterJoinStatus]
-		if err := json.Unmarshal(response.Body, &statusEnvelope); err == nil {
-			s.setJoinLeaderTarget(statusEnvelope.Data.TargetIndex)
-		}
-		_ = s.storeJoinIntentSuccess(poll, record)
-		result.Status, _ = s.JoinStatus()
-		return result
-	}
-
-	errorText := strings.TrimSpace(result.Response.Error)
-	if errorText == "" {
-		errorText = fmt.Sprintf("join_admission_http_status_%d", response.StatusCode)
-	}
-	if message := strings.TrimSpace(result.Response.Message); message != "" &&
-		!strings.Contains(errorText, message) {
-		errorText = message + ": " + errorText
-	}
-	result.Err = errors.New(errorText)
-	result.Retryable = retryableJoinAdmissionStatus(response.StatusCode, result.Response)
-	newLeaderIP := ""
-	if result.Retryable {
-		newLeaderIP = leaderIPFromNotLeaderError(errorText)
-	}
-	_ = s.storeJoinIntentFailure(poll, record, errorText, result.Retryable, newLeaderIP)
-	result.Status, _ = s.JoinStatus()
-	return result
-}
-
-func (s *Service) storeJoinIntentFailure(
-	poll bool,
-	record clusterModels.Cluster,
-	message string,
-	retryable bool,
-	leaderIP string,
-) error {
-	message = strings.TrimSpace(message)
-	if poll {
-		leaderIP = strings.TrimSpace(leaderIP)
-		if message == strings.TrimSpace(record.JoinLastError) && leaderIP == "" {
-			return nil
-		}
-		phase := strings.TrimSpace(record.JoinPhase)
-		if phase == "" {
-			phase = JoinPhaseCatchingUp
-		}
-		return s.updateJoinIntent(phase, message, false, leaderIP)
-	}
-	if retryable {
-		return s.updateJoinIntent(JoinPhaseStalled, message, false, leaderIP)
-	}
-	return s.updateJoinIntent(JoinPhaseFailed, message, false, "")
-}
-
-func (s *Service) storeJoinIntentSuccess(poll bool, record clusterModels.Cluster) error {
-	if !poll {
-		return s.updateJoinIntent(JoinPhaseStaged, "", false, "")
-	}
-	if strings.TrimSpace(record.JoinLastError) == "" {
-		return nil
-	}
-	phase := strings.TrimSpace(record.JoinPhase)
-	if phase == "" {
-		phase = JoinPhaseCatchingUp
-	}
-	return s.updateJoinIntent(phase, "", false, "")
-}
-
-func (s *Service) requestJoinAdmission(
-	ctx context.Context,
-	url string,
-	payload []byte,
-	headers map[string]string,
-) (utils.HTTPReadResponse, error) {
-	return s.peerHTTP(
-		ctx,
-		http.MethodPost,
-		url,
-		payload,
-		headers,
-		joinAdmissionRequestTimeout,
-		joinAdmissionResponseLimit,
+// The nonvoter answers at once: waiting until it reflects the leader would
+// defeat the question.
+func (s *Service) fetchJoinProgress(ctx context.Context, server raft.Server) (ClusterJoinProgress, error) {
+	ctx, cancel := context.WithTimeout(ctx, joinProgressTimeout)
+	defer cancel()
+	return callNodeAt[ClusterJoinProgress](
+		ctx, s, raftAddressHost(string(server.Address)), string(server.ID), "join-progress", []byte("{}"), 0,
 	)
 }
 

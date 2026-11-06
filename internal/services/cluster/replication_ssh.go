@@ -11,16 +11,13 @@ package cluster
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
-	"github.com/hashicorp/raft"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -141,7 +138,7 @@ func (s *Service) localClusterSSHHost() string {
 	return "127.0.0.1"
 }
 
-func (s *Service) EnsureAndPublishLocalSSHIdentity() error {
+func (s *Service) EnsureAndPublishLocalSSHIdentity(ctx context.Context) error {
 	var c clusterModels.Cluster
 	if err := s.DB.First(&c).Error; err == nil {
 		if !c.Enabled {
@@ -165,6 +162,7 @@ func (s *Service) EnsureAndPublishLocalSSHIdentity() error {
 		SSHHost:   s.localClusterSSHHost(),
 		SSHPort:   ClusterEmbeddedSSHPort,
 		PublicKey: pubKey,
+		CertPin:   s.localCertPin(),
 	}
 
 	// Every node republishes every 30s; only an actual change is worth a
@@ -172,121 +170,21 @@ func (s *Service) EnsureAndPublishLocalSSHIdentity() error {
 	var current clusterModels.ClusterSSHIdentity
 	if err := s.DB.Where("node_uuid = ?", identity.NodeUUID).Limit(1).Find(&current).Error; err == nil &&
 		current.SSHUser == identity.SSHUser && current.SSHHost == identity.SSHHost &&
-		current.SSHPort == identity.SSHPort &&
+		current.SSHPort == identity.SSHPort && current.CertPin == identity.CertPin &&
 		strings.TrimSpace(current.PublicKey) == strings.TrimSpace(identity.PublicKey) {
 		return nil
 	}
 
-	if s.Raft() != nil && s.Raft().State() != raft.Leader {
-		leaderAddr, _ := s.Raft().LeaderWithID()
-		if leaderAddr == "" {
-			// Leader not yet known; cluster is still settling after join. Skip silently here? The
-			// scheduler will retry and the identity will be published once a leader is elected.
+	if r := s.Raft(); r != nil {
+		// Still settling after a join: the scheduler publishes it once a
+		// leader is known and this node votes, so a join that's rolled back
+		// leaves no identity behind.
+		if leaderAddr, _ := r.LeaderWithID(); leaderAddr == "" {
 			return nil
 		}
-		if err := s.forwardSSHIdentityToLeader(identity); err != nil {
-			return err
-		}
-	} else {
-		if err := s.UpsertClusterSSHIdentity(identity, s.Standalone()); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (s *Service) ReconcileOrphanedClusterSSHIdentities(ctx context.Context) error {
-	ctx, release, err := s.EnterMutation(ctx)
-	if err != nil {
-		return err
-	}
-	defer release()
-
-	s.clusterJoinMu.Lock()
-	defer s.clusterJoinMu.Unlock()
-	if s.Raft() == nil || s.Raft().State() != raft.Leader {
-		return nil
-	}
-	future := s.Raft().GetConfiguration()
-	if err := future.Error(); err != nil {
-		return err
-	}
-	members := make(map[string]struct{}, len(future.Configuration().Servers))
-	for _, server := range future.Configuration().Servers {
-		members[strings.TrimSpace(string(server.ID))] = struct{}{}
-	}
-	var identities []clusterModels.ClusterSSHIdentity
-	if err := s.DB.WithContext(ctx).Order("node_uuid ASC").Find(&identities).Error; err != nil {
-		return err
-	}
-	for _, identity := range identities {
-		nodeID := strings.TrimSpace(identity.NodeUUID)
-		if _, present := members[nodeID]; present {
-			continue
-		}
-		if err := s.DeleteClusterSSHIdentity(nodeID, false); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Service) forwardSSHIdentityToLeader(identity clusterModels.ClusterSSHIdentity) error {
-	if s.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-
-	leaderAddr, _ := s.Raft().LeaderWithID()
-	if leaderAddr == "" {
-		_, electedLeaderAddr, waitErr := s.waitUntilLeader(10 * time.Second)
-		if electedLeaderAddr != "" {
-			leaderAddr = electedLeaderAddr
-		}
-		if leaderAddr == "" {
-			if waitErr != nil {
-				return fmt.Errorf("leader_unknown: %w", waitErr)
-			}
-			return fmt.Errorf("leader_unknown")
-		}
-	}
-
-	host, _, err := net.SplitHostPort(string(leaderAddr))
-	if err != nil {
-		host = string(leaderAddr)
-	}
-	host = strings.TrimSpace(host)
-	if host == "" {
-		return fmt.Errorf("leader_host_unknown")
-	}
-
-	hostname, err := utils.GetSystemHostname()
-	if err != nil || strings.TrimSpace(hostname) == "" {
-		hostname = "cluster"
-	}
-
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(hostname)
-	if err != nil {
-		return fmt.Errorf("create_cluster_token_failed: %w", err)
-	}
-
-	url := fmt.Sprintf("https://%s:%d/api/intra-cluster/ssh-identity", host, ClusterEmbeddedHTTPSPort)
-	headers := map[string]string{
-		"Accept":          "application/json",
-		"Content-Type":    "application/json",
-		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-	}
-
-	var lastErr error
-	for attempt := 0; attempt < 5; attempt++ {
-		if err := utils.HTTPPostJSON(url, identity, headers); err == nil {
+		if member, err := s.ResolveCurrentRaftMember(identity.NodeUUID); err != nil || member.Suffrage != "voter" {
 			return nil
-		} else {
-			lastErr = err
 		}
-
-		time.Sleep(time.Duration(attempt+1) * 250 * time.Millisecond)
 	}
-
-	return fmt.Errorf("forward_ssh_identity_to_leader_failed: %w", lastErr)
+	return s.UpsertClusterSSHIdentity(ctx, identity)
 }

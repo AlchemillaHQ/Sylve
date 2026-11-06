@@ -19,8 +19,6 @@ type ReasonFormatter = (detail: string) => string;
 
 const REASON_MESSAGES: Record<string, string | ReasonFormatter> = {
 	// --- Hard blocks ---
-	target_check_unsupported:
-		'The target node runs an older version that cannot verify this guest\u2019s dependencies. Update the target node, then retry.',
 	target_check_failed: (d) =>
 		`Could not verify the target node\u2019s readiness${d ? `: ${d}` : ''}.`,
 	target_missing_pool: (d) =>

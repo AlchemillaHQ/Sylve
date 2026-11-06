@@ -87,7 +87,7 @@ export function getCatalogIcon(source: string, id: string, hostname: string): Pr
 		icon = api
 			.get<unknown>(`${path}/icon`, {
 				responseType: 'blob',
-				headers: { 'X-Current-Hostname': hostname }
+				node: hostname
 			})
 			.then((response) =>
 				response.data instanceof Blob && response.data.size > 0

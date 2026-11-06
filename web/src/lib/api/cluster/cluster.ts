@@ -32,7 +32,8 @@ import {
 import { z } from 'zod/v4';
 
 const JoinKeySchema = z.object({
-	key: z.string().min(1)
+	key: z.string().min(1),
+	address: z.string()
 });
 
 const clusterLifecycleCacheKeys = [
@@ -60,8 +61,8 @@ export async function getDetailsData(options?: NodeAPIDataRequestOptions): Promi
 	return await apiRequestData('/cluster', ClusterDetailsSchema, 'GET', undefined, options);
 }
 
-export async function getJoinKey(): Promise<z.infer<typeof JoinKeySchema> | APIResponse> {
-	return await apiRequestResult('/cluster/join-key', JoinKeySchema, 'GET');
+export async function generateJoinKey(): Promise<z.infer<typeof JoinKeySchema> | APIResponse> {
+	return await apiRequestResult('/cluster/join-key', JoinKeySchema, 'POST');
 }
 
 export async function getJoinStatus(): Promise<ClusterJoinStatus | APIResponse> {

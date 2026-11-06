@@ -11,6 +11,7 @@ package zelta
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/hashicorp/raft"
 )
 
 var EncryptionKeyDirectory = "/etc/zfs/keys"
@@ -113,8 +115,8 @@ func (s *Service) AutoDiscoverAndRegisterKeys(ctx context.Context) {
 			}
 		}
 
-		if err := s.Cluster.ForwardEncryptionKeyToLeader(uuid, string(keyData), keyFormat); err != nil {
-			if strings.Contains(err.Error(), "leader_unknown") {
+		if err := s.Cluster.PublishEncryptionKey(ctx, uuid, string(keyData), keyFormat); err != nil {
+			if errors.Is(err, raft.ErrRaftShutdown) {
 				logger.L.Debug().Str("uuid", uuid).Msg("auto_discover_skip_no_leader")
 			} else {
 				logger.L.Warn().Err(err).Str("uuid", uuid).Msg("auto_discover_forward_key_failed")
@@ -190,9 +192,6 @@ func (s *Service) ensureEncryptionKeyForDataset(ctx context.Context, ds *gzfs.Da
 	// keylocation is "prompt" — the original key file wasn't available on
 	// the server that received this dataset (e.g. a backup target). Try each
 	// key in the cluster store until one loads successfully.
-	if s.Cluster == nil {
-		return false, nil
-	}
 
 	keys, listErr := s.Cluster.ListEncryptionKeys()
 	if listErr != nil {
@@ -231,14 +230,10 @@ func encryptionKeyIsAvailable(ctx context.Context, ds *gzfs.Dataset) (bool, erro
 	return strings.EqualFold(strings.TrimSpace(props.KeyStatus), "available"), nil
 }
 
-// RegisterRestoreEncryptionKey makes an explicitly supplied restore key
-// immediately available on this node and forwards it to the cluster key store.
+// A lagging follower may not have the key yet when this returns.
 func (s *Service) RegisterRestoreEncryptionKey(keyData, keyFormat string) error {
 	if strings.TrimSpace(keyData) == "" {
 		return nil
-	}
-	if s.Cluster == nil {
-		return fmt.Errorf("cluster_service_not_initialized")
 	}
 
 	keyFormat = strings.TrimSpace(keyFormat)
@@ -248,11 +243,8 @@ func (s *Service) RegisterRestoreEncryptionKey(keyData, keyFormat string) error 
 	digest := sha256.Sum256([]byte(keyFormat + "\x00" + keyData))
 	uuid := fmt.Sprintf("restore-%x", digest[:12])
 
-	if err := s.Cluster.UpsertEncryptionKeyLocally(uuid, keyData, keyFormat); err != nil {
+	if err := s.Cluster.PublishEncryptionKey(context.Background(), uuid, keyData, keyFormat); err != nil {
 		return fmt.Errorf("store_restore_encryption_key_failed: %w", err)
-	}
-	if err := s.Cluster.ForwardEncryptionKeyToLeader(uuid, keyData, keyFormat); err != nil {
-		return fmt.Errorf("forward_restore_encryption_key_failed: %w", err)
 	}
 	return nil
 }

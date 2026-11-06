@@ -13,6 +13,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/raft"
 	"gorm.io/gorm"
@@ -169,6 +170,41 @@ func TestFSMDispatcherCommandErrors(t *testing.T) {
 	fsm := NewFSMDispatcher(db)
 	RegisterDefaultHandlers(fsm)
 
+	t.Run("command without the leader's time", func(t *testing.T) {
+		note, _ := json.Marshal(ClusterNote{Title: "untimed", Content: "x"})
+		raw, _ := json.Marshal(Command{Version: CurrentCommandVersion, Type: "note", Action: "create", Data: note})
+		if err := applyFSMRaftLog(t, fsm, raw); err == nil {
+			t.Fatal("applied a command without the leader's time")
+		}
+		var count int64
+		if err := db.Model(&ClusterNote{}).Where("title = ?", "untimed").Count(&count).Error; err != nil || count != 0 {
+			t.Fatalf("notes written: %d, %v", count, err)
+		}
+	})
+
+	t.Run("commands this build can't apply", func(t *testing.T) {
+		note, _ := json.Marshal(ClusterNote{Title: "unknown", Content: "x"})
+		for _, command := range []Command{
+			{Type: "note", Action: "create", Data: note},
+			{Version: CurrentCommandVersion + 1, DecidedAt: time.Now(), Type: "note", Action: "create", Data: note},
+			{Version: CurrentCommandVersion, DecidedAt: time.Now(), Type: "unknown_type", Action: "create", Data: note},
+			{Version: CurrentCommandVersion, DecidedAt: time.Now(), Type: "note", Action: "unknown_action", Data: note},
+		} {
+			raw, _ := json.Marshal(command)
+			before := fsm.AppliedIndex()
+			if recovered := applyFSMRaftLogPanic(t, fsm, raw); recovered == nil {
+				t.Fatalf("applied %+v", command)
+			}
+			if fsm.AppliedIndex() != before {
+				t.Fatalf("%+v recorded its entry", command)
+			}
+		}
+		var count int64
+		if err := db.Model(&ClusterNote{}).Where("title = ?", "unknown").Count(&count).Error; err != nil || count != 0 {
+			t.Fatalf("notes written: %d, %v", count, err)
+		}
+	})
+
 	t.Run("malformed command payload", func(t *testing.T) {
 		err := applyFSMRaftLog(t, fsm, []byte("{invalid"))
 		if err == nil {
@@ -176,22 +212,6 @@ func TestFSMDispatcherCommandErrors(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "unmarshal") {
 			t.Fatalf("expected unmarshal error, got: %v", err)
-		}
-	})
-
-	t.Run("unknown command type", func(t *testing.T) {
-		raw, _ := json.Marshal(Command{
-			Type:   "unknown_type",
-			Action: "create",
-			Data:   json.RawMessage(`{"x":1}`),
-		})
-
-		err := applyFSMRaftLog(t, fsm, raw)
-		if err == nil {
-			t.Fatal("expected error for unknown command type, got nil")
-		}
-		if !strings.Contains(err.Error(), "no handler for unknown_type") {
-			t.Fatalf("unexpected unknown type error: %v", err)
 		}
 	})
 
@@ -214,7 +234,7 @@ func TestFSMDispatcherCommandErrors(t *testing.T) {
 func TestFSMDispatcherRollsBackFailedHandler(t *testing.T) {
 	db := newClusterModelTestDB(t, &ClusterNote{})
 	fsm := NewFSMDispatcher(db)
-	fsm.Register("partial", func(tx *gorm.DB, _ string, _ json.RawMessage) error {
+	On(fsm, "partial", "run", func(tx *gorm.DB, _ *struct{}) error {
 		if err := tx.Create(&ClusterNote{ID: 7, Title: "first write"}).Error; err != nil {
 			return err
 		}
@@ -233,12 +253,66 @@ func TestFSMDispatcherRollsBackFailedHandler(t *testing.T) {
 	}
 }
 
+func TestFSMDispatcherRunsAfterApplyHooks(t *testing.T) {
+	db := newClusterModelTestDB(t, &ClusterNote{})
+	fsm := NewFSMDispatcher(db)
+	RegisterDefaultHandlers(fsm)
+	var notes, others int
+	var seen int64
+	fsm.AfterApply("note", func() {
+		notes++
+		_ = db.Model(&ClusterNote{}).Count(&seen).Error
+	})
+	fsm.AfterApply("other", func() { others++ })
+	want := func(step string, wantNotes, wantOthers int) {
+		t.Helper()
+		if notes != wantNotes || others != wantOthers {
+			t.Fatalf("%s: hooks ran note=%d other=%d, want %d and %d", step, notes, others, wantNotes, wantOthers)
+		}
+	}
+
+	note, _ := json.Marshal(ClusterNote{Title: "hooked", Content: "x"})
+	if err := applyFSMCommand(t, fsm, Command{Type: "note", Action: "create", Data: note}); err != nil {
+		t.Fatal(err)
+	}
+	want("raft apply", 1, 0)
+	if seen != 1 {
+		t.Fatalf("hook saw %d notes, want the committed one", seen)
+	}
+	missing, _ := json.Marshal(ClusterNote{ID: 99, Title: "missing", Content: "x"})
+	if err := applyFSMCommand(t, fsm, Command{Type: "note", Action: "update", Data: missing}); err == nil {
+		t.Fatal("update of a missing note was accepted")
+	}
+	want("rejected apply", 1, 0)
+	local := Command{Type: "note", Action: "create", Data: note}
+	if err := PrepareCommand(&local, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := fsm.ApplyLocal(local); err != nil {
+		t.Fatal(err)
+	}
+	want("local apply", 2, 0)
+
+	snapshot, err := fsm.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fsm.Restore(snapshotReader(t, snapshot.(*ClusterSnapshot))); err != nil {
+		t.Fatal(err)
+	}
+	want("restore", 3, 1)
+	if err := fsm.ClearReplicatedState(); err != nil {
+		t.Fatal(err)
+	}
+	want("reset", 4, 2)
+}
+
 // After a restart Raft replays entries the database already holds. Note IDs
 // come from MAX(id)+1, so applying one twice would create a second note.
 func TestFSMDispatcherSkipsEntriesAlreadyApplied(t *testing.T) {
 	db := newClusterModelTestDB(t, &ClusterNote{})
 	note, _ := json.Marshal(ClusterNote{Title: "once", Content: "x"})
-	entry, _ := json.Marshal(Command{Type: "note", Action: "create", Data: note})
+	entry, _ := json.Marshal(Command{Version: CurrentCommandVersion, DecidedAt: time.Now(), Type: "note", Action: "create", Data: note})
 	log := &raft.Log{Type: raft.LogCommand, Index: 7, Data: entry}
 
 	fsm := NewFSMDispatcher(db)
@@ -269,5 +343,20 @@ func TestFSMDispatcherSkipsEntriesAlreadyApplied(t *testing.T) {
 	}
 	if persisted, err := restarted.HasPersistedAppliedIndex(); err != nil || persisted {
 		t.Fatalf("persisted=%v err=%v after reset", persisted, err)
+	}
+}
+
+func TestClusterProtocolIsTheNewestCommandsProtocol(t *testing.T) {
+	f := NewFSMDispatcher(newClusterModelTestDB(t))
+	RegisterDefaultHandlers(f)
+	newest := 0
+	for _, protocol := range f.protocols {
+		newest = max(newest, protocol)
+	}
+	if newest != ClusterProtocol {
+		t.Fatalf("newest command protocol = %d, ClusterProtocol = %d", newest, ClusterProtocol)
+	}
+	if f.Protocol("note", "create") != 1 || f.Protocol("not", "registered") != 1 {
+		t.Fatal("baseline and unknown commands must report protocol 1")
 	}
 }

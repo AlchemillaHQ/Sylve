@@ -21,7 +21,7 @@ import (
 
 func TestUpdateBackupJobRuntimeStatePreservesOmittedEncryption(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.BackupJob{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 	job := clusterModels.BackupJob{
 		ID: 41, Name: "runtime-state", TargetID: 9,
 		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "tank/data",
@@ -33,7 +33,7 @@ func TestUpdateBackupJobRuntimeStatePreservesOmittedEncryption(t *testing.T) {
 
 	if err := s.UpdateBackupJobRuntimeState(BackupJobRuntimeStateUpdate{
 		JobID: 41, LastStatus: "failed", LastError: "legacy runner",
-	}, true); err != nil {
+	}); err != nil {
 		t.Fatalf("legacy update: %v", err)
 	}
 	if err := db.First(&job, job.ID).Error; err != nil {
@@ -47,7 +47,7 @@ func TestUpdateBackupJobRuntimeStatePreservesOmittedEncryption(t *testing.T) {
 	if err := s.UpdateBackupJobRuntimeState(BackupJobRuntimeStateUpdate{
 		Version: BackupJobRuntimeStateVersion, JobID: 41,
 		LastStatus: "success", Encrypted: &encrypted,
-	}, true); err != nil {
+	}); err != nil {
 		t.Fatalf("explicit unencrypted update: %v", err)
 	}
 	if err := db.First(&job, job.ID).Error; err != nil {
@@ -171,7 +171,7 @@ func TestProposeBackupJobCreateAndUpdatePersistsEncryption(t *testing.T) {
 		&vmModels.Storage{},
 		&vmModels.VMStorageDataset{},
 	)
-	s := &Service{DB: db, backupTargetValidator: func(context.Context, *clusterModels.BackupTarget) error { return nil }}
+	s := withFSM(&Service{DB: db, backupTargetValidator: func(context.Context, *clusterModels.BackupTarget) error { return nil }})
 
 	target := clusterModels.BackupTarget{
 		Name:       "recursive-job-target",
@@ -195,7 +195,7 @@ func TestProposeBackupJobCreateAndUpdatePersistsEncryption(t *testing.T) {
 		Enabled:       &enabled,
 		Encrypted:     &encrypted,
 	}
-	if err := s.ProposeBackupJobCreate(input, true); err != nil {
+	if err := s.ProposeBackupJobCreate(input); err != nil {
 		t.Fatalf("create backup job: %v", err)
 	}
 
@@ -212,7 +212,7 @@ func TestProposeBackupJobCreateAndUpdatePersistsEncryption(t *testing.T) {
 
 	input.Recursive = true
 	input.Encrypted = nil
-	if err := s.ProposeBackupJobUpdate(job.ID, input, true); err != nil {
+	if err := s.ProposeBackupJobUpdate(job.ID, input); err != nil {
 		t.Fatalf("update backup job: %v", err)
 	}
 	if err := db.First(&job, job.ID).Error; err != nil {
@@ -227,7 +227,7 @@ func TestProposeBackupJobCreateAndUpdatePersistsEncryption(t *testing.T) {
 
 	encrypted = false
 	input.Encrypted = &encrypted
-	if err := s.ProposeBackupJobUpdate(job.ID, input, true); err != nil {
+	if err := s.ProposeBackupJobUpdate(job.ID, input); err != nil {
 		t.Fatalf("update backup job encryption: %v", err)
 	}
 	if err := db.First(&job, job.ID).Error; err != nil {
@@ -272,7 +272,7 @@ func TestProposeBackupJobCreateRetriesOccupiedGeneratedID(t *testing.T) {
 	freeID := uint(maxSafeJSInt.Uint64() - 1)
 	candidates := []uint{existing.ID, freeID}
 	calls := 0
-	service := &Service{
+	service := withFSM(&Service{
 		DB: db, NodeID: "node-create",
 		backupTargetValidator: func(context.Context, *clusterModels.BackupTarget) error {
 			return nil
@@ -282,13 +282,13 @@ func TestProposeBackupJobCreateRetriesOccupiedGeneratedID(t *testing.T) {
 			calls++
 			return id, nil
 		},
-	}
+	})
 	enabled := true
 	err := service.ProposeBackupJobCreate(clusterServiceInterfaces.BackupJobReq{
 		Name: "new-job", TargetID: target.ID, RunnerNodeID: "node-create",
 		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "zroot/new",
 		CronExpr: "0 0 * * *", Enabled: &enabled,
-	}, true)
+	})
 	if err != nil {
 		t.Fatalf("create after ID collision: %v", err)
 	}
@@ -331,7 +331,7 @@ func TestProposeBackupJobCreateReturnsConflictAfterOccupiedCandidates(t *testing
 			return existing.ID, nil
 		},
 	}
-	err := service.ProposeBackupJobCreate(clusterServiceInterfaces.BackupJobReq{}, true)
+	err := service.ProposeBackupJobCreate(clusterServiceInterfaces.BackupJobReq{})
 	if err == nil || !strings.Contains(err.Error(), "backup_job_id_conflict") {
 		t.Fatalf("exhausted collision error = %v", err)
 	}
@@ -355,7 +355,7 @@ func TestProposeBackupJobUpdateDoesNotBypassPendingRunnerRebind(t *testing.T) {
 		&clusterModels.BackupJobRunnerRebind{},
 		&clusterModels.BackupJobRunnerRebindItem{},
 	)
-	service := &Service{DB: db}
+	service := withFSM(&Service{DB: db})
 	job := clusterModels.BackupJob{
 		ID: 42, Name: "pending-rebind", TargetID: 1, RunnerNodeID: "node-old",
 		Mode: clusterModels.BackupJobModeVM, SourceDataset: "fast/sylve/virtual-machines/812",
@@ -385,7 +385,7 @@ func TestProposeBackupJobUpdateDoesNotBypassPendingRunnerRebind(t *testing.T) {
 		Name: job.Name, TargetID: job.TargetID, RunnerNodeID: "node-new",
 		Mode: job.Mode, SourceDataset: job.SourceDataset, Recursive: true,
 		CronExpr: job.CronExpr, Enabled: &enabled,
-	}, true)
+	})
 	if err == nil || !strings.Contains(err.Error(), "backup_job_runner_rebind_pending") {
 		t.Fatalf("pending rebind update error = %v", err)
 	}

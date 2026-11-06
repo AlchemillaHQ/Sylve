@@ -29,7 +29,7 @@ hostname sylve-node.lan
 :::
 
 :::caution[Keep the system clock accurate]
-Sylve issues time-bound session and cluster tokens, and cluster join compares the joining node's time against the leader. If the clock is off by more than about 30 seconds, sign-in can fail and cluster join is rejected with `cluster_join_clock_drift`.
+Sylve issues time-bound session tokens, and cluster join compares the joining node's time against the member it joins through. If the clock is off by more than about 30 seconds, sign-in can fail and cluster join is rejected with `cluster_join_clock_drift`.
 
 Make sure NTP is running so the clock stays synchronized:
 

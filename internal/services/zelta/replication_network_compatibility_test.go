@@ -12,8 +12,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -40,23 +38,26 @@ func (replicationNetworkAuthStub) CreateInternalClusterJWT(string) (string, erro
 	return "replication-network-token", nil
 }
 
+func newTargetCheckCluster(
+	t *testing.T,
+	db *gorm.DB,
+	answer func(replicationVMTargetProbe) replicationNetworkTargetResult,
+) *clusterService.Service {
+	t.Helper()
+	target := clusterService.NewClusterService(db, nil, nil).(*clusterService.Service)
+	target.NodeID = "target-node"
+	clusterService.OnNode(target, "migration-check-vm-target",
+		func(_ context.Context, _ string, probe replicationVMTargetProbe) (replicationNetworkTargetResult, error) {
+			return answer(probe), nil
+		})
+	return target
+}
+
 func TestValidateReplicationVMTargetNetworkCompatibility(t *testing.T) {
 	var received replicationVMTargetProbe
-	responseBody := `{"status":"success","data":{"missingSwitches":[],"incompatibleSwitches":["WAN: vm_network_default_access_vlan_mismatch"],"networkCompatibilityChecked":true}}`
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/intra-cluster/migration/check-vm-target" {
-			t.Errorf("path = %q", r.URL.Path)
-		}
-		if r.Header.Get("X-Cluster-Token") != "Bearer replication-network-token" {
-			t.Errorf("cluster token = %q", r.Header.Get("X-Cluster-Token"))
-		}
-		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
-			t.Errorf("decode request: %v", err)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(responseBody))
-	}))
-	defer server.Close()
+	response := replicationNetworkTargetResult{TargetResult: networkAttachment.TargetResult{
+		IncompatibleSwitches: []string{"WAN: vm_network_default_access_vlan_mismatch"},
+	}}
 
 	db := testutil.NewSQLiteTestDB(t,
 		&clusterModels.ClusterNode{},
@@ -77,11 +78,6 @@ func TestValidateReplicationVMTargetNetworkCompatibility(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed vm network: %v", err)
 	}
-	if err := db.Create(&clusterModels.ClusterNode{
-		NodeUUID: "target-node", API: strings.TrimPrefix(server.URL, "https://"),
-	}).Error; err != nil {
-		t.Fatalf("seed target node: %v", err)
-	}
 
 	originalResolve := resolveReplicationVMNetworkAttachment
 	defaultVLAN := 20
@@ -99,8 +95,10 @@ func TestValidateReplicationVMTargetNetworkCompatibility(t *testing.T) {
 	}
 	t.Cleanup(func() { resolveReplicationVMNetworkAttachment = originalResolve })
 
-	clusterSvc := &clusterService.Service{DB: db, AuthService: replicationNetworkAuthStub{}}
-	svc := &Service{DB: db, Cluster: clusterSvc}
+	svc := &Service{DB: db, Cluster: newTargetCheckCluster(t, db, func(probe replicationVMTargetProbe) replicationNetworkTargetResult {
+		received = probe
+		return response
+	})}
 	check, err := svc.buildReplicationTargetNetworkCheck(&clusterModels.ReplicationPolicy{
 		ID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: vm.RID,
 	})
@@ -122,10 +120,9 @@ func TestValidateReplicationVMTargetNetworkCompatibility(t *testing.T) {
 		t.Fatalf("received switch = %+v", got)
 	}
 
-	responseBody = `{"status":"success","data":{"missingSwitches":[],"incompatibleSwitches":[]}}`
-	err = svc.validateReplicationTargetNetworkCheck(context.Background(), "target-node", check)
-	if err == nil || !strings.Contains(err.Error(), "replication_target_network_check_unsupported") {
-		t.Fatalf("legacy target response was not rejected: %v", err)
+	response = replicationNetworkTargetResult{}
+	if err := svc.validateReplicationTargetNetworkCheck(context.Background(), "target-node", check); err != nil {
+		t.Fatalf("compatible target rejected: %v", err)
 	}
 }
 
@@ -211,23 +208,13 @@ func TestReplicationChecksHelperWithoutNetworks(t *testing.T) {
 	if err := db.Create(&vm).Error; err != nil {
 		t.Fatal(err)
 	}
-	responseBody := `{"status":"success","data":{"networkCompatibilityChecked":true}}`
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var received replicationVMTargetProbe
-		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
-			t.Error(err)
-		}
+	response := replicationNetworkTargetResult{BootErrors: []string{"csmwrap_requires_two_vcpus"}}
+	service := &Service{DB: db, Cluster: newTargetCheckCluster(t, db, func(received replicationVMTargetProbe) replicationNetworkTargetResult {
 		if received.BootRequirement == nil || received.BootRequirement.BootROM != vm.BootROM || received.BootRequirement.CPUCores != vm.CPUCores {
 			t.Errorf("helper requirements omitted: %+v", received)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(responseBody))
-	}))
-	defer server.Close()
-	if err := db.Create(&clusterModels.ClusterNode{NodeUUID: "target-node", API: strings.TrimPrefix(server.URL, "https://")}).Error; err != nil {
-		t.Fatal(err)
-	}
-	service := &Service{DB: db, Cluster: &clusterService.Service{DB: db, AuthService: replicationNetworkAuthStub{}}}
+		return response
+	})}
 	live, err := service.buildReplicationTargetNetworkCheck(&clusterModels.ReplicationPolicy{
 		ID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: vm.RID,
 	})
@@ -243,19 +230,15 @@ func TestReplicationChecksHelperWithoutNetworks(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, check := range []replicationTargetNetworkCheck{live, captured} {
-		if check.action != "migration/check-vm-target" {
+		if check.action != "migration-check-vm-target" {
 			t.Fatal("network-free helper preflight was skipped")
 		}
 		err := service.validateReplicationTargetNetworkCheck(context.Background(), "target-node", check)
-		if err == nil || !strings.Contains(err.Error(), "replication_target_boot_check_unsupported") {
-			t.Fatalf("old target accepted: %v", err)
+		if err == nil || !strings.Contains(err.Error(), "replication_target_boot_incompatible") {
+			t.Fatalf("incompatible helper accepted: %v", err)
 		}
 	}
-	responseBody = `{"status":"success","data":{"networkCompatibilityChecked":true,"bootCompatibilityChecked":true,"bootErrors":["csmwrap_requires_two_vcpus"]}}`
-	if err := service.validateReplicationTargetNetworkCheck(context.Background(), "target-node", captured); err == nil || !strings.Contains(err.Error(), "replication_target_boot_incompatible") {
-		t.Fatalf("incompatible helper accepted: %v", err)
-	}
-	responseBody = `{"status":"success","data":{"networkCompatibilityChecked":true,"bootCompatibilityChecked":true,"bootErrors":[]}}`
+	response.BootErrors = nil
 	if err := service.validateReplicationTargetNetworkCheck(context.Background(), "target-node", captured); err != nil {
 		t.Fatalf("compatible helper rejected: %v", err)
 	}
@@ -346,7 +329,7 @@ func TestBuildReplicationVMTargetNetworkCheckFromCapturedMetadata(t *testing.T) 
 		t.Fatalf("build captured VM check: %v", err)
 	}
 	probe, ok := check.payload.(replicationVMTargetProbe)
-	if !ok || check.action != "migration/check-vm-target" || len(probe.Switches) != 1 {
+	if !ok || check.action != "migration-check-vm-target" || len(probe.Switches) != 1 {
 		t.Fatalf("captured VM check = action=%q payload=%#v", check.action, check.payload)
 	}
 	got := probe.Switches[0]
@@ -387,7 +370,7 @@ func TestBuildReplicationJailTargetNetworkCheckFromCapturedMetadata(t *testing.T
 		t.Fatalf("build captured jail check: %v", err)
 	}
 	probe, ok := check.payload.(replicationJailTargetProbe)
-	if !ok || check.action != "migration/check-jail-target" || len(probe.Networks) != 1 {
+	if !ok || check.action != "migration-check-jail-target" || len(probe.Networks) != 1 {
 		t.Fatalf("captured jail check = action=%q payload=%#v", check.action, check.payload)
 	}
 	got := probe.Networks[0]

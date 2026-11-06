@@ -14,9 +14,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -26,6 +26,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
+	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
@@ -43,7 +44,6 @@ type backupForwardTestNode struct {
 
 type backupForwardAuthCall struct {
 	userID   uint
-	username string
 	authType string
 }
 
@@ -53,11 +53,11 @@ type backupForwardAuthStub struct {
 	calls []backupForwardAuthCall
 }
 
-func (s *backupForwardAuthStub) CreateUserProxyJWT(userID uint, username, authType string) (string, error) {
+func (s *backupForwardAuthStub) ProxiedUser(userID uint, authType string) (serviceInterfaces.ProxiedUser, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.calls = append(s.calls, backupForwardAuthCall{userID: userID, username: username, authType: authType})
-	return "signed-user-proxy", nil
+	s.calls = append(s.calls, backupForwardAuthCall{userID: userID, authType: authType})
+	return serviceInterfaces.ProxiedUser{Username: "admin", AuthType: authType}, nil
 }
 
 type backupRestoreHandlerStub struct {
@@ -281,38 +281,22 @@ func newBackupRunForwardRouter(
 	return router
 }
 
-func dispatchBackupForwardToRouter(
-	router http.Handler,
-	capture func(string, map[string]string, []byte),
-) func(context.Context, string, any, map[string]string) (clusterForwardResponse, error) {
-	return func(ctx context.Context, targetURL string, payload any, headers map[string]string) (clusterForwardResponse, error) {
-		parsed, err := url.Parse(targetURL)
-		if err != nil {
-			return clusterForwardResponse{}, err
-		}
-		body, err := json.Marshal(payload)
-		if err != nil {
-			return clusterForwardResponse{}, err
-		}
-		if capture != nil {
-			copyHeaders := make(map[string]string, len(headers))
-			for key, value := range headers {
-				copyHeaders[key] = value
-			}
-			capture(targetURL, copyHeaders, body)
-		}
-		request := httptest.NewRequest(http.MethodPost, parsed.Path, bytes.NewReader(body)).WithContext(ctx)
-		for key, value := range headers {
-			request.Header.Set(key, value)
-		}
-		response := httptest.NewRecorder()
-		router.ServeHTTP(response, request)
-		return clusterForwardResponse{
-			StatusCode: response.Code,
-			Header:     response.Header().Clone(),
-			Body:       append([]byte(nil), response.Body.Bytes()...),
-		}, nil
-	}
+type forwardedRequest struct {
+	url    string
+	header http.Header
+	body   []byte
+}
+
+func recordForwards(t *testing.T, handler http.Handler) *[]forwardedRequest {
+	t.Helper()
+	var requests []forwardedRequest
+	serveForwards(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		requests = append(requests, forwardedRequest{url: r.URL.String(), header: r.Header.Clone(), body: body})
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		handler.ServeHTTP(w, r)
+	}))
+	return &requests
 }
 
 func performBackupForwardRequest(
@@ -329,7 +313,7 @@ func performBackupForwardRequest(
 		request.Header.Set(key, value)
 	}
 	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
+	router.ServeHTTP(forwardRecorder{response}, request)
 	return response
 }
 
@@ -351,16 +335,7 @@ func TestBackupRestoreForwardsThroughEveryNonRunnerAndOnlyRunnerEnqueues(t *test
 
 	runnerRestore := &backupRestoreHandlerStub{}
 	runnerRouter := newBackupRestoreForwardRouter(nodes[1].service, runnerRestore, 0, "", "")
-	var capturedHeaders []map[string]string
-	var capturedURLs []string
-	var capturedBodies [][]byte
-	originalForward := backupJobForwardHTTP
-	backupJobForwardHTTP = dispatchBackupForwardToRouter(runnerRouter, func(targetURL string, headers map[string]string, body []byte) {
-		capturedURLs = append(capturedURLs, targetURL)
-		capturedHeaders = append(capturedHeaders, headers)
-		capturedBodies = append(capturedBodies, append([]byte(nil), body...))
-	})
-	t.Cleanup(func() { backupJobForwardHTTP = originalForward })
+	forwarded := recordForwards(t, runnerRouter)
 
 	for _, ingressIndex := range []int{0, 2} {
 		ingressRestore := &backupRestoreHandlerStub{}
@@ -378,13 +353,10 @@ func TestBackupRestoreForwardsThroughEveryNonRunnerAndOnlyRunnerEnqueues(t *test
 		if response.Code != http.StatusAccepted {
 			t.Fatalf("ingress %s response=%d body=%s", nodes[ingressIndex].id, response.Code, response.Body.String())
 		}
-		if response.Header().Get("X-Request-ID") != requestID {
-			t.Fatalf("ingress %s lost request ID", nodes[ingressIndex].id)
-		}
 		if len(ingressRestore.enqueuedJobs) != 0 || len(ingressRestore.registeredKeys) != 0 {
 			t.Fatalf("ingress %s executed restore locally: %+v", nodes[ingressIndex].id, ingressRestore)
 		}
-		if len(auth.calls) != 1 || auth.calls[0] != (backupForwardAuthCall{userID: 77, username: "alice", authType: "sylve"}) {
+		if len(auth.calls) != 1 || auth.calls[0] != (backupForwardAuthCall{userID: 77, authType: "sylve"}) {
 			t.Fatalf("ingress %s did not preserve audit identity: %+v", nodes[ingressIndex].id, auth.calls)
 		}
 	}
@@ -398,32 +370,30 @@ func TestBackupRestoreForwardsThroughEveryNonRunnerAndOnlyRunnerEnqueues(t *test
 	if len(runnerRestore.registeredKeys) != 2 || runnerRestore.registeredKeys[0] != "secret\x00passphrase" {
 		t.Fatalf("runner encryption key registration = %v", runnerRestore.registeredKeys)
 	}
-	if len(capturedHeaders) != 2 {
-		t.Fatalf("forwarded request count = %d", len(capturedHeaders))
+	if len(*forwarded) != 2 {
+		t.Fatalf("forwarded request count = %d", len(*forwarded))
 	}
-	for index, headers := range capturedHeaders {
-		if headers[backupJobForwardHopHeader] != "1" ||
-			headers[backupJobForwardedTargetHeader] != "runner-b" ||
-			headers[backupJobForwardedByHeader] != nodes[index*2].id ||
-			headers["X-Cluster-Token"] != "Bearer signed-user-proxy" ||
-			headers["X-Request-ID"] != fmt.Sprintf("restore-request-%d", index*2) ||
-			headers["X-Correlation-ID"] != "audit-correlation" {
-			t.Fatalf("forwarded headers %d = %+v", index, headers)
+	wantProxyUser := serviceInterfaces.ProxiedUser{Username: "admin", AuthType: "sylve"}.Header()
+	for index, request := range *forwarded {
+		if request.header.Get(authService.ProxyUserHeader) != wantProxyUser ||
+			request.header.Get("X-Request-ID") != fmt.Sprintf("restore-request-%d", index*2) ||
+			request.header.Get("X-Correlation-ID") != "audit-correlation" {
+			t.Fatalf("forwarded headers %d = %+v", index, request.header)
 		}
-		if !strings.Contains(capturedURLs[index], "runner-b:8184/api/cluster/backups/jobs/61/restore") {
-			t.Fatalf("forwarded URL %d = %q", index, capturedURLs[index])
+		if request.url != "https://runner-b:8184/api/cluster/backups/jobs/61/restore" {
+			t.Fatalf("forwarded URL %d = %q", index, request.url)
 		}
 		var payload RestoreBackupJobRequest
-		if err := json.Unmarshal(capturedBodies[index], &payload); err != nil || payload.Snapshot != "@bk_j1_c1_test" || payload.EncryptionKey != "secret" {
-			t.Fatalf("forwarded body %d = %s err=%v", index, capturedBodies[index], err)
+		if err := json.Unmarshal(request.body, &payload); err != nil || payload.Snapshot != "@bk_j1_c1_test" || payload.EncryptionKey != "secret" {
+			t.Fatalf("forwarded body %d = %s err=%v", index, request.body, err)
 		}
 	}
 }
 
-func TestBackupRestoreUsesStrictInventoryInsteadOfHealthRows(t *testing.T) {
+func TestBackupRestoreChecksClaimsNotHealthRows(t *testing.T) {
 	tests := []struct {
 		name        string
-		clustered   bool
+		claimOwner  string
 		wantStatus  int
 		wantMessage string
 		wantEnqueue bool
@@ -435,10 +405,10 @@ func TestBackupRestoreUsesStrictInventoryInsteadOfHealthRows(t *testing.T) {
 			wantEnqueue: true,
 		},
 		{
-			name:        "unavailable voter inventory is distinct",
-			clustered:   true,
-			wantStatus:  http.StatusServiceUnavailable,
-			wantMessage: "restore_guest_identity_unavailable",
+			name:        "an ID another node holds conflicts",
+			claimOwner:  "other-node",
+			wantStatus:  http.StatusConflict,
+			wantMessage: "restore_guest_id_conflict",
 		},
 	}
 
@@ -450,11 +420,19 @@ func TestBackupRestoreUsesStrictInventoryInsteadOfHealthRows(t *testing.T) {
 				&clusterModels.BackupJob{},
 				&clusterModels.Cluster{},
 				&clusterModels.ClusterNode{},
+				&clusterModels.GuestIdentityClaim{},
 				&vmModels.VM{},
 				&jailModels.Jail{},
 			)
-			if err := database.Create(&clusterModels.Cluster{Enabled: test.clustered}).Error; err != nil {
+			if err := database.Create(&clusterModels.Cluster{}).Error; err != nil {
 				t.Fatalf("seed cluster state: %v", err)
+			}
+			if test.claimOwner != "" {
+				if err := database.Create(&clusterModels.GuestIdentityClaim{
+					GuestID: 72, GuestKind: clusterModels.ReplicationGuestTypeVM, OwnerNodeID: test.claimOwner,
+				}).Error; err != nil {
+					t.Fatalf("seed claim: %v", err)
+				}
 			}
 			if err := database.Create(&clusterModels.ClusterNode{
 				NodeUUID: "stale-node",
@@ -481,7 +459,7 @@ func TestBackupRestoreUsesStrictInventoryInsteadOfHealthRows(t *testing.T) {
 				t.Fatalf("seed backup job: %v", err)
 			}
 
-			service := &clusterService.Service{DB: database, NodeID: "current-node"}
+			service := newTestClusterService(database, "current-node")
 			restoreService := &backupRestoreHandlerStub{}
 			router := newBackupRestoreForwardRouter(service, restoreService, 1, "tester", "test")
 			response := performBackupForwardRequest(
@@ -517,19 +495,15 @@ func TestBackupRestorePreservesRunnerApplicationResponses(t *testing.T) {
 	})
 	nodes[0].service.AuthService = &backupForwardAuthStub{}
 	router := newBackupRestoreForwardRouter(nodes[0].service, &backupRestoreHandlerStub{}, 12, "bob", "pam")
-	originalForward := backupJobForwardHTTP
-	t.Cleanup(func() { backupJobForwardHTTP = originalForward })
 
 	for _, statusCode := range []int{http.StatusBadRequest, http.StatusConflict, http.StatusServiceUnavailable} {
 		t.Run(fmt.Sprintf("status_%d", statusCode), func(t *testing.T) {
 			wantBody := []byte(fmt.Sprintf(`{"status":"error","message":"runner_%d","data":{"jobId":62}}`, statusCode))
-			backupJobForwardHTTP = func(context.Context, string, any, map[string]string) (clusterForwardResponse, error) {
-				return clusterForwardResponse{
-					StatusCode: statusCode,
-					Header:     http.Header{"Content-Type": []string{"application/json"}},
-					Body:       wantBody,
-				}, nil
-			}
+			serveForwards(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(statusCode)
+				_, _ = w.Write(wantBody)
+			}))
 			response := performBackupForwardRequest(
 				t,
 				router,
@@ -544,7 +518,7 @@ func TestBackupRestorePreservesRunnerApplicationResponses(t *testing.T) {
 	}
 }
 
-func TestBackupRestoreForwardingFencesTransportMembershipIdentityAndLoops(t *testing.T) {
+func TestBackupRestoreForwardingFencesTransportMembershipAndSecondHops(t *testing.T) {
 	nodes := setupBackupForwardTestCluster(t, "ingress-a", "runner-b")
 	job := clusterModels.BackupJob{
 		ID: 63, Name: "fenced-restore", TargetID: 9, RunnerNodeID: "runner-b",
@@ -555,14 +529,14 @@ func TestBackupRestoreForwardingFencesTransportMembershipIdentityAndLoops(t *tes
 	nodes[0].service.AuthService = &backupForwardAuthStub{}
 	ingressRestore := &backupRestoreHandlerStub{}
 	router := newBackupRestoreForwardRouter(nodes[0].service, ingressRestore, 12, "bob", "pam")
-	originalForward := backupJobForwardHTTP
-	t.Cleanup(func() { backupJobForwardHTTP = originalForward })
 
 	calls := 0
-	backupJobForwardHTTP = func(context.Context, string, any, map[string]string) (clusterForwardResponse, error) {
+	original := forwardTransport
+	forwardTransport = roundTripFunc(func(*http.Request) (*http.Response, error) {
 		calls++
-		return clusterForwardResponse{}, errors.New("runner offline")
-	}
+		return nil, errors.New("runner offline")
+	})
+	t.Cleanup(func() { forwardTransport = original })
 	response := performBackupForwardRequest(
 		t,
 		router,
@@ -575,29 +549,23 @@ func TestBackupRestoreForwardingFencesTransportMembershipIdentityAndLoops(t *tes
 	}
 
 	calls = 0
+	memberRouter := gin.New()
+	memberRouter.Use(func(c *gin.Context) {
+		c.Set("AuthScope", "cluster")
+		c.Set("ClusterCaller", authService.ClusterCallerUser)
+		c.Next()
+	})
+	memberRouter.POST("/api/cluster/backups/jobs/:id/restore", RestoreBackupJob(nodes[0].service, ingressRestore))
 	response = performBackupForwardRequest(
 		t,
-		router,
-		"/api/cluster/backups/jobs/63/restore",
-		[]byte(`{"snapshot":"@bk_j1_c1_test"}`),
-		map[string]string{backupJobForwardHopHeader: "1"},
-	)
-	if response.Code != http.StatusLoopDetected || calls != 0 {
-		t.Fatalf("forward loop response=%d calls=%d body=%s", response.Code, calls, response.Body.String())
-	}
-
-	nodes[0].service.NodeID = ""
-	response = performBackupForwardRequest(
-		t,
-		router,
+		memberRouter,
 		"/api/cluster/backups/jobs/63/restore",
 		[]byte(`{"snapshot":"@bk_j1_c1_test"}`),
 		nil,
 	)
-	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "local_identity_unavailable") {
-		t.Fatalf("missing local identity response=%d body=%s", response.Code, response.Body.String())
+	if response.Code != http.StatusMisdirectedRequest || calls != 0 {
+		t.Fatalf("second hop response=%d calls=%d body=%s", response.Code, calls, response.Body.String())
 	}
-	nodes[0].service.NodeID = "ingress-a"
 
 	for _, node := range nodes {
 		if err := node.service.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).
@@ -612,7 +580,7 @@ func TestBackupRestoreForwardingFencesTransportMembershipIdentityAndLoops(t *tes
 		[]byte(`{"snapshot":"@bk_j1_c1_test"}`),
 		nil,
 	)
-	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "backup_runner_unavailable") {
+	if response.Code != http.StatusNotFound || !strings.Contains(response.Body.String(), "node_not_found") {
 		t.Fatalf("removed runner response=%d body=%s", response.Code, response.Body.String())
 	}
 	if len(ingressRestore.enqueuedJobs) != 0 {
@@ -631,9 +599,7 @@ func TestRunNowUsesSharedRunnerForwardingProtocol(t *testing.T) {
 	runnerRun := &backupRunHandlerStub{}
 	runnerRouter := newBackupRunForwardRouter(nodes[1].service, runnerRun, 0, "", "")
 	nodes[0].service.AuthService = &backupForwardAuthStub{}
-	originalForward := backupJobForwardHTTP
-	backupJobForwardHTTP = dispatchBackupForwardToRouter(runnerRouter, nil)
-	t.Cleanup(func() { backupJobForwardHTTP = originalForward })
+	recordForwards(t, runnerRouter)
 
 	response := performBackupForwardRequest(
 		t,
@@ -677,7 +643,7 @@ func TestRunNowReturnsAcceptedAndBindsAsyncAudit(t *testing.T) {
 	runService := &backupRunHandlerStub{}
 	router.POST(
 		"/api/cluster/backups/jobs/:id/run",
-		RunBackupJobNow(&clusterService.Service{DB: database}, runService),
+		RunBackupJobNow(clusterService.NewClusterService(database, nil, nil).(*clusterService.Service), runService),
 	)
 
 	response := performBackupForwardRequest(
@@ -691,5 +657,40 @@ func TestRunNowReturnsAcceptedAndBindsAsyncAudit(t *testing.T) {
 	}
 	if auditJobID != job.ID || auditJobType != "backup_job_run" {
 		t.Fatalf("audit binding jobID=%v jobType=%v", auditJobID, auditJobType)
+	}
+}
+
+func TestBackupTargetRestoreForwardsToTheRestoreNode(t *testing.T) {
+	nodes := setupBackupForwardTestCluster(t, "ingress-a", "restore-b")
+	nodes[0].service.AuthService = &backupForwardAuthStub{}
+	restoreRouter := gin.New()
+	restoreRouter.POST("/api/cluster/backups/targets/:id/restore", func(c *gin.Context) {
+		c.JSON(http.StatusAccepted, gin.H{"status": "success"})
+	})
+	forwarded := recordForwards(t, restoreRouter)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("AuthScope", "local")
+		c.Set("UserID", uint(5))
+		c.Set("AuthType", "sylve")
+		c.Next()
+	})
+	router.POST("/api/cluster/backups/targets/:id/restore", RestoreBackupTargetDataset(nodes[0].service, nil))
+
+	response := performBackupForwardRequest(t, router, "/api/cluster/backups/targets/9/restore",
+		[]byte(`{"remoteDataset":"tank/backups/source","snapshot":"@bk_test","destinationDataset":"zroot/restore","restoreNodeId":"restore-b"}`),
+		map[string]string{"Idempotency-Key": "restore-operation-1"})
+	if response.Code != http.StatusAccepted || len(*forwarded) != 1 {
+		t.Fatalf("response=%d body=%s forwarded=%d", response.Code, response.Body.String(), len(*forwarded))
+	}
+	request := (*forwarded)[0]
+	var payload map[string]any
+	if err := json.Unmarshal(request.body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if request.url != "https://restore-b:8184/api/cluster/backups/targets/9/restore" ||
+		payload["operationId"] != "restore-operation-1" || payload["restoreNodeId"] != "restore-b" ||
+		payload["snapshot"] != "@bk_test" {
+		t.Fatalf("forwarded %s with %s", request.url, request.body)
 	}
 }

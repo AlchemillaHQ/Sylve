@@ -95,50 +95,6 @@ func (sim *clusterPeerSimulator) FindRequest(path string) *clusterPeerRequest {
 	return nil
 }
 
-// HandleSyncHealth registers a handler that responds to intra-cluster sync-health POSTs.
-func (sim *clusterPeerSimulator) HandleSyncHealth(respond200 bool) {
-	sim.serveMux.HandleFunc("/api/intra-cluster/sync-health", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		if respond200 {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"status":"success"}`))
-		} else {
-			http.Error(w, "internal error", http.StatusInternalServerError)
-		}
-	})
-}
-
-// HandleEncryptionKeyDiscover registers a handler for the encryption key discovery endpoint.
-func (sim *clusterPeerSimulator) HandleEncryptionKeyDiscover(respond200 bool) {
-	sim.serveMux.HandleFunc("/api/intra-cluster/encryption-key/discover", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		if respond200 {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"status":"success"}`))
-		} else {
-			http.Error(w, "internal error", http.StatusInternalServerError)
-		}
-	})
-}
-
-// HandlePanelRefresh registers a handler for the left-panel-refresh fanout endpoint.
-func (sim *clusterPeerSimulator) HandlePanelRefresh() {
-	sim.serveMux.HandleFunc("/api/intra-cluster/events/left-panel-refresh", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"success"}`))
-	})
-}
-
 // HandleNodeInfo registers a handler that returns cluster node info.
 func (sim *clusterPeerSimulator) HandleNodeInfo(nodeUUID, hostname string, healthOK bool) {
 	sim.serveMux.HandleFunc("/api/info/node", func(w http.ResponseWriter, r *http.Request) {

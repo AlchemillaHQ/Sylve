@@ -127,7 +127,7 @@ func TestBackupJobPreviousPlacementFenceBlocksIdentityEscape(t *testing.T) {
 	}
 }
 
-func TestBackupJobPlacementFenceEnvelopeAndLegacyReplay(t *testing.T) {
+func TestBackupJobPlacementFenceEnvelope(t *testing.T) {
 	db := newClusterModelTestDB(
 		t,
 		&BackupJob{},
@@ -153,19 +153,11 @@ func TestBackupJobPlacementFenceEnvelopeAndLegacyReplay(t *testing.T) {
 		t.Fatalf("enveloped create: %v", err)
 	}
 
-	legacy, _ := json.Marshal(BackupJob{
-		ID: 22, Name: "legacy", TargetID: 1, Mode: BackupJobModeDataset,
-		SourceDataset: "tank/data", CronExpr: "0 0 * * *", Enabled: true,
-	})
-	if err := applyFSMCommand(t, fsm, Command{Type: "backup_job", Action: "create", Data: legacy}); err != nil {
-		t.Fatalf("legacy replay: %v", err)
-	}
-
 	var count int64
 	if err := db.Model(&BackupJob{}).Count(&count).Error; err != nil {
 		t.Fatalf("count jobs: %v", err)
 	}
-	if count != 2 {
-		t.Fatalf("job count = %d, want 2", count)
+	if count != 1 {
+		t.Fatalf("job count = %d, want 1", count)
 	}
 }

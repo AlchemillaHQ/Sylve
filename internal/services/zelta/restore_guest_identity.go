@@ -97,7 +97,7 @@ func (s *Service) reserveGuestIdentityForRestore(
 			Reservation: reservation,
 		}, nil
 	}
-	if s == nil || s.Cluster == nil {
+	if s == nil {
 		return ctx, nil, fmt.Errorf("guest_identity_inventory_scan_failed: cluster_service_not_initialized")
 	}
 	reservation, err := s.Cluster.ReserveGuestIdentities(ctx, guestKind, []uint{guestID})
@@ -126,7 +126,10 @@ func (s *Service) releaseGuestIdentityReservationAfterError(
 		*retErr = errors.Join(*retErr, fmt.Errorf("guest_identity_release_deferred: %w", err))
 		return
 	}
-	if exists && state.Reservation.Clustered {
+	if exists {
+		if err := s.finalizeGuestIdentityRestore(ctx, state); err != nil {
+			*retErr = errors.Join(*retErr, err)
+		}
 		return
 	}
 	if err := s.Cluster.ReleaseGuestIdentities(ctx, state.Reservation); err != nil {

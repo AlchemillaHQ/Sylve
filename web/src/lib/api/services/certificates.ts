@@ -84,7 +84,7 @@ export async function downloadCertificate(
 ): Promise<Blob | APIResponse> {
 	const response = await api.get<unknown>(`/certificates/${id}/archive`, {
 		responseType: 'blob',
-		headers: { 'X-Current-Hostname': hostname }
+		node: hostname
 	});
 	if (response.data instanceof Blob && response.data.size > 0) return response.data;
 

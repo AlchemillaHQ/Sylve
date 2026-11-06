@@ -41,7 +41,7 @@ func TestIntegrationRaftTransitionEventsConvergeWithoutMergingHistory(t *testing
 	eventID, err := leader.service.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
 		PolicyID: &policyID, TransitionRunID: "transition-converged",
 		EventType: "failover", Status: "active", StartedAt: time.Now().UTC(),
-	}, false)
+	})
 	if err != nil {
 		t.Fatalf("create transition event: %v", err)
 	}

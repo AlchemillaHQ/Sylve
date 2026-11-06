@@ -32,7 +32,6 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 
-	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
@@ -761,7 +760,7 @@ func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
 
 	runner := newJailCreateTestZFSRunner(t, nil)
 	svc := newJailCreateTestService(db, runner, pool)
-	identity := &clusterService.Service{DB: db, NodeID: "standalone-node"}
+	identity := newStandaloneGuestIdentityCoordinator(t, db, "standalone-node")
 	svc.SetGuestIdentityCoordinator(identity)
 
 	const ctid uint = 770
@@ -1135,7 +1134,7 @@ func TestCreateJail_PostCommitFailureCleansResidualArtifacts(t *testing.T) {
 	rootDataset := fmt.Sprintf("%s/sylve/jails/%d", pool, ctid)
 	runner := newJailCreateTestZFSRunner(t, nil)
 	svc := newJailCreateTestService(db, runner, pool)
-	identity := &clusterService.Service{DB: db, NodeID: "standalone-node"}
+	identity := newStandaloneGuestIdentityCoordinator(t, db, "standalone-node")
 	svc.SetGuestIdentityCoordinator(identity)
 
 	baseDir := filepath.Join(tmp, "base")

@@ -9,16 +9,12 @@
 package clusterHandlers
 
 import (
-	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
-	"github.com/gin-gonic/gin"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
 )
@@ -27,8 +23,8 @@ type authForwardStub struct {
 	serviceInterfaces.AuthServiceInterface
 }
 
-func (authForwardStub) CreateUserProxyJWT(_ uint, _, _ string) (string, error) {
-	return "test-forward-token", nil
+func (authForwardStub) ProxiedUser(userID uint, authType string) (serviceInterfaces.ProxiedUser, error) {
+	return serviceInterfaces.ProxiedUser{Username: "admin", AuthType: authType}, nil
 }
 
 func TestMapRaftAddrToAPI(t *testing.T) {
@@ -54,7 +50,7 @@ func TestMapRaftAddrToAPI(t *testing.T) {
 func TestResolveLeaderAPI(t *testing.T) {
 	t.Run("authoritative raft address ignores stale node API", func(t *testing.T) {
 		db2 := newClusterHandlerTestDB(t, &clusterModels.ClusterNode{})
-		s2 := &cluster.Service{DB: db2}
+		s2 := cluster.NewClusterService(db2, nil, nil).(*cluster.Service)
 		db2.Create(&clusterModels.ClusterNode{
 			NodeUUID: "leader-1", API: "203.0.113.99:9999",
 		})
@@ -66,7 +62,7 @@ func TestResolveLeaderAPI(t *testing.T) {
 
 	t.Run("raft fallback", func(t *testing.T) {
 		db3 := newClusterHandlerTestDB(t)
-		s3 := &cluster.Service{DB: db3}
+		s3 := cluster.NewClusterService(db3, nil, nil).(*cluster.Service)
 		base := resolveLeaderAPI(s3, "", "192.168.1.1:8180")
 		if base != "https://192.168.1.1:8184" {
 			t.Fatalf("expected fallback to raft addr, got %q", base)
@@ -75,7 +71,7 @@ func TestResolveLeaderAPI(t *testing.T) {
 
 	t.Run("empty when nothing resolves", func(t *testing.T) {
 		db4 := newClusterHandlerTestDB(t)
-		s4 := &cluster.Service{DB: db4}
+		s4 := cluster.NewClusterService(db4, nil, nil).(*cluster.Service)
 		base := resolveLeaderAPI(s4, "", "bad")
 		if base != "" {
 			t.Fatalf("expected empty, got %q", base)
@@ -127,112 +123,4 @@ func setupSingleRaftForTest(t *testing.T, id string) *raft.Raft {
 	}
 	t.Fatal("timed out waiting for leader election")
 	return nil
-}
-
-func TestForwardToLeader(t *testing.T) {
-	db := newClusterHandlerTestDB(t, &clusterModels.ClusterNode{})
-
-	// stand up the target server first
-	var capturedURI, capturedBody string
-	forwardServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedURI = r.URL.RequestURI()
-		bodyBytes := make([]byte, r.ContentLength)
-		if r.ContentLength > 0 {
-			r.Body.Read(bodyBytes)
-		}
-		capturedBody = string(bodyBytes)
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"success"}`))
-	}))
-	defer forwardServer.Close()
-
-	forwardAddr := strings.TrimPrefix(forwardServer.URL, "https://")
-	originalResolver := resolveLeaderAPIForForward
-	resolveLeaderAPIForForward = func(*cluster.Service, string, string) string { return forwardServer.URL }
-	t.Cleanup(func() { resolveLeaderAPIForForward = originalResolver })
-
-	r := setupSingleRaftForTest(t, "node-1")
-	defer func() { _ = r.Shutdown().Error() }()
-
-	s := withRaft(&cluster.Service{DB: db, AuthService: authForwardStub{}}, r)
-
-	db.Create(&clusterModels.ClusterNode{
-		NodeUUID: "node-1", API: forwardAddr,
-	})
-
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
-	reqBody := `{"name":"test","mode":"dataset"}`
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/cluster/test-endpoint?nodeId=node-2", strings.NewReader(reqBody))
-	ctx.Request.Header.Set("Content-Type", "application/json")
-	ctx.Set("UserID", uint(1))
-	ctx.Set("Username", "admin")
-	ctx.Set("AuthType", "sylve")
-	ctx.Set("AuthScope", "local")
-
-	forwardToLeader(ctx, s)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	if capturedURI != "/api/cluster/test-endpoint?nodeId=node-2" {
-		t.Fatalf("expected forwarded request URI with selected node, got %q", capturedURI)
-	}
-	if capturedBody != reqBody {
-		t.Fatalf("expected forwarded body %q, got %q", reqBody, capturedBody)
-	}
-}
-
-func TestForwardToLeaderBadAPIResolution(t *testing.T) {
-	db := newClusterHandlerTestDB(t)
-
-	r := setupSingleRaftForTest(t, "node-nomatch")
-	defer func() { _ = r.Shutdown().Error() }()
-
-	// no ClusterNode matching the raft ID, and raft address has no port
-	// so resolveLeaderAPI returns empty
-	s := withRaft(&cluster.Service{DB: db}, r)
-
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/test", strings.NewReader(`{}`))
-	ctx.Request.Header.Set("Content-Type", "application/json")
-
-	forwardToLeader(ctx, s)
-
-	if w.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
-func TestForwardToLeaderRejectsOversizedBody(t *testing.T) {
-	r := setupSingleRaftForTest(t, "node-oversized")
-	defer func() { _ = r.Shutdown().Error() }()
-
-	originalResolver := resolveLeaderAPIForForward
-	resolveLeaderAPIForForward = func(*cluster.Service, string, string) string {
-		return "https://leader.invalid"
-	}
-	t.Cleanup(func() { resolveLeaderAPIForForward = originalResolver })
-
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
-	ctx.Request = httptest.NewRequest(
-		http.MethodPost,
-		"/api/cluster/notes",
-		strings.NewReader(`{"title":"oversized"}`),
-	)
-	ctx.Request.Body = http.MaxBytesReader(w, ctx.Request.Body, 4)
-
-	forwardToLeader(ctx, withRaft(&cluster.Service{}, r))
-
-	if w.Code != http.StatusRequestEntityTooLarge {
-		t.Fatalf("expected 413, got %d: %s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), `"message":"request_body_too_large"`) {
-		t.Fatalf("unexpected oversized-body response: %s", w.Body.String())
-	}
 }

@@ -16,7 +16,6 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
@@ -464,10 +463,8 @@ func TestOOBRestorePreflightUsesSharedLiveGuestIDNamespace(t *testing.T) {
 				t.Fatalf("seed occupied guest ID: %v", err)
 			}
 			service := &Service{
-				DB: database,
-				Cluster: &clusterService.Service{
-					DB: database, NodeID: "standalone-node",
-				},
+				DB:      database,
+				Cluster: newStandaloneClusterService(t, database),
 			}
 			_, err := service.preflightOOBGuestRestoreDestination(
 				t.Context(),
@@ -500,11 +497,9 @@ func TestIntegrationOOBRestoreExistingCanonicalDestinationIsNeverReplacedRealZFS
 		&jailModels.Jail{},
 	)
 	service := &Service{
-		DB: database,
-		Cluster: &clusterService.Service{
-			DB: database, NodeID: "standalone-node",
-		},
-		GZFS: client,
+		DB:      database,
+		Cluster: newStandaloneClusterService(t, database),
+		GZFS:    client,
 	}
 	target := &clusterModels.BackupTarget{BackupRoot: "backup/root"}
 	freeDestination := pool + "/sylve/virtual-machines/109"

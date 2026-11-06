@@ -13,13 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
 
 func newBackupTargetRestoreOperationTestDB(t *testing.T) (*gorm.DB, BackupTarget, time.Time) {
 	t.Helper()
-	db := testutil.NewSQLiteTestDB(t, &BackupTarget{}, &BackupTargetRestoreOperation{})
+	db := newClusterModelTestDB(t, &BackupTarget{}, &BackupTargetRestoreOperation{})
 	target := BackupTarget{
 		ID: 71, Name: "restore-target", SSHHost: "root@backup", SSHPort: 22,
 		BackupRoot: "tank/backups", Enabled: true,

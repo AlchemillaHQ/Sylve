@@ -9,6 +9,8 @@
 package cluster
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -27,6 +29,7 @@ const (
 	PeerRemovalDependencyRestoreOperation     = "restore_operation"
 	PeerRemovalDependencyGuestOperation       = "guest_operation"
 	PeerRemovalDependencyRunnerRebind         = "runner_rebind"
+	PeerRemovalDependencyLifecycleTask        = "lifecycle_task"
 )
 
 type PeerRemovalDependency struct {
@@ -42,22 +45,15 @@ type PeerRemovalConflict struct {
 	Dependencies []PeerRemovalDependency `json:"dependencies"`
 }
 
+// The leader-call error table carries this across the hop; the conflict travels
+// as the result.
+var ErrPeerRemovalBlocked = errors.New("peer_removal_blocked")
+
 type PeerRemovalBlockedError struct {
 	Conflict PeerRemovalConflict
 }
 
-func blockingPeerRemovalDependencies(dependencies []PeerRemovalDependency, retainGuests bool) []PeerRemovalDependency {
-	if !retainGuests {
-		return dependencies
-	}
-	blocking := make([]PeerRemovalDependency, 0, len(dependencies))
-	for _, dependency := range dependencies {
-		if dependency.Kind != PeerRemovalDependencyGuest {
-			blocking = append(blocking, dependency)
-		}
-	}
-	return blocking
-}
+func (e *PeerRemovalBlockedError) Is(target error) bool { return target == ErrPeerRemovalBlocked }
 
 func (e *PeerRemovalBlockedError) Error() string {
 	if e == nil {
@@ -68,6 +64,19 @@ func (e *PeerRemovalBlockedError) Error() string {
 		e.Conflict.NodeID,
 		len(e.Conflict.Dependencies),
 	)
+}
+
+func blockingPeerRemovalDependencies(dependencies []PeerRemovalDependency, keepGuests bool) []PeerRemovalDependency {
+	if !keepGuests {
+		return dependencies
+	}
+	blocking := make([]PeerRemovalDependency, 0, len(dependencies))
+	for _, dependency := range dependencies {
+		if dependency.Kind != PeerRemovalDependencyGuest {
+			blocking = append(blocking, dependency)
+		}
+	}
+	return blocking
 }
 
 func appendPeerRemovalDependency(
@@ -87,226 +96,128 @@ func appendPeerRemovalDependency(
 	})
 }
 
-func (s *Service) peerRemovalDependencies(nodeID string) ([]PeerRemovalDependency, error) {
-	return s.replicatedPeerRemovalDependencies(nodeID)
-}
-
-func (s *Service) replicatedPeerRemovalDependencies(nodeID string) ([]PeerRemovalDependency, error) {
+func (s *Service) replicatedPeerRemovalDependencies(ctx context.Context, nodeID string) ([]PeerRemovalDependency, error) {
 	nodeID = strings.TrimSpace(nodeID)
-	if s == nil || s.DB == nil {
-		return nil, fmt.Errorf("cluster_service_unavailable")
-	}
-	if nodeID == "" {
-		return nil, fmt.Errorf("peer_node_id_required")
-	}
-
+	db := s.DB.WithContext(ctx)
 	dependencies := make([]PeerRemovalDependency, 0)
-	if s.DB.Migrator().HasTable(&clusterModels.GuestIdentityClaim{}) {
-		var claims []clusterModels.GuestIdentityClaim
-		if err := s.DB.Where("owner_node_id = ?", nodeID).Order("guest_id ASC").Find(&claims).Error; err != nil {
-			return nil, fmt.Errorf("scan_peer_guest_identity_claims: %w", err)
-		}
-		for _, claim := range claims {
-			appendPeerRemovalDependency(
-				&dependencies,
-				PeerRemovalDependencyGuest,
-				claim.GuestID,
-				"",
-				claim.GuestKind,
-				"claimed",
-			)
-		}
+
+	var claims []clusterModels.GuestIdentityClaim
+	if err := db.Where("owner_node_id = ?", nodeID).Order("guest_id ASC").Find(&claims).Error; err != nil {
+		return nil, fmt.Errorf("scan_peer_guest_identity_claims: %w", err)
+	}
+	for _, claim := range claims {
+		appendPeerRemovalDependency(&dependencies, PeerRemovalDependencyGuest, claim.GuestID, "", claim.GuestKind, "claimed")
 	}
 
-	if s.DB.Migrator().HasTable(&clusterModels.BackupJob{}) {
-		var jobs []clusterModels.BackupJob
-		if err := s.DB.Where("runner_node_id = ?", nodeID).Order("id ASC").Find(&jobs).Error; err != nil {
-			return nil, fmt.Errorf("scan_peer_backup_jobs: %w", err)
-		}
-		for _, job := range jobs {
-			appendPeerRemovalDependency(
-				&dependencies,
-				PeerRemovalDependencyBackupJob,
-				job.ID,
-				job.Name,
-				"runner",
-				"",
-			)
-		}
+	var jobs []clusterModels.BackupJob
+	if err := db.Where("runner_node_id = ?", nodeID).Order("id ASC").Find(&jobs).Error; err != nil {
+		return nil, fmt.Errorf("scan_peer_backup_jobs: %w", err)
+	}
+	for _, job := range jobs {
+		appendPeerRemovalDependency(&dependencies, PeerRemovalDependencyBackupJob, job.ID, job.Name, "runner", "")
 	}
 
-	if s.DB.Migrator().HasTable(&clusterModels.ReplicationPolicy{}) {
-		var policies []clusterModels.ReplicationPolicy
-		query := s.DB.Order("id ASC")
-		if s.DB.Migrator().HasTable(&clusterModels.ReplicationPolicyTarget{}) {
-			query = query.Preload("Targets")
-		}
-		if err := query.Find(&policies).Error; err != nil {
-			return nil, fmt.Errorf("scan_peer_replication_policies: %w", err)
-		}
-		for _, policy := range policies {
-			roles := make([]string, 0, 6)
-			if strings.TrimSpace(policy.ActiveNodeID) == nodeID {
-				roles = append(roles, "active_owner")
-			}
-			if strings.TrimSpace(policy.SourceNodeID) == nodeID {
-				roles = append(roles, "source")
-			}
-			if strings.TrimSpace(policy.TransitionSourceNodeID) == nodeID {
-				roles = append(roles, "transition_source")
-			}
-			if strings.TrimSpace(policy.TransitionTargetNodeID) == nodeID {
-				roles = append(roles, "transition_target")
-			}
-			if strings.TrimSpace(policy.TransitionOriginalSourceNodeID) == nodeID {
-				roles = append(roles, "transition_original_source")
-			}
-			for _, target := range policy.Targets {
-				if strings.TrimSpace(target.NodeID) == nodeID {
-					roles = append(roles, "target")
-					break
-				}
-			}
-			if len(roles) == 0 {
-				continue
-			}
-			sort.Strings(roles)
-			appendPeerRemovalDependency(
-				&dependencies,
-				PeerRemovalDependencyReplicationPolicy,
-				policy.ID,
-				policy.Name,
-				strings.Join(roles, ","),
-				policy.TransitionState,
-			)
-		}
+	var policies []clusterModels.ReplicationPolicy
+	if err := db.Preload("Targets").Order("id ASC").Find(&policies).Error; err != nil {
+		return nil, fmt.Errorf("scan_peer_replication_policies: %w", err)
 	}
-
-	if s.DB.Migrator().HasTable(&clusterModels.ReplicationLease{}) {
-		var leases []clusterModels.ReplicationLease
-		if err := s.DB.Where("owner_node_id = ?", nodeID).Order("policy_id ASC").Find(&leases).Error; err != nil {
-			return nil, fmt.Errorf("scan_peer_replication_leases: %w", err)
+	for _, policy := range policies {
+		roles := make([]string, 0, 6)
+		if strings.TrimSpace(policy.ActiveNodeID) == nodeID {
+			roles = append(roles, "active_owner")
 		}
-		for _, lease := range leases {
-			appendPeerRemovalDependency(
-				&dependencies,
-				PeerRemovalDependencyReplicationLease,
-				lease.PolicyID,
-				"",
-				"owner",
-				"",
-			)
+		if strings.TrimSpace(policy.SourceNodeID) == nodeID {
+			roles = append(roles, "source")
 		}
-	}
-
-	if s.DB.Migrator().HasTable(&clusterModels.BackupJobOperation{}) {
-		var operations []clusterModels.BackupJobOperation
-		if err := s.DB.Where("holder_node_id = ?", nodeID).Order("job_id ASC").Find(&operations).Error; err != nil {
-			return nil, fmt.Errorf("scan_peer_backup_operations: %w", err)
+		if strings.TrimSpace(policy.TransitionSourceNodeID) == nodeID {
+			roles = append(roles, "transition_source")
 		}
-		for _, operation := range operations {
-			appendPeerRemovalDependency(
-				&dependencies,
-				PeerRemovalDependencyBackupOperation,
-				operation.Token,
-				"",
-				"holder",
-				operation.State,
-			)
+		if strings.TrimSpace(policy.TransitionTargetNodeID) == nodeID {
+			roles = append(roles, "transition_target")
 		}
-	}
-
-	if s.DB.Migrator().HasTable(&clusterModels.ReplicationRunOperation{}) {
-		var operations []clusterModels.ReplicationRunOperation
-		if err := s.DB.Where("holder_node_id = ?", nodeID).Order("policy_id ASC").Find(&operations).Error; err != nil {
-			return nil, fmt.Errorf("scan_peer_replication_operations: %w", err)
+		if strings.TrimSpace(policy.TransitionOriginalSourceNodeID) == nodeID {
+			roles = append(roles, "transition_original_source")
 		}
-		for _, operation := range operations {
-			appendPeerRemovalDependency(
-				&dependencies,
-				PeerRemovalDependencyReplicationOperation,
-				operation.Token,
-				"",
-				"holder",
-				operation.State,
-			)
-		}
-	}
-
-	if s.DB.Migrator().HasTable(&clusterModels.BackupTargetRestoreOperation{}) {
-		var operations []clusterModels.BackupTargetRestoreOperation
-		if err := s.DB.
-			Where("holder_node_id = ? AND state <> ?", nodeID, clusterModels.BackupTargetRestoreOperationCompleted).
-			Order("token ASC").
-			Find(&operations).Error; err != nil {
-			return nil, fmt.Errorf("scan_peer_restore_operations: %w", err)
-		}
-		for _, operation := range operations {
-			appendPeerRemovalDependency(
-				&dependencies,
-				PeerRemovalDependencyRestoreOperation,
-				operation.Token,
-				operation.DestinationDataset,
-				"holder",
-				operation.State,
-			)
-		}
-	}
-
-	if s.DB.Migrator().HasTable(&clusterModels.ReplicationGuestOperation{}) {
-		var operations []clusterModels.ReplicationGuestOperation
-		if err := s.DB.
-			Where("owner_node_id = ? OR target_node_id = ?", nodeID, nodeID).
-			Order("guest_type ASC, guest_id ASC").
-			Find(&operations).Error; err != nil {
-			return nil, fmt.Errorf("scan_peer_guest_operations: %w", err)
-		}
-		for _, operation := range operations {
-			roles := make([]string, 0, 2)
-			if strings.TrimSpace(operation.OwnerNodeID) == nodeID {
-				roles = append(roles, "owner")
-			}
-			if strings.TrimSpace(operation.TargetNodeID) == nodeID {
+		for _, target := range policy.Targets {
+			if strings.TrimSpace(target.NodeID) == nodeID {
 				roles = append(roles, "target")
+				break
 			}
-			appendPeerRemovalDependency(
-				&dependencies,
-				PeerRemovalDependencyGuestOperation,
-				operation.Token,
-				fmt.Sprintf("%s:%d", operation.GuestType, operation.GuestID),
-				strings.Join(roles, ","),
-				operation.State,
-			)
 		}
+		if len(roles) == 0 {
+			continue
+		}
+		sort.Strings(roles)
+		appendPeerRemovalDependency(&dependencies, PeerRemovalDependencyReplicationPolicy, policy.ID, policy.Name, strings.Join(roles, ","), policy.TransitionState)
 	}
 
-	if s.DB.Migrator().HasTable(&clusterModels.BackupJobRunnerRebind{}) {
-		var rebinds []clusterModels.BackupJobRunnerRebind
-		terminalStates := []string{
-			clusterModels.BackupJobRunnerRebindStateCompleted,
-			clusterModels.BackupJobRunnerRebindStateCompletedWithRepairs,
-			clusterModels.BackupJobRunnerRebindStateAborted,
+	var leases []clusterModels.ReplicationLease
+	if err := db.Where("owner_node_id = ?", nodeID).Order("policy_id ASC").Find(&leases).Error; err != nil {
+		return nil, fmt.Errorf("scan_peer_replication_leases: %w", err)
+	}
+	for _, lease := range leases {
+		appendPeerRemovalDependency(&dependencies, PeerRemovalDependencyReplicationLease, lease.PolicyID, "", "owner", "")
+	}
+
+	var backupOperations []clusterModels.BackupJobOperation
+	if err := db.Where("holder_node_id = ?", nodeID).Order("job_id ASC").Find(&backupOperations).Error; err != nil {
+		return nil, fmt.Errorf("scan_peer_backup_operations: %w", err)
+	}
+	for _, operation := range backupOperations {
+		appendPeerRemovalDependency(&dependencies, PeerRemovalDependencyBackupOperation, operation.Token, "", "holder", operation.State)
+	}
+
+	var replicationOperations []clusterModels.ReplicationRunOperation
+	if err := db.Where("holder_node_id = ?", nodeID).Order("policy_id ASC").Find(&replicationOperations).Error; err != nil {
+		return nil, fmt.Errorf("scan_peer_replication_operations: %w", err)
+	}
+	for _, operation := range replicationOperations {
+		appendPeerRemovalDependency(&dependencies, PeerRemovalDependencyReplicationOperation, operation.Token, "", "holder", operation.State)
+	}
+
+	var restoreOperations []clusterModels.BackupTargetRestoreOperation
+	if err := db.Where("holder_node_id = ? AND state <> ?", nodeID, clusterModels.BackupTargetRestoreOperationCompleted).
+		Order("token ASC").Find(&restoreOperations).Error; err != nil {
+		return nil, fmt.Errorf("scan_peer_restore_operations: %w", err)
+	}
+	for _, operation := range restoreOperations {
+		appendPeerRemovalDependency(&dependencies, PeerRemovalDependencyRestoreOperation, operation.Token, operation.DestinationDataset, "holder", operation.State)
+	}
+
+	var guestOperations []clusterModels.ReplicationGuestOperation
+	if err := db.Where("owner_node_id = ? OR target_node_id = ?", nodeID, nodeID).
+		Order("guest_type ASC, guest_id ASC").Find(&guestOperations).Error; err != nil {
+		return nil, fmt.Errorf("scan_peer_guest_operations: %w", err)
+	}
+	for _, operation := range guestOperations {
+		roles := make([]string, 0, 2)
+		if strings.TrimSpace(operation.OwnerNodeID) == nodeID {
+			roles = append(roles, "owner")
 		}
-		if err := s.DB.
-			Where("(old_runner_node_id = ? OR new_runner_node_id = ?) AND state NOT IN ?", nodeID, nodeID, terminalStates).
-			Order("token ASC").
-			Find(&rebinds).Error; err != nil {
-			return nil, fmt.Errorf("scan_peer_runner_rebinds: %w", err)
+		if strings.TrimSpace(operation.TargetNodeID) == nodeID {
+			roles = append(roles, "target")
 		}
-		for _, rebind := range rebinds {
-			role := "old_runner"
-			if strings.TrimSpace(rebind.NewRunnerNodeID) == nodeID {
-				role = "new_runner"
-			}
-			appendPeerRemovalDependency(
-				&dependencies,
-				PeerRemovalDependencyRunnerRebind,
-				rebind.Token,
-				fmt.Sprintf("%s:%d", rebind.GuestType, rebind.GuestID),
-				role,
-				rebind.State,
-			)
+		appendPeerRemovalDependency(&dependencies, PeerRemovalDependencyGuestOperation, operation.Token,
+			fmt.Sprintf("%s:%d", operation.GuestType, operation.GuestID), strings.Join(roles, ","), operation.State)
+	}
+
+	var rebinds []clusterModels.BackupJobRunnerRebind
+	terminalStates := []string{
+		clusterModels.BackupJobRunnerRebindStateCompleted,
+		clusterModels.BackupJobRunnerRebindStateCompletedWithRepairs,
+		clusterModels.BackupJobRunnerRebindStateAborted,
+	}
+	if err := db.Where("(old_runner_node_id = ? OR new_runner_node_id = ?) AND state NOT IN ?", nodeID, nodeID, terminalStates).
+		Order("token ASC").Find(&rebinds).Error; err != nil {
+		return nil, fmt.Errorf("scan_peer_runner_rebinds: %w", err)
+	}
+	for _, rebind := range rebinds {
+		role := "old_runner"
+		if strings.TrimSpace(rebind.NewRunnerNodeID) == nodeID {
+			role = "new_runner"
 		}
+		appendPeerRemovalDependency(&dependencies, PeerRemovalDependencyRunnerRebind, rebind.Token,
+			fmt.Sprintf("%s:%d", rebind.GuestType, rebind.GuestID), role, rebind.State)
 	}
 
 	sort.SliceStable(dependencies, func(i, j int) bool {

@@ -9,10 +9,7 @@
 package migrationHandlers
 
 import (
-	"bytes"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,47 +22,28 @@ import (
 	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/testutil"
-	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-type checkVMTargetResponse struct {
-	Data struct {
-		BootCompatibilityChecked    bool     `json:"bootCompatibilityChecked"`
-		BootErrors                  []string `json:"bootErrors"`
-		MissingMedia                []string `json:"missingMedia"`
-		VNCPortInUse                bool     `json:"vncPortInUse"`
-		MissingSwitches             []string `json:"missingSwitches"`
-		IncompatibleSwitches        []string `json:"incompatibleSwitches"`
-		MissingFsDatasets           []string `json:"missingFsDatasets"`
-		NetworkCompatibilityChecked bool     `json:"networkCompatibilityChecked"`
-	} `json:"data"`
-}
-
-func TestIntraClusterCheckVMTargetChecksHelperWithoutNetworks(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+func TestCheckVMTargetChecksHelperWithoutNetworks(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{})
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/intra-cluster/migration/check-vm-target", strings.NewReader(
-		`{"bootRequirement":{"bootRom":"uefi_csmwrap","cpuSockets":1,"cpuCores":1,"cpuThreads":1}}`))
-	c.Request.Header.Set("Content-Type", "application/json")
-	IntraClusterCheckVMTarget(&libvirt.Service{DB: db})(c)
-	if w.Code != http.StatusOK {
-		t.Fatalf("target check: %d: %s", w.Code, w.Body.String())
-	}
-	var response checkVMTargetResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+	var request CheckVMTargetRequest
+	if err := json.Unmarshal(
+		[]byte(`{"bootRequirement":{"bootRom":"uefi_csmwrap","cpuSockets":1,"cpuCores":1,"cpuThreads":1}}`), &request,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if !response.Data.BootCompatibilityChecked || len(response.Data.BootErrors) != 1 {
-		t.Fatalf("incompatible helper not rejected: %s", w.Body.String())
+	result, err := checkVMTarget(&libvirt.Service{DB: db})(t.Context(), "", request)
+	if err != nil {
+		t.Fatalf("target check: %v", err)
+	}
+	if len(result.BootErrors) != 1 {
+		t.Fatalf("incompatible helper not rejected: %+v", result)
 	}
 }
 
-func TestIntraClusterCheckVMTarget(t *testing.T) {
+func TestCheckVMTarget(t *testing.T) {
 	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
-	gin.SetMode(gin.TestMode)
 
 	db := testutil.NewSQLiteTestDB(t,
 		&utilitiesModels.Downloads{},
@@ -85,9 +63,8 @@ func TestIntraClusterCheckVMTarget(t *testing.T) {
 			t.Fatalf("unexpected target attachments: kind=%q attachments=%+v", expectedKind, attachments)
 		}
 		return networkAttachment.TargetResult{
-			MissingSwitches:             []string{"LAN"},
-			IncompatibleSwitches:        []string{"WAN: vm_network_vlan_mode_mismatch"},
-			NetworkCompatibilityChecked: true,
+			MissingSwitches:      []string{"LAN"},
+			IncompatibleSwitches: []string{"WAN: vm_network_vlan_mode_mismatch"},
 		}
 	}
 	t.Cleanup(func() { validateTargetNetworkAttachments = originalValidate })
@@ -126,10 +103,10 @@ func TestIntraClusterCheckVMTarget(t *testing.T) {
 		RID:        999,
 		MediaUUIDs: []string{"present-uuid", "missing-uuid", "present-uuid"},
 		VNCPort:    5900,
-		Switches: []CheckVMTargetSwitch{
+		Switches: []networkAttachment.NamedContract{
 			{
 				Name: "WAN",
-				Attachment: &networkAttachment.Contract{
+				Attachment: networkAttachment.Contract{
 					Version: networkAttachment.CurrentVersion, Kind: networkAttachment.KindVM,
 					SwitchName: "WAN", SwitchType: "manual", VLANFiltering: true,
 					DefaultAccessVLAN: &expectedVLAN,
@@ -137,201 +114,35 @@ func TestIntraClusterCheckVMTarget(t *testing.T) {
 			},
 			{
 				Name: "LAN",
-				Attachment: &networkAttachment.Contract{
+				Attachment: networkAttachment.Contract{
 					Version: networkAttachment.CurrentVersion, Kind: networkAttachment.KindVM,
 					SwitchName: "LAN", SwitchType: "manual",
 				},
 			},
 		},
 	}
-	body, err := json.Marshal(reqBody)
+	result, err := checkVMTarget(svc)(t.Context(), "", reqBody)
 	if err != nil {
-		t.Fatalf("failed to marshal body: %v", err)
+		t.Fatalf("target check: %v", err)
 	}
-
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/intra-cluster/migration/check-vm-target", bytes.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
-
-	IntraClusterCheckVMTarget(svc)(c)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	if len(result.MissingMedia) != 1 || result.MissingMedia[0] != "missing-uuid" {
+		t.Fatalf("expected missingMedia [missing-uuid], got %v", result.MissingMedia)
 	}
-
-	var resp checkVMTargetResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("failed to parse response: %v (%s)", err, w.Body.String())
+	if len(result.MissingSwitches) != 1 || result.MissingSwitches[0] != "LAN" {
+		t.Fatalf("expected missingSwitches [LAN], got %v", result.MissingSwitches)
 	}
-
-	if len(resp.Data.MissingMedia) != 1 || resp.Data.MissingMedia[0] != "missing-uuid" {
-		t.Fatalf("expected missingMedia [missing-uuid], got %v", resp.Data.MissingMedia)
+	if len(result.IncompatibleSwitches) != 1 ||
+		!strings.Contains(result.IncompatibleSwitches[0], "vm_network_vlan_mode_mismatch") {
+		t.Fatalf("expected WAN VLAN incompatibility, got %v", result.IncompatibleSwitches)
 	}
-	if len(resp.Data.MissingSwitches) != 1 || resp.Data.MissingSwitches[0] != "LAN" {
-		t.Fatalf("expected missingSwitches [LAN], got %v", resp.Data.MissingSwitches)
-	}
-	if len(resp.Data.IncompatibleSwitches) != 1 ||
-		!strings.Contains(resp.Data.IncompatibleSwitches[0], "vm_network_vlan_mode_mismatch") {
-		t.Fatalf("expected WAN VLAN incompatibility, got %v", resp.Data.IncompatibleSwitches)
-	}
-	if !resp.Data.VNCPortInUse {
+	if !result.VNCPortInUse {
 		t.Fatalf("expected vncPortInUse true (port 5900 already used by another VM)")
 	}
-	if !resp.Data.NetworkCompatibilityChecked {
-		t.Fatal("expected explicit network compatibility acknowledgement")
-	}
 }
 
-func TestValidateVMTargetSwitchesTranslatesLegacyFailuresForOldCallers(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t,
-		&networkModels.StandardSwitch{},
-		&networkModels.ManualSwitch{},
-	)
-	if err := db.Create(&networkModels.StandardSwitch{
-		Name: "filtered", BridgeName: "bridge-filtered", VLANFiltering: true,
-	}).Error; err != nil {
-		t.Fatalf("seed filtered switch: %v", err)
-	}
-
-	originalValidate := validateTargetNetworkAttachments
-	validateTargetNetworkAttachments = func(
-		_ *gorm.DB,
-		attachments []networkAttachment.NamedContract,
-		expectedKind networkAttachment.Kind,
-	) networkAttachment.TargetResult {
-		result := networkAttachment.TargetResult{
-			MissingSwitches:             []string{},
-			IncompatibleSwitches:        []string{},
-			NetworkCompatibilityChecked: true,
-		}
-		if expectedKind != networkAttachment.KindVM {
-			t.Fatalf("unexpected attachment kind %q", expectedKind)
-		}
-		for _, attachment := range attachments {
-			switch attachment.Attachment.SwitchName {
-			case "filtered":
-				result.IncompatibleSwitches = append(
-					result.IncompatibleSwitches,
-					"filtered: vm_network_vlan_mode_mismatch",
-				)
-			case "plain":
-			default:
-				t.Fatalf("unexpected attachment: %+v", attachment)
-			}
-		}
-		return result
-	}
-	t.Cleanup(func() { validateTargetNetworkAttachments = originalValidate })
-
-	result, unsafe := validateVMTargetSwitches(db, []CheckVMTargetSwitch{
-		{Name: "absent", Type: "standard", Bridge: "bridge-absent"},
-		{Name: "filtered", Type: "standard", Bridge: "bridge-filtered"},
-	})
-	if !unsafe {
-		t.Fatal("legacy target failures must require a non-success response")
-	}
-	if len(result.IncompatibleSwitches) != 0 {
-		t.Fatalf("legacy incompatibilities must not use a field old callers ignore: %v", result.IncompatibleSwitches)
-	}
-	if len(result.MissingSwitches) != 2 || result.MissingSwitches[0] != "absent" ||
-		!strings.Contains(result.MissingSwitches[1], "vm_network_vlan_mode_mismatch") {
-		t.Fatalf("legacy failures were not translated: %v", result.MissingSwitches)
-	}
-}
-
-func TestValidateVMTargetSwitchesAcceptsLegacyBridgeFallback(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t,
-		&networkModels.StandardSwitch{},
-		&networkModels.ManualSwitch{},
-	)
-	if err := db.Create(&networkModels.StandardSwitch{
-		Name: "target-name", BridgeName: "bridge0",
-	}).Error; err != nil {
-		t.Fatalf("seed standard switch: %v", err)
-	}
-
-	originalValidate := validateTargetNetworkAttachments
-	validateTargetNetworkAttachments = func(
-		_ *gorm.DB,
-		attachments []networkAttachment.NamedContract,
-		expectedKind networkAttachment.Kind,
-	) networkAttachment.TargetResult {
-		if expectedKind != networkAttachment.KindVM {
-			t.Fatalf("unexpected attachment kind %q", expectedKind)
-		}
-		if len(attachments) == 0 {
-			return networkAttachment.TargetResult{NetworkCompatibilityChecked: true}
-		}
-		if len(attachments) != 1 || attachments[0].Attachment.SwitchName != "target-name" ||
-			attachments[0].Attachment.VLANFiltering {
-			t.Fatalf("unexpected legacy attachment: %+v", attachments)
-		}
-		return networkAttachment.TargetResult{NetworkCompatibilityChecked: true}
-	}
-	t.Cleanup(func() { validateTargetNetworkAttachments = originalValidate })
-
-	result, unsafe := validateVMTargetSwitches(db, []CheckVMTargetSwitch{
-		{Name: "source-name", Type: "standard", Bridge: "bridge0"},
-	})
-	if unsafe || !result.NetworkCompatibilityChecked || len(result.MissingSwitches) != 0 ||
-		len(result.IncompatibleSwitches) != 0 {
-		t.Fatalf("valid legacy bridge fallback rejected: unsafe=%t result=%+v", unsafe, result)
-	}
-}
-
-func TestValidateVMTargetSwitchesRejectsMalformedContractEntry(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t,
-		&networkModels.StandardSwitch{},
-		&networkModels.ManualSwitch{},
-	)
-
-	result, unsafe := validateVMTargetSwitches(db, []CheckVMTargetSwitch{{Name: "LAN"}})
-	if !unsafe || len(result.MissingSwitches) != 1 || result.MissingSwitches[0] != "LAN" {
-		t.Fatalf("malformed contract entry was not rejected: unsafe=%t result=%+v", unsafe, result)
-	}
-}
-
-func TestIntraClusterCheckVMTargetRejectsUnsafeLegacyProbe(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	db := testutil.NewSQLiteTestDB(t,
-		&networkModels.StandardSwitch{},
-		&networkModels.ManualSwitch{},
-	)
-	svc := &libvirt.Service{DB: db}
-
-	body := []byte(`{"switches":[{"name":"missing","type":"standard","bridge":"bridge-missing"}]}`)
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(
-		http.MethodPost,
-		"/api/intra-cluster/migration/check-vm-target",
-		bytes.NewReader(body),
-	)
-	c.Request.Header.Set("Content-Type", "application/json")
-
-	IntraClusterCheckVMTarget(svc)(c)
-
-	if w.Code != http.StatusConflict {
-		t.Fatalf("expected legacy probe failure status 409, got %d: %s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), "legacy_vm_network_target_incompatible") {
-		t.Fatalf("unexpected legacy probe response: %s", w.Body.String())
-	}
-}
-
-func TestIntraClusterCheckVMTarget_NilService(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	body, _ := json.Marshal(CheckVMTargetRequest{MediaUUIDs: []string{"x"}})
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/intra-cluster/migration/check-vm-target", bytes.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
-
-	IntraClusterCheckVMTarget(nil)(c)
-
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("expected status 500 for nil libvirt service, got %d", w.Code)
+func TestCheckVMTargetWithoutLibvirt(t *testing.T) {
+	_, err := checkVMTarget(nil)(t.Context(), "", CheckVMTargetRequest{MediaUUIDs: []string{"x"}})
+	if err == nil || !strings.Contains(err.Error(), "libvirt_not_configured") {
+		t.Fatalf("nil libvirt error = %v", err)
 	}
 }

@@ -40,7 +40,7 @@ func TestIntegrationRaftGuestOperationSurvivesLeaderFailover(t *testing.T) {
 		GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 901,
 		Operation: clusterModels.ReplicationGuestOperationMigration,
 		Token:     "migration:node-1:901", OwnerNodeID: "node-1", TargetNodeID: "node-2", TaskID: 901,
-	}, false); err != nil {
+	}); err != nil {
 		t.Fatalf("acquire guest operation: %v", err)
 	}
 
@@ -86,7 +86,7 @@ func TestIntegrationRaftGuestOperationSurvivesLeaderFailover(t *testing.T) {
 	if err := newLeader.service.AbortReplicationGuestOperation(clusterModels.ReplicationGuestOperationTransition{
 		GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 901,
 		Operation: clusterModels.ReplicationGuestOperationMigration, Token: "migration:node-1:901",
-	}, false); err != nil {
+	}); err != nil {
 		t.Fatalf("abort guard on new leader: %v", err)
 	}
 	if err := newLeader.service.applyRaftCommand(clusterModels.Command{

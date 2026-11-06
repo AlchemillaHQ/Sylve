@@ -19,7 +19,6 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
-	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 )
 
 type stubVMService struct {
@@ -142,7 +141,7 @@ func TestDemoteReplicationPolicyUsesAuthorizedVMTransitionAction(t *testing.T) {
 
 	vmRuntime := &transitionDemoteVMStub{running: true}
 	service := newTestZeltaService(db)
-	service.Cluster = &clusterService.Service{DB: db, NodeID: "node-hera"}
+	service.Cluster = newTestClusterService(db, "node-hera")
 	service.VM = vmRuntime
 
 	if err := service.DemoteReplicationPolicyForTransition(

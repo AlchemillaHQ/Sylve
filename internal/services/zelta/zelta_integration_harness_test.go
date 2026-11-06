@@ -9,12 +9,18 @@
 package zelta
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -60,7 +66,7 @@ func (f *ZeltaClusterFixture) FollowerNode() *zeltaRaftNode {
 }
 
 func (f *ZeltaClusterFixture) SeedPolicy(policy *clusterModels.ReplicationPolicy) {
-	if err := clusterModels.UpsertReplicationPolicyTxn(f.DB, policy, policy.Targets); err != nil {
+	if err := seedReplicationPolicy(f.DB, policy, policy.Targets); err != nil {
 		panic(fmt.Sprintf("SeedPolicy: %v", err))
 	}
 }
@@ -122,8 +128,8 @@ func newZeltaRaftNode(t *testing.T, id string, models ...any) *zeltaRaftNode {
 	t.Helper()
 
 	db := testutil.NewSQLiteTestDB(t, models...)
-	fsm := clusterModels.NewFSMDispatcher(db)
-	clusterModels.RegisterDefaultHandlers(fsm)
+	cService := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
+	cService.NodeID = id
 
 	cfg := raft.DefaultConfig()
 	cfg.LocalID = raft.ServerID(id)
@@ -134,13 +140,12 @@ func newZeltaRaftNode(t *testing.T, id string, models ...any) *zeltaRaftNode {
 	cfg.CommitTimeout = 25 * time.Millisecond
 
 	addr, transport := raft.NewInmemTransport(raft.ServerAddress(id))
-	r, err := raft.NewRaft(cfg, fsm, raft.NewInmemStore(), raft.NewInmemStore(),
+	r, err := raft.NewRaft(cfg, cService.FSM(), raft.NewInmemStore(), raft.NewInmemStore(),
 		raft.NewInmemSnapshotStore(), transport)
 	if err != nil {
 		t.Fatalf("raft.NewRaft(%s): %v", id, err)
 	}
 
-	cService := &cluster.Service{DB: db}
 	cService.SetRaft(r)
 	node := &zeltaRaftNode{
 		id: id, addr: addr, transport: transport, raft: r, db: db,
@@ -336,5 +341,51 @@ func cleanupZeltaRaftNode(node *zeltaRaftNode) {
 		if sqlDB, err := node.db.DB(); err == nil {
 			_ = sqlDB.Close()
 		}
+	}
+}
+
+func (f *ZeltaClusterFixture) routeCalls(before func(sender, target *zeltaRaftNode, name string, payload []byte) error) {
+	byHost := make(map[string]*zeltaRaftNode, len(f.Nodes))
+	for _, node := range f.Nodes {
+		byHost[node.id] = node
+	}
+	for _, node := range f.Nodes {
+		sender := node
+		node.cService.AuthService = replicationNetworkAuthStub{}
+		node.cService.SetPeerRequest(func(ctx context.Context, _, rawURL string, payload []byte, headers map[string]string) (int, []byte, error) {
+			parsed, err := url.Parse(rawURL)
+			if err != nil {
+				return 0, nil, err
+			}
+			target := byHost[parsed.Hostname()]
+			name, isLeaderCall := strings.CutPrefix(parsed.Path, "/api/intra-cluster/leader/")
+			nodeCall, isNodeCall := strings.CutPrefix(parsed.Path, "/api/intra-cluster/node/")
+			if isNodeCall {
+				name = nodeCall
+			}
+			if target == nil || !isLeaderCall && !isNodeCall {
+				return 0, nil, fmt.Errorf("unexpected request %s", rawURL)
+			}
+			var result cluster.CallResult
+			if before != nil {
+				err = before(sender, target, name, payload)
+			}
+			switch {
+			case err != nil:
+			case isLeaderCall:
+				result, err = target.cService.ServeLeaderCall(ctx, sender.id, name, payload)
+			default:
+				index, _ := strconv.ParseUint(headers[cluster.CallIndexHeader], 10, 64)
+				result, err = target.cService.ServeNodeCall(ctx, sender.id, headers[cluster.CallNodeHeader], index, name, payload)
+			}
+			response := internal.APIResponse[cluster.CallResult]{Status: "success", Data: result}
+			status := http.StatusOK
+			if err != nil {
+				status = http.StatusConflict
+				response.Status, response.Message, response.Error = "error", cluster.ProposalErrorCode(err), err.Error()
+			}
+			body, err := json.Marshal(response)
+			return status, body, err
+		})
 	}
 }

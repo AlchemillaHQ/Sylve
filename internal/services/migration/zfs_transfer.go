@@ -12,7 +12,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -33,6 +32,7 @@ import (
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/remoteexec"
+	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/storage/mount"
 	storagezfs "github.com/alchemillahq/sylve/pkg/storage/zfs"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -174,8 +174,14 @@ type countingWriter struct {
 	bytesSent *uint64
 }
 
+type targetMigrationImportRequest struct {
+	GuestID            uint     `json:"guestId"`
+	OperationToken     string   `json:"operationToken"`
+	StartGuest         *bool    `json:"startGuest"`
+	SourceDatasetRoots []string `json:"sourceDatasetRoots"`
+}
+
 type targetMigrationImportReceipt struct {
-	Status             string   `json:"status"`
 	Message            string   `json:"message"`
 	Warnings           []string `json:"warnings"`
 	GuestID            uint     `json:"guestId"`
@@ -968,61 +974,33 @@ func (s *Service) phaseStartTarget(ctx context.Context, mp *migrationPayload, ta
 	if mp == nil || mp.OriginalRunning == nil {
 		return fmt.Errorf("migration_original_running_state_missing")
 	}
-
-	var targetNode clusterModels.ClusterNode
-	if err := s.DB.Where("node_uuid = ?", mp.TargetNodeUUID).First(&targetNode).Error; err != nil {
-		return fmt.Errorf("target_node_not_found: %w", err)
-	}
-
-	clusterToken, err := s.Cluster.AuthService.CreateInternalClusterJWT("migration")
-	if err != nil {
-		return fmt.Errorf("create_cluster_token_failed: %w", err)
-	}
-
-	headers := map[string]string{
-		"Accept":          "application/json",
-		"Content-Type":    "application/json",
-		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-	}
-
-	var url string
+	name := "migration-import-jail"
 	if task.GuestType == taskModels.GuestTypeVM {
-		url = fmt.Sprintf("https://%s/api/intra-cluster/migration/import-vm", targetNode.API)
-	} else {
-		url = fmt.Sprintf("https://%s/api/intra-cluster/migration/import-jail", targetNode.API)
+		name = "migration-import-vm"
 	}
-
-	body := map[string]any{
-		"guestId":            task.GuestID,
-		"operationToken":     strings.TrimSpace(operationToken),
-		"startGuest":         *mp.OriginalRunning,
-		"sourceDatasetRoots": append([]string(nil), mp.SourceDatasetRoots...),
+	request := targetMigrationImportRequest{
+		GuestID:            task.GuestID,
+		OperationToken:     strings.TrimSpace(operationToken),
+		StartGuest:         mp.OriginalRunning,
+		SourceDatasetRoots: append([]string(nil), mp.SourceDatasetRoots...),
 	}
-
-	bodyBytes, marshalErr := json.Marshal(body)
-	if marshalErr != nil {
-		return fmt.Errorf("marshal_import_payload_failed: %w", marshalErr)
-	}
-
-	respBody, respStatus, err := utils.HTTPPostJSONWithTimeout(url, bodyBytes, headers, 120*time.Second)
+	callCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
+	receipt, err := cluster.CallNode[targetMigrationImportRequest, targetMigrationImportReceipt](
+		callCtx, s.Cluster, mp.TargetNodeUUID, name, request,
+	)
 	if err != nil {
 		return fmt.Errorf("import_on_target_failed: %w", err)
 	}
-
-	if respStatus >= 300 {
-		return fmt.Errorf("import_on_target_returned_http_%d: %s", respStatus, string(respBody))
-	}
-
-	importResp, err := validateTargetMigrationImportReceipt(
-		respBody, task.GuestID, operationToken, *mp.OriginalRunning, mp.SourceDatasetRoots,
-	)
-	if err != nil {
+	if err := validateTargetMigrationImportReceipt(
+		receipt, task.GuestID, operationToken, *mp.OriginalRunning, mp.SourceDatasetRoots,
+	); err != nil {
 		return err
 	}
-	if len(importResp.Warnings) > 0 {
-		mp.Warnings = importResp.Warnings
+	if len(receipt.Warnings) > 0 {
+		mp.Warnings = receipt.Warnings
 		s.updateTaskPhase(task.ID, *mp)
-		logger.L.Info().Strs("warnings", importResp.Warnings).Str("guest_type", task.GuestType).Uint("guest_id", task.GuestID).Msg("migration_import_warnings")
+		logger.L.Info().Strs("warnings", receipt.Warnings).Str("guest_type", task.GuestType).Uint("guest_id", task.GuestID).Msg("migration_import_warnings")
 	}
 
 	return nil
@@ -1065,24 +1043,19 @@ func flushMigrationGuestMetadata(guestType string, guestID uint, write func(uint
 }
 
 func validateTargetMigrationImportReceipt(
-	raw []byte,
+	receipt targetMigrationImportReceipt,
 	guestID uint,
 	operationToken string,
 	startGuest bool,
 	sourceDatasetRoots []string,
-) (targetMigrationImportReceipt, error) {
-	var receipt targetMigrationImportReceipt
-	if err := json.Unmarshal(raw, &receipt); err != nil {
-		return receipt, fmt.Errorf("import_on_target_receipt_invalid: %w", err)
-	}
-	if !strings.EqualFold(strings.TrimSpace(receipt.Status), "success") ||
-		receipt.GuestID != guestID ||
+) error {
+	if receipt.GuestID != guestID ||
 		strings.TrimSpace(receipt.OperationToken) != strings.TrimSpace(operationToken) ||
 		receipt.StartGuest == nil || *receipt.StartGuest != startGuest ||
 		!sameMigrationDatasetRootManifest(receipt.SourceDatasetRoots, sourceDatasetRoots) {
-		return receipt, fmt.Errorf("import_on_target_receipt_mismatch")
+		return fmt.Errorf("import_on_target_receipt_mismatch")
 	}
-	return receipt, nil
+	return nil
 }
 
 func isExplicitMigrationCancellation(err error) bool {

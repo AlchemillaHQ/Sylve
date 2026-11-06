@@ -10,26 +10,14 @@ package cluster
 
 import (
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/hashicorp/raft"
 )
-
-type forwardingAuthStub struct {
-	serviceInterfaces.AuthServiceInterface
-}
-
-func (forwardingAuthStub) CreateInternalClusterJWT(_ string) (string, error) {
-	return "test-cluster-token", nil
-}
 
 func backupTargetsForNode(node *clusterRaftTestNode) ([]clusterModels.BackupTarget, error) {
 	var targets []clusterModels.BackupTarget
@@ -52,7 +40,7 @@ func TestIntegrationRaftBackupTargetsThreeNodeFailover(t *testing.T) {
 		SSHHost:    "user@host-before",
 		SSHKey:     "key-before",
 		BackupRoot: "tank/before",
-	}, false, testutil.SSHHostKey(t)); err != nil {
+	}, testutil.SSHHostKey(t)); err != nil {
 		t.Fatalf("initial leader failed to create backup target: %v", err)
 	}
 
@@ -90,7 +78,7 @@ func TestIntegrationRaftBackupTargetsThreeNodeFailover(t *testing.T) {
 		SSHHost:    "user@host-after",
 		SSHKey:     "key-after",
 		BackupRoot: "tank/after",
-	}, false, testutil.SSHHostKey(t)); err != nil {
+	}, testutil.SSHHostKey(t)); err != nil {
 		t.Fatalf("new leader failed to create backup target after failover: %v", err)
 	}
 
@@ -125,7 +113,7 @@ func TestIntegrationRaftBackupTargetProvisionSurvivesLeadershipTransfer(t *testi
 		SSHHostKey: testutil.SSHHostKey(t),
 		Name:       "pending-target", SSHHost: "root@backup", SSHKey: "key",
 		BackupRoot: "tank/pending", CreateBackupRoot: true, Enabled: true,
-	}, "provision:leadership-transfer", false)
+	}, "provision:leadership-transfer")
 	if err != nil {
 		t.Fatalf("prepare provision: %v", err)
 	}
@@ -162,7 +150,7 @@ func TestIntegrationRaftBackupTargetProvisionSurvivesLeadershipTransfer(t *testi
 	if err != nil {
 		t.Fatalf("load operation on new leader: %v", err)
 	}
-	if err := newLeader.service.CompleteBackupTargetProvision(stored, false); err != nil {
+	if err := newLeader.service.CompleteBackupTargetProvision(stored); err != nil {
 		t.Fatalf("complete on new leader: %v", err)
 	}
 	waitForClusterCondition(t, 8*time.Second, "provision completion replicated", func() bool {
@@ -207,7 +195,7 @@ func TestIntegrationRaftBackupFriendlySourceForwardsFromFollower(t *testing.T) {
 		CronExpr:      "* * * * *",
 		Enabled:       true,
 	}
-	jobRaw, err := json.Marshal(job)
+	jobRaw, err := json.Marshal(clusterModels.BackupJobCommandPayload{Job: job})
 	if err != nil {
 		t.Fatalf("failed marshaling backup job: %v", err)
 	}
@@ -229,53 +217,16 @@ func TestIntegrationRaftBackupFriendlySourceForwardsFromFollower(t *testing.T) {
 		return true
 	})
 
-	var forwardedPayload BackupJobFriendlySourceUpdate
-	forwardCalled := false
-	forwardServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/intra-cluster/backup-job-friendly-source" {
-			http.NotFound(w, r)
-			return
-		}
-		if r.Method != http.MethodPost {
-			http.Error(w, "method_not_allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		forwardCalled = true
-		if err := json.NewDecoder(r.Body).Decode(&forwardedPayload); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"success"}`))
-	}))
-	defer forwardServer.Close()
-
-	leaderAPI := strings.TrimPrefix(forwardServer.URL, "https://")
-	if err := follower.service.DB.Create(&clusterModels.ClusterNode{
-		NodeUUID: leader.id,
-		API:      leaderAPI,
-	}).Error; err != nil {
-		t.Fatalf("failed seeding cluster node api for forwarding: %v", err)
+	routeTestPeerRequests(nodes)
+	if err := follower.service.SyncBackupJobFriendlySourceByGuestClusterWide(BackupJobFriendlySourceUpdate{
+		GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 777, FriendlySrc: "vm-forwarded",
+	}); err != nil {
+		t.Fatalf("follower rename: %v", err)
 	}
-	follower.service.AuthService = forwardingAuthStub{}
-
-	err = follower.service.SyncBackupJobFriendlySourceByGuestClusterWide(BackupJobFriendlySourceUpdate{
-		GuestType:   clusterModels.ReplicationGuestTypeVM,
-		GuestID:     777,
-		FriendlySrc: "vm-forwarded",
-	})
-	if err != nil {
-		t.Fatalf("expected follower forward to succeed, got %v", err)
-	}
-
-	if !forwardCalled {
-		t.Fatal("expected follower sync to call leader forwarding endpoint")
-	}
-	if forwardedPayload.GuestType != clusterModels.ReplicationGuestTypeVM ||
-		forwardedPayload.GuestID != 777 ||
-		forwardedPayload.FriendlySrc != "vm-forwarded" {
-		t.Fatalf("unexpected forwarded payload: %+v", forwardedPayload)
+	for _, node := range []*clusterRaftTestNode{follower, leader} {
+		jobs, err := backupJobsForNode(node)
+		if err != nil || len(jobs) != 1 || jobs[0].FriendlySrc != "vm-forwarded" {
+			t.Fatalf("%s jobs = %+v, %v", node.id, jobs, err)
+		}
 	}
 }

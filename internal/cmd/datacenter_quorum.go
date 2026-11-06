@@ -11,7 +11,6 @@ package cmd
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -21,10 +20,10 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/services/cluster/raftdir"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
-	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 	"github.com/urfave/cli/v3"
 	"gorm.io/gorm"
 )
@@ -33,6 +32,7 @@ type offlineQuorumRecoveryResult struct {
 	NodeID  string   `json:"nodeId"`
 	Voters  []string `json:"voters"`
 	Removed []string `json:"removed"`
+	Rebuild bool     `json:"rebuild,omitempty"`
 }
 
 func newDatacenterClusterRecoverQuorumCommand() *cli.Command {
@@ -59,6 +59,11 @@ func newDatacenterClusterRecoverQuorumCommand() *cli.Command {
 					return err
 				}
 				fmt.Println(string(encoded))
+				return nil
+			}
+			if result.Rebuild {
+				fmt.Println("The Raft state is an older build's: this node founds the cluster from its own database " +
+					"when Sylve next starts, and the other members rejoin it once they're upgraded.")
 				return nil
 			}
 			fmt.Printf(
@@ -88,7 +93,7 @@ func recoverOfflineQuorum(configPath string, voters []string, allowDisruption bo
 		return offlineQuorumRecoveryResult{}, err
 	}
 	raftDir := filepath.Join(dataPath, "raft")
-	if !offlineRaftStateExists(raftDir) {
+	if !raftdir.HasState(raftDir) && !raftdir.HasState(raftdir.PreDir(raftDir)) {
 		return offlineQuorumRecoveryResult{}, fmt.Errorf("cluster_recover_quorum_raft_state_missing")
 	}
 	nodeID, err := utils.GetSystemUUID()
@@ -118,29 +123,29 @@ func recoverRaftQuorum(database *gorm.DB, raftDir, nodeID string, voters []strin
 	if err := database.First(&record).Error; err != nil {
 		return offlineQuorumRecoveryResult{}, fmt.Errorf("cluster_record_unavailable: %w", err)
 	}
-	if !record.Enabled {
+	_, pending, err := raftdir.FindRebuild(raftDir)
+	if err != nil {
+		return offlineQuorumRecoveryResult{}, err
+	}
+	if !record.Enabled && pending == nil {
 		return offlineQuorumRecoveryResult{}, fmt.Errorf("cluster_not_enabled")
 	}
 	if strings.TrimSpace(record.LeavePhase) != "" {
 		return offlineQuorumRecoveryResult{}, fmt.Errorf("cluster_recover_quorum_leave_in_progress")
 	}
 
-	logs, err := raftboltdb.NewBoltStore(filepath.Join(raftDir, "raft-log.db"))
-	if err != nil {
-		return offlineQuorumRecoveryResult{}, fmt.Errorf("raft_log_store_open_failed: %w", err)
-	}
-	defer logs.Close()
-	stable, err := raftboltdb.NewBoltStore(filepath.Join(raftDir, "raft-stable.db"))
-	if err != nil {
-		return offlineQuorumRecoveryResult{}, fmt.Errorf("raft_stable_store_open_failed: %w", err)
-	}
-	defer stable.Close()
-	snapshots, err := raft.NewFileSnapshotStore(raftDir, 2, io.Discard)
-	if err != nil {
-		return offlineQuorumRecoveryResult{}, fmt.Errorf("raft_snapshot_store_open_failed: %w", err)
+	if rebuild, err := raftdir.ForceRebuild(raftDir, nodeID, record.Key); err != nil || rebuild {
+		return offlineQuorumRecoveryResult{NodeID: nodeID, Rebuild: rebuild}, err
 	}
 
-	current, err := latestOfflineRaftConfiguration(logs, snapshots)
+	logs, stable, snapshots, err := raftdir.OpenStores(raftDir, io.Discard)
+	if err != nil {
+		return offlineQuorumRecoveryResult{}, err
+	}
+	defer logs.Close()
+	defer stable.Close()
+
+	current, err := raftdir.LatestConfiguration(logs, snapshots)
 	if err != nil {
 		return offlineQuorumRecoveryResult{}, err
 	}
@@ -159,37 +164,6 @@ func recoverRaftQuorum(database *gorm.DB, raftDir, nodeID string, voters []strin
 		return offlineQuorumRecoveryResult{}, fmt.Errorf("raft_recover_cluster_failed: %w", err)
 	}
 	return result, nil
-}
-
-// latestOfflineRaftConfiguration finds the membership Raft would load on
-// start: the newest snapshot's, then any configuration entries after it.
-func latestOfflineRaftConfiguration(logs raft.LogStore, snapshots raft.SnapshotStore) (raft.Configuration, error) {
-	var configuration raft.Configuration
-	after := uint64(0)
-	metas, err := snapshots.List()
-	if err != nil {
-		return configuration, fmt.Errorf("raft_snapshot_list_failed: %w", err)
-	}
-	if len(metas) > 0 {
-		configuration, after = metas[0].Configuration, metas[0].Index
-	}
-	last, err := logs.LastIndex()
-	if err != nil {
-		return configuration, fmt.Errorf("raft_log_index_failed: %w", err)
-	}
-	for index := after + 1; index <= last; index++ {
-		var entry raft.Log
-		if err := logs.GetLog(index, &entry); err != nil {
-			if errors.Is(err, raft.ErrLogNotFound) {
-				continue
-			}
-			return configuration, fmt.Errorf("raft_log_read_failed: %w", err)
-		}
-		if entry.Type == raft.LogConfiguration {
-			configuration = raft.DecodeConfiguration(entry.Data)
-		}
-	}
-	return configuration, nil
 }
 
 func survivingRaftConfiguration(

@@ -55,7 +55,7 @@ func (s *Service) localOwnedReplicationPolicyIDs(ctx context.Context, localNodeI
 }
 
 func (s *Service) PrepareReplicationStartup(ctx context.Context) error {
-	if s == nil || s.Cluster == nil {
+	if s == nil {
 		return nil
 	}
 	if ctx == nil {
@@ -153,7 +153,7 @@ func (s *Service) CanAutostartReplicationGuest(guestType string, guestID uint) (
 }
 
 func (s *Service) FenceReplicationShutdown(ctx context.Context) error {
-	if s == nil || s.Cluster == nil {
+	if s == nil {
 		return nil
 	}
 	if ctx == nil {

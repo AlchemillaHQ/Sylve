@@ -133,6 +133,7 @@ func TestIntegrationRunBackupJobPreservesLegacyTargetSnapshotDuringTopologyRotat
 	db := newZeltaServiceTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
 		DB:                db,
+		Cluster:           newTestClusterService(db, ""),
 		queuedJobs:        make(map[uint]struct{}),
 		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
@@ -249,6 +250,7 @@ func TestIntegrationRunBackupJobRecursiveForeignSnapshotFailsClosed(t *testing.T
 	db := newZeltaServiceTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
 		DB:                db,
+		Cluster:           newTestClusterService(db, ""),
 		queuedJobs:        make(map[uint]struct{}),
 		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
@@ -349,6 +351,7 @@ func TestIntegrationRunBackupJobVMForeignSnapshotFailsClosed(t *testing.T) {
 	)
 	svc := &Service{
 		DB:                db,
+		Cluster:           newTestClusterService(db, ""),
 		queuedJobs:        make(map[uint]struct{}),
 		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
@@ -469,6 +472,7 @@ func TestIntegrationRunBackupJobJailForeignSnapshotFailsClosed(t *testing.T) {
 	)
 	svc := &Service{
 		DB:                db,
+		Cluster:           newTestClusterService(db, ""),
 		queuedJobs:        make(map[uint]struct{}),
 		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),

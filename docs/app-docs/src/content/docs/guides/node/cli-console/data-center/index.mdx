@@ -3,10 +3,10 @@ title: Data Center
 description: Manage Data Center notes, shared guest IDs, and cluster recovery from the CLI and interactive console.
 ---
 
-The `datacenter` command group manages replicated notes and provides cluster inspection, shared guest-ID recovery, and address-recovery tools. Most commands contact the running Sylve daemon through its local console socket. The exception is `cluster recover-ip`, which operates on a stopped node.
+The `datacenter` command group manages replicated notes and provides cluster inspection, shared guest-ID recovery, and address-recovery tools. Most commands contact the running Sylve daemon through its local console socket. The exceptions are `cluster recover-ip` and `cluster recover-quorum`, which operate on a stopped node.
 
 :::caution[Cluster recovery commands can interrupt service]
-Read-only `status`, `members`, `guest-ids list`, `notes list`, and `notes get` operations are safe for inspection. Reclaiming a guest ID, readdressing a member, repairing its address, or changing replicated notes modifies shared Data Center state. Back up Sylve's configuration and data path before cluster recovery work.
+Read-only `status`, `members`, `guest-ids list`, `notes list`, and `notes get` operations are safe for inspection. Reclaiming a guest ID, readdressing a member, repairing its address, recovering quorum, or changing replicated notes modifies shared Data Center state. Back up Sylve's configuration and data path before cluster recovery work.
 :::
 
 ## Manage Data Center notes
@@ -79,34 +79,24 @@ Add `--json` for structured output. The interactive console form is:
 datacenter cluster guest-ids list
 ```
 
-After a cooperative leave that keeps guests on the departing node, the surviving cluster releases that node's claims once membership removal completes. Those numbers become available to other members. The departed node still has its local guests; if it later rejoins, every current guest ID must be free in the cluster. A reused number blocks the join, including when one side is a VM RID and the other is a jail CTID.
+When a node leaves or is removed, including by force removal or `recover-quorum`, the cluster releases that node's claims. Those numbers become available to other members. The departed node still has its local guests; if it later rejoins, every current guest ID must be free in the cluster. A reused number blocks the join, including when one side is a VM RID and the other is a jail CTID.
 
-Use `reclaim` only when a claim is orphaned and the VM or jail no longer exists anywhere in the cluster:
+Because the cluster releases a removed node's claims by itself, `reclaim` is rarely needed. Use it only when a claim is wrong and the VM or jail no longer exists anywhere in the cluster. Run it on the cluster leader:
 
 ```bash
 doas sylve datacenter cluster guest-ids reclaim --id 505
 ```
 
-The normal reclaim requires a clean inventory from the cluster and is rejected if the ID is registered on any reporting node or involved in an active operation. It also requires working cluster consensus. A cooperative leave already releases its guest IDs; manual reclaim remains relevant for claims left by other removal paths, such as force removal. Current-voter inventory cannot inspect a departed machine, so verify its runtime and storage separately before manually reclaiming one of its IDs.
-
-If a voter is permanently unavailable, externally fence that node first. Then acknowledge the risk by repeating the exact guest ID:
-
-```bash
-doas sylve datacenter cluster guest-ids reclaim \
-  --id 505 \
-  --force \
-  --confirm 505
-```
-
-The same flags work in the interactive console:
+The interactive console form is:
 
 ```text
 datacenter cluster guest-ids reclaim --id 505
-datacenter cluster guest-ids reclaim --id 505 --force --confirm 505
 ```
 
+`reclaim` releases the claim whichever member holds it. It is refused only while a migration or restore is using the ID, and it requires working cluster consensus. If the member that held the claim still has the guest, it claims the ID back within about a minute.
+
 :::danger[Do not reclaim an ID that may still exist]
-Forced reclaim allows unavailable voters after they have been fenced. It does not prove that their guest storage or runtime has been removed. Reusing a live guest's ID can create conflicting ownership and unsafe lifecycle actions.
+Releasing a live guest's ID lets another member create a guest with the same number before the owner claims it back. Confirm that the VM or jail is gone before reclaiming its ID.
 :::
 
 ## Change a healthy member's cluster IP
@@ -119,9 +109,9 @@ doas sylve datacenter cluster readdress \
   --allow-disruption
 ```
 
-The new address must be an IPv4 address assigned locally, must not already belong to another member, and must be able to bind Sylve's cluster ports. The local member must be a voter, every participating member must run the same Sylve version, and no join, leave, state-repair, or conflicting mutation may be active. If the member is the leader, Sylve first transfers leadership to another voter.
+The new address must be an IPv4 address assigned locally, must not already belong to another member, and must be able to bind Sylve's cluster ports. The local member must be a voter, every member must run the same Sylve version, and no join, leave, or conflicting change may be active. If the member is the leader, Sylve first transfers leadership to another voter.
 
-The command commits the new Raft address and requests a Sylve restart. Expect the web interface, console socket, and cluster connectivity to be interrupted. Update the host's network configuration before running the command so the new IP remains assigned after reboot.
+The command commits the new Raft address and requests a Sylve restart. Expect the web interface, console socket, and cluster connectivity to be interrupted. Update the host's network configuration before running the command so the new IP remains assigned after reboot. In a two-voter cluster, the cluster has no leader while the node restarts; the readdress finishes on its own once the node is back on its new address.
 
 Inside the interactive console, use the same flags:
 
@@ -143,8 +133,8 @@ Use this two-stage procedure only when a clustered node can no longer start on o
      --allow-disruption
    ```
 
-3. Start Sylve on the recovered node. Keep it isolated from workloads until membership is repaired.
-4. Copy the printed Node ID and repair command. Run the repair from a healthy cluster member with working quorum:
+3. Start Sylve on the recovered node. It reports its new address to the leader and makes no cluster changes until the membership shows that address.
+4. If the node can't reach the leader, run the repair command that `recover-ip` printed on a healthy cluster member with working quorum:
 
    ```bash
    doas sylve datacenter cluster repair-address \
@@ -157,6 +147,35 @@ Use this two-stage procedure only when a clustered node can no longer start on o
 
 `recover-ip` is a direct CLI command only because it requires the daemon and its console socket to be stopped. It updates the affected node's local recovery state but does not rewrite Raft membership. `repair-address` verifies the recovered node's identity at its new address before committing the membership change. It cannot bypass missing quorum.
 
+`recover-ip` also rescues an interrupted `readdress` whose new IP is gone: run it with any IP the node still has, including its original one, and the readdress continues to that address instead.
+
 :::danger
 Do not use `recover-ip` to clone cluster state or introduce a second copy of a node. Keep duplicate workloads and shared storage fenced throughout recovery. If membership repair cannot be completed, follow the force-reset guidance in the [Cluster guide](/guides/data-center/cluster/) instead of allowing two copies of the same member to operate.
+:::
+
+## Recover from a lost majority
+
+A cluster needs a majority of its voters to elect a leader. When a majority is gone for good and the cluster has no leader, `recover-quorum` rewrites the membership on each survivor to just the surviving voters. Like `recover-ip`, it runs on a stopped node.
+
+1. Stop Sylve on every surviving voter.
+2. On each survivor, run the command with the same list of surviving voters. Repeat `--voter` for each Node ID, this node's included:
+
+   ```bash
+   doas service sylve stop
+   doas sylve datacenter cluster recover-quorum \
+     --voter 550e8400-e29b-41d4-a716-446655440000 \
+     --voter 6ba7b810-9dad-11d1-80b4-00c04fd430c8 \
+     --allow-disruption
+   ```
+
+3. Start Sylve on the survivors. They elect a leader among themselves, and the leader releases the removed members' guest ID claims.
+
+Every listed node must be a current voter, and at least one voter must be left out. The command is refused while this node is leaving the cluster.
+
+If a removed member comes back later, it notices that it is no longer a member and resets itself to a standalone node.
+
+**Upgrades from 0.3.0 or 0.3.1:** if a majority of the old voters can't be upgraded because they're gone for good, run `recover-quorum` on one upgraded survivor, with its own Node ID as `--voter`. On that node's next start, it founds the new cluster from its own database, and the other upgraded nodes rejoin it. This also applies to a node that was rejoining when the node founding the new cluster was lost for good.
+
+:::danger[Do not recover both sides of a split]
+Use `recover-quorum` only for voters that will never come back. Recovering both sides of a network split separately creates two clusters with diverging state.
 :::

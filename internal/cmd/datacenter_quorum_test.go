@@ -10,12 +10,14 @@ package cmd
 
 import (
 	"io"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/services/cluster/raftdir"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
@@ -30,6 +32,9 @@ func TestRecoverRaftQuorumKeepsOnlyListedVoters(t *testing.T) {
 		{ID: "node-c", Address: "192.0.2.3:8180", Suffrage: raft.Voter},
 	}
 	bootstrapOfflineRaft(t, raftDir, raft.Configuration{Servers: voters})
+	if err := raftdir.WriteFormat(raftDir); err != nil {
+		t.Fatal(err)
+	}
 
 	database := testutil.NewSQLiteTestDB(t,
 		&clusterModels.Cluster{}, &clusterModels.ClusterNote{}, &clusterModels.ClusterOption{},
@@ -60,7 +65,7 @@ func TestRecoverRaftQuorumKeepsOnlyListedVoters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	configuration, err := latestOfflineRaftConfiguration(logs, snapshots)
+	configuration, err := raftdir.LatestConfiguration(logs, snapshots)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,5 +126,59 @@ func bootstrapOfflineRaft(t *testing.T, raftDir string, configuration raft.Confi
 	_, transport := raft.NewInmemTransport(configuration.Servers[0].Address)
 	if err := raft.BootstrapCluster(conf, logs, stable, snapshots, transport, configuration); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRecoverRaftQuorumOnOldStateForcesARebuild(t *testing.T) {
+	raftDir := t.TempDir()
+	bootstrapOfflineRaft(t, raftDir, raft.Configuration{Servers: []raft.Server{
+		{ID: "node-a", Address: "192.0.2.1:8180", Suffrage: raft.Voter},
+		{ID: "node-b", Address: "192.0.2.2:8180", Suffrage: raft.Voter},
+	}})
+	database := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{})
+	if err := database.Create(&clusterModels.Cluster{Enabled: true, RaftIP: "192.0.2.1", Key: "old-cluster-key"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := recoverRaftQuorum(database, raftDir, "node-a", []string{"node-a"})
+	if err != nil || !result.Rebuild {
+		t.Fatalf("recover = %+v, %v", result, err)
+	}
+	dir, rebuild, err := raftdir.FindRebuild(raftDir)
+	if err != nil || rebuild == nil || dir != raftDir || !rebuild.Force || rebuild.Key != "old-cluster-key" || len(rebuild.Members) != 2 {
+		t.Fatalf("rebuild record = %+v in %q, %v", rebuild, dir, err)
+	}
+}
+
+func TestRecoverRaftQuorumForcesARejoiningNodesRebuild(t *testing.T) {
+	raftDir := t.TempDir()
+	preDir := raftdir.PreDir(raftDir)
+	if err := os.Mkdir(preDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	bootstrapOfflineRaft(t, preDir, raft.Configuration{Servers: []raft.Server{
+		{ID: "node-a", Address: "192.0.2.1:8180", Suffrage: raft.Voter},
+		{ID: "node-b", Address: "192.0.2.2:8180", Suffrage: raft.Voter},
+	}})
+	record, err := raftdir.NewRebuild(preDir, "node-b", "old-cluster-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.Phase = raftdir.RebuildRejoining
+	if err := record.Save(preDir); err != nil {
+		t.Fatal(err)
+	}
+	database := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{})
+	if err := database.Create(&clusterModels.Cluster{RaftIP: "192.0.2.2"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := recoverRaftQuorum(database, raftDir, "node-b", []string{"node-b"})
+	if err != nil || !result.Rebuild {
+		t.Fatalf("recover = %+v, %v", result, err)
+	}
+	if dir, rebuild, err := raftdir.FindRebuild(raftDir); err != nil || dir != preDir || !rebuild.Force ||
+		rebuild.Key != "old-cluster-key" {
+		t.Fatalf("rebuild record = %+v in %q, %v", rebuild, dir, err)
 	}
 }

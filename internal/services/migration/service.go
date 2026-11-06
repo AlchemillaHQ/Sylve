@@ -436,11 +436,10 @@ type vmTargetProbe struct {
 
 type vmTargetResult struct {
 	networkAttachment.TargetResult
-	BootCompatibilityChecked bool     `json:"bootCompatibilityChecked"`
-	BootErrors               []string `json:"bootErrors"`
-	MissingMedia             []string `json:"missingMedia"`
-	VNCPortInUse             bool     `json:"vncPortInUse"`
-	MissingFsDatasets        []string `json:"missingFsDatasets"`
+	BootErrors        []string `json:"bootErrors"`
+	MissingMedia      []string `json:"missingMedia"`
+	VNCPortInUse      bool     `json:"vncPortInUse"`
+	MissingFsDatasets []string `json:"missingFsDatasets"`
 }
 
 type jailTargetProbe struct {
@@ -490,69 +489,39 @@ func (s *Service) remoteTargetGuestRecord(
 	targetNode clusterModels.ClusterNode,
 	guestID uint,
 ) (*cluster.GuestIdentityInventoryEntry, error) {
-	if ctx == nil {
-		ctx = context.Background()
+	if s == nil || s.Cluster == nil {
+		return nil, fmt.Errorf("cluster_service_unavailable")
 	}
-	if s == nil || s.Cluster == nil || s.Cluster.AuthService == nil {
-		return nil, fmt.Errorf("cluster_auth_unavailable")
-	}
-
 	targetNodeID := strings.TrimSpace(targetNode.NodeUUID)
-	targetAPI := strings.TrimSpace(targetNode.API)
-	if targetNodeID == "" || targetAPI == "" {
-		return nil, fmt.Errorf("target_identity_inventory_endpoint_unavailable")
+	if targetNodeID == "" {
+		return nil, fmt.Errorf("target_identity_inventory_node_unknown")
 	}
 
-	clusterToken, err := s.Cluster.AuthService.CreateInternalClusterJWT("migration")
-	if err != nil {
-		return nil, fmt.Errorf("create_cluster_token_failed: %w", err)
-	}
-
-	body, statusCode, err := utils.HTTPGetJSONReadContext(
-		ctx,
-		fmt.Sprintf("https://%s/api/intra-cluster/guest-identity-inventory", targetAPI),
-		map[string]string{
-			"Accept":          "application/json",
-			"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-		},
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	snapshot, err := cluster.CallNode[struct{}, cluster.GuestIdentityInventorySnapshot](
+		ctx, s.Cluster, targetNodeID, "guest-identity-inventory", struct{}{},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("target_identity_inventory_request_failed_http_%d: %w", statusCode, err)
+		return nil, fmt.Errorf("target_identity_inventory_request_failed: %w", err)
 	}
-
-	var response struct {
-		Status  string                                 `json:"status"`
-		Message string                                 `json:"message"`
-		Error   string                                 `json:"error"`
-		Data    cluster.GuestIdentityInventorySnapshot `json:"data"`
-	}
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("target_identity_inventory_decode_failed: %w", err)
-	}
-	if !strings.EqualFold(strings.TrimSpace(response.Status), "success") {
-		return nil, fmt.Errorf(
-			"target_identity_inventory_non_success: message=%s error=%s",
-			strings.TrimSpace(response.Message),
-			strings.TrimSpace(response.Error),
-		)
-	}
-	if strings.TrimSpace(response.Data.NodeID) != targetNodeID {
+	if strings.TrimSpace(snapshot.NodeID) != targetNodeID {
 		return nil, fmt.Errorf(
 			"target_identity_inventory_node_mismatch: expected=%s actual=%s",
 			targetNodeID,
-			strings.TrimSpace(response.Data.NodeID),
+			strings.TrimSpace(snapshot.NodeID),
 		)
 	}
-	canonical := cluster.BuildGuestIdentityInventoryReport(response.Data.Report.Entries)
-	if !reflect.DeepEqual(response.Data.Report.Entries, canonical.Entries) {
+	canonical := cluster.BuildGuestIdentityInventoryReport(snapshot.Report.Entries)
+	if !reflect.DeepEqual(snapshot.Report.Entries, canonical.Entries) {
 		return nil, fmt.Errorf("target_identity_inventory_entries_not_canonical")
 	}
-	if response.Data.Report.Digest != canonical.Digest {
+	if snapshot.Report.Digest != canonical.Digest {
 		return nil, fmt.Errorf("target_identity_inventory_digest_mismatch")
 	}
 
-	for i := range response.Data.Report.Entries {
-		entry := &response.Data.Report.Entries[i]
+	for i := range snapshot.Report.Entries {
+		entry := &snapshot.Report.Entries[i]
 		if strings.TrimSpace(entry.NodeID) != targetNodeID {
 			return nil, fmt.Errorf(
 				"target_identity_inventory_entry_node_mismatch: expected=%s actual=%s guest_id=%d",
@@ -640,23 +609,12 @@ func (s *Service) vmTargetPreflightReasons(ctx context.Context, vm vmModels.VM, 
 		return nil
 	}
 
-	result, unsupported, err := s.remoteCheckVMTarget(ctx, targetNode, probe)
+	result, err := s.remoteCheckVMTarget(ctx, targetNode, probe)
 	if err != nil {
 		return []string{fmt.Sprintf("target_check_failed: %v", err)}
 	}
-	if unsupported {
-		return []string{"target_check_unsupported"}
-	}
-	if !result.NetworkCompatibilityChecked {
-		return []string{"target_network_compatibility_check_unsupported"}
-	}
-	if probe.BootRequirement != nil {
-		if !result.BootCompatibilityChecked {
-			return []string{"target_boot_compatibility_check_unsupported"}
-		}
-		if len(result.BootErrors) > 0 {
-			return result.BootErrors
-		}
+	if probe.BootRequirement != nil && len(result.BootErrors) > 0 {
+		return result.BootErrors
 	}
 
 	var reasons []string
@@ -683,63 +641,10 @@ func (s *Service) vmTargetPreflightReasons(ctx context.Context, vm vmModels.VM, 
 	return reasons
 }
 
-func (s *Service) remoteCheckVMTarget(ctx context.Context, targetNode clusterModels.ClusterNode, probe vmTargetProbe) (vmTargetResult, bool, error) {
-	if s.Cluster == nil || s.Cluster.AuthService == nil {
-		return vmTargetResult{}, false, fmt.Errorf("cluster_auth_unavailable")
-	}
-
-	clusterToken, tokenErr := s.Cluster.AuthService.CreateInternalClusterJWT("migration")
-	if tokenErr != nil {
-		return vmTargetResult{}, false, fmt.Errorf("create_cluster_token_failed: %w", tokenErr)
-	}
-
-	headers := map[string]string{
-		"Accept":          "application/json",
-		"Content-Type":    "application/json",
-		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-	}
-
-	url := fmt.Sprintf("https://%s/api/intra-cluster/migration/check-vm-target", targetNode.API)
-	body, marshalErr := json.Marshal(probe)
-	if marshalErr != nil {
-		return vmTargetResult{}, false, fmt.Errorf("marshal_target_check_payload_failed: %w", marshalErr)
-	}
-
-	const attempts = 3
-	var lastErr error
-	for attempt := 0; attempt < attempts; attempt++ {
-		respBody, respStatus, reqErr := utils.HTTPPostJSONWithTimeout(url, body, headers, 10*time.Second)
-
-		if respStatus == 404 {
-			return vmTargetResult{}, true, nil
-		}
-		if respStatus >= 300 {
-			return vmTargetResult{}, false, fmt.Errorf("target_check_returned_http_%d: %s", respStatus, string(respBody))
-		}
-
-		if reqErr != nil {
-			lastErr = reqErr
-			if attempt < attempts-1 {
-				select {
-				case <-ctx.Done():
-					return vmTargetResult{}, false, ctx.Err()
-				case <-time.After(time.Duration(attempt+1) * 500 * time.Millisecond):
-				}
-			}
-			continue
-		}
-
-		var parsed struct {
-			Data vmTargetResult `json:"data"`
-		}
-		if jsonErr := json.Unmarshal(respBody, &parsed); jsonErr != nil {
-			return vmTargetResult{}, false, fmt.Errorf("target_check_parse_failed: %w", jsonErr)
-		}
-
-		return parsed.Data, false, nil
-	}
-
-	return vmTargetResult{}, false, fmt.Errorf("target_check_request_failed: %w", lastErr)
+func (s *Service) remoteCheckVMTarget(ctx context.Context, targetNode clusterModels.ClusterNode, probe vmTargetProbe) (vmTargetResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	return cluster.CallNode[vmTargetProbe, vmTargetResult](ctx, s.Cluster, targetNode.NodeUUID, "migration-check-vm-target", probe)
 }
 
 func (s *Service) buildJailTargetProbe(jailID uint) (jailTargetProbe, error) {
@@ -771,59 +676,10 @@ func (s *Service) remoteCheckJailTarget(
 	ctx context.Context,
 	targetNode clusterModels.ClusterNode,
 	probe jailTargetProbe,
-) (jailTargetResult, bool, error) {
-	if s.Cluster == nil || s.Cluster.AuthService == nil {
-		return jailTargetResult{}, false, fmt.Errorf("cluster_auth_unavailable")
-	}
-
-	clusterToken, tokenErr := s.Cluster.AuthService.CreateInternalClusterJWT("migration")
-	if tokenErr != nil {
-		return jailTargetResult{}, false, fmt.Errorf("create_cluster_token_failed: %w", tokenErr)
-	}
-
-	body, marshalErr := json.Marshal(probe)
-	if marshalErr != nil {
-		return jailTargetResult{}, false, fmt.Errorf("marshal_target_check_payload_failed: %w", marshalErr)
-	}
-	url := fmt.Sprintf("https://%s/api/intra-cluster/migration/check-jail-target", targetNode.API)
-	headers := map[string]string{
-		"Accept":          "application/json",
-		"Content-Type":    "application/json",
-		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-	}
-
-	const attempts = 3
-	var lastErr error
-	for attempt := 0; attempt < attempts; attempt++ {
-		respBody, respStatus, reqErr := utils.HTTPPostJSONWithTimeout(url, body, headers, 10*time.Second)
-		if respStatus == 404 {
-			return jailTargetResult{}, true, nil
-		}
-		if respStatus >= 300 {
-			return jailTargetResult{}, false, fmt.Errorf("target_check_returned_http_%d: %s", respStatus, string(respBody))
-		}
-		if reqErr != nil {
-			lastErr = reqErr
-			if attempt < attempts-1 {
-				select {
-				case <-ctx.Done():
-					return jailTargetResult{}, false, ctx.Err()
-				case <-time.After(time.Duration(attempt+1) * 500 * time.Millisecond):
-				}
-			}
-			continue
-		}
-
-		var parsed struct {
-			Data jailTargetResult `json:"data"`
-		}
-		if err := json.Unmarshal(respBody, &parsed); err != nil {
-			return jailTargetResult{}, false, fmt.Errorf("target_check_parse_failed: %w", err)
-		}
-		return parsed.Data, false, nil
-	}
-
-	return jailTargetResult{}, false, fmt.Errorf("target_check_request_failed: %w", lastErr)
+) (jailTargetResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	return cluster.CallNode[jailTargetProbe, jailTargetResult](ctx, s.Cluster, targetNode.NodeUUID, "migration-check-jail-target", probe)
 }
 
 func (s *Service) validateJailPreflight(ctx context.Context, ctID uint, targetNode clusterModels.ClusterNode) []string {
@@ -890,13 +746,9 @@ func (s *Service) validateJailPreflight(ctx context.Context, ctID uint, targetNo
 		return append(reasons, probeErr.Error())
 	}
 	if len(probe.Networks) > 0 {
-		result, unsupported, checkErr := s.remoteCheckJailTarget(ctx, targetNode, probe)
+		result, checkErr := s.remoteCheckJailTarget(ctx, targetNode, probe)
 		if checkErr != nil {
 			reasons = append(reasons, fmt.Sprintf("target_check_failed: %v", checkErr))
-		} else if unsupported {
-			reasons = append(reasons, "target_check_unsupported")
-		} else if !result.NetworkCompatibilityChecked {
-			reasons = append(reasons, "target_network_compatibility_check_unsupported")
 		} else {
 			for _, sw := range result.MissingSwitches {
 				reasons = append(reasons, fmt.Sprintf("target_missing_switch: %s", sw))

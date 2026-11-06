@@ -15,7 +15,7 @@ func TestRuntimeStateAuthorityUsesPersistedClusterMode(t *testing.T) {
 		&clusterModels.Cluster{},
 		&clusterModels.BackupJob{},
 	)
-	service := &Service{DB: database}
+	service := withFSM(&Service{DB: database})
 
 	if err := database.Create(&clusterModels.Cluster{ID: 1, Enabled: false}).Error; err != nil {
 		t.Fatalf("seed standalone state: %v", err)
@@ -43,7 +43,7 @@ func TestRuntimeStateAuthorityUsesPersistedClusterMode(t *testing.T) {
 	}
 	err = service.UpdateBackupJobRuntimeState(BackupJobRuntimeStateUpdate{
 		JobID: 1, LastStatus: "failed", LastError: "must not apply",
-	}, true)
+	})
 	if err == nil {
 		t.Fatal("cluster-enabled local runtime write unexpectedly succeeded")
 	}
@@ -52,5 +52,19 @@ func TestRuntimeStateAuthorityUsesPersistedClusterMode(t *testing.T) {
 	}
 	if job.LastStatus != "" || job.LastError != "" {
 		t.Fatalf("forbidden local write mutated job: %+v", job)
+	}
+}
+
+func TestRunningRaftIsNeverStandalone(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 1, &clusterModels.Cluster{})
+	service := nodes[0].service
+	if err := service.DB.Create(&clusterModels.Cluster{Enabled: false}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if bypass, err := service.RuntimeStateBypassRaft(); bypass || err != nil {
+		t.Fatalf("RuntimeStateBypassRaft() = %v, %v; want false, nil", bypass, err)
+	}
+	if service.Standalone() {
+		t.Fatal("a node running Raft reports standalone")
 	}
 }

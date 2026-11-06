@@ -12,7 +12,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -32,8 +31,9 @@ func newDownloaderUploadTestRouter(
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
-		userID, _ := strconv.ParseUint(c.GetHeader("X-Test-User-ID"), 10, 64)
-		c.Set("UserID", uint(userID))
+		if owner := c.GetHeader("X-Test-Owner"); owner != "" {
+			c.Set("Owner", owner)
+		}
 		c.Next()
 	})
 	router.POST("/uploads", newDownloaderUploadHandler(
@@ -66,7 +66,7 @@ func newDownloaderMultipartRequest(t *testing.T, filename, content string) *http
 	}
 	request := httptest.NewRequest(http.MethodPost, "/uploads", &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
-	request.Header.Set("X-Test-User-ID", "7")
+	request.Header.Set("X-Test-Owner", "user:7")
 	return request
 }
 
@@ -89,8 +89,11 @@ func TestDownloaderUploadEndpointReturnsOpaqueReceiptWithoutPath(t *testing.T) {
 	service := &utilities.Service{DB: database}
 	router := newDownloaderUploadTestRouter(service, staging)
 
+	const owner = "node:node-1:sylve:admin"
 	response := httptest.NewRecorder()
-	router.ServeHTTP(response, newDownloaderMultipartRequest(t, `C:\fakepath\installer.iso`, "image"))
+	request := newDownloaderMultipartRequest(t, `C:\fakepath\installer.iso`, "image")
+	request.Header.Set("X-Test-Owner", owner)
+	router.ServeHTTP(response, request)
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
@@ -120,9 +123,19 @@ func TestDownloaderUploadEndpointReturnsOpaqueReceiptWithoutPath(t *testing.T) {
 		filepath.Base(record.Path) != utilities.DownloaderUploadFinalName(payload.Data.UploadID) {
 		t.Fatalf("staged path was not server-derived: %q", record.Path)
 	}
+	if record.Owner != owner {
+		t.Fatalf("upload owned by %q, want %q", record.Owner, owner)
+	}
+
+	foreignRequest := httptest.NewRequest(http.MethodDelete, "/uploads/"+payload.Data.UploadID, nil)
+	foreignRequest.Header.Set("X-Test-Owner", "user:7")
+	router.ServeHTTP(httptest.NewRecorder(), foreignRequest)
+	if _, err := os.Stat(record.Path); err != nil {
+		t.Fatalf("another owner's abort removed the staged source: %v", err)
+	}
 
 	abortRequest := httptest.NewRequest(http.MethodDelete, "/uploads/"+payload.Data.UploadID, nil)
-	abortRequest.Header.Set("X-Test-User-ID", "7")
+	abortRequest.Header.Set("X-Test-Owner", owner)
 	abortResponse := httptest.NewRecorder()
 	router.ServeHTTP(abortResponse, abortRequest)
 	if abortResponse.Code != http.StatusOK ||
@@ -176,7 +189,7 @@ func TestCompleteDownloaderUploadRejectsTarAndRawCombination(t *testing.T) {
 		}`),
 	)
 	completeRequest.Header.Set("Content-Type", "application/json")
-	completeRequest.Header.Set("X-Test-User-ID", "7")
+	completeRequest.Header.Set("X-Test-Owner", "user:7")
 	completeResponse := httptest.NewRecorder()
 	router.ServeHTTP(completeResponse, completeRequest)
 
@@ -244,7 +257,7 @@ func TestAbortDownloaderUploadReportsCompletedIdentityWithoutRemovingIt(t *testi
 		"/uploads/"+receipt.Data.UploadID,
 		nil,
 	)
-	abortRequest.Header.Set("X-Test-User-ID", "7")
+	abortRequest.Header.Set("X-Test-Owner", "user:7")
 	abortResponse := httptest.NewRecorder()
 	router.ServeHTTP(abortResponse, abortRequest)
 

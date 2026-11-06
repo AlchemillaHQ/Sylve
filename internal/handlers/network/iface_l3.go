@@ -18,7 +18,6 @@ import (
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/network"
-	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -37,40 +36,7 @@ type HostInterfaceL3SaveRequest struct {
 
 func RequireLocalHostOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if strings.TrimSpace(c.GetHeader("X-Current-Hostname")) == "" &&
-			strings.TrimSpace(c.Query("auth")) == "" {
-			c.Next()
-			return
-		}
-		requested, err := utils.GetCurrentHostnameFromHeader(c.Request.Header, c.Request)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_selected_node",
-				Error:   "invalid_selected_node",
-				Data:    nil,
-			})
-			return
-		}
-		requested = strings.TrimSpace(requested)
-		if requested == "" {
-			c.Next()
-			return
-		}
-
-		local, err := utils.GetSystemHostname()
-		local = strings.TrimSpace(local)
-		if err != nil || local == "" {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "local_hostname_unavailable",
-				Error:   "local_hostname_unavailable",
-				Data:    nil,
-			})
-			return
-		}
-
-		if !strings.EqualFold(requested, local) {
+		if c.GetString("AuthScope") == "cluster" {
 			c.AbortWithStatusJSON(http.StatusConflict, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "host_interface_l3_local_node_only",
@@ -79,7 +45,6 @@ func RequireLocalHostOnly() gin.HandlerFunc {
 			})
 			return
 		}
-
 		c.Next()
 	}
 }

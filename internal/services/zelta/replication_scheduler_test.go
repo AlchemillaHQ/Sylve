@@ -28,6 +28,7 @@ func newReplicationSchedulerTestDB(t *testing.T) *Service {
 	)
 	return &Service{
 		DB:                 db,
+		Cluster:            newTestClusterService(db, ""),
 		runningReplication: make(map[uint]struct{}),
 		runningTransitions: make(map[uint]struct{}),
 		runningJobs:        make(map[uint]struct{}),
@@ -87,7 +88,7 @@ func TestPrepareReplicationRunResumesOnlyWithoutTerminalResult(t *testing.T) {
 	now := time.Date(2026, time.August, 1, 4, 33, 0, 0, time.UTC)
 	operation := clusterModels.ReplicationRunOperation{
 		PolicyID: 8001, Token: "replication:local:running", State: clusterModels.ReplicationRunOperationRunning,
-		HolderNodeID: "local", ScheduleRevision: 3, OwnerEpoch: 2,
+		HolderNodeID: service.localNodeID(), ScheduleRevision: 3, OwnerEpoch: 2,
 		Revision: 2, AcquiredAt: now, UpdatedAt: now,
 	}
 	if err := service.DB.Create(&operation).Error; err != nil {
@@ -121,10 +122,10 @@ func TestPrepareReplicationRunResumesOnlyWithoutTerminalResult(t *testing.T) {
 	}
 }
 
-func TestReplicationSchedulerTickNoCluster(t *testing.T) {
+func TestReplicationSchedulerTickStandalone(t *testing.T) {
 	svc := newReplicationSchedulerTestDB(t)
 	if err := svc.runReplicationSchedulerTick(context.Background()); err != nil {
-		t.Fatalf("scheduler tick with nil Cluster should return nil: %v", err)
+		t.Fatalf("standalone scheduler tick: %v", err)
 	}
 }
 
@@ -134,20 +135,6 @@ func TestAcquireReplicationZeroPolicyID(t *testing.T) {
 		t.Fatal("acquire with zero policy ID currently succeeds")
 	}
 	s.releaseReplication(0)
-}
-
-func TestSelfFenceNoCluster(t *testing.T) {
-	svc := &Service{runningReplication: make(map[uint]struct{})}
-	if err := svc.selfFenceExpiredLeases(context.Background()); err != nil {
-		t.Fatalf("self-fence with nil Cluster should return nil: %v", err)
-	}
-}
-
-func TestFailoverControllerNoCluster(t *testing.T) {
-	svc := &Service{runningReplication: make(map[uint]struct{})}
-	if err := svc.runFailoverControllerTick(context.Background()); err != nil {
-		t.Fatalf("failover tick with nil Cluster should return nil: %v", err)
-	}
 }
 
 func TestReplicationSchedulerSkipWhenReplicationRunning(t *testing.T) {
@@ -166,7 +153,7 @@ func TestReplicationSchedulerSkipWhenReplicationRunning(t *testing.T) {
 
 func TestReplicationSchedulerTickAppliesControlledHA(t *testing.T) {
 	service := newReplicationSchedulerTestDB(t)
-	service.Cluster = &cluster.Service{DB: service.DB, NodeID: "node-local"}
+	service.Cluster = newTestClusterService(service.DB, "node-local")
 	now := time.Now().UTC()
 	past := now.Add(-time.Hour)
 	future := now.Add(time.Hour)
@@ -194,7 +181,7 @@ func TestReplicationSchedulerTickAppliesControlledHA(t *testing.T) {
 	}
 	for i := range policies {
 		policy := &policies[i]
-		if err := clusterModels.UpsertReplicationPolicyTxn(service.DB, policy, nil); err != nil {
+		if err := seedReplicationPolicy(service.DB, policy, nil); err != nil {
 			t.Fatalf("seed policy %d: %v", policy.ID, err)
 		}
 		lease := clusterModels.ReplicationLease{

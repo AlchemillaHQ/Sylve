@@ -24,7 +24,7 @@ func TestNonNumericIDParamReturns400(t *testing.T) {
 		&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{},
 		&clusterModels.ReplicationEvent{},
 	)
-	cS := &cluster.Service{DB: db}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	zS := &zelta.Service{DB: db}
 
 	type testCase struct {

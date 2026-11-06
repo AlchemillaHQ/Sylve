@@ -16,6 +16,7 @@
 	import {
 		getFilePondRequestHeaders,
 		getFilePondRequestHostname,
+		getFilePondRequestURL,
 		parseFilePondUploadError,
 		parseFilePondUploadID
 	} from '$lib/utils/filepond';
@@ -248,9 +249,12 @@
 		process: isDemoMode
 			? processDemoUpload
 			: {
-					url: `/api/utilities/downloader-uploads?storagePool=${encodeURIComponent(storagePool)}`,
+					url: getFilePondRequestURL(
+						`/api/utilities/downloader-uploads?storagePool=${encodeURIComponent(storagePool)}`,
+						uploadHostname
+					),
 					method: 'POST' as const,
-					headers: getFilePondRequestHeaders(uploadHostname),
+					headers: getFilePondRequestHeaders(),
 					onload: (response: string) => parseFilePondUploadID(response),
 					onerror: (response: string) => parseFilePondUploadError(response)
 				},

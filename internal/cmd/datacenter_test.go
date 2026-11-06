@@ -42,31 +42,14 @@ func TestDatacenterClusterCommandsSendTypedOperations(t *testing.T) {
 		},
 		{
 			name:          "guest ID reclaim",
-			args:          []string{"datacenter", "cluster", "guest-ids", "reclaim", "--id", "505"},
+			args:          []string{"datacenter", "cluster", "guest-ids", "reclaim", "--id", "505", "--json"},
 			wantOperation: consoleprotocol.OperationDatacenterClusterGuestIDReclaim,
 			validate: func(t *testing.T, payload json.RawMessage) {
 				var request consoleprotocol.DatacenterClusterGuestIDReclaimPayload
 				if err := json.Unmarshal(payload, &request); err != nil {
 					t.Fatal(err)
 				}
-				if request.GuestID != 505 || request.Force || request.Confirmation != "" {
-					t.Fatalf("payload = %+v", request)
-				}
-			},
-		},
-		{
-			name: "forced guest ID reclaim",
-			args: []string{
-				"datacenter", "cluster", "guest-ids", "reclaim", "--id", "506",
-				"--force", "--confirm", "506", "--json",
-			},
-			wantOperation: consoleprotocol.OperationDatacenterClusterGuestIDReclaim,
-			validate: func(t *testing.T, payload json.RawMessage) {
-				var request consoleprotocol.DatacenterClusterGuestIDReclaimPayload
-				if err := json.Unmarshal(payload, &request); err != nil {
-					t.Fatal(err)
-				}
-				if request.GuestID != 506 || !request.Force || request.Confirmation != "506" || !request.JSON {
+				if request.GuestID != 505 || !request.JSON {
 					t.Fatalf("payload = %+v", request)
 				}
 			},

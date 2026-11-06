@@ -25,7 +25,7 @@ func TestIntegrationRaftNotesReplicationTwoNodes(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 2, &clusterModels.ClusterNote{})
 
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	if err := leader.service.ProposeNoteCreate("first", "content", false); err != nil {
+	if err := leader.service.ProposeNoteCreate(t.Context(), "first", "content"); err != nil {
 		t.Fatalf("leader failed to create note through raft: %v", err)
 	}
 
@@ -47,7 +47,7 @@ func TestIntegrationRaftNotesReplicationTwoNodes(t *testing.T) {
 	})
 
 	leader = waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	if err := leader.service.ProposeNoteUpdate(noteID, "first-updated", "content-updated", false); err != nil {
+	if err := leader.service.ProposeNoteUpdate(t.Context(), noteID, "first-updated", "content-updated"); err != nil {
 		t.Fatalf("leader failed to update note through raft: %v", err)
 	}
 
@@ -65,7 +65,7 @@ func TestIntegrationRaftNotesReplicationTwoNodes(t *testing.T) {
 	})
 
 	leader = waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	if err := leader.service.ProposeNoteDelete(noteID, false); err != nil {
+	if err := leader.service.ProposeNoteDelete(t.Context(), noteID); err != nil {
 		t.Fatalf("leader failed to delete note through raft: %v", err)
 	}
 
@@ -84,7 +84,7 @@ func TestIntegrationRaftNotesThreeNodeFailover(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 3, &clusterModels.ClusterNote{})
 
 	initialLeader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-	if err := initialLeader.service.ProposeNoteCreate("before-failover", "first-write", false); err != nil {
+	if err := initialLeader.service.ProposeNoteCreate(t.Context(), "before-failover", "first-write"); err != nil {
 		t.Fatalf("initial leader failed to create note: %v", err)
 	}
 
@@ -117,7 +117,7 @@ func TestIntegrationRaftNotesThreeNodeFailover(t *testing.T) {
 	}
 
 	newLeader := waitForClusterRaftLeader(t, survivors, 12*time.Second)
-	if err := newLeader.service.ProposeNoteCreate("after-failover", "second-write", false); err != nil {
+	if err := newLeader.service.ProposeNoteCreate(t.Context(), "after-failover", "second-write"); err != nil {
 		t.Fatalf("new leader failed to create note after failover: %v", err)
 	}
 

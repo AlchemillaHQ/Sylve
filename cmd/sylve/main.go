@@ -58,6 +58,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/zfs"
 
 	portnetwork "github.com/alchemillahq/sylve/pkg/network"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/urfave/cli/v3"
@@ -160,9 +161,6 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	qCtx, qStop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer qStop()
 
-	fsm := clusterModels.NewFSMDispatcher(d)
-	clusterModels.RegisterDefaultHandlers(fsm)
-
 	serviceRegistry := services.NewServiceRegistry(d, telemetryDB)
 	aS := serviceRegistry.AuthService
 	sS := serviceRegistry.StartupService
@@ -205,9 +203,6 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 
 	clusterSvc := cS.(*cluster.Service)
 	authSvc := aS.(*auth.Service)
-	if err := authSvc.SetClusterIssuerNodeID(clusterSvc.LocalNodeID()); err != nil {
-		logger.L.Fatal().Err(err).Msg("failed_to_configure_cluster_token_issuer")
-	}
 	authSvc.SetClusterIssuerVerifier(func(nodeID string) (auth.ClusterIssuerMembership, error) {
 		membership, err := clusterSvc.ResolveCurrentRaftMember(nodeID)
 		if err != nil {
@@ -274,7 +269,10 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	zS.(*zfs.Service).RegisterScrubJobs()
 
 	zfs.EncryptionKeyCreatedHook = func(uuid, keyData, keyFormat string) {
-		if err := clusterSvc.ForwardEncryptionKeyToLeader(uuid, keyData, keyFormat); err != nil {
+		// Runs inside the dataset create, so an unreachable leader mustn't hold it up for long.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := clusterSvc.PublishEncryptionKey(ctx, uuid, keyData, keyFormat); err != nil {
 			logger.L.Warn().Err(err).Str("uuid", uuid).Msg("encryption_key_hook_register_failed")
 		}
 	}
@@ -294,7 +292,6 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		logger.L.Fatal().Err(err).Msg("Failed to initialize at startup")
 	}
 
-	var clusterTLSConfig *tls.Config
 	var queueDone <-chan struct{}
 	dS.(*disk.Service).SetSelfTestSchedulerReady(operationalAtBoot)
 	zS.(*zfs.Service).SetScrubSchedulerReady(operationalAtBoot)
@@ -304,18 +301,22 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 			logger.L.Fatal().Err(err).Msg("failed_to_migrate_legacy_disk_smart_notifications")
 		}
 
-		if err := cS.InitRaft(fsm); err != nil {
+		clusterTLSConfig, err := aS.GetClusterTLSConfig()
+		if err != nil {
+			logger.L.Fatal().Err(err).Msg("Failed to get cluster TLS config")
+		}
+		if err := clusterSvc.SetClusterCert(clusterTLSConfig.Certificates[0]); err != nil {
+			logger.L.Fatal().Err(err).Msg("Failed to load cluster TLS cert")
+		}
+		utils.SetIntraClusterTLS(clusterSvc.PeerTLSConfig(), clusterSvc.JoinTLSConfig())
+
+		if err := cS.InitRaft(); err != nil {
 			// Keep the daemon up so the node can be reset from the UI; cluster
 			// writes fail while Raft is down instead of applying locally.
 			logger.L.Error().Err(err).Msg("Failed to initialize RAFT")
 		}
 		if err := lifecycleSvc.PrepareStartup(qCtx); err != nil {
 			logger.L.Error().Err(err).Msg("failed_to_prepare_lifecycle_startup")
-		}
-
-		clusterTLSConfig, err = aS.GetClusterTLSConfig()
-		if err != nil {
-			logger.L.Fatal().Err(err).Msg("Failed to get cluster TLS config")
 		}
 
 		if err := utilitiesSvc.StartOperational(); err != nil {
@@ -366,8 +367,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 			go libvirtSvc.StartLifecycleWatcher(qCtx)
 		}
 
-		startupMutationCtx, startupMutationRelease, startupMutationErr := clusterSvc.EnterMutation(context.Background())
-		if startupMutationErr == nil {
+		reconcileAfterStart := func(startupMutationCtx context.Context) {
 			operationReconcileCtx, operationReconcileCancel := context.WithTimeout(startupMutationCtx, 30*time.Second)
 			if err := zeltaS.ReconcileBackupJobOperationsAfterRestart(operationReconcileCtx); err != nil {
 				logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_job_operations_after_restart")
@@ -379,11 +379,6 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 				logger.L.Warn().Err(err).Msg("failed_to_drain_scheduled_run_result_outbox_after_restart")
 			}
 			operationReconcileCancel()
-			targetRestoreReconcileCtx, targetRestoreReconcileCancel := context.WithTimeout(startupMutationCtx, 30*time.Second)
-			if err := zeltaS.ReconcileBackupTargetRestoreOperationsAfterRestart(targetRestoreReconcileCtx); err != nil {
-				logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_restore_operations_after_restart")
-			}
-			targetRestoreReconcileCancel()
 			targetProvisionReconcileCtx, targetProvisionReconcileCancel := context.WithTimeout(startupMutationCtx, 30*time.Second)
 			if err := zeltaS.ReconcileBackupTargetProvisionOperations(targetProvisionReconcileCtx); err != nil {
 				logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_provision_operations_after_restart")
@@ -406,11 +401,22 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 			if err := zeltaS.ReconcileBackupRunAudits(); err != nil {
 				logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_run_audits_after_restart")
 			}
+		}
+		if startupMutationCtx, startupMutationRelease, err := clusterSvc.EnterReadyMutation(context.Background()); err == nil {
+			reconcileAfterStart(startupMutationCtx)
 			startupMutationRelease()
-		} else if !errors.Is(startupMutationErr, cluster.ErrNodeLeaveFenced) {
-			logger.L.Warn().Err(startupMutationErr).Msg("failed_to_admit_cluster_runtime_reconciliation")
+		} else {
+			go func() {
+				startupMutationCtx, startupMutationRelease, err := clusterSvc.EnterMutationWhenReady(qCtx)
+				if err != nil {
+					return
+				}
+				defer startupMutationRelease()
+				reconcileAfterStart(startupMutationCtx)
+			}()
 		}
 		go zeltaS.StartBackupTargetProvisionReconciler(qCtx)
+		go zeltaS.StartBackupTargetRestoreReconciler(qCtx)
 		queueRunnerDone := make(chan struct{})
 		queueDone = queueRunnerDone
 		go func() {
@@ -445,7 +451,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	r := gin.Default()
 	r.Use(gzip.Gzip(
 		gzip.BestSpeed,
-		gzip.WithExcludedPaths([]string{"/api/utilities/downloads"}),
+		gzip.WithExcludedPaths([]string{"/api/utilities/downloads", "/api/nodes/"}),
 	))
 
 	handlers.RegisterRoutes(r,
@@ -472,8 +478,6 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		clusterSvc,
 		zeltaS,
 		migrationSvc,
-		fsm,
-		d,
 		telemetryDB,
 	)
 
@@ -512,7 +516,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		go repl.Start(replCtx)
 	}
 
-	httpsServer, httpServer := newManagementHTTPServers(cfg, r, certS.TLSConfig())
+	httpsServer, httpServer := newManagementHTTPServers(cfg, handlers.NodePaths(r), certS.TLSConfig())
 
 	var wg sync.WaitGroup
 	type namedServer struct {
@@ -577,8 +581,8 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 				return fmt.Errorf("cluster_https_listen_failed: %w", err)
 			}
 			srv := &http.Server{
-				Handler:   r,
-				TLSConfig: clusterTLSConfig,
+				Handler:   clusterSvc.PeerHandler(handlers.NodePaths(r)),
+				TLSConfig: clusterSvc.ServerTLSConfig(),
 			}
 			activeClusterHTTPS = srv
 			wg.Add(1)

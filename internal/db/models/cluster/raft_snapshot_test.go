@@ -10,7 +10,6 @@ package clusterModels
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"testing"
 	"time"
@@ -21,10 +20,7 @@ import (
 
 func allSnapshotModels() []any {
 	return []any{
-		&GuestIdentityRegistry{},
-		&GuestIdentityEnrollment{},
 		&GuestIdentityClaim{},
-		&GuestIdentityDeparture{},
 		&ClusterNote{},
 		&ClusterOption{},
 		&BackupTarget{},
@@ -51,44 +47,6 @@ func allSnapshotModels() []any {
 	}
 }
 
-func TestClusterSnapshotPreservesPendingGuestIdentityDeparture(t *testing.T) {
-	source := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
-	if err := source.Create(&GuestIdentityRegistry{ID: GuestIdentityRegistryID, Version: GuestIdentityRegistryVersion, Phase: GuestIdentityRegistryPhaseActive}).Error; err != nil {
-		t.Fatal(err)
-	}
-	claim := GuestIdentityClaim{GuestID: 100, GuestKind: ReplicationGuestTypeVM, OwnerNodeID: "node-a", Token: "claim-a"}
-	if err := source.Create(&claim).Error; err != nil {
-		t.Fatal(err)
-	}
-	departure := GuestIdentityDeparture{NodeID: "node-a", LeaveID: "leave-a", InventoryDigest: GuestIdentityInventoryDigest("node-a", []GuestIdentityEntry{{GuestKind: ReplicationGuestTypeVM, GuestID: 100}})}
-	if err := source.Create(&departure).Error; err != nil {
-		t.Fatal(err)
-	}
-	snapshot, err := captureClusterSnapshot(source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(snapshot.GuestIdentityDepartures) != 1 || snapshot.GuestIdentityDepartures[0] != departure {
-		t.Fatalf("snapshot departures = %+v", snapshot.GuestIdentityDepartures)
-	}
-	raw, err := json.Marshal(snapshot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	destination := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
-	fsm := NewFSMDispatcher(destination)
-	if err := fsm.Restore(io.NopCloser(bytes.NewReader(raw))); err != nil {
-		t.Fatal(err)
-	}
-	var restored GuestIdentityDeparture
-	if err := destination.First(&restored, "node_id = ?", departure.NodeID).Error; err != nil {
-		t.Fatal(err)
-	}
-	if restored != departure {
-		t.Fatalf("restored departure = %+v, want %+v", restored, departure)
-	}
-}
-
 func TestClusterSnapshotRoundTrip(t *testing.T) {
 	sourceDB := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
 	fsmSrc := NewFSMDispatcher(sourceDB)
@@ -106,7 +64,7 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 
 	target := BackupTarget{
 		ID: 100, Name: "t1", SSHHost: "localhost", SSHPort: 22,
-		SSHKeyPath: "/leader/local/target-100_id", SSHKey: "snapshot-key", BackupRoot: "/backup",
+		SSHKey: "snapshot-key", BackupRoot: "/backup",
 	}
 	if err := sourceDB.Create(&target).Error; err != nil {
 		t.Fatalf("failed to seed backup target: %v", err)
@@ -137,7 +95,7 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 		TargetID: target.ID, NodeID: "node-1",
 		TargetFingerprint:   BackupTargetConnectivityFingerprint(&target),
 		ValidationSucceeded: true, LastVerifiedAt: readinessVerifiedAt,
-		ReadyUntil: &readinessUntil, Revision: 2, RaftAppliedIndex: 42, UpdatedAt: readinessVerifiedAt,
+		ReadyUntil: &readinessUntil, Revision: 2, UpdatedAt: readinessVerifiedAt,
 	}).Error; err != nil {
 		t.Fatalf("failed to seed backup target readiness: %v", err)
 	}
@@ -339,7 +297,6 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	if len(targetReadiness) != 1 || targetReadiness[0].NodeID != "node-1" ||
 		targetReadiness[0].TargetFingerprint != BackupTargetConnectivityFingerprint(&target) ||
 		!targetReadiness[0].ValidationSucceeded || targetReadiness[0].Revision != 2 ||
-		targetReadiness[0].RaftAppliedIndex != 42 ||
 		!targetReadiness[0].LastVerifiedAt.Equal(readinessVerifiedAt) {
 		t.Fatalf("target readiness mismatch: %+v", targetReadiness)
 	}
@@ -461,7 +418,11 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("capture source digest: %v", err)
 	}
-	sourceSnapshot.BackupTargetHostTrust = nil
+	for i := range sourceSnapshot.Tables {
+		if sourceSnapshot.Tables[i].Name == "backup_target_ssh_host_trusts" {
+			sourceSnapshot.Tables[i].Rows = nil
+		}
+	}
 	withoutTrustDigest, err := ClusterSnapshotDigest(sourceSnapshot)
 	if err != nil || sourceDigest == withoutTrustDigest {
 		t.Fatalf("host trust omitted from digest: %v", err)
@@ -472,133 +433,6 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	}
 	if sourceDigest != destinationDigest {
 		t.Fatalf("snapshot digest mismatch: source=%s destination=%s", sourceDigest, destinationDigest)
-	}
-}
-
-func TestClusterLegacySnapshotWithoutTargetRestoreOperationsClearsReservations(t *testing.T) {
-	database := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
-	target := BackupTarget{
-		ID: 901, Name: "legacy-target", SSHHost: "root@backup", SSHPort: 22,
-		BackupRoot: "tank/backups", Enabled: true,
-	}
-	if err := database.Create(&target).Error; err != nil {
-		t.Fatalf("seed target: %v", err)
-	}
-	now := time.Date(2026, time.May, 6, 7, 8, 9, 0, time.UTC)
-	readyUntil := now.Add(time.Hour)
-	if err := database.Create(&BackupTargetNodeReadiness{
-		TargetID: target.ID, NodeID: "local", TargetFingerprint: BackupTargetConnectivityFingerprint(&target),
-		ValidationSucceeded: true, LastVerifiedAt: now, ReadyUntil: &readyUntil, Revision: 1, UpdatedAt: now,
-	}).Error; err != nil {
-		t.Fatalf("seed stale readiness: %v", err)
-	}
-	if err := database.Create(&BackupTargetRestoreOperation{
-		Token: "target-restore:local:stale", TargetID: target.ID, HolderNodeID: "local",
-		DestinationDataset: "zroot/stale", RequestPayload: `{"snapshot":"@stale"}`,
-		State: BackupTargetRestoreOperationQueued, Revision: 1, AcquiredAt: now, UpdatedAt: now,
-	}).Error; err != nil {
-		t.Fatalf("seed stale operation: %v", err)
-	}
-
-	legacySnapshot := ClusterSnapshot{
-		BackupTargets: []BackupTargetReplicationPayload{BackupTargetToReplicationPayload(target)},
-	}
-	encoded, err := json.Marshal(legacySnapshot)
-	if err != nil {
-		t.Fatalf("marshal legacy snapshot: %v", err)
-	}
-	if bytes.Contains(encoded, []byte("backupTargetRestoreOperations")) {
-		t.Fatalf("legacy snapshot unexpectedly contains target restore operations: %s", encoded)
-	}
-	fsm := NewFSMDispatcher(database)
-	RegisterDefaultHandlers(fsm)
-	if err := fsm.Restore(io.NopCloser(bytes.NewReader(encoded))); err != nil {
-		t.Fatalf("restore legacy snapshot: %v", err)
-	}
-	var count int64
-	if err := database.Model(&BackupTargetRestoreOperation{}).Count(&count).Error; err != nil || count != 0 {
-		t.Fatalf("target restore operations after legacy restore = %d err=%v", count, err)
-	}
-	if err := database.Model(&BackupTargetNodeReadiness{}).Count(&count).Error; err != nil || count != 0 {
-		t.Fatalf("target readiness after legacy restore = %d err=%v", count, err)
-	}
-}
-
-func TestClusterLegacySnapshotDefaultsScheduleRevisionToZero(t *testing.T) {
-	database := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
-	legacy := []byte(`{
-		"backupTargets":[{"id":920,"name":"legacy","sshHost":"host","sshPort":22,"backupRoot":"tank/backups","enabled":true}],
-		"backupJobs":[{"id":921,"name":"legacy-job","targetId":920,"mode":"dataset","sourceDataset":"tank/data","cronExpr":"0 * * * *","enabled":true}],
-		"replicationPolicies":[{"policy":{"id":922,"name":"legacy-policy","guestType":"vm","guestId":22,"sourceNodeId":"node-a","activeNodeId":"node-a","ownerEpoch":1,"sourceMode":"follow_active","failbackMode":"manual","failoverMode":"manual","cronExpr":"0 * * * *","enabled":true},"targets":[]}]
-	}`)
-	fsm := NewFSMDispatcher(database)
-	RegisterDefaultHandlers(fsm)
-	if err := fsm.Restore(io.NopCloser(bytes.NewReader(legacy))); err != nil {
-		t.Fatalf("restore legacy schedule snapshot: %v", err)
-	}
-	var job BackupJob
-	if err := database.First(&job, 921).Error; err != nil {
-		t.Fatalf("load legacy job: %v", err)
-	}
-	if job.ScheduleRevision != 0 {
-		t.Fatalf("legacy job revision=%d, want 0", job.ScheduleRevision)
-	}
-	var policy ReplicationPolicy
-	if err := database.First(&policy, 922).Error; err != nil {
-		t.Fatalf("load legacy policy: %v", err)
-	}
-	if policy.ScheduleRevision != 0 {
-		t.Fatalf("legacy policy revision=%d, want 0", policy.ScheduleRevision)
-	}
-}
-
-func TestLegacyClusterSnapshotClassifiesEventsWithoutReplacingLocalHistory(t *testing.T) {
-	destDB := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
-	if err := destDB.Create(&ReplicationEvent{
-		ID: 8, EventType: "replication", Status: "success",
-		Message: "destination-local", StartedAt: time.Now().UTC(),
-	}).Error; err != nil {
-		t.Fatalf("seed destination local event: %v", err)
-	}
-
-	legacy := ClusterSnapshot{
-		ReplicationEvents: []ReplicationEvent{
-			{ID: 7, TransitionRunID: "legacy-transition", EventType: "failover", Status: "active"},
-			{ID: 8, EventType: "replication", Status: "failed", Message: "leader-local-collision"},
-			{ID: 9, EventType: "failover", Status: "failed", Message: "ambiguous-legacy"},
-		},
-	}
-	raw, err := json.Marshal(legacy)
-	if err != nil {
-		t.Fatalf("marshal legacy snapshot: %v", err)
-	}
-	fsm := NewFSMDispatcher(destDB)
-	RegisterDefaultHandlers(fsm)
-	if err := fsm.Restore(io.NopCloser(bytes.NewReader(raw))); err != nil {
-		t.Fatalf("restore legacy snapshot: %v", err)
-	}
-
-	var transition ReplicationTransitionEvent
-	if err := destDB.First(&transition, 7).Error; err != nil {
-		t.Fatalf("load migrated transition event: %v", err)
-	}
-	if transition.TransitionRunID != "legacy-transition" {
-		t.Fatalf("legacy transition mismatch: %+v", transition)
-	}
-
-	var collision ReplicationEvent
-	if err := destDB.First(&collision, 8).Error; err != nil {
-		t.Fatalf("load destination local collision: %v", err)
-	}
-	if collision.Message != "destination-local" {
-		t.Fatalf("legacy snapshot replaced destination-local history: %+v", collision)
-	}
-	var ambiguous ReplicationEvent
-	if err := destDB.First(&ambiguous, 9).Error; err != nil {
-		t.Fatalf("load ambiguous legacy event: %v", err)
-	}
-	if ambiguous.Message != "ambiguous-legacy" {
-		t.Fatalf("ambiguous legacy event mismatch: %+v", ambiguous)
 	}
 }
 
@@ -679,7 +513,7 @@ func TestClusterSnapshotCarriesAndRestoresAppliedIndex(t *testing.T) {
 	}
 }
 
-func TestFSMDispatcherMarkerLifecycle(t *testing.T) {
+func TestFSMDispatcherAppliedIndexLifecycle(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
 	fsm := NewFSMDispatcher(database)
 	RegisterDefaultHandlers(fsm)
@@ -687,8 +521,8 @@ func TestFSMDispatcherMarkerLifecycle(t *testing.T) {
 	if resp := fsm.Apply(&raft.Log{Type: raft.LogCommand, Index: 5, Data: checkpoint}); resp != nil {
 		t.Fatalf("checkpoint apply response = %v", resp)
 	}
-	if !fsm.AppliedIndexKnown() || fsm.AppliedIndex() != 5 {
-		t.Fatalf("marker = %d known=%t, want 5 known", fsm.AppliedIndex(), fsm.AppliedIndexKnown())
+	if fsm.AppliedIndex() != 5 {
+		t.Fatalf("applied index = %d, want 5", fsm.AppliedIndex())
 	}
 
 	legacySnapshot, _, err := CaptureReplicatedStateDigest(database)
@@ -696,19 +530,11 @@ func TestFSMDispatcherMarkerLifecycle(t *testing.T) {
 		t.Fatalf("capture legacy snapshot: %v", err)
 	}
 	legacySnapshot.AppliedIndex = 0
-	payload, err := json.Marshal(legacySnapshot)
-	if err != nil {
-		t.Fatalf("marshal legacy snapshot: %v", err)
-	}
-	if err := fsm.Restore(io.NopCloser(bytes.NewReader(payload))); err != nil {
+	if err := fsm.Restore(snapshotReader(t, legacySnapshot)); err != nil {
 		t.Fatalf("restore legacy snapshot: %v", err)
 	}
-	if fsm.AppliedIndexKnown() || fsm.AppliedIndex() != 0 {
-		t.Fatalf(
-			"marker after legacy restore = %d known=%t, want unknown zero",
-			fsm.AppliedIndex(),
-			fsm.AppliedIndexKnown(),
-		)
+	if fsm.AppliedIndex() != 0 {
+		t.Fatalf("applied index after an index-less restore = %d, want 0", fsm.AppliedIndex())
 	}
 	if _, index, err := fsm.StateDigest(); err != nil || index != 0 {
 		t.Fatalf("zero-marker digest index = %d err=%v, want 0", index, err)
@@ -717,8 +543,8 @@ func TestFSMDispatcherMarkerLifecycle(t *testing.T) {
 	if resp := fsm.Apply(&raft.Log{Type: raft.LogCommand, Index: 9, Data: checkpoint}); resp != nil {
 		t.Fatalf("checkpoint apply response = %v", resp)
 	}
-	if !fsm.AppliedIndexKnown() || fsm.AppliedIndex() != 9 {
-		t.Fatalf("marker = %d known=%t, want 9 known", fsm.AppliedIndex(), fsm.AppliedIndexKnown())
+	if fsm.AppliedIndex() != 9 {
+		t.Fatalf("applied index = %d, want 9", fsm.AppliedIndex())
 	}
 	if resp := fsm.Apply(&raft.Log{Type: raft.LogCommand, Index: 12, Data: checkpoint}); resp != nil {
 		t.Fatalf("checkpoint apply response = %v", resp)
@@ -726,11 +552,7 @@ func TestFSMDispatcherMarkerLifecycle(t *testing.T) {
 	if err := fsm.ClearReplicatedState(); err != nil {
 		t.Fatalf("clear replicated state: %v", err)
 	}
-	if !fsm.AppliedIndexKnown() || fsm.AppliedIndex() != 0 {
-		t.Fatalf(
-			"marker after clear = %d known=%t, want known zero",
-			fsm.AppliedIndex(),
-			fsm.AppliedIndexKnown(),
-		)
+	if fsm.AppliedIndex() != 0 {
+		t.Fatalf("applied index after clear = %d, want 0", fsm.AppliedIndex())
 	}
 }

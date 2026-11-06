@@ -41,6 +41,7 @@ func newRunBackupJobTestDB(t *testing.T) *Service {
 	)
 	return &Service{
 		DB:                db,
+		Cluster:           newTestClusterService(db, ""),
 		queuedJobs:        make(map[uint]struct{}),
 		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),

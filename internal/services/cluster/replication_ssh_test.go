@@ -24,7 +24,7 @@ func TestClusterSSHDir(t *testing.T) {
 	os.Setenv("SYLVE_DATA_PATH", dir)
 	defer os.Setenv("SYLVE_DATA_PATH", oldVal)
 
-	s := &Service{DB: newClusterServiceTestDB(t)}
+	s := withFSM(&Service{DB: newClusterServiceTestDB(t)})
 
 	sshDir, err := s.clusterSSHDir()
 	if err != nil {
@@ -47,7 +47,7 @@ func TestClusterSSHPrivateKeyPath(t *testing.T) {
 	os.Setenv("SYLVE_DATA_PATH", dir)
 	defer os.Setenv("SYLVE_DATA_PATH", oldVal)
 
-	s := &Service{DB: newClusterServiceTestDB(t)}
+	s := withFSM(&Service{DB: newClusterServiceTestDB(t)})
 
 	privatePath, err := s.ClusterSSHPrivateKeyPath()
 	if err != nil {
@@ -69,7 +69,7 @@ func TestEnsureLocalClusterSSHKeyPair(t *testing.T) {
 	os.Setenv("SYLVE_DATA_PATH", dir)
 	defer os.Setenv("SYLVE_DATA_PATH", oldVal)
 
-	s := &Service{DB: newClusterServiceTestDB(t)}
+	s := withFSM(&Service{DB: newClusterServiceTestDB(t)})
 
 	privatePath, publicPath, pubKey, err := s.ensureLocalClusterSSHKeyPair()
 	if err != nil {
@@ -119,7 +119,7 @@ func TestEnsureLocalClusterSSHKeyPairRejectsCorruptPrivateKey(t *testing.T) {
 	os.Setenv("SYLVE_DATA_PATH", dir)
 	defer os.Setenv("SYLVE_DATA_PATH", oldVal)
 
-	s := &Service{DB: newClusterServiceTestDB(t)}
+	s := withFSM(&Service{DB: newClusterServiceTestDB(t)})
 
 	// generate initial keypair
 	privatePath, publicPath, pubKey1, err := s.ensureLocalClusterSSHKeyPair()
@@ -155,7 +155,7 @@ func TestEnsureLocalClusterSSHKeyPairRejectsCorruptPrivateKey(t *testing.T) {
 
 func TestLocalClusterSSHHost(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.Cluster{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	// no cluster row -> falls back to 127.0.0.1
 	if got := s.localClusterSSHHost(); got == "" {
@@ -183,14 +183,14 @@ func TestLocalClusterSSHHost(t *testing.T) {
 func TestEnsureAndPublishLocalSSHIdentityNeedsRaftWhenClustered(t *testing.T) {
 	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
 	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &clusterModels.ClusterSSHIdentity{})
-	service := &Service{DB: db}
+	service := withFSM(&Service{DB: db})
 	if err := db.Create(&clusterModels.Cluster{
 		Enabled: true, RaftIP: "10.0.0.1",
 	}).Error; err != nil {
 		t.Fatalf("seed cluster: %v", err)
 	}
 
-	err := service.EnsureAndPublishLocalSSHIdentity()
+	err := service.EnsureAndPublishLocalSSHIdentity(t.Context())
 	if err != nil && strings.Contains(err.Error(), "node_id_unavailable") {
 		t.Skipf("Detail() unavailable in test environment: %v", err)
 	}
@@ -214,11 +214,11 @@ func TestEnsureAndPublishLocalSSHIdentityClusterNotEnabled(t *testing.T) {
 	defer os.Setenv("SYLVE_DATA_PATH", oldVal)
 
 	db := newClusterServiceTestDB(t, &clusterModels.Cluster{})
-	s := &Service{DB: db}
+	s := withFSM(&Service{DB: db})
 
 	db.Create(&clusterModels.Cluster{Enabled: false})
 
-	err := s.EnsureAndPublishLocalSSHIdentity()
+	err := s.EnsureAndPublishLocalSSHIdentity(t.Context())
 	if err != nil {
 		t.Fatalf("expected no error when cluster not enabled, got: %v", err)
 	}
@@ -227,5 +227,46 @@ func TestEnsureAndPublishLocalSSHIdentityClusterNotEnabled(t *testing.T) {
 	db.Model(&clusterModels.ClusterSSHIdentity{}).Count(&count)
 	if count != 0 {
 		t.Fatalf("expected no identity published for disabled cluster, got %d", count)
+	}
+}
+
+func TestLegacySSHPortIsRepublishedThroughRaft(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	detail := (&Service{}).Detail()
+	if detail == nil || strings.TrimSpace(detail.NodeID) == "" {
+		t.Skip("Detail() unavailable in this environment")
+	}
+	db := newClusterServiceTestDB(t, &clusterModels.Cluster{})
+	if err := db.Create(&clusterModels.Cluster{Enabled: true, RaftIP: "192.0.2.10"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	service := withFSM(&Service{DB: db, NodeID: detail.NodeID})
+	if err := service.SetClusterCert(testClusterCert(t)); err != nil {
+		t.Fatal(err)
+	}
+	instance := startSoleVoter(t, service, "192.0.2.10:8180")
+	_, _, publicKey, err := service.ensureLocalClusterSSHKeyPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&clusterModels.ClusterSSHIdentity{
+		NodeUUID: detail.NodeID, SSHUser: "root", SSHHost: "192.0.2.10", SSHPort: 8122, PublicKey: publicKey,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	before := instance.AppliedIndex()
+	if err := service.EnsureAndPublishLocalSSHIdentity(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	var identity clusterModels.ClusterSSHIdentity
+	if err := db.First(&identity, "node_uuid = ?", detail.NodeID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if identity.SSHPort != ClusterEmbeddedSSHPort || instance.AppliedIndex() <= before {
+		t.Fatalf("port = %d, applied %d → %d; want %d through Raft", identity.SSHPort, before, instance.AppliedIndex(), ClusterEmbeddedSSHPort)
+	}
+	if identity.CertPin == "" || identity.CertPin != service.localCertPin() {
+		t.Fatalf("published pin %q, want this node's %q", identity.CertPin, service.localCertPin())
 	}
 }

@@ -132,7 +132,7 @@ func TestOOBRestoreReservationExistsWhileQueueLaneIsSaturated(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("first request did not reach the saturated queue")
 	}
-	if firstPayload.OperationToken == "" || firstPayload.HolderNodeID != "local" ||
+	if firstPayload.OperationToken == "" || firstPayload.HolderNodeID != service.localNodeID() ||
 		firstPayload.DestinationDataset != "zroot/restored" {
 		t.Fatalf("durable queue payload = %+v", firstPayload)
 	}
@@ -369,7 +369,7 @@ func TestOOBRestoreQueuedRunningAndFinishingRestartReconciliation(t *testing.T) 
 		requeued = append(requeued, value.(restoreFromTargetPayload))
 		return nil
 	}
-	if err := restarted.ReconcileBackupTargetRestoreOperationsAfterRestart(context.Background()); err != nil {
+	if err := restarted.ReconcileBackupTargetRestoreOperations(context.Background()); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
 	if len(requeued) != 2 {
@@ -394,10 +394,11 @@ func TestOOBRestoreQueuedRunningAndFinishingRestartReconciliation(t *testing.T) 
 		t.Fatalf("operations after reconcile = %+v", operations)
 	}
 	for _, operation := range operations {
-		wantState := clusterModels.BackupTargetRestoreOperationQueued
-		if operation.Token == finishingHandle.Token {
-			wantState = clusterModels.BackupTargetRestoreOperationCompleted
-		}
+		wantState := map[string]string{
+			queuedHandle.Token:    clusterModels.BackupTargetRestoreOperationQueued,
+			runningHandle.Token:   clusterModels.BackupTargetRestoreOperationRunning,
+			finishingHandle.Token: clusterModels.BackupTargetRestoreOperationCompleted,
+		}[operation.Token]
 		if operation.State != wantState {
 			t.Fatalf("reconciled operation state = %+v, want %s", operation, wantState)
 		}
@@ -405,6 +406,105 @@ func TestOOBRestoreQueuedRunningAndFinishingRestartReconciliation(t *testing.T) 
 	if _, ok := seen[finishingHandle.Token]; ok {
 		t.Fatal("finishing operation was re-enqueued")
 	}
+
+	var runs atomic.Int32
+	restarted.restoreFromTargetRun = func(context.Context, *clusterModels.BackupTarget, restoreFromTargetPayload) error {
+		runs.Add(1)
+		return nil
+	}
+	if err := restarted.handleRestoreFromTargetQueue(context.Background(), seen[runningHandle.Token]); err != nil {
+		t.Fatalf("interrupted restore's message: %v", err)
+	}
+	var interrupted clusterModels.BackupTargetRestoreOperation
+	if err := service.DB.Where("token = ?", runningHandle.Token).First(&interrupted).Error; err != nil {
+		t.Fatal(err)
+	}
+	if runs.Load() != 1 || interrupted.State != clusterModels.BackupTargetRestoreOperationCompleted {
+		t.Fatalf("interrupted restore ran %d time(s), ended %s", runs.Load(), interrupted.State)
+	}
+}
+
+func TestOOBRestoreRunningMessageRunsOnlyWhatARestartInterrupted(t *testing.T) {
+	service, target := newBackupTargetRestoreOperationService(t)
+	var payload restoreFromTargetPayload
+	service.restoreFromTargetOperationEnqueue = func(_ context.Context, _ string, value any) error {
+		payload = value.(restoreFromTargetPayload)
+		return nil
+	}
+	if err := enqueueTargetRestore(context.Background(), service, target.ID, "zroot/restored"); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	if _, _, execute, err := service.prepareQueuedBackupTargetRestoreOperation(context.Background(), payload); err != nil || !execute {
+		t.Fatalf("first message: execute=%t err=%v", execute, err)
+	}
+	service.releaseActiveBackupTargetRestoreToken(payload.OperationToken)
+
+	restarted := newTestZeltaService(service.DB)
+	if _, _, execute, err := restarted.prepareQueuedBackupTargetRestoreOperation(context.Background(), payload); err != nil || !execute {
+		t.Fatalf("after a restart: execute=%t err=%v", execute, err)
+	}
+	restarted.releaseActiveBackupTargetRestoreToken(payload.OperationToken)
+	if _, _, execute, err := restarted.prepareQueuedBackupTargetRestoreOperation(context.Background(), payload); err != nil || execute {
+		t.Fatalf("retained message after it ran: execute=%t err=%v", execute, err)
+	}
+	var operation clusterModels.BackupTargetRestoreOperation
+	if err := service.DB.Where("token = ?", payload.OperationToken).First(&operation).Error; err != nil {
+		t.Fatal(err)
+	}
+	if operation.State != clusterModels.BackupTargetRestoreOperationCompleted {
+		t.Fatalf("retained message left it %s", operation.State)
+	}
+}
+
+func TestOOBRestoreReconcileLeavesThisProcesssRestores(t *testing.T) {
+	service, target := newBackupTargetRestoreOperationService(t)
+	payloads := map[string]restoreFromTargetPayload{}
+	var enqueued []string
+	enqueueErr := error(nil)
+	service.restoreFromTargetOperationEnqueue = func(_ context.Context, _ string, value any) error {
+		if enqueueErr != nil {
+			return enqueueErr
+		}
+		payload := value.(restoreFromTargetPayload)
+		payloads[payload.DestinationDataset] = payload
+		enqueued = append(enqueued, payload.DestinationDataset)
+		return nil
+	}
+	for _, destination := range []string{"zroot/failed", "zroot/running", "zroot/started", "zroot/waiting"} {
+		if err := enqueueTargetRestore(context.Background(), service, target.ID, destination); err != nil {
+			t.Fatalf("enqueue %s: %v", destination, err)
+		}
+	}
+	take := func(destination string) {
+		t.Helper()
+		payload := payloads[destination]
+		service.setTargetRestoreToken(&service.queuedTargetRestoreTokens, payload.OperationToken, false)
+		if _, _, execute, err := service.prepareQueuedBackupTargetRestoreOperation(context.Background(), payload); err != nil || !execute {
+			t.Fatalf("take %s: execute=%t err=%v", destination, execute, err)
+		}
+	}
+	take("zroot/running")
+	take("zroot/started")
+	service.releaseActiveBackupTargetRestoreToken(payloads["zroot/started"].OperationToken)
+	service.SetMutationAdmission(refusingMutationGate{})
+	if err := service.handleRestoreFromTargetQueue(context.Background(), payloads["zroot/failed"]); err == nil {
+		t.Fatal("a fenced handler took the message")
+	}
+	service.SetMutationAdmission(nil)
+
+	enqueued = nil
+	enqueueErr = errors.New("queue unavailable")
+	if err := service.ReconcileBackupTargetRestoreOperations(context.Background()); err == nil {
+		t.Fatal("the failed enqueue went unreported")
+	}
+	enqueueErr = nil
+	if err := service.ReconcileBackupTargetRestoreOperations(context.Background()); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if len(enqueued) != 1 || enqueued[0] != "zroot/failed" {
+		t.Fatalf("reconcile enqueued %v, want only zroot/failed", enqueued)
+	}
+
 }
 
 func TestOOBRestoreConcurrentQueueMessagesHaveSingleQueuedToRunningWinner(t *testing.T) {

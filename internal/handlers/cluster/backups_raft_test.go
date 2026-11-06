@@ -47,8 +47,7 @@ func setupHandlerRaftCluster(t *testing.T) (*cluster.Service, func()) {
 		&clusterModels.ClusterNode{},
 		&clusterModels.Cluster{},
 	)
-	fsm := clusterModels.NewFSMDispatcher(db)
-	clusterModels.RegisterDefaultHandlers(fsm)
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 
 	cfg := raft.DefaultConfig()
 	cfg.LocalID = raft.ServerID(localNodeID)
@@ -59,7 +58,7 @@ func setupHandlerRaftCluster(t *testing.T) (*cluster.Service, func()) {
 	cfg.CommitTimeout = 25 * time.Millisecond
 
 	_, transport := raft.NewInmemTransport(raft.ServerAddress(localNodeID))
-	r, err := raft.NewRaft(cfg, fsm, raft.NewInmemStore(), raft.NewInmemStore(),
+	r, err := raft.NewRaft(cfg, cS.FSM(), raft.NewInmemStore(), raft.NewInmemStore(),
 		raft.NewInmemSnapshotStore(), transport)
 	if err != nil {
 		t.Fatalf("raft.NewRaft: %v", err)
@@ -91,7 +90,6 @@ func setupHandlerRaftCluster(t *testing.T) (*cluster.Service, func()) {
 		Status: "online",
 	})
 
-	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
 	cS.SetRaft(r)
 	if err := cS.ReopenMutations(); err != nil {
 		t.Fatal(err)
@@ -244,7 +242,7 @@ func TestUpdateBackupJobHandlerHappyPath(t *testing.T) {
 
 func TestUpdateBackupJobHandlerMissingJobReturnsNotFound(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{})
-	router := newBackupJobCrudRouter(&cluster.Service{DB: database})
+	router := newBackupJobCrudRouter(cluster.NewClusterService(database, nil, nil).(*cluster.Service))
 	body := `{"name":"missing-job","targetId":1,"mode":"dataset","sourceDataset":"tank/data","cronExpr":"0 0 * * *","enabled":true}`
 
 	response := performJSONRequest(
@@ -330,7 +328,7 @@ func TestUpdateBackupJobHandlerReportsStrictRunnerPlacementFailures(t *testing.T
 				}
 			}
 
-			service := &cluster.Service{DB: database, NodeID: "node-current"}
+			service := newTestClusterService(database, "node-current")
 			service.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error {
 				return nil
 			})

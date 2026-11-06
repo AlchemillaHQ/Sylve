@@ -116,10 +116,8 @@ export async function apiRequest<T extends z.ZodType>(
 		const config = {
 			method,
 			url: endpoint,
-			headers: {
-				...(options?.headers || {}),
-				...(options?.hostname ? { 'X-Current-Hostname': options.hostname } : {})
-			},
+			node: options?.hostname,
+			headers: { ...(options?.headers || {}) },
 			...(body ? { data: body } : {}),
 			...(options?.signal ? { signal: options.signal } : {})
 		};

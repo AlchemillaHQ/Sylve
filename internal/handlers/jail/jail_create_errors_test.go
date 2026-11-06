@@ -42,12 +42,6 @@ func TestClassifyCreateJailError(t *testing.T) {
 			wantCode:   "guest_id_already_in_use",
 		},
 		{
-			name:       "cluster inventory unavailable",
-			err:        fmt.Errorf("guest_identity_inventory_unavailable: remote node unavailable"),
-			wantStatus: http.StatusServiceUnavailable,
-			wantCode:   "guest_identity_inventory_unavailable",
-		},
-		{
 			name:       "replication lease denial is forbidden",
 			err:        fmt.Errorf("replication_lease_not_owned"),
 			wantStatus: http.StatusForbidden,

@@ -44,7 +44,7 @@ func TestIntegrationRaftReplicationPolicyStateSurvivesLeaderFailover(t *testing.
 		},
 	}
 	for _, n := range fx.Nodes {
-		if err := clusterModels.UpsertReplicationPolicyTxn(n.db, policy, policy.Targets); err != nil {
+		if err := seedReplicationPolicy(n.db, policy, policy.Targets); err != nil {
 			t.Fatalf("seed policy on node %s: %v", n.id, err)
 		}
 	}
@@ -78,7 +78,6 @@ func TestIntegrationRaftReplicationPolicyStateSurvivesLeaderFailover(t *testing.
 				NextRunAt: current.NextRunAt, DecidedAt: now, ClaimToken: token,
 				HolderNodeID: fx.LocalNodeID, OccurrenceAt: &now,
 			},
-			false,
 		); err != nil {
 			t.Fatalf("claim replication run %s: %v", token, err)
 		}

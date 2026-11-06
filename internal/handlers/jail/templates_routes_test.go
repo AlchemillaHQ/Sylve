@@ -142,7 +142,7 @@ func TestJailTemplatePreflightStatusCodeMapping(t *testing.T) {
 	if got := jailTemplatePreflightStatusCode(assertErr("guest_identity_inventory_conflict")); got != http.StatusConflict {
 		t.Fatalf("expected conflict for dirty inventory, got %d", got)
 	}
-	if got := jailTemplatePreflightStatusCode(assertErr("guest_identity_inventory_unavailable")); got != http.StatusServiceUnavailable {
+	if got := jailTemplatePreflightStatusCode(assertErr("guest_identity_cluster_formation_in_progress")); got != http.StatusServiceUnavailable {
 		t.Fatalf("expected service unavailable, got %d", got)
 	}
 	if got := jailTemplatePreflightStatusCode(assertErr("guest_identity_inventory_scan_failed")); got != http.StatusInternalServerError {

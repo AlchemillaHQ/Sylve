@@ -10,19 +10,15 @@ package cluster
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/remoteexec"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/raft"
 )
 
@@ -30,16 +26,14 @@ const (
 	BackupTargetReadinessTTL               = 10 * time.Minute
 	backupTargetValidationReceiptClockSkew = 2 * time.Minute
 	backupTargetValidationTimeout          = 65 * time.Second
-	backupTargetValidationEndpoint         = "/api/intra-cluster/backup-target-validation"
 )
 
 type BackupTargetValidationRequest struct {
-	ExpectedNodeID          string `json:"expectedNodeId"`
-	MinimumRaftAppliedIndex uint64 `json:"minimumRaftAppliedIndex,omitempty"`
-	TargetID                uint   `json:"targetId"`
-	TargetFingerprint       string `json:"targetFingerprint"`
-	HostKeyRevision         uint64 `json:"hostKeyRevision,omitempty"`
-	EnrollHostKey           bool   `json:"enrollHostKey,omitempty"`
+	ExpectedNodeID    string `json:"expectedNodeId"`
+	TargetID          uint   `json:"targetId"`
+	TargetFingerprint string `json:"targetFingerprint"`
+	HostKeyRevision   uint64 `json:"hostKeyRevision,omitempty"`
+	EnrollHostKey     bool   `json:"enrollHostKey,omitempty"`
 }
 
 type BackupTargetValidationRejectedError struct {
@@ -91,7 +85,7 @@ func (s *Service) validateBackupTargetConnectivityLocalWith(
 	}
 	update := clusterModels.BackupTargetNodeReadinessUpdate{
 		TargetID:          request.TargetID,
-		NodeID:            strings.TrimSpace(s.guestIdentityInventoryLocalNodeID()),
+		NodeID:            strings.TrimSpace(s.LocalNodeID()),
 		TargetFingerprint: request.TargetFingerprint,
 	}
 	if ctx == nil {
@@ -113,12 +107,6 @@ func (s *Service) validateBackupTargetConnectivityLocalWith(
 	if request.TargetID == 0 || request.TargetFingerprint == "" {
 		return update, fmt.Errorf("backup_target_validation_scope_invalid")
 	}
-	appliedIndex, err := s.waitForBackupJobValidationAppliedIndex(ctx, request.MinimumRaftAppliedIndex)
-	if err != nil {
-		return update, err
-	}
-	update.RaftAppliedIndex = appliedIndex
-
 	var target clusterModels.BackupTarget
 	result := s.DB.WithContext(ctx).Where("id = ?", request.TargetID).Limit(1).Find(&target)
 	if result.Error != nil {
@@ -211,13 +199,6 @@ func validateBackupTargetReadinessReceipt(
 	if request.HostKeyRevision == 0 || (update.HostKeyRevision != request.HostKeyRevision && (!request.EnrollHostKey || update.HostKeyRevision != request.HostKeyRevision+1)) {
 		return fmt.Errorf("backup_target_host_key_revision_conflict")
 	}
-	if update.RaftAppliedIndex < request.MinimumRaftAppliedIndex {
-		return fmt.Errorf(
-			"backup_target_validation_raft_state_stale: minimum=%d actual=%d",
-			request.MinimumRaftAppliedIndex,
-			update.RaftAppliedIndex,
-		)
-	}
 	if update.LastVerifiedAt.IsZero() {
 		return fmt.Errorf("backup_target_validation_timestamp_missing")
 	}
@@ -266,80 +247,26 @@ func backupTargetReadinessOutcome(update *clusterModels.BackupTargetNodeReadines
 
 func (s *Service) fetchBackupTargetValidation(
 	ctx context.Context,
-	nodeID, endpoint string,
+	nodeID string,
 	request BackupTargetValidationRequest,
 ) (clusterModels.BackupTargetNodeReadinessUpdate, error) {
-	var update clusterModels.BackupTargetNodeReadinessUpdate
-	if s == nil || s.AuthService == nil {
-		return update, fmt.Errorf("backup_target_validation_auth_service_unavailable")
-	}
-	localNodeID := s.guestIdentityInventoryLocalNodeID()
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(localNodeID)
-	if err != nil {
-		return update, fmt.Errorf("backup_target_validation_cluster_token_failed: %w", err)
-	}
-	payload, err := json.Marshal(request)
-	if err != nil {
-		return update, fmt.Errorf("backup_target_validation_marshal_failed: %w", err)
-	}
-	body, statusCode, err := utils.HTTPPostJSONWithTimeoutContext(
-		ctx,
-		fmt.Sprintf("https://%s%s", endpoint, backupTargetValidationEndpoint),
-		payload,
-		map[string]string{
-			"Accept":          "application/json",
-			"Content-Type":    "application/json",
-			"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-		},
-		backupTargetValidationTimeout,
+	ctx, cancel := context.WithTimeout(ctx, backupTargetValidationTimeout)
+	defer cancel()
+	update, err := CallNode[BackupTargetValidationRequest, clusterModels.BackupTargetNodeReadinessUpdate](
+		ctx, s, nodeID, "backup-target-validation", request,
 	)
 	if err != nil {
-		return update, fmt.Errorf(
-			"backup_target_validation_request_failed: node_id=%s status=%d: %w",
-			nodeID,
-			statusCode,
-			err,
-		)
+		return update, fmt.Errorf("backup_target_validation_request_failed: node_id=%s: %w", nodeID, err)
 	}
-	var response internal.APIResponse[clusterModels.BackupTargetNodeReadinessUpdate]
-	if err := json.Unmarshal(body, &response); err != nil {
-		return update, fmt.Errorf("backup_target_validation_decode_failed: node_id=%s: %w", nodeID, err)
-	}
-	if !strings.EqualFold(strings.TrimSpace(response.Status), "success") {
-		return update, fmt.Errorf(
-			"backup_target_validation_non_success: node_id=%s message=%s error=%s",
-			nodeID,
-			strings.TrimSpace(response.Message),
-			strings.TrimSpace(response.Error),
-		)
-	}
-	stampRemoteBackupTargetReadinessReceipt(&response.Data)
-	return response.Data, nil
+	stampRemoteBackupTargetReadinessReceipt(&update)
+	return update, nil
 }
 
-func (s *Service) UpdateBackupTargetNodeReadiness(
-	update clusterModels.BackupTargetNodeReadinessUpdate,
-	bypassRaft bool,
-) error {
+func (s *Service) UpdateBackupTargetNodeReadiness(update clusterModels.BackupTargetNodeReadinessUpdate) error {
 	if s == nil || s.DB == nil {
 		return fmt.Errorf("backup_target_readiness_service_unavailable")
 	}
-	if err := s.requireRuntimeWriteAuthority(bypassRaft); err != nil {
-		return err
-	}
-	if bypassRaft || s.Raft() == nil {
-		return clusterModels.ApplyBackupTargetNodeReadinessUpdateV2Txn(s.DB, &update)
-	}
-	if s.Raft().State() != raft.Leader {
-		return fmt.Errorf("not_leader")
-	}
-	data, err := json.Marshal(update)
-	if err != nil {
-		return fmt.Errorf("backup_target_readiness_marshal_failed: %w", err)
-	}
-	return s.applyRaftCommand(clusterModels.Command{
-		Type: "backup_target_readiness", Action: "update_v2", Data: data,
-	})
+	return s.apply("backup_target_readiness", "update_v2", update)
 }
 
 func (s *Service) ValidateBackupTargetOnNode(
@@ -370,7 +297,7 @@ func (s *Service) ValidateBackupTargetOnNode(
 	if err != nil {
 		return update, err
 	}
-	if err := s.UpdateBackupTargetNodeReadiness(update, s.Standalone()); err != nil {
+	if err := s.UpdateBackupTargetNodeReadiness(update); err != nil {
 		return update, err
 	}
 	return update, backupTargetReadinessOutcome(&update)
@@ -491,21 +418,13 @@ func (s *Service) checkBackupTargetOnNode(
 	}
 	hostRevision := trust.Revision
 	nodeID = strings.TrimSpace(nodeID)
-	localNodeID := s.guestIdentityInventoryLocalNodeID()
 	if s.Raft() == nil {
 		if nodeID == "" {
-			nodeID = localNodeID
-		}
-		if nodeID == "" {
-			nodeID = "local"
-			localNodeID = nodeID
+			nodeID = s.LocalNodeID()
 		}
 		request := BackupTargetValidationRequest{
 			HostKeyRevision: hostRevision, EnrollHostKey: enroll,
 			ExpectedNodeID: nodeID, TargetID: target.ID, TargetFingerprint: fingerprint,
-		}
-		if strings.TrimSpace(s.NodeID) == "" && s.guestIdentityInventoryLocalNodeID() == "" {
-			s.NodeID = localNodeID
 		}
 		update, err := s.validateBackupTargetConnectivityLocalWith(ctx, request, localValidator)
 		if err != nil {
@@ -519,25 +438,20 @@ func (s *Service) checkBackupTargetOnNode(
 	if nodeID == "" {
 		return update, fmt.Errorf("backup_target_validation_node_id_required")
 	}
-	server, local, err := s.backupJobRunnerVoter(nodeID)
+	_, local, err := s.backupJobRunnerVoter(nodeID)
 	if err != nil {
 		return update, err
 	}
 	request := BackupTargetValidationRequest{
 		HostKeyRevision: hostRevision, EnrollHostKey: enroll,
-		ExpectedNodeID:          nodeID,
-		MinimumRaftAppliedIndex: s.Raft().AppliedIndex(),
-		TargetID:                target.ID,
-		TargetFingerprint:       fingerprint,
+		ExpectedNodeID:    nodeID,
+		TargetID:          target.ID,
+		TargetFingerprint: fingerprint,
 	}
 	if local {
 		update, err = s.validateBackupTargetConnectivityLocalWith(ctx, request, localValidator)
 	} else {
-		endpoint, resolveErr := s.backupTargetValidationAPI(nodeID, server.Address)
-		if resolveErr != nil {
-			return update, resolveErr
-		}
-		update, err = s.fetchBackupTargetValidation(ctx, nodeID, endpoint, request)
+		update, err = s.fetchBackupTargetValidation(ctx, nodeID, request)
 	}
 	if err != nil {
 		return update, err
@@ -548,23 +462,12 @@ func (s *Service) checkBackupTargetOnNode(
 	return update, nil
 }
 
-func (s *Service) backupTargetValidationAPI(nodeID string, address raft.ServerAddress) (string, error) {
-	if s != nil && s.backupTargetValidationAPIForNode != nil {
-		endpoint, err := s.backupTargetValidationAPIForNode(nodeID, address)
-		if err != nil {
-			return "", fmt.Errorf("backup_target_validation_api_resolve_failed: node_id=%s: %w", nodeID, err)
-		}
-		return normalizeGuestIdentityInventoryAPIEndpoint(endpoint)
-	}
-	return s.backupJobValidationAPI(nodeID, address)
-}
-
 func (s *Service) currentBackupTargetVoterIDs() ([]string, error) {
 	if s == nil {
 		return nil, fmt.Errorf("backup_target_readiness_service_unavailable")
 	}
 	if s.Raft() == nil {
-		nodeID := s.guestIdentityInventoryLocalNodeID()
+		nodeID := s.LocalNodeID()
 		if nodeID == "" {
 			nodeID = "local"
 		}
@@ -659,8 +562,7 @@ func backupTargetReadinessStatuses(
 }
 
 func (s *Service) attachBackupTargetReadiness(targets []clusterModels.BackupTarget) error {
-	if len(targets) == 0 || s == nil || s.DB == nil ||
-		!s.DB.Migrator().HasTable(&clusterModels.BackupTargetNodeReadiness{}) {
+	if len(targets) == 0 || s == nil || s.DB == nil {
 		return nil
 	}
 	ids := make([]uint, 0, len(targets))
@@ -688,10 +590,8 @@ func (s *Service) requireBackupTargetReadinessBarrier() error {
 		return fmt.Errorf("backup_target_validation_service_unavailable")
 	}
 	if s.Raft() == nil {
-		if err := s.requireRuntimeWriteAuthority(true); err != nil {
-			return err
-		}
-		return nil
+		_, err := s.RuntimeStateBypassRaft()
+		return err
 	}
 	if s.Raft().State() != raft.Leader {
 		return fmt.Errorf("not_leader")
@@ -729,9 +629,8 @@ func isBackupTargetValidationRejected(err error) bool {
 }
 
 type BackupTargetHostKeyInstallResult struct {
-	Revision     uint64 `json:"revision"`
-	AppliedIndex uint64 `json:"appliedIndex"`
-	Fingerprint  string `json:"fingerprint"`
+	Revision    uint64 `json:"revision"`
+	Fingerprint string `json:"fingerprint"`
 }
 
 type BackupTargetHostKeyResetResult struct {
@@ -741,7 +640,7 @@ type BackupTargetHostKeyResetResult struct {
 }
 
 func (s *Service) InitializeBackupTargetHostTrust() error {
-	if s == nil || s.DB == nil || !s.DB.Migrator().HasTable(&clusterModels.BackupTargetSSHHostTrust{}) {
+	if s == nil || s.DB == nil {
 		return fmt.Errorf("backup_target_host_key_state_unavailable")
 	}
 	if s.Raft() != nil && s.Raft().State() != raft.Leader {
@@ -758,23 +657,7 @@ func (s *Service) InitializeBackupTargetHostTrust() error {
 }
 
 func (s *Service) applyBackupTargetHostTrust(action string, change clusterModels.BackupTargetSSHHostTrustChange) error {
-	if s.Raft() == nil {
-		if err := s.requireRuntimeWriteAuthority(true); err != nil {
-			return err
-		}
-		if action == "initialize_all_v1" {
-			return clusterModels.InitializeBackupTargetSSHHostTrustTxn(s.DB, change.OccurredAt)
-		}
-		return clusterModels.ApplyBackupTargetSSHHostTrustTxn(s.DB, action, &change)
-	}
-	if s.Raft().State() != raft.Leader {
-		return raft.ErrNotLeader
-	}
-	data, err := json.Marshal(change)
-	if err != nil {
-		return err
-	}
-	return s.applyRaftCommand(clusterModels.Command{Type: "backup_target_ssh_host_trust", Action: action, Data: data})
+	return s.apply("backup_target_ssh_host_trust", action, change)
 }
 
 func (s *Service) InstallBackupTargetHostKey(ctx context.Context, change clusterModels.BackupTargetSSHHostTrustChange) error {
@@ -786,48 +669,32 @@ func (s *Service) InstallBackupTargetHostKey(ctx context.Context, change cluster
 		return err
 	}
 	defer release()
-	if s.Raft() != nil && s.Raft().State() != raft.Leader {
-		leader, _ := s.Raft().LeaderWithID()
-		host, _, err := net.SplitHostPort(string(leader))
-		if err != nil || host == "" || s.AuthService == nil {
-			return fmt.Errorf("backup_target_host_key_leader_unavailable")
-		}
-		token, err := s.AuthService.CreateInternalClusterJWT(s.guestIdentityInventoryLocalNodeID())
-		if err != nil {
-			return err
-		}
-		payload, err := json.Marshal(change)
-		if err != nil {
-			return err
-		}
-		body, status, err := utils.HTTPPostJSONWithTimeoutContext(ctx,
-			"https://"+net.JoinHostPort(host, fmt.Sprint(ClusterEmbeddedHTTPSPort))+"/api/intra-cluster/backup-target-host-key",
-			payload, map[string]string{"Content-Type": "application/json", "X-Cluster-Token": "Bearer " + token}, 30*time.Second)
-		if err != nil {
-			return fmt.Errorf("backup_target_host_key_install_failed: status=%d: %w", status, err)
-		}
-		var response internal.APIResponse[BackupTargetHostKeyInstallResult]
-		if err := json.Unmarshal(body, &response); err != nil {
-			return err
-		}
-		if response.Status != "success" {
-			return fmt.Errorf("backup_target_host_key_install_failed: %s", response.Error)
-		}
-		fingerprint, keyErr := remoteexec.SSHHostKeyFingerprint(change.PublicKey)
-		if keyErr != nil || response.Data.Revision != change.ExpectedRevision+1 || response.Data.Fingerprint != fingerprint || response.Data.AppliedIndex == 0 {
-			return fmt.Errorf("backup_target_host_key_install_receipt_invalid")
-		}
-		_, err = s.WaitForReplicatedStateAppliedIndex(ctx, response.Data.AppliedIndex)
-		return err
+	receipt, err := CallLeader[clusterModels.BackupTargetSSHHostTrustChange, BackupTargetHostKeyInstallResult](
+		ctx, s, "backup-target-host-key", change,
+	)
+	if err != nil {
+		return fmt.Errorf("backup_target_host_key_install_failed: %w", err)
 	}
+	fingerprint, err := remoteexec.SSHHostKeyFingerprint(change.PublicKey)
+	if err != nil || receipt.Revision != change.ExpectedRevision+1 || receipt.Fingerprint != fingerprint {
+		return fmt.Errorf("backup_target_host_key_install_receipt_invalid")
+	}
+	return nil
+}
+
+func (s *Service) installBackupTargetHostKeyCall(
+	_ context.Context,
+	_ string,
+	change clusterModels.BackupTargetSSHHostTrustChange,
+) (BackupTargetHostKeyInstallResult, error) {
 	change.OccurredAt = time.Now().UTC()
 	if err := s.applyBackupTargetHostTrust("install_v1", change); err != nil {
-		return err
+		return BackupTargetHostKeyInstallResult{}, err
 	}
 	fingerprint, _ := remoteexec.SSHHostKeyFingerprint(change.PublicKey)
 	logger.L.Info().Uint("target_id", change.TargetID).Str("fingerprint", fingerprint).
 		Uint64("host_key_revision", change.ExpectedRevision+1).Msg("backup_target_host_key_installed")
-	return nil
+	return BackupTargetHostKeyInstallResult{Revision: change.ExpectedRevision + 1, Fingerprint: fingerprint}, nil
 }
 
 func (s *Service) ResetBackupTargetHostKey(ctx context.Context, targetID uint, expectedRevision uint64) (*BackupTargetHostKeyResetResult, error) {
@@ -863,9 +730,6 @@ func (s *Service) ResetBackupTargetHostKey(ctx context.Context, targetID uint, e
 }
 
 func (s *Service) attachBackupTargetHostTrust(targets []clusterModels.BackupTarget) error {
-	if !s.DB.Migrator().HasTable(&clusterModels.BackupTargetSSHHostTrust{}) {
-		return fmt.Errorf("backup_target_host_key_state_unavailable")
-	}
 	for i := range targets {
 		trust, err := clusterModels.GetBackupTargetSSHHostTrust(s.DB, &targets[i])
 		if err != nil {

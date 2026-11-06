@@ -56,6 +56,14 @@ func localAdminAllowed(c *gin.Context, service *authService.Service) bool {
 		return false
 	}
 
+	if c.GetString("AuthScope") == "cluster" {
+		if c.GetString("ClusterCaller") != authService.ClusterCallerUser {
+			abortAdminRequired(c)
+			return false
+		}
+		return true
+	}
+
 	userID := c.GetUint("UserID")
 	if userID == 0 {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, internal.APIResponse[any]{
@@ -65,15 +73,6 @@ func localAdminAllowed(c *gin.Context, service *authService.Service) bool {
 			Data:    nil,
 		})
 		return false
-	}
-
-	scope := strings.TrimSpace(c.GetString("AuthScope"))
-	if scope == "cluster" {
-		if strings.TrimSpace(c.GetString("ClusterTokenUse")) != authService.ClusterTokenUseUserProxy || !c.GetBool("ProxyAdmin") {
-			abortAdminRequired(c)
-			return false
-		}
-		return true
 	}
 
 	user, err := service.GetUserByID(userID)

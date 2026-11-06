@@ -9,9 +9,6 @@
 package clusterModels
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -21,86 +18,33 @@ import (
 )
 
 const (
-	GuestIdentityRegistryID      uint = 1
-	GuestIdentityRegistryVersion uint = 1
-	GuestIdentityKindContainer        = "container"
-	GuestIdentityMaxID           uint = 9999
-
-	GuestIdentityRegistryPhaseCollecting = "collecting"
-	GuestIdentityRegistryPhaseActive     = "active"
+	GuestIdentityKindContainer      = "container"
+	GuestIdentityMaxID         uint = 9999
 
 	guestIdentityMaxNodeIDBytes = 128
-	guestIdentityMaxTokenBytes  = 128
 )
 
 var (
-	ErrGuestIdentityRegistryInitializing = errors.New("guest_identity_registry_initializing")
-	ErrGuestIdentityAlreadyInUse         = errors.New("guest_id_already_in_use")
-	ErrGuestIdentityClaimConflict        = errors.New("guest_identity_claim_conflict")
-	ErrGuestIdentityInventoryConflict    = errors.New("guest_identity_inventory_conflict")
-	ErrGuestIdentityStillRegistered      = errors.New("guest_identity_still_registered")
-	ErrGuestIdentityReclaimUnsafe        = errors.New("guest_identity_reclaim_unsafe")
+	ErrGuestIdentityAlreadyInUse  = errors.New("guest_id_already_in_use")
+	ErrGuestIdentityClaimConflict = errors.New("guest_identity_claim_conflict")
 )
-
-type GuestIdentityRegistry struct {
-	ID      uint   `gorm:"primaryKey;autoIncrement:false" json:"id"`
-	Version uint   `gorm:"not null" json:"version"`
-	Phase   string `gorm:"not null;index" json:"phase"`
-}
-
-func (GuestIdentityRegistry) TableName() string { return "guest_identity_registries" }
-
-type GuestIdentityEnrollment struct {
-	NodeID          string `gorm:"primaryKey;size:128" json:"nodeId"`
-	InventoryDigest string `gorm:"not null;size:64" json:"inventoryDigest"`
-}
-
-func (GuestIdentityEnrollment) TableName() string { return "guest_identity_enrollments" }
 
 type GuestIdentityClaim struct {
 	GuestID     uint   `gorm:"primaryKey;autoIncrement:false" json:"guestId"`
 	GuestKind   string `gorm:"not null;size:32" json:"guestKind"`
 	OwnerNodeID string `gorm:"not null;size:128;index" json:"ownerNodeId"`
-	Token       string `gorm:"not null;size:128;index" json:"token"`
 }
 
 func (GuestIdentityClaim) TableName() string { return "guest_identity_claims" }
-
-// GuestIdentityDeparture records an authorized cooperative leave until the
-// removed node's claims have been released by the surviving cluster.
-type GuestIdentityDeparture struct {
-	NodeID          string `gorm:"primaryKey;size:128" json:"nodeId"`
-	LeaveID         string `gorm:"not null;size:128" json:"leaveId"`
-	InventoryDigest string `gorm:"not null;size:64" json:"inventoryDigest"`
-}
-
-func (GuestIdentityDeparture) TableName() string { return "guest_identity_departures" }
 
 type GuestIdentityEntry struct {
 	GuestKind string `json:"guestKind"`
 	GuestID   uint   `json:"guestId"`
 }
 
-type GuestIdentityRegisterNodeInventory struct {
-	NodeID          string               `json:"nodeId"`
-	InventoryDigest string               `json:"inventoryDigest"`
-	Entries         []GuestIdentityEntry `json:"entries"`
-}
-
-type GuestIdentityActivateRegistry struct {
-	VoterNodeIDs []string `json:"voterNodeIds"`
-}
-
 type GuestIdentityClaimSet struct {
 	OwnerNodeID string               `json:"ownerNodeId"`
-	Token       string               `json:"token"`
 	Entries     []GuestIdentityEntry `json:"entries"`
-}
-
-type GuestIdentityDepartureCommand struct {
-	NodeID          string `json:"nodeId"`
-	LeaveID         string `json:"leaveId"`
-	InventoryDigest string `json:"inventoryDigest"`
 }
 
 type GuestIdentityMoveOwner struct {
@@ -108,8 +52,6 @@ type GuestIdentityMoveOwner struct {
 	GuestID        uint   `json:"guestId"`
 	OldOwnerNodeID string `json:"oldOwnerNodeId"`
 	NewOwnerNodeID string `json:"newOwnerNodeId"`
-	OldToken       string `json:"oldToken"`
-	NewToken       string `json:"newToken"`
 }
 
 func normalizeGuestIdentityKind(value string) string {
@@ -129,375 +71,38 @@ func normalizeGuestIdentityNodeID(value string) (string, error) {
 	return value, nil
 }
 
-func normalizeGuestIdentityToken(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" || len([]byte(value)) > guestIdentityMaxTokenBytes {
-		return "", fmt.Errorf("invalid_guest_identity_token")
-	}
-	return value, nil
-}
-
-func normalizeGuestIdentityEntries(entries []GuestIdentityEntry, allowEmpty bool) ([]GuestIdentityEntry, error) {
-	if !allowEmpty && len(entries) == 0 {
-		return nil, fmt.Errorf("guest_identity_entries_required")
-	}
-	if len(entries) > int(GuestIdentityMaxID) {
-		return nil, fmt.Errorf("guest_identity_entries_too_large")
-	}
-
-	canonical := make([]GuestIdentityEntry, len(entries))
-	for i, entry := range entries {
-		entry.GuestKind = normalizeGuestIdentityKind(entry.GuestKind)
-		if !ValidGuestIdentityKind(entry.GuestKind) {
-			return nil, fmt.Errorf("invalid_guest_type")
-		}
-		if entry.GuestID == 0 || entry.GuestID > GuestIdentityMaxID {
-			return nil, fmt.Errorf("invalid_guest_id")
-		}
-		canonical[i] = entry
-	}
-	sort.Slice(canonical, func(i, j int) bool {
-		if canonical[i].GuestID != canonical[j].GuestID {
-			return canonical[i].GuestID < canonical[j].GuestID
-		}
-		return canonical[i].GuestKind < canonical[j].GuestKind
-	})
-	for i := 1; i < len(canonical); i++ {
-		if canonical[i-1].GuestID == canonical[i].GuestID {
-			return nil, fmt.Errorf("%w: duplicate_guest_id=%d", ErrGuestIdentityInventoryConflict, canonical[i].GuestID)
-		}
-	}
-	return canonical, nil
-}
-
-func GuestIdentityInventoryDigest(nodeID string, entries []GuestIdentityEntry) string {
-	type identity struct {
-		NodeID    string `json:"nodeId"`
-		GuestType string `json:"guestType"`
-		GuestID   uint   `json:"guestId"`
-	}
-	canonical := append([]GuestIdentityEntry(nil), entries...)
-	for i := range canonical {
-		canonical[i].GuestKind = normalizeGuestIdentityKind(canonical[i].GuestKind)
-	}
-	sort.Slice(canonical, func(i, j int) bool {
-		if canonical[i].GuestID != canonical[j].GuestID {
-			return canonical[i].GuestID < canonical[j].GuestID
-		}
-		return canonical[i].GuestKind < canonical[j].GuestKind
-	})
-	identities := make([]identity, len(canonical))
-	for i, entry := range canonical {
-		identities[i] = identity{
-			NodeID:    strings.TrimSpace(nodeID),
-			GuestType: entry.GuestKind,
-			GuestID:   entry.GuestID,
-		}
-	}
-	raw, err := json.Marshal(identities)
-	if err != nil {
-		panic(fmt.Sprintf("marshal canonical guest identity inventory: %v", err))
-	}
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:])
-}
-
-func guestIdentityBootstrapToken(nodeID string, entry GuestIdentityEntry) string {
-	raw := fmt.Sprintf("v%d\x00%s\x00%s\x00%d", GuestIdentityRegistryVersion, nodeID, entry.GuestKind, entry.GuestID)
-	sum := sha256.Sum256([]byte(raw))
-	return hex.EncodeToString(sum[:])
-}
-
-func loadGuestIdentityRegistry(tx *gorm.DB) (*GuestIdentityRegistry, error) {
-	if tx == nil {
-		return nil, fmt.Errorf("guest_identity_database_required")
-	}
-	var registry GuestIdentityRegistry
-	err := tx.Where("id = ?", GuestIdentityRegistryID).First(&registry).Error
-	if err != nil {
-		return nil, err
-	}
-	if registry.Version != GuestIdentityRegistryVersion {
-		return nil, fmt.Errorf("unsupported_guest_identity_registry_version_%d", registry.Version)
-	}
-	if registry.Phase != GuestIdentityRegistryPhaseCollecting && registry.Phase != GuestIdentityRegistryPhaseActive {
-		return nil, fmt.Errorf("guest_identity_registry_invalid_phase")
-	}
-	return &registry, nil
-}
-
-func requireGuestIdentityRegistryActiveTxn(tx *gorm.DB) error {
-	registry, err := loadGuestIdentityRegistry(tx)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return ErrGuestIdentityRegistryInitializing
-	}
-	if err != nil {
-		return err
-	}
-	if registry.Phase != GuestIdentityRegistryPhaseActive {
-		return ErrGuestIdentityRegistryInitializing
-	}
-	return nil
-}
-
-func claimsMatchInventory(claims []GuestIdentityClaim, nodeID string, entries []GuestIdentityEntry) bool {
-	if len(claims) != len(entries) {
-		return false
-	}
-	sort.Slice(claims, func(i, j int) bool { return claims[i].GuestID < claims[j].GuestID })
-	for i, entry := range entries {
-		claim := claims[i]
-		if claim.GuestID != entry.GuestID || claim.GuestKind != entry.GuestKind ||
-			claim.OwnerNodeID != nodeID || claim.Token != guestIdentityBootstrapToken(nodeID, entry) {
-			return false
-		}
-	}
-	return true
-}
-
-func RegisterGuestIdentityInventoryTxn(tx *gorm.DB, payload *GuestIdentityRegisterNodeInventory) error {
-	if tx == nil || payload == nil {
-		return fmt.Errorf("guest_identity_registration_required")
-	}
-	nodeID, err := normalizeGuestIdentityNodeID(payload.NodeID)
-	if err != nil {
-		return err
-	}
-	entries, err := normalizeGuestIdentityEntries(payload.Entries, true)
-	if err != nil {
-		return err
-	}
-	digest := strings.ToLower(strings.TrimSpace(payload.InventoryDigest))
-	if digest == "" || digest != GuestIdentityInventoryDigest(nodeID, entries) {
-		return fmt.Errorf("guest_identity_inventory_digest_mismatch")
-	}
-
-	registry, err := loadGuestIdentityRegistry(tx)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		registry = &GuestIdentityRegistry{
-			ID: GuestIdentityRegistryID, Version: GuestIdentityRegistryVersion,
-			Phase: GuestIdentityRegistryPhaseCollecting,
-		}
-		if err := tx.Create(registry).Error; err != nil {
-			return err
-		}
-	} else if err != nil {
-		return err
-	}
-
-	var enrollment GuestIdentityEnrollment
-	err = tx.Where("node_id = ?", nodeID).First(&enrollment).Error
-	if err == nil {
-		if enrollment.InventoryDigest != digest {
-			return fmt.Errorf("%w: node_id=%s changed_inventory", ErrGuestIdentityInventoryConflict, nodeID)
-		}
-		if registry.Phase == GuestIdentityRegistryPhaseActive {
-			return nil
-		}
-		var claims []GuestIdentityClaim
-		if err := tx.Where("owner_node_id = ?", nodeID).Order("guest_id ASC").Find(&claims).Error; err != nil {
-			return err
-		}
-		if !claimsMatchInventory(claims, nodeID, entries) {
-			return fmt.Errorf("%w: node_id=%s enrollment_claim_mismatch", ErrGuestIdentityInventoryConflict, nodeID)
-		}
-		return nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-	if registry.Phase != GuestIdentityRegistryPhaseCollecting {
-		return fmt.Errorf("guest_identity_registry_already_active")
-	}
-
-	if len(entries) > 0 {
-		ids := make([]uint, len(entries))
-		for i := range entries {
-			ids[i] = entries[i].GuestID
-		}
-		var existing []GuestIdentityClaim
-		if err := tx.Where("guest_id IN ?", ids).Order("guest_id ASC").Find(&existing).Error; err != nil {
-			return err
-		}
-		if len(existing) != 0 {
-			return fmt.Errorf("%w: guest_id=%d", ErrGuestIdentityInventoryConflict, existing[0].GuestID)
-		}
-
-		claims := make([]GuestIdentityClaim, len(entries))
-		for i, entry := range entries {
-			claims[i] = GuestIdentityClaim{
-				GuestID: entry.GuestID, GuestKind: entry.GuestKind, OwnerNodeID: nodeID,
-				Token: guestIdentityBootstrapToken(nodeID, entry),
-			}
-		}
-		if err := tx.Create(&claims).Error; err != nil {
-			return err
-		}
-	}
-	return tx.Create(&GuestIdentityEnrollment{NodeID: nodeID, InventoryDigest: digest}).Error
-}
-
-func normalizeVoterNodeIDs(values []string) ([]string, error) {
-	if len(values) == 0 {
-		return nil, fmt.Errorf("guest_identity_voters_required")
-	}
-	canonical := make([]string, len(values))
-	for i, value := range values {
-		nodeID, err := normalizeGuestIdentityNodeID(value)
-		if err != nil {
-			return nil, err
-		}
-		canonical[i] = nodeID
-	}
-	sort.Strings(canonical)
-	for i := 1; i < len(canonical); i++ {
-		if canonical[i-1] == canonical[i] {
-			return nil, fmt.Errorf("duplicate_guest_identity_voter")
-		}
-	}
-	return canonical, nil
-}
-
-func ActivateGuestIdentityRegistryTxn(tx *gorm.DB, payload *GuestIdentityActivateRegistry) error {
-	if tx == nil || payload == nil {
-		return fmt.Errorf("guest_identity_activation_required")
-	}
-	voters, err := normalizeVoterNodeIDs(payload.VoterNodeIDs)
-	if err != nil {
-		return err
-	}
-	registry, err := loadGuestIdentityRegistry(tx)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return ErrGuestIdentityRegistryInitializing
-	}
-	if err != nil {
-		return err
-	}
-	if registry.Phase == GuestIdentityRegistryPhaseActive {
-		return nil
-	}
-
-	var enrollments []GuestIdentityEnrollment
-	if err := tx.Where("node_id IN ?", voters).Find(&enrollments).Error; err != nil {
-		return err
-	}
-	if len(enrollments) != len(voters) {
-		return ErrGuestIdentityRegistryInitializing
-	}
-
-	var claims []GuestIdentityClaim
-	if err := tx.Order("guest_id ASC").Find(&claims).Error; err != nil {
-		return err
-	}
-	for _, claim := range claims {
-		if claim.GuestID == 0 || claim.GuestID > GuestIdentityMaxID ||
-			!ValidGuestIdentityKind(claim.GuestKind) {
-			return fmt.Errorf("guest_identity_registry_invalid_claim")
-		}
-		if _, err := normalizeGuestIdentityNodeID(claim.OwnerNodeID); err != nil {
-			return fmt.Errorf("guest_identity_registry_invalid_claim: %w", err)
-		}
-		if _, err := normalizeGuestIdentityToken(claim.Token); err != nil {
-			return fmt.Errorf("guest_identity_registry_invalid_claim: %w", err)
-		}
-	}
-
-	result := tx.Model(&GuestIdentityRegistry{}).
-		Where("id = ? AND version = ? AND phase = ?", GuestIdentityRegistryID, GuestIdentityRegistryVersion, GuestIdentityRegistryPhaseCollecting).
-		Update("phase", GuestIdentityRegistryPhaseActive)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		return ErrGuestIdentityClaimConflict
-	}
-	return nil
-}
-
-func claimsMatchSet(claims []GuestIdentityClaim, owner, token string, entries []GuestIdentityEntry) bool {
-	if len(claims) != len(entries) {
-		return false
-	}
-	sort.Slice(claims, func(i, j int) bool { return claims[i].GuestID < claims[j].GuestID })
-	for i, entry := range entries {
-		claim := claims[i]
-		if claim.GuestID != entry.GuestID || claim.GuestKind != entry.GuestKind ||
-			claim.OwnerNodeID != owner || claim.Token != token {
-			return false
-		}
-	}
-	return true
-}
-
-func normalizeClaimSet(payload *GuestIdentityClaimSet, allowEmpty bool) (string, string, []GuestIdentityEntry, error) {
-	if payload == nil {
-		return "", "", nil, fmt.Errorf("guest_identity_claim_set_required")
-	}
+func normalizeGuestIdentityClaimSet(payload *GuestIdentityClaimSet) (string, []GuestIdentityEntry, error) {
 	owner, err := normalizeGuestIdentityNodeID(payload.OwnerNodeID)
 	if err != nil {
-		return "", "", nil, err
+		return "", nil, err
 	}
-	token, err := normalizeGuestIdentityToken(payload.Token)
-	if err != nil {
-		return "", "", nil, err
+	if len(payload.Entries) == 0 {
+		return "", nil, fmt.Errorf("guest_identity_entries_required")
 	}
-	entries, err := normalizeGuestIdentityEntries(payload.Entries, allowEmpty)
-	if err != nil {
-		return "", "", nil, err
+	entries := make([]GuestIdentityEntry, len(payload.Entries))
+	for i, entry := range payload.Entries {
+		entry.GuestKind = normalizeGuestIdentityKind(entry.GuestKind)
+		if !ValidGuestIdentityKind(entry.GuestKind) {
+			return "", nil, fmt.Errorf("invalid_guest_type")
+		}
+		if entry.GuestID == 0 || entry.GuestID > GuestIdentityMaxID {
+			return "", nil, fmt.Errorf("invalid_guest_id")
+		}
+		entries[i] = entry
 	}
-	return owner, token, entries, nil
+	sort.Slice(entries, func(i, j int) bool { return entries[i].GuestID < entries[j].GuestID })
+	for i := 1; i < len(entries); i++ {
+		if entries[i-1].GuestID == entries[i].GuestID {
+			return "", nil, fmt.Errorf("duplicate_guest_id")
+		}
+	}
+	return owner, entries, nil
 }
 
-func ReserveGuestIdentityClaimsTxn(tx *gorm.DB, payload *GuestIdentityClaimSet) error {
-	if tx == nil {
-		return fmt.Errorf("guest_identity_database_required")
-	}
-	owner, token, entries, err := normalizeClaimSet(payload, false)
-	if err != nil {
-		return err
-	}
-	if err := requireGuestIdentityRegistryActiveTxn(tx); err != nil {
-		return err
-	}
-
-	var tokenClaims []GuestIdentityClaim
-	if err := tx.Where("token = ?", token).Order("guest_id ASC").Find(&tokenClaims).Error; err != nil {
-		return err
-	}
-	if len(tokenClaims) > 0 {
-		if claimsMatchSet(tokenClaims, owner, token, entries) {
-			return nil
-		}
-		return fmt.Errorf("%w: token_reused", ErrGuestIdentityClaimConflict)
-	}
-
+func guestIdentityClaimsByID(tx *gorm.DB, entries []GuestIdentityEntry) (map[uint]GuestIdentityClaim, error) {
 	ids := make([]uint, len(entries))
-	for i := range entries {
-		ids[i] = entries[i].GuestID
-	}
-	var existing []GuestIdentityClaim
-	if err := tx.Where("guest_id IN ?", ids).Order("guest_id ASC").Find(&existing).Error; err != nil {
-		return err
-	}
-	if len(existing) > 0 {
-		claim := existing[0]
-		return fmt.Errorf("%w: guest_id=%d owner_node_id=%s guest_kind=%s", ErrGuestIdentityAlreadyInUse, claim.GuestID, claim.OwnerNodeID, claim.GuestKind)
-	}
-
-	claims := make([]GuestIdentityClaim, len(entries))
 	for i, entry := range entries {
-		claims[i] = GuestIdentityClaim{
-			GuestID: entry.GuestID, GuestKind: entry.GuestKind, OwnerNodeID: owner,
-			Token: token,
-		}
-	}
-	return tx.Create(&claims).Error
-}
-
-func loadAndValidateClaimSet(tx *gorm.DB, owner, token string, entries []GuestIdentityEntry, missingAllowed bool) (map[uint]GuestIdentityClaim, error) {
-	ids := make([]uint, len(entries))
-	for i := range entries {
-		ids[i] = entries[i].GuestID
+		ids[i] = entry.GuestID
 	}
 	var claims []GuestIdentityClaim
 	if err := tx.Where("guest_id IN ?", ids).Find(&claims).Error; err != nil {
@@ -507,85 +112,52 @@ func loadAndValidateClaimSet(tx *gorm.DB, owner, token string, entries []GuestId
 	for _, claim := range claims {
 		byID[claim.GuestID] = claim
 	}
-	for _, entry := range entries {
-		claim, exists := byID[entry.GuestID]
-		if !exists {
-			if missingAllowed {
-				continue
-			}
-			return nil, fmt.Errorf("%w: guest_id=%d missing", ErrGuestIdentityClaimConflict, entry.GuestID)
-		}
-		if claim.GuestKind != entry.GuestKind || claim.OwnerNodeID != owner || claim.Token != token {
-			return nil, fmt.Errorf("%w: guest_id=%d", ErrGuestIdentityClaimConflict, entry.GuestID)
-		}
-	}
 	return byID, nil
 }
 
-func ReleaseGuestIdentityClaimsTxn(tx *gorm.DB, payload *GuestIdentityClaimSet) error {
-	if tx == nil {
-		return fmt.Errorf("guest_identity_database_required")
-	}
-	owner, token, entries, err := normalizeClaimSet(payload, false)
+// Claiming what the owner already holds is a no-op, so retries are safe.
+func ClaimGuestIdentitiesTxn(tx *gorm.DB, payload *GuestIdentityClaimSet) error {
+	owner, entries, err := normalizeGuestIdentityClaimSet(payload)
 	if err != nil {
 		return err
 	}
-	if err := requireGuestIdentityRegistryActiveTxn(tx); err != nil {
-		return err
-	}
-	claims, err := loadAndValidateClaimSet(tx, owner, token, entries, true)
+	existing, err := guestIdentityClaimsByID(tx, entries)
 	if err != nil {
 		return err
 	}
-	ids := make([]uint, 0, len(claims))
-	for id := range claims {
-		ids = append(ids, id)
+	missing := make([]GuestIdentityClaim, 0, len(entries))
+	for _, entry := range entries {
+		claim, held := existing[entry.GuestID]
+		if !held {
+			missing = append(missing, GuestIdentityClaim{GuestID: entry.GuestID, GuestKind: entry.GuestKind, OwnerNodeID: owner})
+			continue
+		}
+		if claim.OwnerNodeID != owner || claim.GuestKind != entry.GuestKind {
+			return fmt.Errorf("%w: guest_id=%d owner_node_id=%s guest_kind=%s",
+				ErrGuestIdentityAlreadyInUse, claim.GuestID, claim.OwnerNodeID, claim.GuestKind)
+		}
 	}
-	if len(ids) == 0 {
+	if len(missing) == 0 {
 		return nil
 	}
-	result := tx.Where("guest_id IN ? AND owner_node_id = ? AND token = ?", ids, owner, token).
-		Delete(&GuestIdentityClaim{})
-	if result.Error != nil {
-		return result.Error
+	return tx.Create(&missing).Error
+}
+
+func ReleaseGuestIdentitiesTxn(tx *gorm.DB, payload *GuestIdentityClaimSet) error {
+	owner, entries, err := normalizeGuestIdentityClaimSet(payload)
+	if err != nil {
+		return err
 	}
-	if result.RowsAffected != int64(len(ids)) {
-		return ErrGuestIdentityClaimConflict
+	for _, entry := range entries {
+		if err := tx.Where("guest_id = ? AND guest_kind = ? AND owner_node_id = ?", entry.GuestID, entry.GuestKind, owner).
+			Delete(&GuestIdentityClaim{}).Error; err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func ReclaimGuestIdentityClaimTxn(tx *gorm.DB, payload *GuestIdentityClaimSet) error {
-	if tx == nil {
-		return fmt.Errorf("guest_identity_database_required")
-	}
-	_, _, entries, err := normalizeClaimSet(payload, false)
-	if err != nil {
-		return err
-	}
-	if len(entries) != 1 {
-		return fmt.Errorf("guest_identity_reclaim_requires_single_id")
-	}
-	if tx.Migrator().HasTable(&ReplicationGuestOperation{}) {
-		var operation ReplicationGuestOperation
-		err := tx.Where("guest_id = ?", entries[0].GuestID).First(&operation).Error
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
-		}
-		if err == nil {
-			return fmt.Errorf("guest_operation_in_progress: %s", strings.TrimSpace(operation.Operation))
-		}
-	}
-	return ReleaseGuestIdentityClaimsTxn(tx, payload)
-}
-
 func MoveGuestIdentityClaimTxn(tx *gorm.DB, payload *GuestIdentityMoveOwner) error {
-	if tx == nil || payload == nil {
-		return fmt.Errorf("guest_identity_move_required")
-	}
-	if err := requireGuestIdentityRegistryActiveTxn(tx); err != nil {
-		return err
-	}
 	guestKind := normalizeGuestIdentityKind(payload.GuestKind)
 	if !ValidReplicationGuestType(guestKind) {
 		return fmt.Errorf("invalid_guest_type")
@@ -601,275 +173,23 @@ func MoveGuestIdentityClaimTxn(tx *gorm.DB, payload *GuestIdentityMoveOwner) err
 	if err != nil {
 		return err
 	}
-	if oldOwner == newOwner {
-		return fmt.Errorf("guest_identity_owner_unchanged")
-	}
-	oldToken, err := normalizeGuestIdentityToken(payload.OldToken)
-	if err != nil {
-		return err
-	}
-	newToken, err := normalizeGuestIdentityToken(payload.NewToken)
-	if err != nil {
-		return err
-	}
-	if oldToken == newToken {
-		return fmt.Errorf("guest_identity_token_unchanged")
-	}
-
 	var claim GuestIdentityClaim
-	if err := tx.Where("guest_id = ?", payload.GuestID).First(&claim).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("%w: guest_id=%d missing", ErrGuestIdentityClaimConflict, payload.GuestID)
-		}
-		return err
-	}
-	if claim.GuestKind == guestKind && claim.OwnerNodeID == newOwner && claim.Token == newToken {
-		return nil
-	}
-	if claim.GuestKind != guestKind || claim.OwnerNodeID != oldOwner || claim.Token != oldToken {
-		return fmt.Errorf("%w: guest_id=%d", ErrGuestIdentityClaimConflict, payload.GuestID)
-	}
-
-	var reused int64
-	if err := tx.Model(&GuestIdentityClaim{}).
-		Where("token = ? AND guest_id <> ?", newToken, payload.GuestID).
-		Count(&reused).Error; err != nil {
-		return err
-	}
-	if reused != 0 {
-		return fmt.Errorf("%w: new_token_reused", ErrGuestIdentityClaimConflict)
-	}
-
-	result := tx.Model(&GuestIdentityClaim{}).
-		Where("guest_id = ? AND guest_kind = ? AND owner_node_id = ? AND token = ?", payload.GuestID, guestKind, oldOwner, oldToken).
-		Updates(map[string]any{"owner_node_id": newOwner, "token": newToken})
+	result := tx.Where("guest_id = ?", payload.GuestID).Limit(1).Find(&claim)
 	if result.Error != nil {
 		return result.Error
 	}
-	if result.RowsAffected != 1 {
-		return ErrGuestIdentityClaimConflict
+	if result.RowsAffected == 0 {
+		return tx.Create(&GuestIdentityClaim{GuestID: payload.GuestID, GuestKind: guestKind, OwnerNodeID: newOwner}).Error
 	}
-	return nil
+	if claim.GuestKind != guestKind || (claim.OwnerNodeID != oldOwner && claim.OwnerNodeID != newOwner) {
+		return fmt.Errorf("%w: guest_id=%d owner_node_id=%s guest_kind=%s",
+			ErrGuestIdentityClaimConflict, claim.GuestID, claim.OwnerNodeID, claim.GuestKind)
+	}
+	return tx.Model(&GuestIdentityClaim{}).Where("guest_id = ?", payload.GuestID).Update("owner_node_id", newOwner).Error
 }
 
-func normalizeGuestIdentityDeparture(payload *GuestIdentityDepartureCommand) (GuestIdentityDeparture, error) {
-	if payload == nil {
-		return GuestIdentityDeparture{}, fmt.Errorf("guest_identity_departure_required")
-	}
-	nodeID, err := normalizeGuestIdentityNodeID(payload.NodeID)
-	if err != nil {
-		return GuestIdentityDeparture{}, err
-	}
-	leaveID := strings.TrimSpace(payload.LeaveID)
-	if leaveID == "" || len([]byte(leaveID)) > guestIdentityMaxTokenBytes {
-		return GuestIdentityDeparture{}, fmt.Errorf("guest_identity_departure_leave_id_invalid")
-	}
-	digest := strings.TrimSpace(payload.InventoryDigest)
-	decoded, err := hex.DecodeString(digest)
-	if err != nil || len(decoded) != sha256.Size || hex.EncodeToString(decoded) != digest {
-		return GuestIdentityDeparture{}, fmt.Errorf("guest_identity_departure_digest_invalid")
-	}
-	return GuestIdentityDeparture{NodeID: nodeID, LeaveID: leaveID, InventoryDigest: digest}, nil
-}
-
-func guestIdentityOwnerClaimDigestTxn(tx *gorm.DB, nodeID string) (string, error) {
-	var claims []GuestIdentityClaim
-	if err := tx.Where("owner_node_id = ?", nodeID).Order("guest_id ASC").Find(&claims).Error; err != nil {
-		return "", err
-	}
-	entries := make([]GuestIdentityEntry, len(claims))
-	for i, claim := range claims {
-		entries[i] = GuestIdentityEntry{GuestKind: claim.GuestKind, GuestID: claim.GuestID}
-	}
-	return GuestIdentityInventoryDigest(nodeID, entries), nil
-}
-
-func RecordGuestIdentityDepartureTxn(tx *gorm.DB, payload *GuestIdentityDepartureCommand) error {
-	departure, err := normalizeGuestIdentityDeparture(payload)
-	if err != nil {
-		return err
-	}
-	if err := requireGuestIdentityRegistryActiveTxn(tx); err != nil {
-		return err
-	}
-	claimDigest, err := guestIdentityOwnerClaimDigestTxn(tx, departure.NodeID)
-	if err != nil {
-		return err
-	}
-	if claimDigest != departure.InventoryDigest {
-		return fmt.Errorf("%w: departure_inventory_changed", ErrGuestIdentityInventoryConflict)
-	}
-	var existing GuestIdentityDeparture
-	err = tx.Where("node_id = ?", departure.NodeID).First(&existing).Error
-	if err == nil {
-		if existing != departure {
-			return fmt.Errorf("%w: departure_already_pending", ErrGuestIdentityInventoryConflict)
-		}
-		return nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-	return tx.Create(&departure).Error
-}
-
-func ReleaseGuestIdentityDepartureTxn(tx *gorm.DB, payload *GuestIdentityDepartureCommand) error {
-	departure, err := normalizeGuestIdentityDeparture(payload)
-	if err != nil {
-		return err
-	}
-	var existing GuestIdentityDeparture
-	if err := tx.Where("node_id = ?", departure.NodeID).First(&existing).Error; err != nil {
-		return err
-	}
-	if existing != departure {
-		return fmt.Errorf("%w: departure_changed", ErrGuestIdentityInventoryConflict)
-	}
-	claimDigest, err := guestIdentityOwnerClaimDigestTxn(tx, departure.NodeID)
-	if err != nil {
-		return err
-	}
-	if claimDigest != departure.InventoryDigest {
-		return fmt.Errorf("%w: departure_inventory_changed", ErrGuestIdentityInventoryConflict)
-	}
-	if err := tx.Where("owner_node_id = ?", departure.NodeID).Delete(&GuestIdentityClaim{}).Error; err != nil {
-		return err
-	}
-	return tx.Where("node_id = ? AND leave_id = ?", departure.NodeID, departure.LeaveID).Delete(&GuestIdentityDeparture{}).Error
-}
-
-func ValidateGuestIdentitySnapshot(snapshot *ClusterSnapshot) error {
-	if snapshot == nil {
-		return fmt.Errorf("cluster_snapshot_required")
-	}
-	if len(snapshot.GuestIdentityRegistries) == 0 {
-		if len(snapshot.GuestIdentityEnrollments) != 0 || len(snapshot.GuestIdentityClaims) != 0 || len(snapshot.GuestIdentityDepartures) != 0 {
-			return fmt.Errorf("guest_identity_snapshot_missing_registry")
-		}
-		return nil
-	}
-	if len(snapshot.GuestIdentityRegistries) != 1 {
-		return fmt.Errorf("guest_identity_snapshot_invalid_registry_count")
-	}
-	registry := snapshot.GuestIdentityRegistries[0]
-	if registry.ID != GuestIdentityRegistryID || registry.Version != GuestIdentityRegistryVersion ||
-		(registry.Phase != GuestIdentityRegistryPhaseCollecting && registry.Phase != GuestIdentityRegistryPhaseActive) {
-		return fmt.Errorf("guest_identity_snapshot_invalid_registry")
-	}
-
-	enrolled := make(map[string]struct{}, len(snapshot.GuestIdentityEnrollments))
-	for _, enrollment := range snapshot.GuestIdentityEnrollments {
-		nodeID, err := normalizeGuestIdentityNodeID(enrollment.NodeID)
-		if err != nil || nodeID != enrollment.NodeID {
-			return fmt.Errorf("guest_identity_snapshot_invalid_enrollment")
-		}
-		if _, exists := enrolled[nodeID]; exists {
-			return fmt.Errorf("guest_identity_snapshot_duplicate_enrollment")
-		}
-		digest := strings.ToLower(strings.TrimSpace(enrollment.InventoryDigest))
-		decoded, err := hex.DecodeString(digest)
-		if err != nil || len(decoded) != sha256.Size || digest != enrollment.InventoryDigest {
-			return fmt.Errorf("guest_identity_snapshot_invalid_enrollment_digest")
-		}
-		enrolled[nodeID] = struct{}{}
-	}
-
-	seenIDs := make(map[uint]struct{}, len(snapshot.GuestIdentityClaims))
-	seenDepartures := make(map[string]struct{}, len(snapshot.GuestIdentityDepartures))
-	for _, departure := range snapshot.GuestIdentityDepartures {
-		validated, err := normalizeGuestIdentityDeparture(&GuestIdentityDepartureCommand{NodeID: departure.NodeID, LeaveID: departure.LeaveID, InventoryDigest: departure.InventoryDigest})
-		if err != nil || validated != departure {
-			return fmt.Errorf("guest_identity_snapshot_invalid_departure")
-		}
-		if _, exists := seenDepartures[departure.NodeID]; exists {
-			return fmt.Errorf("guest_identity_snapshot_duplicate_departure")
-		}
-		seenDepartures[departure.NodeID] = struct{}{}
-	}
-	for _, claim := range snapshot.GuestIdentityClaims {
-		if claim.GuestID == 0 || claim.GuestID > GuestIdentityMaxID || !ValidGuestIdentityKind(claim.GuestKind) {
-			return fmt.Errorf("guest_identity_snapshot_invalid_claim")
-		}
-		if _, exists := seenIDs[claim.GuestID]; exists {
-			return fmt.Errorf("guest_identity_snapshot_duplicate_claim")
-		}
-		seenIDs[claim.GuestID] = struct{}{}
-		owner, err := normalizeGuestIdentityNodeID(claim.OwnerNodeID)
-		if err != nil || owner != claim.OwnerNodeID {
-			return fmt.Errorf("guest_identity_snapshot_invalid_claim_owner")
-		}
-		token, err := normalizeGuestIdentityToken(claim.Token)
-		if err != nil || token != claim.Token {
-			return fmt.Errorf("guest_identity_snapshot_invalid_claim_token")
-		}
-		if registry.Phase == GuestIdentityRegistryPhaseCollecting {
-			if _, exists := enrolled[owner]; !exists {
-				return fmt.Errorf("guest_identity_snapshot_claim_owner_not_enrolled")
-			}
-			entry := GuestIdentityEntry{GuestKind: claim.GuestKind, GuestID: claim.GuestID}
-			if claim.Token != guestIdentityBootstrapToken(owner, entry) {
-				return fmt.Errorf("guest_identity_snapshot_invalid_bootstrap_token")
-			}
-		}
-	}
-	return nil
-}
-
-func RegisterGuestIdentityRegistryHandler(fsm *FSMDispatcher) {
-	fsm.Register("guest_identity_registry", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		return db.Transaction(func(tx *gorm.DB) error {
-			switch action {
-			case "record_departure":
-				var payload GuestIdentityDepartureCommand
-				if err := json.Unmarshal(raw, &payload); err != nil {
-					return err
-				}
-				return RecordGuestIdentityDepartureTxn(tx, &payload)
-			case "release_departure":
-				var payload GuestIdentityDepartureCommand
-				if err := json.Unmarshal(raw, &payload); err != nil {
-					return err
-				}
-				return ReleaseGuestIdentityDepartureTxn(tx, &payload)
-			case "register_node_inventory":
-				var payload GuestIdentityRegisterNodeInventory
-				if err := json.Unmarshal(raw, &payload); err != nil {
-					return err
-				}
-				return RegisterGuestIdentityInventoryTxn(tx, &payload)
-			case "activate_registry":
-				var payload GuestIdentityActivateRegistry
-				if err := json.Unmarshal(raw, &payload); err != nil {
-					return err
-				}
-				return ActivateGuestIdentityRegistryTxn(tx, &payload)
-			case "reserve_ids":
-				var payload GuestIdentityClaimSet
-				if err := json.Unmarshal(raw, &payload); err != nil {
-					return err
-				}
-				return ReserveGuestIdentityClaimsTxn(tx, &payload)
-			case "release_ids":
-				var payload GuestIdentityClaimSet
-				if err := json.Unmarshal(raw, &payload); err != nil {
-					return err
-				}
-				return ReleaseGuestIdentityClaimsTxn(tx, &payload)
-			case "reclaim_id":
-				var payload GuestIdentityClaimSet
-				if err := json.Unmarshal(raw, &payload); err != nil {
-					return err
-				}
-				return ReclaimGuestIdentityClaimTxn(tx, &payload)
-			case "move_id_owner":
-				var payload GuestIdentityMoveOwner
-				if err := json.Unmarshal(raw, &payload); err != nil {
-					return err
-				}
-				return MoveGuestIdentityClaimTxn(tx, &payload)
-			default:
-				return fmt.Errorf("unsupported_guest_identity_registry_action_%s", action)
-			}
-		})
-	})
+func RegisterGuestIdentityHandlers(f *FSMDispatcher) {
+	On(f, "guest_identity", "claim", ClaimGuestIdentitiesTxn)
+	On(f, "guest_identity", "release", ReleaseGuestIdentitiesTxn)
+	On(f, "guest_identity", "move", MoveGuestIdentityClaimTxn)
 }

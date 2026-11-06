@@ -26,6 +26,7 @@ import (
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"gorm.io/gorm"
 )
 
 func TestSeedISCSISettingsIsTrackedAndPreservesSavedText(t *testing.T) {
@@ -1100,4 +1101,131 @@ func TestMigrateStandardSwitchAutomaticRouteOwners(t *testing.T) {
 			}
 		}
 	})
+}
+
+type legacyUserUpload struct {
+	utilitiesModels.DownloadStorage
+	ID          string                       `gorm:"primaryKey;size:36"`
+	Scope       utilitiesModels.UploadScope  `gorm:"index;not null"`
+	Path        string                       `gorm:"index;not null"`
+	Name        string                       `gorm:"not null"`
+	Size        int64                        `gorm:"not null"`
+	UserID      uint                         `gorm:"index;not null"`
+	Node        string                       `gorm:"index;not null"`
+	Status      utilitiesModels.UploadStatus `gorm:"index;not null"`
+	Device      int64                        `gorm:"not null"`
+	Inode       int64                        `gorm:"not null"`
+	CreatedAt   time.Time                    `gorm:"autoCreateTime;index"`
+	CompletedAt *time.Time
+}
+
+func (legacyUserUpload) TableName() string { return "uploads" }
+
+func TestKeyUploadsByOwner(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &legacyUserUpload{})
+	legacy := legacyUserUpload{
+		ID: "11111111-1111-1111-1111-111111111111", Scope: utilitiesModels.UploadScopeDownloader, Path: "/staging/a",
+		Name: "a.img", Size: 1, UserID: 7, Node: "node-a", Status: utilitiesModels.UploadStatusCompleted,
+	}
+	if err := dbConn.Create(&legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	keyUploadsByOwner(dbConn)
+	if dbConn.Migrator().HasIndex("uploads", "idx_uploads_user_id") {
+		t.Fatal("the user ID index outlived its column")
+	}
+	if err := dbConn.AutoMigrate(&utilitiesModels.Upload{}); err != nil {
+		t.Fatalf("migrate after keying: %v", err)
+	}
+	keyUploadsByOwner(dbConn)
+
+	var upload utilitiesModels.Upload
+	if err := dbConn.First(&upload, "id = ?", legacy.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if upload.Owner != "user:7" || upload.Path != legacy.Path || upload.Status != legacy.Status {
+		t.Fatalf("migrated upload %+v", upload)
+	}
+	if dbConn.Migrator().HasColumn("uploads", "user_id") || !dbConn.Migrator().HasIndex(&utilitiesModels.Upload{}, "Owner") {
+		t.Fatal("uploads aren't indexed by owner alone")
+	}
+	proxied := utilitiesModels.Upload{
+		ID: "22222222-2222-2222-2222-222222222222", Scope: utilitiesModels.UploadScopeDownloader, Path: "/staging/b",
+		Name: "b.img", Owner: "node:node-1:sylve:admin", Node: "node-a", Status: utilitiesModels.UploadStatusStaged,
+	}
+	if err := dbConn.Create(&proxied).Error; err != nil {
+		t.Fatalf("upload after keying: %v", err)
+	}
+}
+
+func TestBindOldReaddressPhases(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{})
+	rows := []clusterModels.Cluster{
+		{ID: 1, RaftIP: "192.0.2.10", ReaddressNewIP: "192.0.2.20", ReaddressPhase: "prepared"},
+		{ID: 2, RaftIP: "192.0.2.11", ReaddressNewIP: "192.0.2.21", ReaddressPhase: "membership_committed"},
+		{ID: 3, RaftIP: "192.0.2.12", ReaddressNewIP: "192.0.2.22", ReaddressPhase: "local_rebound"},
+		{ID: 4, RaftIP: "192.0.2.13"},
+	}
+	if err := dbConn.Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	bindOldReaddressPhases(dbConn)
+	var got []clusterModels.Cluster
+	if err := dbConn.Order("id").Find(&got).Error; err != nil {
+		t.Fatal(err)
+	}
+	want := []struct{ ip, phase string }{
+		{"192.0.2.20", "local_rebound"}, {"192.0.2.21", "local_rebound"},
+		{"192.0.2.12", "local_rebound"}, {"192.0.2.13", ""},
+	}
+	for i, row := range got {
+		if row.RaftIP != want[i].ip || row.ReaddressPhase != want[i].phase {
+			t.Fatalf("row %d: raft_ip=%s phase=%q, want %s %q", row.ID, row.RaftIP, row.ReaddressPhase, want[i].ip, want[i].phase)
+		}
+	}
+}
+
+func TestCarryLegacyJailVLANs(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &jailModels.Network{})
+	for _, statement := range []string{
+		`ALTER TABLE jail_networks ADD COLUMN vlan integer DEFAULT 0`,
+		`INSERT INTO jail_networks (id, jid, name, switch_id, switch_type, vlan) VALUES (1, 10, 'tagged', 1, 'standard', 23)`,
+		`INSERT INTO jail_networks (id, jid, name, switch_id, switch_type, vlan) VALUES (2, 10, 'untagged', 1, 'standard', 0)`,
+		`INSERT INTO jail_networks (id, jid, name, switch_id, switch_type, vlan, vlan_mode, vlan_tagged_vlans)
+		 VALUES (3, 10, 'trunk', 1, 'standard', 30, 'trunk', '[30,31]')`,
+	} {
+		if err := dbConn.Exec(statement).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	carryLegacyJailVLANs(dbConn)
+	carryLegacyJailVLANs(dbConn)
+
+	load := func(id uint) jailModels.Network {
+		t.Helper()
+		var network jailModels.Network
+		if err := dbConn.Session(&gorm.Session{SkipHooks: true}).First(&network, id).Error; err != nil {
+			t.Fatal(err)
+		}
+		return network
+	}
+	if policy := load(1).VLANPolicy; policy.Mode != "access" || policy.UntaggedVLAN == nil || *policy.UntaggedVLAN != 23 ||
+		len(policy.TaggedVLANs) != 0 {
+		t.Fatalf("tagged network's policy = %+v", policy)
+	}
+	if policy := load(2).VLANPolicy; policy.Mode != "" || policy.UntaggedVLAN != nil {
+		t.Fatalf("untagged network gained a policy: %+v", policy)
+	}
+	if policy := load(3).VLANPolicy; policy.Mode != "trunk" || policy.UntaggedVLAN != nil || len(policy.TaggedVLANs) != 2 {
+		t.Fatalf("network with a policy changed: %+v", policy)
+	}
+
+	if err := dbConn.Exec(`UPDATE jail_networks SET vlan_mode = '', vlan_untagged_vlan = NULL WHERE id = 1`).Error; err != nil {
+		t.Fatal(err)
+	}
+	carryLegacyJailVLANs(dbConn)
+	if policy := load(1).VLANPolicy; policy.Mode != "" || policy.UntaggedVLAN != nil {
+		t.Fatalf("a cleared VLAN came back: %+v", policy)
+	}
 }

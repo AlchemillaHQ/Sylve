@@ -65,7 +65,7 @@ type ScheduledRunReceipt struct {
 }
 
 // ScheduledRunResultOutbox is node-local by design and must never be included
-// in a cluster snapshot or resync. Payload is one BackupJobRunResult or
+// in a cluster snapshot. Payload is one BackupJobRunResult or
 // ReplicationPolicyRunResult encoded as JSON.
 type ScheduledRunResultOutbox struct {
 	Token         string     `gorm:"primaryKey" json:"token"`

@@ -255,16 +255,16 @@ func TestIntegrationPoolUploadsAndPostProcessingRealZFS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	upload, err := service.RegisterDownloaderUpload(ctx, uploadID, path, "base.tar", info.Size(), 7, info, storage)
+	upload, err := service.RegisterDownloaderUpload(ctx, uploadID, path, "base.tar", info.Size(), "user:7", info, storage)
 	release()
 	if err != nil {
 		t.Fatal(err)
 	}
-	completion, err := service.CompleteDownloaderUpload(ctx, uploadID, 7, utilitiesServiceInterfaces.CompleteDownloaderUploadRequest{DownloadType: utilitiesModels.DownloadUTypeBase})
+	completion, err := service.CompleteDownloaderUpload(ctx, uploadID, "user:7", utilitiesServiceInterfaces.CompleteDownloaderUploadRequest{DownloadType: utilitiesModels.DownloadUTypeBase})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again, err := service.CompleteDownloaderUpload(ctx, uploadID, 7, utilitiesServiceInterfaces.CompleteDownloaderUploadRequest{DownloadType: utilitiesModels.DownloadUTypeOther}); err != nil || again.DownloadID != completion.DownloadID {
+	if again, err := service.CompleteDownloaderUpload(ctx, uploadID, "user:7", utilitiesServiceInterfaces.CompleteDownloaderUploadRequest{DownloadType: utilitiesModels.DownloadUTypeOther}); err != nil || again.DownloadID != completion.DownloadID {
 		t.Fatalf("completion retry: %+v %v", again, err)
 	}
 	if err := service.StartDownload(&completion.DownloadID); err != nil {

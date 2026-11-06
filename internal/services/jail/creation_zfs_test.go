@@ -21,7 +21,6 @@ import (
 	"github.com/alchemillahq/gzfs"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
-	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
@@ -31,7 +30,7 @@ func newRealZFSCreationService(t *testing.T, pool string, client *gzfs.Client) *
 	zfstest.EnsureDataset(t, client, pool+"/sylve/jails")
 	db := newCreationTestDB(t)
 	svc := &Service{DB: db, GZFS: client, System: fakeSystemService{pools: []*gzfs.ZPool{{Name: pool}}}, ctidHashByCTID: make(map[uint]string)}
-	svc.SetGuestIdentityCoordinator(&clusterService.Service{DB: db, NodeID: "creation-node"})
+	svc.SetGuestIdentityCoordinator(newStandaloneGuestIdentityCoordinator(t, db, "creation-node"))
 	return svc
 }
 
@@ -549,7 +548,7 @@ func TestIntegrationZFSCreationRestartReconcilesOwnedPartialOutputRealZFS(t *tes
 				}
 			}()
 			restarted := &Service{DB: svc.DB, GZFS: client}
-			restarted.SetGuestIdentityCoordinator(&clusterService.Service{DB: svc.DB, NodeID: "creation-node"})
+			restarted.SetGuestIdentityCoordinator(newStandaloneGuestIdentityCoordinator(t, svc.DB, "creation-node"))
 			if err := restarted.RecoverCreations(t.Context()); err != nil {
 				t.Fatal(err)
 			}

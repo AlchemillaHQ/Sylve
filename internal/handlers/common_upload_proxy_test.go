@@ -21,10 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alchemillahq/sylve/internal/db/models"
-	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	authService "github.com/alchemillahq/sylve/internal/services/auth"
-	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 )
 
@@ -36,11 +32,11 @@ type selectedNodeUploadRoute struct {
 var selectedNodeUploadRoutes = []selectedNodeUploadRoute{
 	{
 		name: "file explorer",
-		path: "/api/system/file-explorer/upload?path=%2Fvar%2Ftmp",
+		path: "/api/nodes/remote-node/system/file-explorer/upload?path=%2Fvar%2Ftmp",
 	},
 	{
 		name: "downloader",
-		path: "/api/utilities/downloader-uploads",
+		path: "/api/nodes/remote-node/utilities/downloader-uploads",
 	},
 }
 
@@ -81,51 +77,7 @@ func performSelectedNodeProxyRequest(
 func newSelectedNodeUploadProxyRouter(t *testing.T, remoteURL string) *gin.Engine {
 	t.Helper()
 
-	database := testutil.NewSQLiteTestDB(
-		t,
-		&models.User{},
-		&clusterModels.Cluster{},
-		&clusterModels.ClusterNode{},
-	)
-	if err := database.Create(&clusterModels.Cluster{Enabled: true, Key: "cluster-secret"}).Error; err != nil {
-		t.Fatalf("seed cluster: %v", err)
-	}
-	user := models.User{Username: "upload-admin", Admin: true}
-	if err := database.Create(&user).Error; err != nil {
-		t.Fatalf("seed user: %v", err)
-	}
-	if err := database.Create(&clusterModels.ClusterNode{
-		NodeUUID: "remote-node-id",
-		Status:   "online",
-		Hostname: "remote-node",
-		API:      strings.TrimPrefix(remoteURL, "https://"),
-	}).Error; err != nil {
-		t.Fatalf("seed remote node: %v", err)
-	}
-
-	previousHostname := hostname
-	hostname = "origin-node"
-	t.Cleanup(func() {
-		hostname = previousHostname
-	})
-
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.Use(func(c *gin.Context) {
-		c.Set("Token", "browser-local-token")
-		c.Set("AuthScope", "local")
-		c.Set("UserID", user.ID)
-		c.Set("Username", user.Username)
-		c.Set("AuthType", "sylve")
-		c.Next()
-	})
-	router.Use(EnsureCorrectHost(database, &authService.Service{DB: database}))
-	unexpectedLocalHandler := func(c *gin.Context) {
-		c.String(http.StatusTeapot, "upload reached origin handler")
-	}
-	router.POST("/api/system/file-explorer/upload", unexpectedLocalHandler)
-	router.DELETE("/api/system/file-explorer/upload", unexpectedLocalHandler)
-	router.POST("/api/utilities/downloader-uploads", unexpectedLocalHandler)
+	router, _ := newOriginRouter(t, remoteMember(strings.TrimPrefix(remoteURL, "https://")), "local")
 	return router
 }
 
@@ -186,7 +138,6 @@ func TestSelectedNodeUploadsStreamBeforeIngressBodyCompletes(t *testing.T) {
 			}
 			request.ContentLength = int64(len(payload))
 			request.Header.Set("Content-Type", contentType)
-			request.Header.Set("X-Current-Hostname", "remote-node")
 
 			proxyResult := performSelectedNodeProxyRequest(origin.Client(), request)
 
@@ -301,7 +252,6 @@ func TestSelectedNodeUploadCancellationReachesRemoteHandler(t *testing.T) {
 					"Host: %s\r\n"+
 					"Content-Length: %d\r\n"+
 					"Content-Type: multipart/form-data; boundary=selected-node-test\r\n"+
-					"X-Current-Hostname: remote-node\r\n"+
 					"Connection: close\r\n\r\n"+
 					"x",
 				route.path,
@@ -376,14 +326,13 @@ func TestSelectedNodeUploadRevertProxiesRequestBody(t *testing.T) {
 	defer origin.Close()
 	request, err := http.NewRequest(
 		http.MethodDelete,
-		origin.URL+"/api/system/file-explorer/upload",
+		origin.URL+"/api/nodes/remote-node/system/file-explorer/upload",
 		strings.NewReader(requestBody),
 	)
 	if err != nil {
 		t.Fatalf("create revert request: %v", err)
 	}
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-Current-Hostname", "remote-node")
 
 	response, err := origin.Client().Do(request)
 	if err != nil {

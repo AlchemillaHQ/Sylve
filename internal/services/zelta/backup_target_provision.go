@@ -53,7 +53,7 @@ func (s *Service) executeBackupTargetProvisionOperation(
 	}
 	defer release()
 	ctx = admittedCtx
-	if s == nil || s.Cluster == nil || operation == nil {
+	if s == nil || operation == nil {
 		return fmt.Errorf("backup_target_provision_service_unavailable")
 	}
 	if !s.claimBackupTargetProvision(operation.Token) {
@@ -76,13 +76,13 @@ func (s *Service) executeBackupTargetProvisionOperation(
 	if err := s.ProvisionBackupTargetRoot(ctx, &target); err != nil {
 		return err
 	}
-	return s.Cluster.CompleteBackupTargetProvision(operation, s.Cluster.Standalone())
+	return s.Cluster.CompleteBackupTargetProvision(operation)
 }
 
 // ReconcileBackupTargetProvisionOperations retries only leader-owned pending
 // intents. Every remote action is idempotent and occurs outside Raft apply.
 func (s *Service) ReconcileBackupTargetProvisionOperations(ctx context.Context) error {
-	if s == nil || s.Cluster == nil {
+	if s == nil {
 		return nil
 	}
 	if s.Cluster.Raft() != nil {

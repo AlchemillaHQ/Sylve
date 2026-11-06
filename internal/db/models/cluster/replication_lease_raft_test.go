@@ -172,50 +172,6 @@ func TestFSMDispatcherReplicationLeaseCommands(t *testing.T) {
 		}
 	})
 
-	t.Run("delete existing lease", func(t *testing.T) {
-		db5 := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationLease{})
-		fsm5 := NewFSMDispatcher(db5)
-		RegisterDefaultHandlers(fsm5)
-
-		if err := db5.Create(&ReplicationLease{
-			PolicyID: 1, GuestType: ReplicationGuestTypeVM, GuestID: 100,
-			OwnerNodeID: "node-x", OwnerEpoch: 1,
-		}).Error; err != nil {
-			t.Fatalf("seed lease: %v", err)
-		}
-
-		deleteRaw, _ := json.Marshal(map[string]any{"policyId": 1})
-		if err := applyFSMCommand(t, fsm5, Command{
-			Type: "replication_lease", Action: "delete", Data: deleteRaw,
-		}); err != nil {
-			t.Fatalf("delete failed: %v", err)
-		}
-
-		var count int64
-		db5.Model(&ReplicationLease{}).Count(&count)
-		if count != 0 {
-			t.Fatalf("expected 0 leases, got %d", count)
-		}
-	})
-
-	t.Run("delete non-existent policy is no-op", func(t *testing.T) {
-		deleteRaw, _ := json.Marshal(map[string]any{"policyId": 999})
-		if err := applyFSMCommand(t, fsm, Command{
-			Type: "replication_lease", Action: "delete", Data: deleteRaw,
-		}); err != nil {
-			t.Fatalf("delete non-existent should be no-op: %v", err)
-		}
-	})
-
-	t.Run("delete policyId=0 is no-op", func(t *testing.T) {
-		deleteRaw, _ := json.Marshal(map[string]any{"policyId": 0})
-		if err := applyFSMCommand(t, fsm, Command{
-			Type: "replication_lease", Action: "delete", Data: deleteRaw,
-		}); err != nil {
-			t.Fatalf("delete id=0 should be no-op: %v", err)
-		}
-	})
-
 	t.Run("malformed payload returns error", func(t *testing.T) {
 		err := applyFSMCommand(t, fsm, Command{
 			Type: "replication_lease", Action: "upsert",

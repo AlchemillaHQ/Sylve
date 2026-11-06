@@ -12,16 +12,18 @@ import (
 	"context"
 	"errors"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
-	"github.com/hashicorp/raft"
 )
 
 type failingReplicationVMMetadataWriter struct {
@@ -88,7 +90,7 @@ func TestUnsupportedVMStorageInvalidatesPriorTargetReadiness(t *testing.T) {
 		t.Fatalf("create ready target: %v", err)
 	}
 
-	svc := &Service{DB: db, Cluster: &clusterService.Service{DB: db}}
+	svc := &Service{DB: db, Cluster: newTestClusterService(db, "")}
 	svc.setReplicationRuntimeClock(&fakeReplicationRuntimeClock{now: time.Now().UTC().Add(time.Hour)})
 	if err := svc.invalidateReplicationPolicyTargetReadiness(
 		&policy, errReplicationVMFilesystemStorageUnsupported,
@@ -112,24 +114,6 @@ func TestUnsupportedVMStorageInvalidatesPriorTargetReadiness(t *testing.T) {
 	}
 }
 
-func TestReplicationValidationForwardTimeoutHonorsContextDeadline(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-	timeout, err := replicationValidationForwardTimeout(ctx)
-	if err != nil {
-		t.Fatalf("derive validation forward timeout: %v", err)
-	}
-	if timeout <= 0 || timeout > 500*time.Millisecond {
-		t.Fatalf("replication validation forward timeout = %s, want within context deadline", timeout)
-	}
-
-	canceled, cancelNow := context.WithCancel(context.Background())
-	cancelNow()
-	if _, err := replicationValidationForwardTimeout(canceled); !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled validation forward timeout error = %v", err)
-	}
-}
-
 func TestReplicationRunMetadataRefreshFailureInvalidatesReadinessBeforeDiscovery(t *testing.T) {
 	database := newZeltaServiceTestDB(
 		t,
@@ -139,7 +123,7 @@ func TestReplicationRunMetadataRefreshFailureInvalidatesReadinessBeforeDiscovery
 	writerErr := errors.New("vm.json disk full")
 	writer := &failingReplicationVMMetadataWriter{err: writerErr}
 	service := newTestZeltaService(database)
-	service.Cluster = &clusterService.Service{DB: database}
+	service.Cluster = clusterService.NewClusterService(database, nil, nil).(*clusterService.Service)
 	service.VM = writer
 	policy := clusterModels.ReplicationPolicy{
 		ID: 804, Name: "dirty-metadata", GuestType: clusterModels.ReplicationGuestTypeVM,
@@ -514,21 +498,6 @@ func TestForceCutoverMarginCoversSupervisedRestartAndColdFence(t *testing.T) {
 	}
 }
 
-func TestReplicationNotLeaderErrorRecognition(t *testing.T) {
-	for _, err := range []error{
-		raft.ErrNotLeader,
-		errors.New("not_leader"),
-		errors.New("node is not the leader"),
-	} {
-		if !isReplicationRaftNotLeaderError(err) {
-			t.Fatalf("did not recognize follower error %q", err)
-		}
-	}
-	if isReplicationRaftNotLeaderError(errors.New("replication failed")) {
-		t.Fatal("ordinary replication error was classified as follower routing")
-	}
-}
-
 func TestReplicationLeaseAuthorityRequiresPostStartVersion(t *testing.T) {
 	start := time.Date(2026, time.July, 11, 8, 0, 0, 0, time.UTC)
 	clock := &fakeReplicationRuntimeClock{now: start}
@@ -653,5 +622,108 @@ func TestDurableReplicationFenceObservationDoesNotRestoreAuthority(t *testing.T)
 	lease := &clusterModels.ReplicationLease{PolicyID: 7, OwnerNodeID: "node-a", OwnerEpoch: 3, Version: 50}
 	if service.observeReplicationLeaseAuthority(7, "node-a", 3, lease) {
 		t.Fatal("durable observation restored process-local authority")
+	}
+}
+
+func completeReplicationTarget(nodeID string, epoch uint64) clusterModels.ReplicationPolicyTarget {
+	now := time.Now().UTC()
+	readyUntil := now.Add(time.Hour)
+	return clusterModels.ReplicationPolicyTarget{
+		NodeID: nodeID, Ready: true, OwnerEpoch: epoch, GenerationID: "gen-1", ManifestHash: "hash",
+		RequiredDatasetCount: 1, CompletedDatasetCount: 1, LastVerifiedAt: &now, ReadyUntil: &readyUntil,
+	}
+}
+
+func TestReplicationOwnerRunsUnfencedOnlyWhileNothingIsPromotable(t *testing.T) {
+	dataPath := t.TempDir()
+	t.Setenv("SYLVE_DATA_PATH", dataPath)
+	policy := &clusterModels.ReplicationPolicy{
+		ID: 7, ActiveNodeID: "node-a", OwnerEpoch: 2,
+		Targets: []clusterModels.ReplicationPolicyTarget{{NodeID: "node-b"}},
+	}
+	service := &Service{}
+	if !service.replicationOwnerMayRunUnfenced(policy) {
+		t.Fatal("a new policy's owner was fenced")
+	}
+	policy.Targets[0] = completeReplicationTarget("node-b", 1)
+	if !service.replicationOwnerMayRunUnfenced(policy) {
+		t.Fatal("a generation from an earlier epoch made the policy promotable")
+	}
+	policy.Targets[0] = completeReplicationTarget("node-b", 2)
+	if service.replicationOwnerMayRunUnfenced(policy) {
+		t.Fatal("ran unfenced with a promotable target")
+	}
+
+	policy.Targets[0] = clusterModels.ReplicationPolicyTarget{NodeID: "node-b"}
+	lease := &clusterModels.ReplicationLease{PolicyID: 7, OwnerNodeID: "node-a", OwnerEpoch: 2, Version: 10}
+	service.observeReplicationLeaseAuthority(7, "node-a", 2, lease)
+	lease.Version = 11
+	if !service.observeReplicationLeaseAuthority(7, "node-a", 2, lease) {
+		t.Fatal("renewal did not grant authority")
+	}
+	for name, s := range map[string]*Service{"running": service, "restarted": {}} {
+		if s.replicationOwnerMayRunUnfenced(policy) {
+			t.Fatalf("%s: ran unfenced at an epoch it held authority at", name)
+		}
+	}
+	policy.OwnerEpoch = 3
+	if !(&Service{}).replicationOwnerMayRunUnfenced(policy) {
+		t.Fatal("authority at an earlier epoch fenced the new one")
+	}
+
+	if err := os.WriteFile(filepath.Join(dataPath, replicationAuthorityEpochFile), []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if (&Service{}).replicationOwnerMayRunUnfenced(policy) {
+		t.Fatal("an unreadable authority record did not count as held")
+	}
+}
+
+type recordingFenceGuestDriver struct {
+	disposableReplicationGuestDriver
+	fenced []uint
+}
+
+func (d *recordingFenceGuestDriver) selfFence(_ context.Context, policyID uint, _ uint, _, _, _ string) {
+	d.fenced = append(d.fenced, policyID)
+}
+
+func TestSelfFenceLeavesANewPolicysGuestRunning(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	db := newZeltaServiceTestDB(t,
+		&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{},
+		&clusterModels.ReplicationLease{}, &clusterModels.ReplicationGuestOperation{}, &vmModels.VM{},
+	)
+	const guestID = 9901
+	if err := db.Create(&vmModels.VM{RID: guestID, Name: "protected"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	policy := clusterModels.ReplicationPolicy{
+		ID: 71, Name: "new", GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: guestID,
+		SourceNodeID: "node-a", ActiveNodeID: "node-a", OwnerEpoch: 1, Enabled: true,
+		ProtectionState: clusterModels.ReplicationProtectionStateInitializing,
+		Targets:         []clusterModels.ReplicationPolicyTarget{{NodeID: "node-b"}},
+	}
+	if err := db.Create(&policy).Error; err != nil {
+		t.Fatal(err)
+	}
+	service := newTestZeltaService(db)
+	service.Cluster = newTestClusterService(db, "node-a")
+	driver := &recordingFenceGuestDriver{}
+	service.replicationGuestDriverFactory = func(string) (replicationGuestDriver, error) { return driver, nil }
+
+	_ = service.selfFenceExpiredLeasesForLocalNode(t.Context(), "node-a")
+	if len(driver.fenced) != 0 {
+		t.Fatalf("a new policy's guest was fenced: %v", driver.fenced)
+	}
+
+	target := completeReplicationTarget("node-b", 1)
+	if err := db.Model(&clusterModels.ReplicationPolicyTarget{}).Where("policy_id = ?", policy.ID).
+		Updates(&target).Error; err != nil {
+		t.Fatal(err)
+	}
+	_ = service.selfFenceExpiredLeasesForLocalNode(t.Context(), "node-a")
+	if len(driver.fenced) != 1 {
+		t.Fatalf("a promotable policy without a lease wasn't fenced: %v", driver.fenced)
 	}
 }

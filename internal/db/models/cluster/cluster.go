@@ -26,23 +26,10 @@ type Cluster struct {
 	RaftIP        string `json:"raftIP"`
 	RaftPort      int    `json:"raftPort"`
 
-	JoinLeaderIP    string `json:"-"`
-	JoinNodeID      string `json:"-"`
-	JoinNodeIP      string `json:"-"`
-	JoinNodeVersion string `json:"-"`
-	JoinInventory   []byte `gorm:"type:blob" json:"-"`
-	JoinPhase       string `json:"-"`
-	JoinLastError   string `json:"-"`
-	JoinAttempts    uint   `json:"-"`
+	JoinLeaderIP string `json:"-"`
 
-	LeaveID              string `json:"-"`
-	LeavePhase           string `json:"-"`
-	LeaveLeaderIP        string `json:"-"`
-	LeavePeerAddrs       []byte `gorm:"type:blob" json:"-"`
-	LeaveRetainGuests    bool   `json:"-"`
-	LeaveInventoryDigest string `json:"-"`
-	LeaveLastError       string `json:"-"`
-	LeaveAttempts        uint   `json:"-"`
+	LeavePhase     string `json:"-"`
+	LeaveLastError string `json:"-"`
 
 	ReaddressOldIP     string `json:"-"`
 	ReaddressNewIP     string `json:"-"`
@@ -51,8 +38,7 @@ type Cluster struct {
 }
 
 func (c Cluster) HasIncompleteJoin() bool {
-	phase := strings.TrimSpace(c.JoinPhase)
-	return phase != JoinPhaseComplete && (phase != "" || strings.TrimSpace(c.JoinNodeID) != "")
+	return strings.TrimSpace(c.JoinLeaderIP) != ""
 }
 
 func publishClusterRefresh() {

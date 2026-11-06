@@ -40,6 +40,7 @@ type curInfo struct {
 	healthOK     bool
 	sylveVersion string
 	sylveCommit  string
+	protocol     int
 
 	cpu      int
 	cpuUsage float64
@@ -128,6 +129,7 @@ func currentToClusterNode(cur curInfo) clusterModels.ClusterNode {
 		Hostname:     preferredHostname(cur),
 		SylveVersion: cur.sylveVersion,
 		SylveCommit:  cur.sylveCommit,
+		Protocol:     cur.protocol,
 		API:          cur.api,
 		Status:       statusFromHealth(cur.healthOK),
 		CPU:          cur.cpu,
@@ -167,6 +169,7 @@ func currentToClusterNodeUpdates(cur curInfo) map[string]any {
 	}
 	if cur.healthOK {
 		updates["sylve_commit"] = cur.sylveCommit
+		updates["protocol"] = cur.protocol
 	}
 
 	if cur.cpu > 0 {
@@ -211,6 +214,9 @@ func hasSignificantChange(cur curInfo, ex clusterModels.ClusterNode) bool {
 		return true
 	}
 	if cur.healthOK && ex.SylveCommit != cur.sylveCommit {
+		return true
+	}
+	if cur.healthOK && ex.Protocol != cur.protocol {
 		return true
 	}
 
@@ -260,16 +266,13 @@ func hasSignificantChange(cur curInfo, ex clusterModels.ClusterNode) bool {
 	return false
 }
 
-func (s *Service) GetNodeInfo(host string, port int, clusterToken string) (infoServiceInterfaces.NodeInfo, error) {
+func (s *Service) GetNodeInfo(host string, port int) (infoServiceInterfaces.NodeInfo, error) {
 	var nodeInfo infoServiceInterfaces.NodeInfo
 
 	url := fmt.Sprintf("https://%s:%d/api/info/node", host, port)
 	body, _, err := utils.HTTPGetJSONRead(
 		url,
-		map[string]string{
-			"Accept":          "application/json",
-			"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-		},
+		map[string]string{"Accept": "application/json"},
 	)
 
 	if err != nil {
@@ -288,7 +291,7 @@ func (s *Service) GetNodeInfo(host string, port int, clusterToken string) (infoS
 	return resp.Data, nil
 }
 
-func (s *Service) collectCurrentClusterInfo(cfg raft.Configuration, clusterToken string) map[string]curInfo {
+func (s *Service) collectCurrentClusterInfo(cfg raft.Configuration) map[string]curInfo {
 	current := make(map[string]curInfo, len(cfg.Servers))
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -309,12 +312,13 @@ func (s *Service) collectCurrentClusterInfo(cfg raft.Configuration, clusterToken
 				healthOK: false,
 			}
 
-			nodeInfo, err := s.GetNodeInfo(host, ClusterEmbeddedHTTPSPort, clusterToken)
+			nodeInfo, err := s.GetNodeInfo(host, ClusterEmbeddedHTTPSPort)
 			if err == nil {
 				ci.healthOK = true
 				ci.canonHost = nodeInfo.Hostname
 				ci.sylveVersion = nodeInfo.SylveVersion
 				ci.sylveCommit = nodeInfo.SylveCommit
+				ci.protocol = nodeInfo.ClusterProtocol
 				ci.cpu = int(nodeInfo.LogicalCores)
 				ci.cpuUsage = nodeInfo.CPUUsage
 				ci.memory = nodeInfo.RAMTotal
@@ -431,27 +435,13 @@ func (s *Service) PopulateClusterNodes() error {
 		return nil
 	}
 
-	selfHostname, err := utils.GetSystemHostname()
-	if err != nil {
-		return err
-	}
-
-	serviceReadToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
-	if err != nil {
-		return err
-	}
-	internalControlToken, err := s.AuthService.CreateInternalClusterJWT(selfHostname)
-	if err != nil {
-		return err
-	}
-
 	cfgFuture := s.Raft().GetConfiguration()
 	if err := cfgFuture.Error(); err != nil {
 		return fmt.Errorf("failed_to_get_raft_configuration: %w", err)
 	}
 	cfg := cfgFuture.Configuration()
 
-	current := s.collectCurrentClusterInfo(cfg, serviceReadToken)
+	current := s.collectCurrentClusterInfo(cfg)
 
 	changed, err := s.persistCurrentClusterNodes(current)
 	if err != nil {
@@ -478,6 +468,7 @@ func (s *Service) PopulateClusterNodes() error {
 					Hostname:     node.Hostname,
 					SylveVersion: node.SylveVersion,
 					SylveCommit:  node.SylveCommit,
+					Protocol:     node.Protocol,
 					API:          node.API,
 					Status:       node.Status,
 					CPU:          node.CPU,
@@ -503,6 +494,7 @@ func (s *Service) PopulateClusterNodes() error {
 				Hostname:     preferredHostname(cur),
 				SylveVersion: cur.sylveVersion,
 				SylveCommit:  cur.sylveCommit,
+				Protocol:     cur.protocol,
 				API:          cur.api,
 				Status:       statusFromHealth(cur.healthOK),
 				CPU:          cur.cpu,
@@ -516,7 +508,7 @@ func (s *Service) PopulateClusterNodes() error {
 		}
 	}
 
-	s.fanOutHealthSync(syncPayload, internalControlToken, cfg, "PopulateClusterNodes")
+	s.fanOutHealthSync(syncPayload, cfg)
 
 	return nil
 }
@@ -542,29 +534,29 @@ func (s *Service) classifyPeerStatuses(results map[string]string) ([]string, []s
 	return onlinePeerIDs, offlinePeerIDs
 }
 
-func (s *Service) probePeerStatus(raftAddr string, headers map[string]string) string {
+func (s *Service) probePeerStatus(raftAddr string) string {
 	host := raftAddressHost(raftAddr)
 	url := fmt.Sprintf("https://%s:%d/api/health/http", host, ClusterEmbeddedHTTPSPort)
-	if _, err := utils.HTTPGetStatus(url, headers); err == nil {
+	if _, err := utils.HTTPGetStatus(url, nil); err == nil {
 		return nodeStatusOnline
 	}
 	return nodeStatusOffline
 }
 
-func (s *Service) probePeerStatusWithHysteresis(peerKey, raftAddr string, headers map[string]string) string {
-	firstObserved := s.probePeerStatus(raftAddr, headers)
+func (s *Service) probePeerStatusWithHysteresis(peerKey, raftAddr string) string {
+	firstObserved := s.probePeerStatus(raftAddr)
 	status := s.applyProbeHysteresis(peerKey, firstObserved)
 
 	// Confirm a first failure immediately so offline can converge within one 5s cycle.
 	if firstObserved == nodeStatusOffline && status != nodeStatusOffline {
-		secondObserved := s.probePeerStatus(raftAddr, headers)
+		secondObserved := s.probePeerStatus(raftAddr)
 		status = s.applyProbeHysteresis(peerKey, secondObserved)
 	}
 
 	return status
 }
 
-func (s *Service) probePeerStatuses(peerIDs []string, peerAddrs map[string]string, headers map[string]string) map[string]string {
+func (s *Service) probePeerStatuses(peerIDs []string, peerAddrs map[string]string) map[string]string {
 	results := make(map[string]string, len(peerIDs))
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -575,7 +567,7 @@ func (s *Service) probePeerStatuses(peerIDs []string, peerAddrs map[string]strin
 		go func(nodeID, raftAddr string) {
 			defer wg.Done()
 
-			status := s.probePeerStatusWithHysteresis(nodeID, raftAddr, headers)
+			status := s.probePeerStatusWithHysteresis(nodeID, raftAddr)
 
 			mu.Lock()
 			results[nodeID] = status
@@ -629,21 +621,7 @@ func (s *Service) applyLeaderPeerStatuses(onlinePeerIDs, offlinePeerIDs []string
 }
 
 func (s *Service) fastStatusCheckLeader(peerIDs []string, peerAddrs map[string]string, now time.Time) {
-	selfHostname, err := utils.GetSystemHostname()
-	if err != nil {
-		logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to get system hostname")
-		return
-	}
-
-	clusterToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
-	if err != nil {
-		logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to get cluster token")
-		return
-	}
-
-	results := s.probePeerStatuses(peerIDs, peerAddrs, map[string]string{
-		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-	})
+	results := s.probePeerStatuses(peerIDs, peerAddrs)
 	onlinePeerIDs, offlinePeerIDs := s.classifyPeerStatuses(results)
 
 	changed, onlineRows, offlineRows, err := s.applyLeaderPeerStatuses(onlinePeerIDs, offlinePeerIDs, now)
@@ -724,16 +702,6 @@ func (s *Service) syncClusterHealthToFollowers() {
 		return
 	}
 
-	selfHostname, err := utils.GetSystemHostname()
-	if err != nil {
-		return
-	}
-
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(selfHostname)
-	if err != nil {
-		return
-	}
-
 	var nodes []clusterModels.ClusterNode
 	if err := s.DB.Find(&nodes).Error; err != nil || len(nodes) == 0 {
 		return
@@ -746,6 +714,7 @@ func (s *Service) syncClusterHealthToFollowers() {
 			Hostname:     node.Hostname,
 			SylveVersion: node.SylveVersion,
 			SylveCommit:  node.SylveCommit,
+			Protocol:     node.Protocol,
 			API:          node.API,
 			Status:       node.Status,
 			CPU:          node.CPU,
@@ -764,34 +733,26 @@ func (s *Service) syncClusterHealthToFollowers() {
 	}
 	cfg := cfgFuture.Configuration()
 
-	s.fanOutHealthSync(syncPayload, clusterToken, cfg, "syncClusterHealthToFollowers")
+	s.fanOutHealthSync(syncPayload, cfg)
 }
 
-func (s *Service) fanOutHealthSync(payload []clusterServiceInterfaces.NodeHealthSync, clusterToken string, cfg raft.Configuration, callerName string) {
-	payloadBytes, _ := json.Marshal(payload)
-	headers := map[string]string{
-		"Content-Type":    "application/json",
-		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
+func (s *Service) fanOutHealthSync(payload []clusterServiceInterfaces.NodeHealthSync, cfg raft.Configuration) {
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return
 	}
-
 	for _, server := range cfg.Servers {
-		if server.Address == s.Raft().Leader() {
+		if string(server.ID) == s.LocalNodeID() {
 			continue
 		}
-
-		go func(addr string) {
-			host := raftAddressHost(addr)
-			url := fmt.Sprintf("https://%s:%d/api/intra-cluster/sync-health", host, ClusterEmbeddedHTTPSPort)
-			_, statusCode, err := utils.HTTPPostJSONWithTimeout(url, payloadBytes, headers, 5*time.Second)
-			if err != nil {
-				logger.L.Debug().
-					Err(err).
-					Str("peer_addr", addr).
-					Str("url", url).
-					Int("status_code", statusCode).
-					Msgf("%s: failed to sync health payload to peer", callerName)
+		go func(server raft.Server) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			host := raftAddressHost(string(server.Address))
+			if _, err := callNodeAt[struct{}](ctx, s, host, string(server.ID), "sync-health", payloadBytes, 0); err != nil {
+				logger.L.Debug().Err(err).Str("node_id", string(server.ID)).Msg("cluster_health_sync_failed")
 			}
-		}(string(server.Address))
+		}(server)
 	}
 }
 
@@ -803,8 +764,8 @@ func (s *Service) StartClusterMonitors(ctx context.Context) {
 					logger.L.Error().Err(err).Msg("Failed to populate cluster nodes")
 				}
 			}
-			if err := s.ReconcileOrphanedClusterSSHIdentities(ctx); err != nil && !errors.Is(err, ErrNodeLeaveFenced) {
-				logger.L.Warn().Err(err).Msg("cluster_ssh_identity_reconciliation_failed")
+			if err := s.forgetDepartedMembers(ctx); err != nil && !errors.Is(err, ErrNodeLeaveFenced) {
+				logger.L.Warn().Err(err).Msg("cluster_departed_member_cleanup_failed")
 			}
 		}
 

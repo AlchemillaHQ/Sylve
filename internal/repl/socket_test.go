@@ -24,6 +24,7 @@ import (
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/network/reconcile"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
+	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 type fakeBootstrapApplier struct {
@@ -322,7 +323,7 @@ func TestProcessSocketRequestRejectsUnknownOperation(t *testing.T) {
 }
 
 func TestProcessSocketRequestFenceIsExactAndFailsClosed(t *testing.T) {
-	service := clusterService.NewClusterService(nil, nil, nil).(*clusterService.Service)
+	service := clusterService.NewClusterService(testutil.NewSQLiteTestDB(t), nil, nil).(*clusterService.Service)
 	ctx := &Context{Cluster: service}
 
 	readResponse := processSocketRequest(ctx, socketRequest{Operation: consoleprotocol.OperationStatus})
