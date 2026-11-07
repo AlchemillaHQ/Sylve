@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/config"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -116,6 +117,59 @@ func TestIntegrationRestoreVMReleasesSwitchLockBeforeRuntimeRebuild(t *testing.T
 	}
 	if calls != 2 {
 		t.Fatalf("expected RemoveLvVm and CreateLvVm probes, got %d", calls)
+	}
+}
+
+// restoreVMArtifactsProbe copies template UEFI vars over the dataset's copy,
+// like the real domain rebuild does.
+type restoreVMArtifactsProbe struct {
+	libvirtServiceInterfaces.LibvirtServiceInterface
+	datasetVars string
+}
+
+func (p *restoreVMArtifactsProbe) RemoveLvVm(uint) error { return nil }
+
+func (p *restoreVMArtifactsProbe) CreateLvVm(int, context.Context) error {
+	return os.WriteFile(p.datasetVars, []byte("template vars"), 0644)
+}
+
+func (p *restoreVMArtifactsProbe) WriteVMJson(uint) error { return nil }
+
+func TestIntegrationRestoreVMKeepsGuestUEFIVars(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	svc, _ := newTestZeltaServiceWithDB(t,
+		&vmModels.VM{}, &vmModels.VMStorageDataset{}, &vmModels.VMSnapshot{},
+		&vmModels.Storage{}, &vmModels.Network{}, &vmModels.VMCPUPinning{},
+	)
+	svc.GZFS = client
+	dataset := pool + "/sylve/virtual-machines/734"
+	zfstest.EnsureDataset(t, client, dataset)
+	metaDir := filepath.Join(zfsGetProperty(t, dataset, "mountpoint"), ".sylve")
+	if err := os.MkdirAll(metaDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := json.Marshal(vmModels.VM{RID: 734, Name: "vars-vm"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string][]byte{"vm.json": metadata, "734_vars.fd": []byte("guest vars")} {
+		if err := os.WriteFile(filepath.Join(metaDir, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	svc.VM = &restoreVMArtifactsProbe{datasetVars: filepath.Join(metaDir, "734_vars.fd")}
+
+	if err := svc.reconcileRestoredVMFromDataset(t.Context(), dataset, "", false, false, false, true); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	vmsPath, err := config.GetVMsPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(filepath.Join(vmsPath, "734", "734_vars.fd")); err != nil || string(got) != "guest vars" {
+		t.Fatalf("restored vars = %q, err %v; want the guest's own", got, err)
 	}
 }
 

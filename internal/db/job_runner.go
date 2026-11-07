@@ -41,6 +41,7 @@ type jobRunner struct {
 	name          string
 	pollInterval  time.Duration
 	queue         *goqite.Queue
+	wake          chan struct{}
 }
 
 type jobFunc func(ctx context.Context, m []byte) error
@@ -85,6 +86,7 @@ func newJobRunner(opts jobRunnerOpts) *jobRunner {
 		name:          opts.Name,
 		pollInterval:  opts.PollInterval,
 		queue:         opts.Queue,
+		wake:          make(chan struct{}, 1),
 	}
 }
 
@@ -127,14 +129,14 @@ func (r *jobRunner) Start(ctx context.Context) {
 
 func (r *jobRunner) receiveAndRun(ctx context.Context, wg *sync.WaitGroup) {
 	r.jobCountLock.RLock()
-	if r.jobCount == r.jobCountLimit {
-		r.jobCountLock.RUnlock()
-		time.Sleep(r.pollInterval)
+	full := r.jobCount == r.jobCountLimit
+	r.jobCountLock.RUnlock()
+	if full {
+		r.wait(ctx)
 		return
 	}
-	r.jobCountLock.RUnlock()
 
-	m, err := r.queue.ReceiveAndWait(ctx, r.pollInterval)
+	m, err := r.queue.Receive(ctx)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			return
@@ -144,6 +146,7 @@ func (r *jobRunner) receiveAndRun(ctx context.Context, wg *sync.WaitGroup) {
 		return
 	}
 	if m == nil {
+		r.wait(ctx)
 		return
 	}
 	if ctx.Err() != nil {
@@ -188,6 +191,7 @@ func (r *jobRunner) receiveAndRun(ctx context.Context, wg *sync.WaitGroup) {
 			r.jobCountLock.Lock()
 			r.jobCount--
 			r.jobCountLock.Unlock()
+			r.notify()
 		}()
 		defer func() {
 			if rec := recover(); rec != nil {
@@ -247,6 +251,26 @@ func (r *jobRunner) receiveAndRun(ctx context.Context, wg *sync.WaitGroup) {
 			r.log.Info("Error deleting job from queue, it will be retried", "name", qm.Name, "id", m.ID, "error", err)
 		}
 	}()
+}
+
+// wait returns after the poll interval, or as soon as a job is enqueued or
+// finishes.
+func (r *jobRunner) wait(ctx context.Context) {
+	timer := time.NewTimer(r.pollInterval)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+	case <-r.wake:
+	case <-timer.C:
+	}
+}
+
+// notify wakes a waiting runner without blocking.
+func (r *jobRunner) notify() {
+	select {
+	case r.wake <- struct{}{}:
+	default:
+	}
 }
 
 func (r *jobRunner) deleteMessage(id goqite.ID) error {

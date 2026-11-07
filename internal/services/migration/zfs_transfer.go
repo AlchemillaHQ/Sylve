@@ -10,14 +10,12 @@ package migration
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,7 +23,6 @@ import (
 	"time"
 
 	"github.com/alchemillahq/gzfs"
-	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
@@ -36,144 +33,8 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/storage/mount"
 	storagezfs "github.com/alchemillahq/sylve/pkg/storage/zfs"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	goLibvirt "github.com/digitalocean/go-libvirt"
 )
-
-func buildClusterSSHArgs(identity *clusterModels.ClusterSSHIdentity, privateKeyPath string, fresh bool) ([]string, error) {
-	if identity == nil || strings.TrimSpace(identity.NodeUUID) == "" {
-		return nil, fmt.Errorf("cluster_ssh_identity_invalid")
-	}
-	canonicalKey, err := remoteexec.CanonicalSSHHostKey(identity.PublicKey)
-	if err != nil {
-		return nil, fmt.Errorf("cluster_ssh_identity_invalid: node=%s: Check that node's published SSH identity: %w", identity.NodeUUID, err)
-	}
-	destination, err := clusterSSHDestination(identity)
-	if err != nil {
-		return nil, err
-	}
-	port := identity.SSHPort
-	if port == 0 {
-		port = 22
-	}
-	trust := remoteexec.SSHHostTrust{Scope: "cluster", Target: identity.NodeUUID, Endpoint: destination.String(), Port: port, PublicKey: canonicalKey}
-	dataDir, err := config.GetDataPath()
-	if err != nil {
-		return nil, fmt.Errorf("ssh_host_key_file_unavailable: Check the Sylve data directory and permissions: %w", err)
-	}
-	path, err := remoteexec.PrepareSSHHostKey(filepath.Join(dataDir, "ssh", "host-keys"), trust)
-	if err != nil {
-		return nil, err
-	}
-	args, err := remoteexec.SSHHostKeyOptions(trust, path, privateKeyPath, fresh, false)
-	if err != nil {
-		return nil, err
-	}
-	args = append(args, "-n",
-		"-o", "ConnectTimeout=10",
-		"-o", "ConnectionAttempts=1",
-	)
-
-	if identity.SSHPort != 0 && identity.SSHPort != 22 {
-		args = append(args, "-p", fmt.Sprintf("%d", identity.SSHPort))
-	}
-
-	if privateKeyPath != "" {
-		args = append(args, "-i", privateKeyPath)
-	}
-
-	return args, nil
-}
-
-func clusterSSHDestination(identity *clusterModels.ClusterSSHIdentity) (remoteexec.SSHDestination, error) {
-	if identity == nil {
-		return remoteexec.SSHDestination{}, fmt.Errorf("cluster_ssh_identity_required")
-	}
-	if identity.SSHPort < 0 || identity.SSHPort > 65535 {
-		return remoteexec.SSHDestination{}, fmt.Errorf("invalid_cluster_ssh_port")
-	}
-	destination := strings.TrimSpace(identity.SSHHost)
-	if user := strings.TrimSpace(identity.SSHUser); user != "" {
-		destination = user + "@" + destination
-	}
-	parsed, err := remoteexec.ParseSSHDestination(destination)
-	if err != nil {
-		return remoteexec.SSHDestination{}, fmt.Errorf("invalid_cluster_ssh_destination: %w", err)
-	}
-	return parsed, nil
-}
-
-func clusterRemoteCommandArgs(
-	identity *clusterModels.ClusterSSHIdentity,
-	privateKeyPath string,
-	readsStdin bool,
-	commandKind string,
-	dataset string,
-	argv ...string,
-) ([]string, error) {
-	destination, err := clusterSSHDestination(identity)
-	if err != nil {
-		return nil, err
-	}
-	if dataset != "" {
-		parsedDataset, err := remoteexec.ParseZFSDataset(dataset)
-		if err != nil {
-			return nil, fmt.Errorf("invalid_remote_dataset: %w", err)
-		}
-		dataset = parsedDataset.String()
-	}
-	command, err := remoteexec.NewCommand(argv...)
-	if err != nil {
-		return nil, err
-	}
-	base, err := buildClusterSSHArgs(identity, privateKeyPath, commandKind == "zfs.version")
-	if err != nil {
-		return nil, err
-	}
-	args, err := command.SSHArgs(base, destination, readsStdin)
-	if err != nil {
-		return nil, err
-	}
-	port := identity.SSHPort
-	if port == 0 {
-		port = 22
-	}
-	event := logger.L.Debug().
-		Str("command_kind", commandKind).
-		Str("target_node_id", strings.TrimSpace(identity.NodeUUID)).
-		Str("ssh_host", destination.String()).
-		Int("ssh_port", port)
-	if dataset != "" {
-		event.Str("dataset", dataset)
-	}
-	event.Msg("remote_command_execute")
-	return args, nil
-}
-
-func runClusterRemoteCommand(
-	ctx context.Context,
-	identity *clusterModels.ClusterSSHIdentity,
-	privateKeyPath string,
-	commandKind string,
-	dataset string,
-	argv ...string,
-) (string, error) {
-	args, err := clusterRemoteCommandArgs(identity, privateKeyPath, false, commandKind, dataset, argv...)
-	if err != nil {
-		return "", err
-	}
-	stdout, stderr, err := utils.RunCommandWithContextStreams(ctx, "ssh", args...)
-	if err != nil {
-		return stdout, fmt.Errorf("%s: %w", remoteexec.SSHDiagnostic(stderr), remoteexec.SSHHostKeyError("cluster", identity.NodeUUID, stderr, err))
-	}
-	return stdout, nil
-}
-
-// countingWriter wraps an io.Writer and atomically tracks bytes written.
-type countingWriter struct {
-	w         io.Writer
-	bytesSent *uint64
-}
 
 type targetMigrationImportRequest struct {
 	GuestID            uint              `json:"guestId"`
@@ -193,9 +54,15 @@ type targetMigrationImportReceipt struct {
 	TargetPools        map[string]string `json:"targetPools,omitempty"`
 }
 
-func (cw *countingWriter) Write(p []byte) (int, error) {
-	n, err := cw.w.Write(p)
-	atomic.AddUint64(cw.bytesSent, uint64(n))
+// countingReader counts the bytes read through it, for transfer progress.
+type countingReader struct {
+	r io.Reader
+	n *uint64
+}
+
+func (cr *countingReader) Read(p []byte) (int, error) {
+	n, err := cr.r.Read(p)
+	atomic.AddUint64(cr.n, uint64(n))
 	return n, err
 }
 
@@ -216,20 +83,6 @@ func (s *Service) phasePreflight(ctx context.Context, mp *migrationPayload, task
 	}
 	if err := s.requireTargetGuestRecordAbsent(ctx, targetNode, task.GuestID); err != nil {
 		return err
-	}
-
-	identity, err := s.getNodeSSHIdentity(targetNode.NodeUUID)
-	if err != nil {
-		return fmt.Errorf("target_ssh_identity_unavailable: %w", err)
-	}
-
-	privateKeyPath, err := s.Cluster.ClusterSSHPrivateKeyPath()
-	if err != nil {
-		return fmt.Errorf("cluster_ssh_key_unavailable: %w", err)
-	}
-
-	if _, err := runClusterRemoteCommand(ctx, identity, privateKeyPath, "zfs.version", "", "zfs", "version"); err != nil {
-		return fmt.Errorf("%w: %v", ErrSSHUnreachable, err)
 	}
 
 	if task.GuestType == taskModels.GuestTypeVM {
@@ -263,37 +116,82 @@ func (s *Service) phasePreflight(ctx context.Context, mp *migrationPayload, task
 	return nil
 }
 
+const (
+	// Catch-up passes stop once one sends at most this much, which the final
+	// sync sends in well under a second.
+	migrationCatchUpMinBytes  = 64 << 20
+	migrationCatchUpMaxPasses = 3
+)
+
 func (s *Service) phaseInitialReplication(ctx context.Context, mp *migrationPayload, task taskModels.GuestLifecycleTask) error {
-	return s.replicateGuestDatasets(ctx, mp, task, false)
+	sent, err := s.replicateGuestDatasets(ctx, mp, task, "initial")
+	if err != nil {
+		return err
+	}
+	// A running guest keeps writing during the full send. Catch-up passes
+	// send those writes while it still runs, so the final sync, which runs
+	// with the guest stopped, only sends what the last pass missed.
+	active, err := s.sourceGuestActive(task)
+	if err != nil || !active {
+		return err
+	}
+	return catchUpMigration(sent, func() (uint64, error) {
+		if err := s.checkCancelled(task.ID); err != nil {
+			return 0, err
+		}
+		return s.replicateGuestDatasets(ctx, mp, task, "catchup")
+	})
+}
+
+// catchUpMigration runs send while the last pass sent more than
+// migrationCatchUpMinBytes, up to migrationCatchUpMaxPasses times. It stops
+// early when a pass sends no less than the one before: the guest writes as
+// fast as the link sends, so another pass wouldn't shrink the final sync.
+func catchUpMigration(sent uint64, send func() (uint64, error)) error {
+	for pass := 0; pass < migrationCatchUpMaxPasses && sent > migrationCatchUpMinBytes; pass++ {
+		last := sent
+		var err error
+		if sent, err = send(); err != nil {
+			return err
+		}
+		if sent >= last {
+			return nil
+		}
+	}
+	return nil
 }
 
 func (s *Service) phaseFinalSync(ctx context.Context, mp *migrationPayload, task taskModels.GuestLifecycleTask) error {
-	return s.replicateGuestDatasets(ctx, mp, task, true)
+	_, err := s.replicateGuestDatasets(ctx, mp, task, "final")
+	return err
 }
 
-func (s *Service) replicateGuestDatasets(ctx context.Context, mp *migrationPayload, task taskModels.GuestLifecycleTask, incremental bool) error {
+// replicateGuestDatasets sends a snapshot of each guest root to the target and
+// returns the bytes sent. The "initial" pass sends everything; "catchup" and
+// "final" send what changed since the last snapshot both sides have.
+func (s *Service) replicateGuestDatasets(ctx context.Context, mp *migrationPayload, task taskModels.GuestLifecycleTask, pass string) (uint64, error) {
 	if mp == nil {
-		return fmt.Errorf("migration_payload_required")
+		return 0, fmt.Errorf("migration_payload_required")
 	}
 	resolved, err := s.resolveGuestDatasets(ctx, task.GuestType, task.GuestID)
 	if err != nil {
-		return fmt.Errorf("resolve_datasets_failed: %w", err)
+		return 0, fmt.Errorf("resolve_datasets_failed: %w", err)
 	}
 	resolved = filterParentDatasets(normalizedMigrationDatasetRootManifest(resolved))
 	datasets := resolved
 	if len(mp.SourceDatasetRoots) > 0 {
 		datasets = filterParentDatasets(normalizedMigrationDatasetRootManifest(mp.SourceDatasetRoots))
 		if !sameMigrationDatasetRootManifest(datasets, resolved) {
-			return fmt.Errorf("migration_source_dataset_roots_changed")
+			return 0, fmt.Errorf("migration_source_dataset_roots_changed")
 		}
 	}
 	if len(datasets) == 0 {
-		return fmt.Errorf("no_datasets_found_for_guest")
+		return 0, fmt.Errorf("no_datasets_found_for_guest")
 	}
 
 	for _, dataset := range datasets {
 		if !isCanonicalMigrationGuestDataset(dataset, task.GuestType, task.GuestID) {
-			return fmt.Errorf("migration_source_dataset_root_invalid: %s", dataset)
+			return 0, fmt.Errorf("migration_source_dataset_root_invalid: %s", dataset)
 		}
 	}
 
@@ -301,143 +199,113 @@ func (s *Service) replicateGuestDatasets(ctx context.Context, mp *migrationPaylo
 	switch task.GuestType {
 	case taskModels.GuestTypeVM:
 		if s.Libvirt == nil {
-			return fmt.Errorf("vm_runtime_service_unavailable")
+			return 0, fmt.Errorf("vm_runtime_service_unavailable")
 		}
 		metadataWriter = s.Libvirt.WriteVMJson
 	case taskModels.GuestTypeJail:
 		if s.Jail == nil {
-			return fmt.Errorf("jail_runtime_service_unavailable")
+			return 0, fmt.Errorf("jail_runtime_service_unavailable")
 		}
 		metadataWriter = s.Jail.WriteJailJSON
 	}
 	if err := flushMigrationGuestMetadata(task.GuestType, task.GuestID, metadataWriter); err != nil {
-		return err
+		return 0, err
 	}
 
-	var targetNode clusterModels.ClusterNode
-	if err := s.DB.Where("node_uuid = ?", mp.TargetNodeUUID).First(&targetNode).Error; err != nil {
-		return fmt.Errorf("target_node_not_found: %w", err)
-	}
-
-	identity, err := s.getNodeSSHIdentity(targetNode.NodeUUID)
-	if err != nil {
-		return fmt.Errorf("target_ssh_identity_unavailable: %w", err)
-	}
-
-	privateKeyPath, err := s.Cluster.ClusterSSHPrivateKeyPath()
-	if err != nil {
-		return fmt.Errorf("cluster_ssh_key_unavailable: %w", err)
-	}
-
-	snapSuffix := fmt.Sprintf("initial-%d", time.Now().Unix())
-	if incremental {
-		snapSuffix = fmt.Sprintf("final-%d", time.Now().Unix())
-	}
+	incremental := pass != "initial"
+	// Nanoseconds keep the names in order when passes finish within a second.
+	snapName := fmt.Sprintf("%s-%s-%d", migrationSnapPrefix, pass, time.Now().UnixNano())
 
 	if !incremental {
 		for _, dataset := range datasets {
 			if err := s.destroyLocalMigrationSnapshots(ctx, dataset); err != nil {
-				return fmt.Errorf("destroy_previous_migration_snapshots_%s_failed: %w", dataset, err)
+				return 0, fmt.Errorf("destroy_previous_migration_snapshots_%s_failed: %w", dataset, err)
 			}
 		}
 	}
 
-	for _, target := range TargetDatasetRoots(datasets, mp.TargetPools) {
-		dataset := target.Source
-		snapName := fmt.Sprintf("%s-%s", migrationSnapPrefix, snapSuffix)
+	message, progressLabel := "replicating_dataset", mp.Phase
+	if pass == "catchup" {
+		message, progressLabel = "catching_up", "catching_up"
+	}
 
-		mp.PhaseMessage = fmt.Sprintf("replicating_dataset: %s", dataset)
+	var total uint64
+	for _, root := range TargetDatasetRoots(datasets, mp.TargetPools) {
+		dataset := root.Source
+		target := TargetDatasetRequest{
+			GuestType: task.GuestType, GuestID: task.GuestID, OperationToken: mp.OperationToken, Dataset: root.Receive,
+		}
+
+		mp.PhaseMessage = fmt.Sprintf("%s: %s", message, dataset)
 		s.updateTaskPhase(task.ID, *mp)
 
-		currentPhase := mp.Phase
 		taskID := task.ID
 		progressFn := func(ds string, total, sent uint64) {
-			s.writeTransferProgress(taskID, ds, currentPhase, total, sent)
+			s.writeTransferProgress(taskID, ds, progressLabel, total, sent)
 		}
 
-		if err := s.sendDatasetToNode(ctx, dataset, target.Receive, snapName, identity, privateKeyPath, incremental, progressFn, taskID); err != nil {
+		started := time.Now()
+		sent, err := s.sendDatasetToNode(ctx, mp.TargetNodeUUID, dataset, target, snapName, incremental, progressFn, taskID)
+		if err != nil {
 			if isExplicitMigrationCancellation(err) {
-				return err
+				return 0, err
 			}
-			return fmt.Errorf("replicate_dataset_%s_failed: %w", dataset, err)
+			return 0, fmt.Errorf("replicate_dataset_%s_failed: %w", dataset, err)
 		}
+		logger.L.Info().Uint("task_id", taskID).Str("dataset", dataset).Str("pass", pass).
+			Uint64("bytes", sent).Dur("took", time.Since(started)).Msg("migration_dataset_sent")
+		total += sent
 	}
 
-	return nil
+	return total, nil
 }
 
+// sendDatasetToNode streams a snapshot of dataset to the target node over the
+// intra-cluster mTLS channel, where it is received into target.Dataset.
 func (s *Service) sendDatasetToNode(
 	ctx context.Context,
+	nodeID string,
 	dataset string,
-	targetDataset string,
+	target TargetDatasetRequest,
 	snapName string,
-	identity *clusterModels.ClusterSSHIdentity,
-	privateKeyPath string,
 	incremental bool,
 	progressFn func(dataset string, totalBytes, sentBytes uint64),
 	taskID uint,
-) error {
+) (uint64, error) {
 	parsedDataset, err := remoteexec.ParseZFSDataset(dataset)
 	if err != nil {
-		return fmt.Errorf("migration_dataset_invalid: %w", err)
+		return 0, fmt.Errorf("migration_dataset_invalid: %w", err)
 	}
-	parsedTarget, err := remoteexec.ParseZFSDataset(targetDataset)
-	if err != nil {
-		return fmt.Errorf("migration_target_dataset_invalid: %w", err)
+	if !target.Valid() {
+		return 0, fmt.Errorf("migration_target_dataset_invalid: %s", target.Dataset)
 	}
 	parsedSnapshot, err := remoteexec.ParseZFSSnapshotName(snapName)
 	if err != nil || !isMigrationOwnedSnapshot(parsedSnapshot.String()) {
-		return fmt.Errorf("migration_snapshot_invalid")
+		return 0, fmt.Errorf("migration_snapshot_invalid")
 	}
 	dataset = parsedDataset.String()
-	targetDataset = parsedTarget.String()
 	snapName = parsedSnapshot.String()
 	commonSnap := ""
 	if incremental {
 		prevSnaps, snapErr := s.listMigrationSnapshots(ctx, dataset)
 		if snapErr != nil {
-			return fmt.Errorf("list_migration_snapshots_failed: %w", snapErr)
+			return 0, fmt.Errorf("list_migration_snapshots_failed: %w", snapErr)
 		}
-		remoteSnaps, remoteErr := s.listRemoteMigrationSnapshots(ctx, targetDataset, identity, privateKeyPath)
-		if remoteErr != nil {
-			return fmt.Errorf("list_remote_migration_snapshots_failed: %w", remoteErr)
-		}
-		commonSnap = latestCommonMigrationSnapshot(prevSnaps, remoteSnaps)
-		if commonSnap == "" {
-			return fmt.Errorf("migration_incremental_common_snapshot_missing: %s", dataset)
-		}
-	}
-
-	if !incremental {
-		output, err := runClusterRemoteCommand(
-			ctx, identity, privateKeyPath, "zfs.destroy", targetDataset,
-			"zfs", "destroy", "-rf", targetDataset,
-		)
+		info, err := s.targetDataset(ctx, nodeID, target)
 		if err != nil {
-			if isDatasetNotFound(err) {
-				logger.L.Debug().
-					Str("dataset", targetDataset).
-					Str("host", identity.SSHHost).
-					Msg("migration_target_dataset_already_absent")
-
-			} else {
-				return fmt.Errorf("target_dataset_destroy_failed_on_%s: %s: %w",
-					identity.SSHHost, strings.TrimSpace(output), err)
-			}
+			return 0, fmt.Errorf("list_target_migration_snapshots_failed: %w", err)
 		}
-
-		if verifyOut, verifyErr := runClusterRemoteCommand(
-			ctx, identity, privateKeyPath, "zfs.list", targetDataset,
-			"zfs", "list", "-H", targetDataset,
-		); verifyErr == nil {
-			return fmt.Errorf("target_dataset_still_exists_on_%s_after_destroy: %s",
-				identity.SSHHost, strings.TrimSpace(verifyOut))
+		commonSnap = latestCommonMigrationSnapshot(prevSnaps, info.MigrationSnapshots)
+		if commonSnap == "" {
+			return 0, fmt.Errorf("migration_incremental_common_snapshot_missing: %s", dataset)
 		}
+	} else if err := s.writeTargetDataset(ctx, nodeID, "migration-target-prepare", target); err != nil {
+		return 0, fmt.Errorf("target_dataset_prepare_failed: %w", err)
 	}
 
 	fullSnap := dataset + "@" + snapName
 	if _, err := s.GZFS.ZFS.Snapshot(ctx, dataset, snapName, true); err != nil {
-		return fmt.Errorf("snapshot_failed: %w", err)
+		return 0, fmt.Errorf("snapshot_failed: %w", err)
 	}
 
 	sendArgs := []string{"send", "-P", "-R", "-L", "-c", "-e"}
@@ -446,30 +314,18 @@ func (s *Service) sendDatasetToNode(
 	}
 	sendArgs = append(sendArgs, fullSnap)
 
-	recvArgs, err := clusterRemoteCommandArgs(
-		identity, privateKeyPath, true, "zfs.recv", targetDataset,
-		"zfs", "recv", "-u", "-x", "mountpoint", "-o", "canmount=noauto", "-F", targetDataset,
-	)
-	if err != nil {
-		return fmt.Errorf("migration_receive_command_invalid: %w", err)
-	}
-
 	sendCmd := exec.CommandContext(ctx, "zfs", sendArgs...)
-	recvCmd := exec.CommandContext(ctx, "ssh", recvArgs...)
-
-	pr, pw := io.Pipe()
-
-	// countingWriter tracks bytes flowing through the pipe for real progress.
+	stdout, err := sendCmd.StdoutPipe()
+	if err != nil {
+		return 0, fmt.Errorf("zfs_send_start_failed: %w", err)
+	}
 	var bytesSent uint64
-	cw := &countingWriter{w: pw, bytesSent: &bytesSent}
-	sendCmd.Stdout = cw
-	recvCmd.Stdin = pr
 
-	// Read zfs send -P first stderr line to capture the estimated total size.
+	// zfs send -P prints its estimate on stderr before the stream starts.
 	sendStderrPr, sendStderrPw := io.Pipe()
 	sendCmd.Stderr = sendStderrPw
 	var sendStderrLines []string
-	var fullSendTotal uint64
+	var sendTotal uint64
 	stderrDone := make(chan struct{})
 	go func() {
 		defer close(stderrDone)
@@ -477,14 +333,8 @@ func (s *Service) sendDatasetToNode(
 		for scanner.Scan() {
 			line := scanner.Text()
 			sendStderrLines = append(sendStderrLines, line)
-			// Capture estimated total from first progress line only.
-			if atomic.LoadUint64(&fullSendTotal) == 0 {
-				fields := strings.Fields(line)
-				if len(fields) >= 3 {
-					if v, err := strconv.ParseUint(fields[2], 10, 64); err == nil && v > 0 {
-						atomic.StoreUint64(&fullSendTotal, v)
-					}
-				}
+			if total, ok := parseSendSizeLine(line); ok {
+				atomic.StoreUint64(&sendTotal, total)
 			}
 		}
 	}()
@@ -501,7 +351,7 @@ func (s *Service) sendDatasetToNode(
 				return
 			case <-stderrDone:
 				// Send final progress with total bytes from pipe.
-				total := atomic.LoadUint64(&fullSendTotal)
+				total := atomic.LoadUint64(&sendTotal)
 				sent := atomic.LoadUint64(&bytesSent)
 				if total == 0 {
 					total = sent
@@ -512,7 +362,7 @@ func (s *Service) sendDatasetToNode(
 				return
 			case <-ticker.C:
 				if progressFn != nil {
-					total := atomic.LoadUint64(&fullSendTotal)
+					total := atomic.LoadUint64(&sendTotal)
 					sent := atomic.LoadUint64(&bytesSent)
 					if total > 0 && sent > 0 {
 						if sent > total {
@@ -525,26 +375,16 @@ func (s *Service) sendDatasetToNode(
 		}
 	}()
 
-	var recvStderr bytes.Buffer
-	recvCmd.Stderr = &recvStderr
-
 	if err := sendCmd.Start(); err != nil {
-		pw.Close()
-		pr.Close()
 		sendStderrPw.Close()
-		return fmt.Errorf("zfs_send_start_failed: %w", err)
-	}
-	if err := recvCmd.Start(); err != nil {
-		pw.Close()
-		pr.Close()
-		sendStderrPw.Close()
-		sendCmd.Wait()
-		return fmt.Errorf("ssh_recv_start_failed: %w", err)
+		return 0, fmt.Errorf("zfs_send_start_failed: %w", err)
 	}
 
-	// Both commands must be started before the watcher can read or kill their
-	// processes. Keep it alive until both commands have exited so cancellation
-	// can still interrupt a receiver that is draining after zfs send completes.
+	// Cancelling the stream ends the request, which stops zfs recv on the
+	// target. The watcher stays alive until the stream has finished so it can
+	// still interrupt a receiver that is draining after zfs send completes.
+	streamCtx, cancelStream := context.WithCancel(ctx)
+	defer cancelStream()
 	transferDone := make(chan struct{})
 	cancelDone := make(chan struct{})
 	var cancelled atomic.Bool
@@ -573,56 +413,62 @@ func (s *Service) sendDatasetToNode(
 					logger.L.Warn().Err(pollErr).Uint("task_id", taskID).Str("dataset", dataset).
 						Msg("migration_cancellation_poll_failed")
 					sendCmd.Process.Kill()
-					recvCmd.Process.Kill()
+					cancelStream()
 					return
 				}
 				cancelled.Store(true)
 				logger.L.Warn().Uint("task_id", taskID).Str("dataset", dataset).
-					Msg("migration_cancelled_during_transfer_killing_children")
+					Msg("migration_cancelled_during_transfer_stopping_stream")
 				sendCmd.Process.Kill()
-				recvCmd.Process.Kill()
+				cancelStream()
 				return
 			}
 		}
 	}()
 
-	var sendErr error
-	done := make(chan struct{})
-	go func() {
-		sendErr = sendCmd.Wait()
-		pw.Close()
-		sendStderrPw.Close()
-		close(done)
-	}()
-
-	recvErr := recvCmd.Wait()
-	pr.Close()
-	<-done
+	_, recvErr := cluster.StreamToNode[TargetDatasetRequest, struct{}](
+		streamCtx, s.Cluster, nodeID, "migration-target-receive", target, &countingReader{r: stdout, n: &bytesSent},
+	)
+	if recvErr != nil {
+		// The target stopped reading, so zfs send would block on a full pipe.
+		sendCmd.Process.Kill()
+	}
+	sendErr := sendCmd.Wait()
+	sendStderrPw.Close()
 	close(transferDone)
 	<-stderrDone
 	<-progressDone
 	<-cancelDone
 
 	if pollErr := cancellationPollErr.Load(); pollErr != nil {
-		return pollErr.(error)
+		return 0, pollErr.(error)
 	}
 
 	// If the cancel goroutine killed our processes, return a clean cancel error.
 	if cancelled.Load() {
-		return fmt.Errorf("migration_cancelled")
+		return 0, fmt.Errorf("migration_cancelled")
 	}
 
 	if recvErr != nil {
-		recvErr = remoteexec.SSHHostKeyError("cluster", identity.NodeUUID, recvStderr.String(), recvErr)
-		return fmt.Errorf("recv_failed_on_%s: %s: %w",
-			identity.SSHHost, remoteexec.SSHDiagnostic(recvStderr.String()), recvErr)
+		return 0, fmt.Errorf("recv_failed_on_%s: %w", nodeID, recvErr)
 	}
 	if sendErr != nil {
 		errStr := strings.Join(sendStderrLines, "\n")
-		return fmt.Errorf("send_failed: %s: %w", errStr, sendErr)
+		return 0, fmt.Errorf("send_failed: %s: %w", errStr, sendErr)
 	}
 
-	return nil
+	return atomic.LoadUint64(&bytesSent), nil
+}
+
+// parseSendSizeLine reads the stream total from the "size" line that zfs send
+// -P prints after one line per dataset in the stream.
+func parseSendSizeLine(line string) (uint64, bool) {
+	fields := strings.Fields(line)
+	if len(fields) != 2 || fields[0] != "size" {
+		return 0, false
+	}
+	total, err := strconv.ParseUint(fields[1], 10, 64)
+	return total, err == nil && total > 0
 }
 
 func (s *Service) listMigrationSnapshots(ctx context.Context, dataset string) ([]string, error) {
@@ -647,39 +493,6 @@ func (s *Service) listMigrationSnapshots(ctx context.Context, dataset string) ([
 	}
 
 	return snaps, nil
-}
-
-func (s *Service) listRemoteMigrationSnapshots(
-	ctx context.Context,
-	dataset string,
-	identity *clusterModels.ClusterSSHIdentity,
-	privateKeyPath string,
-) ([]string, error) {
-	parsedDataset, err := remoteexec.ParseZFSDataset(dataset)
-	if err != nil {
-		return nil, fmt.Errorf("migration_dataset_invalid: %w", err)
-	}
-	dataset = parsedDataset.String()
-	output, err := runClusterRemoteCommand(
-		ctx, identity, privateKeyPath, "zfs.list", dataset,
-		"zfs", "list", "-H", "-t", "snapshot", "-o", "name", "-r", dataset,
-	)
-	if err != nil {
-		return nil, err
-	}
-	prefix := dataset + "@" + migrationSnapPrefix
-	var snapshots []string
-	for _, line := range strings.Split(output, "\n") {
-		name := strings.TrimSpace(line)
-		if !strings.HasPrefix(name, prefix) {
-			continue
-		}
-		short := strings.TrimPrefix(name, dataset+"@")
-		if isMigrationOwnedSnapshot(short) {
-			snapshots = append(snapshots, short)
-		}
-	}
-	return snapshots, nil
 }
 
 func latestCommonMigrationSnapshot(local, remote []string) string {
@@ -709,29 +522,6 @@ func latestCommonMigrationSnapshot(local, remote []string) string {
 		}
 	}
 	return best
-}
-
-func migrationSnapshotPathsWithinRoot(root, output string) []string {
-	root = strings.TrimSpace(root)
-	if root == "" {
-		return nil
-	}
-
-	paths := make([]string, 0)
-	seen := make(map[string]struct{})
-	for _, line := range strings.Split(output, "\n") {
-		name := strings.TrimSpace(line)
-		if !isMigrationSnapshotPathWithinRoot(root, name) {
-			continue
-		}
-		if _, duplicate := seen[name]; duplicate {
-			continue
-		}
-		seen[name] = struct{}{}
-		paths = append(paths, name)
-	}
-	sort.Strings(paths)
-	return paths
 }
 
 func isMigrationSnapshotPathWithinRoot(root, name string) bool {
@@ -770,48 +560,6 @@ func (s *Service) destroyLocalMigrationSnapshots(ctx context.Context, root strin
 	return errors.Join(cleanupErrs...)
 }
 
-func (s *Service) destroyRemoteMigrationSnapshots(
-	ctx context.Context,
-	root string,
-	identity *clusterModels.ClusterSSHIdentity,
-	privateKeyPath string,
-) error {
-	if identity == nil {
-		return fmt.Errorf("migration_snapshot_cleanup_target_identity_unavailable")
-	}
-	parsedRoot, err := remoteexec.ParseZFSDataset(root)
-	if err != nil {
-		return fmt.Errorf("migration_snapshot_cleanup_root_invalid: %w", err)
-	}
-	root = parsedRoot.String()
-	output, err := runClusterRemoteCommand(
-		ctx, identity, privateKeyPath, "zfs.list", root,
-		"zfs", "list", "-H", "-t", "snapshot", "-o", "name", "-r", root,
-	)
-	if err != nil {
-		if isDatasetNotFound(errors.New(output + ": " + err.Error())) {
-			return nil
-		}
-		return err
-	}
-
-	var cleanupErrs []error
-	for _, snapshot := range migrationSnapshotPathsWithinRoot(root, output) {
-		parsedSnapshot, parseErr := remoteexec.ParseZFSSnapshot(snapshot)
-		if parseErr != nil || !parsedSnapshot.Dataset().Within(parsedRoot) {
-			continue
-		}
-		destroyOutput, destroyErr := runClusterRemoteCommand(
-			ctx, identity, privateKeyPath, "zfs.destroy", parsedSnapshot.Dataset().String(),
-			"zfs", "destroy", parsedSnapshot.String(),
-		)
-		if destroyErr != nil && !isMigrationSnapshotNotFound(errors.New(destroyOutput+": "+destroyErr.Error())) {
-			cleanupErrs = append(cleanupErrs, fmt.Errorf("destroy_remote_migration_snapshot_%s_failed: %w", snapshot, destroyErr))
-		}
-	}
-	return errors.Join(cleanupErrs...)
-}
-
 func (s *Service) cleanupPreCutoverMigrationSnapshots(
 	ctx context.Context,
 	task taskModels.GuestLifecycleTask,
@@ -837,24 +585,12 @@ func (s *Service) cleanupPreCutoverMigrationSnapshots(
 		}
 	}
 
-	var targetNode clusterModels.ClusterNode
-	if err := s.DB.WithContext(ctx).Where("node_uuid = ?", payload.TargetNodeUUID).First(&targetNode).Error; err != nil {
-		cleanupErrs = append(cleanupErrs, fmt.Errorf("migration_cleanup_target_node_unavailable: %w", err))
-		return errors.Join(cleanupErrs...)
-	}
-	identity, err := s.getNodeSSHIdentity(targetNode.NodeUUID)
-	if err != nil {
-		cleanupErrs = append(cleanupErrs, fmt.Errorf("migration_cleanup_target_identity_unavailable: %w", err))
-		return errors.Join(cleanupErrs...)
-	}
-	privateKeyPath, err := s.Cluster.ClusterSSHPrivateKeyPath()
-	if err != nil {
-		cleanupErrs = append(cleanupErrs, fmt.Errorf("migration_cleanup_cluster_key_unavailable: %w", err))
-		return errors.Join(cleanupErrs...)
-	}
-	for _, target := range TargetDatasetRoots(roots, payload.TargetPools) {
-		if err := s.destroyRemoteMigrationSnapshots(ctx, target.Receive, identity, privateKeyPath); err != nil {
-			cleanupErrs = append(cleanupErrs, fmt.Errorf("cleanup_remote_migration_snapshots_%s_failed: %w", target.Receive, err))
+	for _, root := range TargetDatasetRoots(roots, payload.TargetPools) {
+		target := TargetDatasetRequest{
+			GuestType: task.GuestType, GuestID: task.GuestID, OperationToken: payload.OperationToken, Dataset: root.Receive,
+		}
+		if err := s.writeTargetDataset(ctx, payload.TargetNodeUUID, "migration-target-cleanup", target); err != nil {
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("cleanup_remote_migration_snapshots_%s_failed: %w", root.Receive, err))
 		}
 	}
 	return errors.Join(cleanupErrs...)
@@ -876,42 +612,22 @@ func (s *Service) phaseStopSource(ctx context.Context, mp *migrationPayload, tas
 		ctx = context.Background()
 	}
 
-	var sourceActive func() (bool, error)
 	var stopSource func() error
 	switch task.GuestType {
 	case taskModels.GuestTypeVM:
 		if s.Libvirt == nil {
 			return fmt.Errorf("vm_runtime_service_unavailable")
 		}
-		sourceActive = func() (bool, error) {
-			state, err := s.Libvirt.GetDomainState(int(task.GuestID))
-			if err != nil {
-				if libvirtServiceInterfaces.IsDomainNotFoundError(err) {
-					return false, nil
-				}
-				return false, fmt.Errorf("vm_state_check_failed: %w", err)
-			}
-			if state == goLibvirt.DomainNostate {
-				return false, fmt.Errorf("vm_state_unknown")
-			}
-			return state != goLibvirt.DomainShutoff, nil
-		}
 		stopSource = func() error { return s.Libvirt.PerformActionContext(ctx, task.GuestID, "stop") }
 	case taskModels.GuestTypeJail:
 		if s.Jail == nil {
 			return fmt.Errorf("jail_runtime_service_unavailable")
 		}
-		sourceActive = func() (bool, error) {
-			active, err := s.Jail.IsJailRunning(task.GuestID)
-			if err != nil {
-				return false, fmt.Errorf("jail_state_check_failed: %w", err)
-			}
-			return active, nil
-		}
 		stopSource = func() error { return s.Jail.JailActionContext(ctx, int(task.GuestID), "stop") }
 	default:
 		return fmt.Errorf("unsupported_guest_type: %s", task.GuestType)
 	}
+	sourceActive := func() (bool, error) { return s.sourceGuestActive(task) }
 
 	active, err := sourceActive()
 	if err != nil {
@@ -938,6 +654,38 @@ func (s *Service) phaseStopSource(ctx context.Context, mp *migrationPayload, tas
 	}
 
 	return nil
+}
+
+// sourceGuestActive reports whether the guest is running on this node.
+func (s *Service) sourceGuestActive(task taskModels.GuestLifecycleTask) (bool, error) {
+	switch task.GuestType {
+	case taskModels.GuestTypeVM:
+		if s.Libvirt == nil {
+			return false, fmt.Errorf("vm_runtime_service_unavailable")
+		}
+		state, err := s.Libvirt.GetDomainState(int(task.GuestID))
+		if err != nil {
+			if libvirtServiceInterfaces.IsDomainNotFoundError(err) {
+				return false, nil
+			}
+			return false, fmt.Errorf("vm_state_check_failed: %w", err)
+		}
+		if state == goLibvirt.DomainNostate {
+			return false, fmt.Errorf("vm_state_unknown")
+		}
+		return state != goLibvirt.DomainShutoff, nil
+	case taskModels.GuestTypeJail:
+		if s.Jail == nil {
+			return false, fmt.Errorf("jail_runtime_service_unavailable")
+		}
+		active, err := s.Jail.IsJailRunning(task.GuestID)
+		if err != nil {
+			return false, fmt.Errorf("jail_state_check_failed: %w", err)
+		}
+		return active, nil
+	default:
+		return false, fmt.Errorf("unsupported_guest_type: %s", task.GuestType)
+	}
 }
 
 func persistMigrationOriginalRunning(mp *migrationPayload, active bool, persist func() error) error {
@@ -1023,7 +771,7 @@ func isMigrationOwnedSnapshot(shortName string) bool {
 	if suffix == name {
 		return false
 	}
-	for _, phasePrefix := range []string{"initial-", "final-", "pre-migration-"} {
+	for _, phasePrefix := range []string{"initial-", "catchup-", "final-", "pre-migration-"} {
 		timestamp := strings.TrimPrefix(suffix, phasePrefix)
 		if timestamp == suffix || timestamp == "" {
 			continue

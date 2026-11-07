@@ -125,36 +125,21 @@ func (s *Service) targetPoolPreflight(
 		}
 	}
 
-	var receives []string
-	for _, target := range TargetDatasetRoots(slices.Collect(maps.Values(rootByPool)), pools) {
-		pool, _, _ := strings.Cut(target.Root, "/")
+	for _, root := range TargetDatasetRoots(slices.Collect(maps.Values(rootByPool)), pools) {
+		pool, _, _ := strings.Cut(root.Root, "/")
 		if !slices.Contains(nodePools, pool) {
 			if reason := fmt.Sprintf("target_missing_pool: %s", pool); !slices.Contains(reasons, reason) {
 				reasons = append(reasons, reason)
 			}
 			continue
 		}
-		receives = append(receives, target.Receive)
-	}
-	if len(receives) == 0 {
-		return reasons, guestPools, nodePools
-	}
-
-	identity, err := s.getNodeSSHIdentity(targetNode.NodeUUID)
-	if err != nil {
-		return append(reasons, fmt.Sprintf("target_ssh_identity_unavailable: %v", err)), guestPools, nodePools
-	}
-	privateKeyPath, err := s.Cluster.ClusterSSHPrivateKeyPath()
-	if err != nil {
-		return append(reasons, fmt.Sprintf("cluster_ssh_key_unavailable: %v", err)), guestPools, nodePools
-	}
-	for _, root := range receives {
-		exists, err := s.remoteDatasetExists(ctx, identity, privateKeyPath, root)
+		info, err := s.targetDataset(ctx, targetNode.NodeUUID, TargetDatasetRequest{
+			GuestType: guestType, GuestID: guestID, Dataset: root.Receive,
+		})
 		if err != nil {
-			target, _, _ := strings.Cut(root, "/")
-			reasons = append(reasons, fmt.Sprintf("target_guest_check_failed_%s: %v", target, err))
-		} else if exists {
-			reasons = append(reasons, fmt.Sprintf("warning_stale_dataset_on_target: %s", root))
+			reasons = append(reasons, fmt.Sprintf("target_guest_check_failed_%s: %v", pool, err))
+		} else if info.Exists {
+			reasons = append(reasons, fmt.Sprintf("warning_stale_dataset_on_target: %s", root.Receive))
 		}
 	}
 

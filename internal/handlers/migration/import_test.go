@@ -70,6 +70,7 @@ func TestTargetMigrationImportSerializesSameGuest(t *testing.T) {
 			concurrent.Add(-1)
 			return nil, nil
 		},
+		CleanupSnapshots:   func(context.Context, []string) error { return nil },
 		SetIntentionalStop: func(uint, bool) error { return nil },
 		Start: func(context.Context, uint) error {
 			active.Store(true)
@@ -154,6 +155,7 @@ func TestTargetMigrationImportPreservesStoppedState(t *testing.T) {
 					imports++
 					return nil, nil
 				},
+				CleanupSnapshots: func(context.Context, []string) error { return nil },
 				SetIntentionalStop: func(_ uint, stopped bool) error {
 					intentionalStop = stopped
 					return nil
@@ -394,6 +396,7 @@ func TestTargetMigrationImportIsTokenScopedAndIdempotentForVMAndJail(t *testing.
 							}
 							return []string{"test-warning"}, nil
 						},
+						CleanupSnapshots:   func(context.Context, []string) error { return nil },
 						SetIntentionalStop: func(uint, bool) error { return nil },
 						Start: func(context.Context, uint) error {
 							starts++
@@ -450,6 +453,7 @@ func TestTargetMigrationImportReceivesIntoMappedPools(t *testing.T) {
 			imported, importedPools = roots, pools
 			return nil, nil
 		},
+		CleanupSnapshots:   func(context.Context, []string) error { return nil },
 		SetIntentionalStop: func(uint, bool) error { return nil },
 		Start:              func(context.Context, uint) error { return nil },
 	}
@@ -492,5 +496,50 @@ func TestTargetMigrationImportReceivesIntoMappedPools(t *testing.T) {
 	if !slices.Equal(merged[root], []string{root + ".merge-1"}) || len(merged) != 1 ||
 		!slices.Equal(validated, []string{root}) || !slices.Equal(imported, []string{root}) {
 		t.Fatalf("merged %v, validated %v, imported %v", merged, validated, imported)
+	}
+}
+
+func TestTargetMigrationImportCleansSnapshotsAfterStart(t *testing.T) {
+	var steps []string
+	active := false
+	ops := targetMigrationImportOperations{
+		GuestType:       clusterModels.ReplicationGuestTypeVM,
+		ImportedMessage: "vm_imported_and_started",
+		Authorize:       func(context.Context, uint, string) error { return nil },
+		ValidateRoots: func(_ context.Context, _ uint, roots []string) ([]string, error) {
+			return roots, nil
+		},
+		RuntimeState: func(uint) (targetMigrationRuntimeState, error) {
+			if active {
+				return targetMigrationRuntimeActive, nil
+			}
+			return targetMigrationRuntimeInactive, nil
+		},
+		Import: func(context.Context, uint, []string, map[string]string) ([]string, error) {
+			steps = append(steps, "import")
+			return nil, nil
+		},
+		SetIntentionalStop: func(uint, bool) error { return nil },
+		Start: func(context.Context, uint) error {
+			steps = append(steps, "start")
+			active = true
+			return nil
+		},
+		CleanupSnapshots: func(_ context.Context, roots []string) error {
+			steps = append(steps, "cleanup "+strings.Join(roots, ","))
+			return errors.New("dataset is busy")
+		},
+	}
+
+	receipt, err := runTargetMigrationImport(t, ops, 1, "migration:source:1", true)
+	if err != nil {
+		t.Fatalf("a failed snapshot cleanup failed the import: %v", err)
+	}
+	want := []string{"import", "start", "cleanup pool/sylve/virtual-machines/1"}
+	if !slices.Equal(steps, want) {
+		t.Fatalf("steps = %v, want %v", steps, want)
+	}
+	if !slices.Equal(receipt.Warnings, []string{"warning_migration_snapshot_cleanup_failed: dataset is busy"}) {
+		t.Fatalf("warnings = %v", receipt.Warnings)
 	}
 }

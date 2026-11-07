@@ -22,6 +22,7 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/raft"
 )
 
@@ -35,6 +36,7 @@ type callFunc func(ctx context.Context, issuer string, payload json.RawMessage) 
 
 type registeredCall struct {
 	run    callFunc
+	stream streamFunc
 	leader bool
 }
 
@@ -231,16 +233,30 @@ func (s *Service) ServeNodeCall(
 	if err != nil {
 		return CallResult{}, err
 	}
+	return s.serveOnNode(ctx, nodeID, index, name, func() (any, error) {
+		return call(ctx, issuer, payload)
+	})
+}
+
+// serveOnNode runs a call addressed to nodeID once this node has applied the
+// caller's index, so the call sees every write the caller made before it.
+func (s *Service) serveOnNode(
+	ctx context.Context,
+	nodeID string,
+	index uint64,
+	name string,
+	run func() (any, error),
+) (CallResult, error) {
 	if local := s.LocalNodeID(); strings.TrimSpace(nodeID) != local {
 		return CallResult{}, fmt.Errorf("call_node_mismatch: for=%s here=%s", nodeID, local)
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, callTimeout)
-	_, err = s.WaitForAppliedIndex(waitCtx, index)
+	_, err := s.WaitForAppliedIndex(waitCtx, index)
 	cancel()
 	if err != nil {
 		return CallResult{}, err
 	}
-	resp, callErr := call(ctx, issuer, payload)
+	resp, callErr := run()
 	var result CallResult
 	if result.Data, err = json.Marshal(resp); err != nil && callErr == nil {
 		callErr = fmt.Errorf("call_response_invalid: %s: %w", name, err)
@@ -274,6 +290,10 @@ func (s *Service) forwardCall(
 	if err != nil {
 		return CallResult{}, fmt.Errorf("call_forward_failed: %s: %w", name, err)
 	}
+	return callResult(name, response)
+}
+
+func callResult(name string, response utils.HTTPReadResponse) (CallResult, error) {
 	var apiResponse internal.APIResponse[CallResult]
 	if err := json.Unmarshal(response.Body, &apiResponse); err != nil {
 		return CallResult{}, fmt.Errorf("call_response_invalid: %s: status=%d: %w", name, response.StatusCode, err)

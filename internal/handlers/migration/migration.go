@@ -256,10 +256,7 @@ func classifyMigrationValidationError(err error) (int, string) {
 	switch {
 	case strings.Contains(errorText, "replication_lease_not_owned"):
 		return http.StatusForbidden, "replication_lease_not_owned"
-	case errors.Is(err, migrationService.ErrTargetNodeOffline),
-		errors.Is(err, migrationService.ErrSSHUnreachable),
-		strings.Contains(errorText, "target_ssh_identity_unavailable"),
-		strings.Contains(errorText, "cluster_ssh_key_unavailable"):
+	case errors.Is(err, migrationService.ErrTargetNodeOffline):
 		return http.StatusServiceUnavailable, "migration_target_unavailable"
 	default:
 		return http.StatusInternalServerError, "migration_validation_failed"
@@ -291,8 +288,6 @@ func classifyMigrationValidationResult(
 			return http.StatusInternalServerError, "migration_validation_failed"
 		case code == "target_node_offline",
 			code == "local_node_id_unavailable",
-			code == "target_ssh_identity_unavailable",
-			code == "cluster_ssh_key_unavailable",
 			code == "target_check_failed",
 			code == "target_guest_record_check_failed",
 			code == "target_pool_check_failed",

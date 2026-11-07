@@ -494,8 +494,8 @@
 			if (colonIdx >= 0) {
 				const after = detail.substring(colonIdx + 1);
 				const pctIdx = after.indexOf('(');
-				if (pctIdx >= 0) return formatDetail(after.substring(0, pctIdx).trim());
-				return formatDetail(after.trim());
+				const dataset = formatDetail((pctIdx >= 0 ? after.substring(0, pctIdx) : after).trim());
+				return detail.startsWith('catching_up:') ? `Catching up ${dataset}` : dataset;
 			}
 		}
 		return '';

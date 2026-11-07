@@ -8738,62 +8738,20 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 	if rootDataset == "" {
 		return nil
 	}
+	if s == nil || s.GZFS == nil || s.GZFS.ZFS == nil {
+		return fmt.Errorf("gzfs_not_initialized")
+	}
 
-	filesystems, err := s.listLocalFilesystemDatasets(ctx)
+	// One listing of the subtree carries every property checked below, sorted
+	// so parents mount first. Each zfs set or inherit waits for a txg sync, so
+	// only what differs is changed.
+	tree, err := s.GZFS.ZFS.List(ctx, true, rootDataset)
 	if err != nil {
-		return err
+		if isGZFSDatasetNotFoundError(err) {
+			return nil
+		}
+		return fmt.Errorf("failed_to_list_replication_activation_datasets: %w", err)
 	}
-	volumes, volErr := s.listLocalVolumeDatasets(ctx)
-	if volErr != nil {
-		return fmt.Errorf("failed_to_list_volumes_for_replication_activation: %w", volErr)
-	}
-
-	seen := map[string]struct{}{
-		rootDataset: {},
-	}
-	subtree := []string{rootDataset}
-	prefix := rootDataset + "/"
-
-	for _, candidate := range filesystems {
-		ds := normalizeDatasetPath(candidate)
-		if ds == "" || ds == rootDataset {
-			continue
-		}
-		if !strings.HasPrefix(ds, prefix) {
-			continue
-		}
-		if _, ok := seen[ds]; ok {
-			continue
-		}
-		seen[ds] = struct{}{}
-		subtree = append(subtree, ds)
-	}
-
-	volSubtree := []string{}
-	for _, candidate := range volumes {
-		ds := normalizeDatasetPath(candidate)
-		if ds == "" || ds == rootDataset {
-			continue
-		}
-		if !strings.HasPrefix(ds, prefix) {
-			continue
-		}
-		if _, ok := seen[ds]; ok {
-			continue
-		}
-		seen[ds] = struct{}{}
-		volSubtree = append(volSubtree, ds)
-	}
-
-	sort.SliceStable(subtree, func(i, j int) bool {
-		di := strings.Count(subtree[i], "/")
-		dj := strings.Count(subtree[j], "/")
-		if di == dj {
-			return subtree[i] < subtree[j]
-		}
-		return di < dj
-	})
-	sort.Strings(volSubtree)
 
 	var activated []string
 	rolledBack := false
@@ -8809,67 +8767,52 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 		}
 	}()
 
-	for idx, dataset := range subtree {
-		ds, err := s.getLocalDataset(ctx, dataset)
-		if err != nil {
-			return fmt.Errorf("failed_to_open_replication_dataset_%s: %w", dataset, err)
-		}
-		if ds == nil {
+	for _, ds := range tree {
+		volume := ds.Type == gzfs.DatasetTypeVolume
+		if !volume && ds.Type != gzfs.DatasetTypeFilesystem {
 			continue
 		}
 
 		if ds.IsEncrypted() {
 			keyLoaded, err := s.ensureEncryptionKeyForDataset(ctx, ds)
 			if err != nil {
-				return fmt.Errorf("replication_encryption_key_failed_%s: %w", dataset, err)
+				return fmt.Errorf("replication_encryption_key_failed_%s: %w", ds.Name, err)
 			}
 			if !keyLoaded {
-				return fmt.Errorf("replication_encryption_key_not_available_for_%s: run 'zfs load-key %s' first", dataset, dataset)
+				return fmt.Errorf("replication_encryption_key_not_available_for_%s: run 'zfs load-key %s' first", ds.Name, ds.Name)
 			}
 		}
 
-		if err := ds.SetProperties(ctx, "readonly", "off", "canmount", "on"); err != nil {
-			return fmt.Errorf("failed_to_set_replication_dataset_properties_%s: %w", dataset, err)
+		var changes []string
+		if ds.Properties["readonly"].Value != "off" {
+			changes = append(changes, "readonly", "off")
 		}
-		activated = append(activated, dataset)
-
-		if idx == 0 {
-			if _, err := utils.RunCommandWithContext(ctx, "zfs", "inherit", "mountpoint", dataset); err != nil {
-				return fmt.Errorf("failed_to_inherit_replication_dataset_mountpoint_%s: %w", dataset, err)
+		if !volume && ds.Properties["canmount"].Value != "on" {
+			changes = append(changes, "canmount", "on")
+		}
+		if len(changes) > 0 {
+			if err := ds.SetProperties(ctx, changes...); err != nil {
+				return fmt.Errorf("failed_to_set_replication_dataset_properties_%s: %w", ds.Name, err)
 			}
 		}
-
-		if err := ds.Mount(ctx, false); err != nil {
-			lower := strings.ToLower(err.Error())
-			if !strings.Contains(lower, "already mounted") {
-				return fmt.Errorf("failed_to_mount_replication_dataset_%s: %w", dataset, err)
-			}
-		}
-	}
-
-	for _, dataset := range volSubtree {
-		ds, err := s.getLocalDataset(ctx, dataset)
-		if err != nil {
-			return fmt.Errorf("failed_to_open_replication_volume_%s: %w", dataset, err)
-		}
-		if ds == nil {
+		activated = append(activated, ds.Name)
+		if volume {
 			continue
 		}
 
-		if ds.IsEncrypted() {
-			keyLoaded, err := s.ensureEncryptionKeyForDataset(ctx, ds)
-			if err != nil {
-				return fmt.Errorf("replication_encryption_key_failed_%s: %w", dataset, err)
-			}
-			if !keyLoaded {
-				return fmt.Errorf("replication_encryption_key_not_available_for_%s: run 'zfs load-key %s' first", dataset, dataset)
+		source := ds.Properties["mountpoint"].Source.Type
+		if ds.Name == rootDataset && (strings.EqualFold(source, "local") || strings.EqualFold(source, "received")) {
+			if _, err := utils.RunCommandWithContext(ctx, "zfs", "inherit", "mountpoint", ds.Name); err != nil {
+				return fmt.Errorf("failed_to_inherit_replication_dataset_mountpoint_%s: %w", ds.Name, err)
 			}
 		}
 
-		if err := ds.SetProperties(ctx, "readonly", "off"); err != nil {
-			return fmt.Errorf("failed_to_set_replication_volume_readonly_%s: %w", dataset, err)
+		if !ds.IsMounted() {
+			if err := ds.Mount(ctx, false); err != nil &&
+				!strings.Contains(strings.ToLower(err.Error()), "already mounted") {
+				return fmt.Errorf("failed_to_mount_replication_dataset_%s: %w", ds.Name, err)
+			}
 		}
-		activated = append(activated, dataset)
 	}
 
 	rolledBack = true

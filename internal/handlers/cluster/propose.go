@@ -9,6 +9,7 @@
 package clusterHandlers
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"strconv"
@@ -61,6 +62,19 @@ func NodeCallInternal(cS *cluster.Service) gin.HandlerFunc {
 		index, _ := strconv.ParseUint(c.GetHeader(cluster.CallIndexHeader), 10, 64)
 		result, err := cS.ServeNodeCall(
 			c.Request.Context(), c.GetString("IssuerNodeID"), c.GetHeader(cluster.CallNodeHeader), index, c.Param("name"), payload,
+		)
+		writeCallResult(c, result, err)
+	}
+}
+
+// NodeStreamInternal serves a stream call: the typed request is in a header and
+// the body is the stream itself, so it is passed through unread.
+func NodeStreamInternal(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		index, _ := strconv.ParseUint(c.GetHeader(cluster.CallIndexHeader), 10, 64)
+		result, err := cS.ServeNodeStream(
+			c.Request.Context(), c.GetString("IssuerNodeID"), c.GetHeader(cluster.CallNodeHeader), index, c.Param("name"),
+			json.RawMessage(c.GetHeader(cluster.CallRequestHeader)), c.Request.Body,
 		)
 		writeCallResult(c, result, err)
 	}

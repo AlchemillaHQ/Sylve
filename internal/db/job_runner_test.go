@@ -88,6 +88,56 @@ func queuedMessageCount(t *testing.T, sqlDB *sql.DB) int {
 	return count
 }
 
+func TestJobRunnerWakesForEnqueuedAndFinishedJobs(t *testing.T) {
+	_, queue, _ := newJobRunnerErrorPolicyTestHarness(t)
+	// With an hour between polls, only the wake-ups can start these jobs.
+	runner := newJobRunner(jobRunnerOpts{Queue: queue, Limit: 1, PollInterval: time.Hour, Extend: time.Second})
+	ran := make(chan string, 2)
+	release := make(chan struct{})
+	runner.Register("first", func(context.Context, []byte) error {
+		ran <- "first"
+		<-release
+		return nil
+	})
+	runner.Register("second", func(context.Context, []byte) error {
+		ran <- "second"
+		return nil
+	})
+	ctx, cancel := context.WithCancel(t.Context())
+	stopped := make(chan struct{})
+	go func() {
+		runner.Start(ctx)
+		close(stopped)
+	}()
+	defer func() {
+		cancel()
+		<-stopped
+	}()
+
+	enqueue := func(name string) {
+		if err := createJobMessage(ctx, queue, name, nil); err != nil {
+			t.Fatalf("enqueue %s: %v", name, err)
+		}
+		runner.notify()
+	}
+	expect := func(want string) {
+		select {
+		case got := <-ran:
+			if got != want {
+				t.Fatalf("ran %s, want %s", got, want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s job waited for the poll interval", want)
+		}
+	}
+	enqueue("first")
+	expect("first")
+	// The runner is full until the first job finishes.
+	enqueue("second")
+	close(release)
+	expect("second")
+}
+
 func TestJobRunnerHandlerErrorRetriesByDefault(t *testing.T) {
 	sqlDB, queue, runner := newJobRunnerErrorPolicyTestHarness(t)
 	attempts := 0
@@ -278,6 +328,8 @@ func TestJobRunnerCancelsInFlightJobsDuringShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open sqlite db: %v", err)
 	}
+	// Each connection to :memory: is a separate database.
+	sqlDB.SetMaxOpenConns(1)
 	defer sqlDB.Close()
 
 	if err := goqite.Setup(context.Background(), sqlDB); err != nil {

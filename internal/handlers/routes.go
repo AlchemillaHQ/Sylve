@@ -1000,6 +1000,7 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/raft/apply", clusterHandlers.ApplyProposalInternal(clusterService))
 		intraCluster.POST("/leader/:name", middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes), clusterHandlers.LeaderCallInternal(clusterService))
 		intraCluster.POST("/node/:name", middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes), clusterHandlers.NodeCallInternal(clusterService))
+		intraCluster.POST("/stream/:name", clusterHandlers.NodeStreamInternal(clusterService))
 	}
 
 	// Members upgrading from an older Raft format ask each other every few

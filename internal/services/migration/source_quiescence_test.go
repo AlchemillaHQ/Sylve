@@ -106,6 +106,68 @@ func TestLatestCommonMigrationSnapshotUsesNewestConfirmedRemoteSnapshot(t *testi
 	}
 }
 
+func TestParseSendSizeLineReadsStreamTotal(t *testing.T) {
+	// Lines as zfs send -P -R prints them for a full and an incremental send.
+	lines := []string{
+		"full\tjt2/sylve/virtual-machines/106@sylve-migrate-initial-1\t50696",
+		"full\tjt2/sylve/virtual-machines/106/raw-2@sylve-migrate-initial-1\t157355584",
+		"incremental\tsylve-migrate-initial-1\tjt2/sylve/virtual-machines/106@sylve-migrate-final-2\t624",
+		"size\t157664432",
+	}
+	var total uint64
+	for _, line := range lines {
+		if v, ok := parseSendSizeLine(line); ok {
+			total = v
+		}
+	}
+	if total != 157664432 {
+		t.Fatalf("stream total = %d, want 157664432", total)
+	}
+}
+
+func TestLatestCommonMigrationSnapshotOrdersPassesWithinASecond(t *testing.T) {
+	snapshots := []string{
+		"sylve-migrate-catchup-1700000000200000000",
+		"sylve-migrate-catchup-1700000000900000000",
+		"sylve-migrate-initial-1700000000100000000",
+	}
+	if got := latestCommonMigrationSnapshot(snapshots, snapshots); got != "sylve-migrate-catchup-1700000000900000000" {
+		t.Fatalf("latest common snapshot = %q", got)
+	}
+}
+
+func TestCatchUpMigrationStopsWhenPassesStopShrinking(t *testing.T) {
+	const mib = 1 << 20
+	for _, test := range []struct {
+		name    string
+		initial uint64
+		passes  []uint64
+		want    int
+	}{
+		{name: "small initial send", initial: 10 * mib, want: 0},
+		{name: "converges", initial: 4096 * mib, passes: []uint64{512 * mib, 100 * mib, 8 * mib}, want: 3},
+		{name: "small pass ends it", initial: 4096 * mib, passes: []uint64{32 * mib}, want: 1},
+		{name: "not shrinking", initial: 4096 * mib, passes: []uint64{512 * mib, 600 * mib}, want: 2},
+		{name: "pass limit", initial: 4096 * mib, passes: []uint64{2048 * mib, 1024 * mib, 512 * mib, 256 * mib}, want: 3},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			calls := 0
+			err := catchUpMigration(test.initial, func() (uint64, error) {
+				calls++
+				return test.passes[calls-1], nil
+			})
+			if err != nil || calls != test.want {
+				t.Fatalf("catch-up ran %d passes (err %v), want %d", calls, err, test.want)
+			}
+		})
+	}
+
+	sendErr := errors.New("send failed")
+	if err := catchUpMigration(4096*mib, func() (uint64, error) { return 0, sendErr }); !errors.Is(err, sendErr) {
+		t.Fatalf("catch-up error = %v, want %v", err, sendErr)
+	}
+}
+
 func TestMigrationSnapshotOwnershipDoesNotClaimBackupOrReplicationSnapshots(t *testing.T) {
 	for _, snapshot := range []string{"ha_generation", "bk_job_1", "manual", "sylve-migrate"} {
 		if isMigrationOwnedSnapshot(snapshot) {

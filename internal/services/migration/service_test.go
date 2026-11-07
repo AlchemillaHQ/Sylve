@@ -10,13 +10,7 @@ package migration
 
 import (
 	"errors"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"reflect"
 	"slices"
-	"strconv"
-	"strings"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -27,7 +21,6 @@ import (
 	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
 
@@ -80,6 +73,7 @@ func TestMigrationOwnedSnapshotMatchesOnlyGeneratedNames(t *testing.T) {
 	}{
 		{name: "sylve-migrate-initial-1700000000", want: true},
 		{name: "sylve-migrate-final-1700000001", want: true},
+		{name: "sylve-migrate-catchup-1700000000123456789", want: true},
 		{name: "sylve-migrate-pre-migration-1700000002", want: true},
 		{name: "sylve-migrate", want: false},
 		{name: "sylve-migrated-archive-1700000000", want: false},
@@ -95,19 +89,16 @@ func TestMigrationOwnedSnapshotMatchesOnlyGeneratedNames(t *testing.T) {
 
 func TestMigrationSnapshotPathsStayWithinExactGuestRoot(t *testing.T) {
 	root := "zroot/sylve/virtual-machines/41"
-	output := strings.Join([]string{
-		root + "@sylve-migrate-initial-1700000000",
-		root + "/disk-0@sylve-migrate-final-1700000001",
-		root + "0@sylve-migrate-final-1700000001",
-		root + "/disk-0@sylve-migrate-user-1700000001",
-		root + "/disk-0@manual",
-	}, "\n")
-	want := []string{
-		root + "/disk-0@sylve-migrate-final-1700000001",
-		root + "@sylve-migrate-initial-1700000000",
-	}
-	if got := migrationSnapshotPathsWithinRoot(root, output); !reflect.DeepEqual(got, want) {
-		t.Fatalf("migration snapshot paths = %v, want %v", got, want)
+	for name, want := range map[string]bool{
+		root + "@sylve-migrate-initial-1700000000":      true,
+		root + "/disk-0@sylve-migrate-final-1700000001": true,
+		root + "0@sylve-migrate-final-1700000001":       false,
+		root + "/disk-0@sylve-migrate-user-1700000001":  false,
+		root + "/disk-0@manual":                         false,
+	} {
+		if got := isMigrationSnapshotPathWithinRoot(root, name); got != want {
+			t.Errorf("isMigrationSnapshotPathWithinRoot(%q) = %t, want %t", name, got, want)
+		}
 	}
 }
 
@@ -123,158 +114,6 @@ func TestMigrationSnapshotMissingResultIsIdempotent(t *testing.T) {
 	}
 	if isMigrationSnapshotNotFound(errors.New("snapshot has dependent clones")) {
 		t.Fatal("snapshot dependency failure was treated as missing")
-	}
-}
-
-func TestClusterRemoteCommandArgsEncodeArgumentsAndPreserveStreaming(t *testing.T) {
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
-	loginKey := filepath.Join(t.TempDir(), "login-key")
-	if err := os.WriteFile(loginKey, []byte("login key"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	identity := &clusterModels.ClusterSSHIdentity{
-		PublicKey: testutil.SSHHostKey(t),
-		NodeUUID:  "node-42",
-		SSHUser:   "root",
-		SSHHost:   "Backup.Example",
-		SSHPort:   8183,
-	}
-	args, err := clusterRemoteCommandArgs(
-		identity,
-		loginKey,
-		true,
-		"zfs.recv",
-		"tank/sylve/virtual-machines/42",
-		"zfs", "recv", "-o", "sylve:run-id=secret-token", "tank/sylve/virtual-machines/42",
-	)
-	if err != nil {
-		t.Fatalf("cluster remote command args: %v", err)
-	}
-	for _, arg := range args {
-		if arg == "-n" {
-			t.Fatal("streaming receiver retained ssh stdin suppression")
-		}
-		if strings.Contains(arg, "secret-token") || strings.Contains(arg, "sylve:run-id") {
-			t.Fatalf("remote argument was not encoded: %q", arg)
-		}
-	}
-	if len(args) < 2 || args[len(args)-2] != "root@backup.example" || !strings.HasPrefix(args[len(args)-1], "/bin/sh -c ") {
-		t.Fatalf("unexpected ssh invocation: %v", args)
-	}
-	if !slices.Contains(args, "StrictHostKeyChecking=yes") || !slices.Contains(args, "ControlMaster=auto") {
-		t.Fatalf("transfer omitted strict host trust or connection reuse: %v", args)
-	}
-	preflight, err := clusterRemoteCommandArgs(identity, loginKey, false, "zfs.version", "", "zfs", "version")
-	if err != nil || !slices.Contains(preflight, "ControlPath=none") {
-		t.Fatalf("preflight reused a connection: %v %v", preflight, err)
-	}
-}
-
-func TestClusterRemoteCommandArgsRejectInvalidBoundaryValues(t *testing.T) {
-	valid := &clusterModels.ClusterSSHIdentity{SSHUser: "root", SSHHost: "backup.example", SSHPort: 22}
-	tests := []struct {
-		name     string
-		identity *clusterModels.ClusterSSHIdentity
-		dataset  string
-	}{
-		{name: "missing identity"},
-		{name: "unsafe host", identity: &clusterModels.ClusterSSHIdentity{SSHUser: "root", SSHHost: "backup;touch", SSHPort: 22}},
-		{name: "embedded port", identity: &clusterModels.ClusterSSHIdentity{SSHUser: "root", SSHHost: "backup:22", SSHPort: 22}},
-		{name: "invalid port", identity: &clusterModels.ClusterSSHIdentity{SSHUser: "root", SSHHost: "backup.example", SSHPort: 65536}},
-		{name: "unsafe dataset", identity: valid, dataset: "tank/guest;touch"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if _, err := clusterRemoteCommandArgs(
-				test.identity, "", false, "zfs.list", test.dataset, "zfs", "list", test.dataset,
-			); err == nil {
-				t.Fatal("invalid remote boundary was accepted")
-			}
-		})
-	}
-}
-
-func TestRemoteDatasetExists(t *testing.T) {
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
-	identity := &clusterModels.ClusterSSHIdentity{
-		PublicKey: testutil.SSHHostKey(t),
-		NodeUUID:  "node-target",
-		SSHUser:   "root",
-		SSHHost:   "target.example",
-		SSHPort:   22,
-	}
-
-	for _, dataset := range []string{
-		"zroot/sylve/jails/141",
-		"zroot/sylve/virtual-machines/141",
-	} {
-		t.Run(dataset, func(t *testing.T) {
-			missing := "cannot open '" + dataset + "': dataset does not exist\n"
-			permissionDenied := "cannot open '" + dataset + "': permission denied\n"
-			for _, test := range []struct {
-				name       string
-				stdout     string
-				stderr     string
-				exitCode   int
-				wantExists bool
-				wantError  string
-			}{
-				{
-					name: "existing dataset", stdout: dataset + "\t0\t0\t0\t/mnt/jail\n", wantExists: true,
-				},
-				{
-					name: "missing dataset on stderr", stderr: missing, exitCode: 1,
-				},
-				{
-					name: "missing dataset on stdout", stdout: missing, exitCode: 1,
-				},
-				{
-					name: "permission denied on stderr", stderr: permissionDenied, exitCode: 1, wantError: "permission denied",
-				},
-				{
-					name: "permission denied on stdout", stdout: permissionDenied, exitCode: 1, wantError: "command execution failed",
-				},
-				{
-					name: "dataset I/O failure", stderr: "cannot open '" + dataset + "': I/O error\n", exitCode: 1, wantError: "I/O error",
-				},
-				{
-					name: "missing pool", stderr: "cannot open 'zroot': no such pool\n", exitCode: 1, wantError: "no such pool",
-				},
-				{
-					name: "SSH authentication failure", stderr: "root@target.example: Permission denied (publickey).\n", exitCode: 255, wantError: "Permission denied",
-				},
-				{
-					name: "SSH host key failure", stderr: "Host key verification failed.\n", exitCode: 255, wantError: "cluster_ssh_host_key_mismatch",
-				},
-				{
-					name: "failure without diagnostics", exitCode: 1, wantError: "command execution failed",
-				},
-			} {
-				t.Run(test.name, func(t *testing.T) {
-					t.Cleanup(utils.SetCommandWithContextForTest(func(command string, _ ...string) *exec.Cmd {
-						if command != "ssh" {
-							t.Fatalf("unexpected command: %s", command)
-						}
-						return exec.Command("/bin/sh", "-c",
-							`printf '%s' "$1"; printf '%s' "$2" >&2; exit "$3"`,
-							"ssh-fixture", test.stdout, test.stderr, strconv.Itoa(test.exitCode),
-						)
-					}))
-
-					exists, err := (&Service{}).remoteDatasetExists(t.Context(), identity, "", dataset)
-					if exists != test.wantExists {
-						t.Errorf("exists = %t, want %t", exists, test.wantExists)
-					}
-					if test.wantError == "" {
-						if err != nil {
-							t.Fatalf("unexpected error: %v", err)
-						}
-					} else if err == nil || !strings.Contains(err.Error(), test.wantError) {
-						t.Fatalf("error = %v, want %q", err, test.wantError)
-					}
-				})
-			}
-		})
 	}
 }
 

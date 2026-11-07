@@ -373,6 +373,31 @@ func HTTPRequestReadContext(
 	timeout time.Duration,
 	maxResponseBytes int64,
 ) (HTTPReadResponse, error) {
+	return httpRequestRead(ctx, method, url, bytes.NewReader(payload), headers, timeout, maxResponseBytes)
+}
+
+// HTTPStreamContext is HTTPRequestReadContext for a body that is a long
+// stream: it is sent as it is read, with no timeout beyond ctx.
+func HTTPStreamContext(
+	ctx context.Context,
+	method string,
+	url string,
+	body io.Reader,
+	headers map[string]string,
+	maxResponseBytes int64,
+) (HTTPReadResponse, error) {
+	return httpRequestRead(ctx, method, url, body, headers, 0, maxResponseBytes)
+}
+
+func httpRequestRead(
+	ctx context.Context,
+	method string,
+	url string,
+	requestBody io.Reader,
+	headers map[string]string,
+	timeout time.Duration,
+	maxResponseBytes int64,
+) (HTTPReadResponse, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -384,7 +409,7 @@ func HTTPRequestReadContext(
 	}
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(requestCtx, method, url, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(requestCtx, method, url, requestBody)
 	if err != nil {
 		return HTTPReadResponse{}, err
 	}

@@ -119,6 +119,7 @@ func TestGeneratedMigrationSnapshotMatcherPreservesUserPrefixes(t *testing.T) {
 	}{
 		{name: "sylve-migrate-initial-1700000000", want: true},
 		{name: "sylve-migrate-final-1700000001", want: true},
+		{name: "sylve-migrate-catchup-1700000000123456789", want: true},
 		{name: "sylve-migrate-pre-migration-1700000002", want: true},
 		{name: "sylve-migrated-user-1700000000", want: false},
 		{name: "sylve-migrate-user-1700000000", want: false},
@@ -170,7 +171,7 @@ func TestIntegrationMigrationSnapshotCleanupSurfacesFailureAndPreservesUserSnaps
 	}
 
 	service := &Service{GZFS: client}
-	err := service.destroyMigratedDatasetSnapshots(t.Context(), []string{root})
+	err := service.CleanupMigratedSnapshots(t.Context(), []string{root})
 	if err == nil || !strings.Contains(err.Error(), migrationSnapshot) {
 		t.Fatalf("held snapshot cleanup result = %v", err)
 	}
@@ -181,7 +182,7 @@ func TestIntegrationMigrationSnapshotCleanupSurfacesFailureAndPreservesUserSnaps
 	if output, err := exec.Command("zfs", "release", holdTag, migrationSnapshot).CombinedOutput(); err != nil {
 		t.Fatalf("release migration snapshot hold: %v\n%s", err, output)
 	}
-	if err := service.destroyMigratedDatasetSnapshots(t.Context(), []string{root}); err != nil {
+	if err := service.CleanupMigratedSnapshots(t.Context(), []string{root}); err != nil {
 		t.Fatalf("retry migration snapshot cleanup: %v", err)
 	}
 	if output, err := exec.Command("zfs", "list", "-H", "-t", "snapshot", migrationSnapshot).CombinedOutput(); err == nil {

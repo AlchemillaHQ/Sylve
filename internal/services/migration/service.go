@@ -29,7 +29,6 @@ import (
 	migrationIface "github.com/alchemillahq/sylve/internal/interfaces/services/migration"
 	"github.com/alchemillahq/sylve/internal/logger"
 	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
-	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
@@ -55,9 +54,10 @@ var (
 	ErrMigrationInProgress   = fmt.Errorf("migration_in_progress")
 	ErrTargetNodeOffline     = fmt.Errorf("target_node_offline")
 	ErrTargetAlreadyHasGuest = fmt.Errorf("target_already_has_guest")
-	ErrSSHUnreachable        = fmt.Errorf("ssh_unreachable")
 	ErrCancelNotAllowed      = fmt.Errorf("cancel_not_allowed_in_current_phase")
 	ErrNotMigrationTask      = fmt.Errorf("not_a_migration_task")
+
+	errMigrationCancelled = errors.New("migration_cancelled")
 )
 
 type migrationPayload struct {
@@ -715,14 +715,6 @@ func (s *Service) phaseFinalCutoverRevalidation(
 	if err := s.requireTargetGuestRecordAbsent(ctx, targetNode, task.GuestID); err != nil {
 		return fmt.Errorf("migration_cutover_target_revalidation_failed: %w", err)
 	}
-	identity, err := s.getNodeSSHIdentity(targetNode.NodeUUID)
-	if err != nil {
-		return fmt.Errorf("target_ssh_identity_unavailable: %w", err)
-	}
-	privateKeyPath, err := s.Cluster.ClusterSSHPrivateKeyPath()
-	if err != nil {
-		return fmt.Errorf("cluster_ssh_key_unavailable: %w", err)
-	}
 
 	var reasons []string
 	switch task.GuestType {
@@ -746,19 +738,21 @@ func (s *Service) phaseFinalCutoverRevalidation(
 		return fmt.Errorf("migration_cutover_target_revalidation_failed: %s", strings.Join(hard, "; "))
 	}
 
-	for _, target := range TargetDatasetRoots(roots, mp.TargetPools) {
-		if !isCanonicalMigrationGuestDataset(target.Source, task.GuestType, task.GuestID) {
-			return fmt.Errorf("migration_cutover_dataset_root_invalid: %s", target.Source)
+	for _, root := range TargetDatasetRoots(roots, mp.TargetPools) {
+		if !isCanonicalMigrationGuestDataset(root.Source, task.GuestType, task.GuestID) {
+			return fmt.Errorf("migration_cutover_dataset_root_invalid: %s", root.Source)
 		}
-		if _, err := s.GZFS.ZFS.Get(ctx, target.Source, false); err != nil {
-			return fmt.Errorf("migration_cutover_source_dataset_unavailable_%s: %w", target.Source, err)
+		if _, err := s.GZFS.ZFS.Get(ctx, root.Source, false); err != nil {
+			return fmt.Errorf("migration_cutover_source_dataset_unavailable_%s: %w", root.Source, err)
 		}
-		exists, err := s.remoteDatasetExists(ctx, identity, privateKeyPath, target.Receive)
+		info, err := s.targetDataset(ctx, targetNode.NodeUUID, TargetDatasetRequest{
+			GuestType: task.GuestType, GuestID: task.GuestID, Dataset: root.Receive,
+		})
 		if err != nil {
-			return fmt.Errorf("migration_cutover_target_dataset_check_failed_%s: %w", target.Receive, err)
+			return fmt.Errorf("migration_cutover_target_dataset_check_failed_%s: %w", root.Receive, err)
 		}
-		if !exists {
-			return fmt.Errorf("migration_cutover_target_dataset_missing: %s", target.Receive)
+		if !info.Exists {
+			return fmt.Errorf("migration_cutover_target_dataset_missing: %s", root.Receive)
 		}
 	}
 
@@ -911,6 +905,14 @@ func (s *Service) ExecuteMigration(ctx context.Context, taskID uint) (retErr err
 	mp.Phase = PhasePreflight
 	mp.PhaseMessage = "validating_migration_prerequisites"
 	s.updateTaskPhase(taskID, mp)
+
+	// Marks a cancelled task finished. It's registered before the pre-cutover
+	// cleanup below, so it runs after that has released the interlock.
+	defer func() {
+		if errors.Is(retErr, errMigrationCancelled) {
+			retErr = s.finishCancelledMigration(taskID, mp)
+		}
+	}()
 
 	if err := s.checkCancelled(taskID); err != nil {
 		return s.handleCancel(taskID, mp)
@@ -1308,7 +1310,17 @@ func (s *Service) checkCancelled(taskID uint) error {
 	}
 }
 
+// handleCancel stops a migration the user cancelled. The task stays running
+// until ExecuteMigration's deferred pre-cutover cleanup has released the
+// migration interlock; finishCancelledMigration then marks it cancelled, so a
+// retry can't start while this operation still holds the guest.
 func (s *Service) handleCancel(taskID uint, mp migrationPayload) error {
+	mp.PhaseMessage = "cancellation_requested"
+	s.updateTaskPhase(taskID, mp)
+	return errMigrationCancelled
+}
+
+func (s *Service) finishCancelledMigration(taskID uint, mp migrationPayload) error {
 	mp.PhaseMessage = "migration_cancelled"
 	s.updateTaskPhase(taskID, mp)
 
@@ -1321,7 +1333,7 @@ func (s *Service) handleCancel(taskID uint, mp migrationPayload) error {
 	}).Error; err != nil {
 		return err
 	}
-	return &migrationTaskResultPersistedError{cause: fmt.Errorf("migration_cancelled")}
+	return &migrationTaskResultPersistedError{cause: errMigrationCancelled}
 }
 
 func (s *Service) updateTaskPhase(taskID uint, mp migrationPayload) {
@@ -1376,19 +1388,6 @@ func (s *Service) updateTaskDB(taskID uint, updates map[string]any) {
 	if err := s.DB.Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", taskID).Updates(updates).Error; err != nil {
 		logger.L.Warn().Err(err).Uint("task_id", taskID).Msg("migration_task_update_failed")
 	}
-}
-
-func (s *Service) getNodeSSHIdentity(nodeUUID string) (*clusterModels.ClusterSSHIdentity, error) {
-	if s.Cluster != nil && s.Cluster.Raft() != nil {
-		if _, err := s.Cluster.ResolveCurrentRaftMember(nodeUUID); err != nil {
-			return nil, err
-		}
-	}
-	var identity clusterModels.ClusterSSHIdentity
-	if err := s.DB.Where("node_uuid = ?", nodeUUID).First(&identity).Error; err != nil {
-		return nil, fmt.Errorf("cluster_ssh_identity_invalid: node=%s: %w", nodeUUID, err)
-	}
-	return &identity, nil
 }
 
 func (s *Service) hasRunningBackupEventForGuest(guestType string, guestID uint) bool {
@@ -1656,24 +1655,4 @@ func (s *Service) resolveJailDatasets(ctx context.Context, ctID uint) ([]string,
 	}
 
 	return datasets, nil
-}
-
-func (s *Service) remoteDatasetExists(ctx context.Context, identity *clusterModels.ClusterSSHIdentity, privateKeyPath string, dataset string) (bool, error) {
-	parsedDataset, err := remoteexec.ParseZFSDataset(dataset)
-	if err != nil {
-		return false, fmt.Errorf("invalid_remote_dataset: %w", err)
-	}
-	dataset = parsedDataset.String()
-	output, err := runClusterRemoteCommand(
-		ctx, identity, privateKeyPath, "zfs.list", dataset,
-		"zfs", "list", "-H", dataset,
-	)
-	if err != nil {
-		combined := strings.ToLower(strings.TrimSpace(output + " " + err.Error()))
-		if strings.Contains(combined, "dataset does not exist") {
-			return false, nil
-		}
-		return false, err
-	}
-	return strings.TrimSpace(output) != "", nil
 }

@@ -85,7 +85,9 @@ const REASON_MESSAGES: Record<string, string | ReasonFormatter> = {
 	warning_ownership_reassignment_failed:
 		'Cluster ownership could not be updated yet. The migration remains protected and will retry safely.',
 	warning_ownership_reassignment_skipped_no_guard:
-		'Cluster ownership (replication/HA) was not reassigned because the cluster service was unavailable.'
+		'Cluster ownership (replication/HA) was not reassigned because the cluster service was unavailable.',
+	warning_migration_snapshot_cleanup_failed: (d) =>
+		`The guest was migrated, but its temporary migration snapshots could not be removed on the target${d ? `: ${d}` : ''}. Remove the sylve-migrate snapshots manually.`
 };
 
 // Codes that embed a dynamic segment (e.g. a node id) before the ":" detail.

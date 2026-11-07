@@ -231,6 +231,49 @@ func TestReconcileTerminalPreCutoverTaskRetainsGuardWhenSnapshotCleanupFails(t *
 	}
 }
 
+func TestCancelledMigrationStaysRunningUntilFinished(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &taskModels.GuestLifecycleTask{})
+	task := taskModels.GuestLifecycleTask{
+		GuestType: taskModels.GuestTypeVM,
+		GuestID:   926,
+		Action:    "migrate",
+		Source:    taskModels.LifecycleTaskSourceUser,
+		Status:    taskModels.LifecycleTaskStatusRunning,
+	}
+	if err := db.Create(&task).Error; err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+	svc := &Service{DB: db}
+	mp := migrationPayload{TargetNodeUUID: "node-b", Phase: PhaseInitialReplicaton}
+
+	// The pre-cutover cleanup runs between these two calls, and a task that
+	// already looked finished would let a retry start before it releases the
+	// guest.
+	if err := svc.handleCancel(task.ID, mp); !errors.Is(err, errMigrationCancelled) {
+		t.Fatalf("handleCancel = %v, want %v", err, errMigrationCancelled)
+	}
+	if err := db.First(&task, task.ID).Error; err != nil {
+		t.Fatalf("reload task: %v", err)
+	}
+	if task.Status != taskModels.LifecycleTaskStatusRunning || task.FinishedAt != nil {
+		t.Fatalf("task after handleCancel: status=%q finishedAt=%v, want running", task.Status, task.FinishedAt)
+	}
+
+	err := svc.finishCancelledMigration(task.ID, mp)
+	var persisted *migrationTaskResultPersistedError
+	if !errors.As(err, &persisted) || !errors.Is(err, errMigrationCancelled) {
+		t.Fatalf("finishCancelledMigration = %v, want persisted cancellation", err)
+	}
+	if err := db.First(&task, task.ID).Error; err != nil {
+		t.Fatalf("reload task: %v", err)
+	}
+	if task.Status != taskModels.LifecycleTaskStatusFailed || task.Error != "cancelled_by_user" ||
+		task.Message != "migration_cancelled" || task.FinishedAt == nil {
+		t.Fatalf("cancelled task: status=%q error=%q message=%q finishedAt=%v",
+			task.Status, task.Error, task.Message, task.FinishedAt)
+	}
+}
+
 func TestMigrationPhaseResumeOrdering(t *testing.T) {
 	if !migrationPhaseAtOrBefore(PhaseOwnershipTransfer, PhaseStartTarget) {
 		t.Fatal("identity ownership transfer would not precede target import")

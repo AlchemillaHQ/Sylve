@@ -6,7 +6,6 @@ import (
 	"context"
 	"maps"
 	"slices"
-	"strings"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -67,14 +66,14 @@ func TestTargetPoolPreflightChecksMappingAgainstUsableTargetPools(t *testing.T) 
 	clusterService.OnNode(target, "migration-target-pools", func(context.Context, string, struct{}) ([]string, error) {
 		return []string{"data", "zroot"}, nil
 	})
+	// A dataset left on data by an earlier attempt shows up as a warning.
+	const stale = "data/sylve/virtual-machines/40"
+	clusterService.OnNode(target, "migration-target-dataset",
+		func(_ context.Context, _ string, req TargetDatasetRequest) (TargetDatasetInfo, error) {
+			return TargetDatasetInfo{Exists: req.Dataset == stale}, nil
+		})
 	svc := &Service{DB: db, Cluster: target}
 	node := clusterModels.ClusterNode{NodeUUID: "target-node"}
-	// The test has no SSH identity, so the stale-dataset probe always fails.
-	withoutSSH := func(reasons []string) []string {
-		return slices.DeleteFunc(reasons, func(reason string) bool {
-			return strings.HasPrefix(reason, "target_ssh_identity_unavailable")
-		})
-	}
 
 	reasons, guestPools, nodePools := svc.targetPoolPreflight(t.Context(), "vm", 40, node, nil)
 	if !slices.Equal(guestPools, []string{"fast", "tank"}) || !slices.Equal(nodePools, []string{"data", "zroot"}) {
@@ -96,7 +95,7 @@ func TestTargetPoolPreflightChecksMappingAgainstUsableTargetPools(t *testing.T) 
 
 	// Two pools may merge into one target pool.
 	reasons, _, _ = svc.targetPoolPreflight(t.Context(), "vm", 40, node, map[string]string{"fast": "data", "tank": "data", "old": "zroot"})
-	if !slices.Equal(withoutSSH(reasons), []string{"target_pool_mapping_unknown: old"}) {
+	if !slices.Equal(reasons, []string{"target_pool_mapping_unknown: old", "warning_stale_dataset_on_target: " + stale}) {
 		t.Fatalf("merging mapping reasons = %v", reasons)
 	}
 	reasons, _, _ = svc.targetPoolPreflight(t.Context(), "vm", 40, node, map[string]string{"fast": "gone", "tank": "gone"})
@@ -111,7 +110,7 @@ func TestTargetPoolPreflightChecksMappingAgainstUsableTargetPools(t *testing.T) 
 		t.Fatal(err)
 	}
 	reasons, _, _ = svc.targetPoolPreflight(t.Context(), "vm", 40, node, map[string]string{"fast": "data", "tank": "zroot"})
-	if !slices.Equal(withoutSSH(reasons), []string{"target_pool_change_with_backup_jobs"}) {
+	if !slices.Equal(reasons, []string{"target_pool_change_with_backup_jobs", "warning_stale_dataset_on_target: " + stale}) {
 		t.Fatalf("backup job reasons = %v", reasons)
 	}
 }

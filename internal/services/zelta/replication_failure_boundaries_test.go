@@ -165,27 +165,6 @@ func TestSelfFenceSurfacesJailMountCleanupFailure(t *testing.T) {
 	}
 }
 
-func TestPrepareReplicationActivationFailsBeforeMutationWhenVolumeDiscoveryFails(t *testing.T) {
-	volumeErr := errors.New("volume inventory unavailable")
-	service := &Service{
-		localFilesystemDatasetLister: func(context.Context) ([]string, error) {
-			return []string{"zroot/sylve/virtual-machines/108"}, nil
-		},
-		localVolumeDatasetLister: func(context.Context) ([]string, error) {
-			return nil, volumeErr
-		},
-	}
-
-	err := service.prepareReplicatedDatasetForActivation(
-		context.Background(),
-		"zroot/sylve/virtual-machines/108",
-	)
-	if !errors.Is(err, volumeErr) ||
-		!strings.Contains(err.Error(), "failed_to_list_volumes_for_replication_activation") {
-		t.Fatalf("volume discovery failure returned %v", err)
-	}
-}
-
 func TestReturnedForceFailoverSourceCandidate(t *testing.T) {
 	policy := &clusterModels.ReplicationPolicy{
 		ID:                     7,

@@ -262,13 +262,20 @@ func Enqueue(ctx context.Context, name string, body []byte) error {
 	laneID := resolveQueueLane(name)
 	q, ok := laneQueues[laneID]
 	if !ok || q == nil {
-		q = laneQueues[queueLaneDefaultID]
+		laneID = queueLaneDefaultID
+		q = laneQueues[laneID]
 	}
 	if q == nil {
 		return fmt.Errorf("queue_lane_not_available")
 	}
 
-	return createJobMessage(ctx, q, name, body)
+	if err := createJobMessage(ctx, q, name, body); err != nil {
+		return err
+	}
+	if runner := laneRunners[laneID]; runner != nil {
+		runner.notify()
+	}
+	return nil
 }
 
 func EnqueueJSON[T any](ctx context.Context, name string, payload T) error {
