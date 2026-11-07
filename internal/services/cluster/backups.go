@@ -21,6 +21,7 @@ import (
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/hashicorp/raft"
 	"github.com/robfig/cron/v3"
@@ -130,15 +131,13 @@ func (s *Service) ListBackupTargets() ([]clusterModels.BackupTarget, error) {
 		return nil, err
 	}
 	if err := s.InitializeBackupTargetHostTrust(); err != nil {
-		return nil, err
+		logger.L.Warn().Err(err).Msg("backup_target_host_key_initialization_failed")
 	}
 	var targets []clusterModels.BackupTarget
 	if err := s.DB.Order("name ASC").Find(&targets).Error; err != nil {
 		return nil, err
 	}
-	if err := s.attachBackupTargetHostTrust(targets); err != nil {
-		return nil, err
-	}
+	s.attachBackupTargetHostTrust(targets)
 	if err := s.attachBackupTargetReadiness(targets); err != nil {
 		return nil, err
 	}

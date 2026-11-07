@@ -1157,6 +1157,23 @@ func TestKeyUploadsByOwner(t *testing.T) {
 	if err := dbConn.Create(&proxied).Error; err != nil {
 		t.Fatalf("upload after keying: %v", err)
 	}
+
+	for _, statement := range []string{
+		`ALTER TABLE uploads ADD COLUMN user_id integer`,
+		`CREATE INDEX idx_uploads_user_id ON uploads(user_id)`,
+	} {
+		if err := dbConn.Exec(statement).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	keyUploadsByOwner(dbConn)
+	var owners []string
+	if err := dbConn.Model(&utilitiesModels.Upload{}).Order("id").Pluck("owner", &owners).Error; err != nil {
+		t.Fatal(err)
+	}
+	if dbConn.Migrator().HasColumn("uploads", "user_id") || len(owners) != 2 || owners[0] != "user:7" || owners[1] != proxied.Owner {
+		t.Fatalf("re-added user_id not dropped: owners %v", owners)
+	}
 }
 
 func TestBindOldReaddressPhases(t *testing.T) {

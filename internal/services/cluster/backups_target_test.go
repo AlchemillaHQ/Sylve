@@ -48,6 +48,34 @@ func TestListBackupTargetsOrdersByName(t *testing.T) {
 	}
 }
 
+func TestListBackupTargetsKeepsTargetsWithUnreadableHostKeyState(t *testing.T) {
+	db := newClusterServiceTestDB(t, &clusterModels.BackupTarget{})
+	s := withFSM(&Service{DB: db})
+	targets := []clusterModels.BackupTarget{
+		{Name: "Alpha", SSHHost: "user@a", SSHPort: 22, BackupRoot: "tank/a", Enabled: true},
+		{Name: "Bravo", SSHHost: "user@b", SSHPort: 22, BackupRoot: "tank/b", Enabled: true},
+	}
+	if err := db.Create(&targets).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ListBackupTargets(); err != nil {
+		t.Fatal(err)
+	}
+	// Bravo's trust row no longer matches its endpoint, which also fails the
+	// one-time initialization.
+	if err := db.Model(&clusterModels.BackupTarget{}).Where("id = ?", targets[1].ID).Update("ssh_host", "user@moved").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&clusterModels.ClusterOption{}).Where("id = ?", 1).Update("ssh_host_trust_initialized", false).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.ListBackupTargets()
+	if err != nil || len(got) != 2 || got[0].HostKey == nil || got[1].HostKey != nil {
+		t.Fatalf("targets = %+v, %v", got, err)
+	}
+}
+
 func TestProposeBackupTargetCRUDStandalone(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
 	s := withFSM(&Service{DB: db})

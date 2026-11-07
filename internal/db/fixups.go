@@ -647,12 +647,17 @@ func keyUploadsByOwner(db *gorm.DB) {
 	if !db.Migrator().HasColumn("uploads", "user_id") {
 		return
 	}
+	statements := []string{
+		`DROP INDEX IF EXISTS idx_uploads_user_id`,
+		`ALTER TABLE uploads RENAME COLUMN user_id TO owner`,
+		`UPDATE uploads SET owner = 'user:' || owner`,
+	}
+	// An older build started on the keyed table adds user_id back.
+	if db.Migrator().HasColumn("uploads", "owner") {
+		statements = []string{`DROP INDEX IF EXISTS idx_uploads_user_id`, `ALTER TABLE uploads DROP COLUMN user_id`}
+	}
 	err := db.Transaction(func(tx *gorm.DB) error {
-		for _, statement := range []string{
-			`DROP INDEX IF EXISTS idx_uploads_user_id`,
-			`ALTER TABLE uploads RENAME COLUMN user_id TO owner`,
-			`UPDATE uploads SET owner = 'user:' || owner`,
-		} {
+		for _, statement := range statements {
 			if err := tx.Exec(statement).Error; err != nil {
 				return err
 			}

@@ -614,9 +614,7 @@ func (s *Service) BackupTargetReadiness(targetID uint) ([]clusterModels.BackupTa
 		return nil, err
 	}
 	copyTarget := []clusterModels.BackupTarget{*target}
-	if err := s.attachBackupTargetHostTrust(copyTarget); err != nil {
-		return nil, err
-	}
+	s.attachBackupTargetHostTrust(copyTarget)
 	if err := s.attachBackupTargetReadiness(copyTarget); err != nil {
 		return nil, err
 	}
@@ -729,14 +727,16 @@ func (s *Service) ResetBackupTargetHostKey(ctx context.Context, targetID uint, e
 	return &BackupTargetHostKeyResetResult{BackupTargetSSHHostKeyStatus: status, TargetID: targetID, OldFingerprint: trust.Status().Fingerprint}, nil
 }
 
-func (s *Service) attachBackupTargetHostTrust(targets []clusterModels.BackupTarget) error {
+// A target whose host-key state can't be read is listed without it, so the
+// others still show; validating or using that target reports the error.
+func (s *Service) attachBackupTargetHostTrust(targets []clusterModels.BackupTarget) {
 	for i := range targets {
 		trust, err := clusterModels.GetBackupTargetSSHHostTrust(s.DB, &targets[i])
 		if err != nil {
-			return err
+			logger.L.Warn().Err(err).Uint("target_id", targets[i].ID).Msg("backup_target_host_key_state_unreadable")
+			continue
 		}
 		status := trust.Status()
 		targets[i].HostKey = &status
 	}
-	return nil
 }
