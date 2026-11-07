@@ -33,6 +33,14 @@ export const startHostUpdate = (
 	);
 export const getHostUpdateJob = (id: number, options: NodeAPIRequestOptions = {}) =>
 	apiRequestResult(`/system/updates/jobs/${id}`, HostUpdateJobSchema, 'GET', undefined, options);
+export const cancelHostUpdate = (id: number, options: NodeAPIRequestOptions = {}) =>
+	apiRequestResult(
+		`/system/updates/jobs/${id}/cancel`,
+		HostUpdateJobSchema,
+		'POST',
+		undefined,
+		options
+	);
 export const getHostUpdateLogs = (
 	id: number,
 	offset: number,

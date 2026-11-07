@@ -31,6 +31,7 @@ type hostUpdateService interface {
 	Start(context.Context, string, hostupdates.Request, string) (hostupdates.Job, error)
 	Job(context.Context, uint) (hostupdates.Job, error)
 	Logs(context.Context, uint, int64) (string, int64, error)
+	Cancel(context.Context, uint) (hostupdates.Job, error)
 	SetMonitoring(context.Context, hostupdates.Monitoring) (models.HostUpdateState, error)
 	SetReleaseChannel(context.Context, string) (models.HostUpdateState, error)
 }
@@ -45,6 +46,7 @@ func RegisterHostUpdateRoutes(group *gin.RouterGroup, service *hostupdates.Servi
 	group.POST("/actions/:action", StartHostUpdate(api))
 	group.GET("/jobs/:id", GetHostUpdateJob(api, false))
 	group.GET("/jobs/:id/logs", GetHostUpdateJob(api, true))
+	group.POST("/jobs/:id/cancel", CancelHostUpdate(api))
 	group.PUT("/monitoring", SetHostUpdateMonitoring(api))
 	group.PUT("/sylve/channel", SetSylveReleaseChannel(api))
 }
@@ -149,6 +151,22 @@ func GetHostUpdateJob(service hostUpdateService, logs bool) gin.HandlerFunc {
 		}
 		job, err := service.Job(c.Request.Context(), id)
 		updateResponse(c, job, err, http.StatusOK)
+	}
+}
+
+func CancelHostUpdate(service hostUpdateService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if service == nil {
+			updateResponse(c, nil, errors.New("host_update_service_unavailable"), 0)
+			return
+		}
+		id, err := utils.ParamUint(c, "id")
+		if err != nil {
+			updateResponse(c, nil, err, 0)
+			return
+		}
+		job, err := service.Cancel(c.Request.Context(), id)
+		updateResponse(c, job, err, http.StatusAccepted)
 	}
 }
 

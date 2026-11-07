@@ -799,6 +799,7 @@ func RegisterRoutes(r *gin.Engine,
 			packages.POST("/upgrade/preview", jailHandlers.StartJailPackageOperation(jailService, "pkg-preview"))
 			packages.POST("/upgrade", jailHandlers.StartJailPackageOperation(jailService, "pkg-upgrade"))
 			packages.GET("/jobs/:taskId", jailHandlers.GetJailPackageJob(jailService, false))
+			packages.POST("/jobs/:taskId/cancel", jailHandlers.CancelJailPackageJob(jailService))
 			packages.GET("/jobs/:taskId/logs", middleware.RequireLocalAdmin(authService), jailHandlers.GetJailPackageJob(jailService, true))
 			packages.GET("/monitoring", jailHandlers.JailPackageMonitoring(jailService, false))
 			packages.PUT("/monitoring", jailHandlers.JailPackageMonitoring(jailService, true))

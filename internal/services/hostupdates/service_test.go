@@ -710,6 +710,41 @@ func TestRestartCompletionRejectsUnverifiedEmbeddedBuildTime(t *testing.T) {
 	}
 }
 
+func TestReadOperationCancelStopsPackageCommand(t *testing.T) {
+	s := testService(t)
+	s.probe = func() error { return nil }
+	entered := make(chan struct{}, 1)
+	s.client = func(log io.Writer) *pkgmanager.Client {
+		client := pkgmanager.NewHostClient(log)
+		client.RunCommand = func(ctx context.Context, _ []string) (pkgmanager.Result, error) {
+			entered <- struct{}{}
+			<-ctx.Done()
+			return pkgmanager.Result{}, context.Cause(ctx)
+		}
+		return client
+	}
+	job, err := s.Start(t.Context(), "check", Request{}, "tester")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("package command not reached")
+	}
+	if _, err = s.Cancel(t.Context(), job.ID); err != nil {
+		t.Fatal(err)
+	}
+	job = waitJob(t, s, job.ID)
+	state, _ := s.state()
+	if job.Status != "failed" || job.Error != "host_update_cancelled" || state.FailureCount != 0 {
+		t.Fatalf("cancel not recorded as a user stop: %+v %+v", job, state)
+	}
+	if _, err = s.Cancel(t.Context(), job.ID); err == nil || code(err) != "host_update_not_cancellable" {
+		t.Fatalf("finished operation accepted cancel: %v", err)
+	}
+}
+
 func TestRecoveryMarksUnfinishedOperationsInterrupted(t *testing.T) {
 	for _, phase := range []string{"queued", "verifying", "applying", "restarting"} {
 		t.Run(phase, func(t *testing.T) {

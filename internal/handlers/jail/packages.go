@@ -23,6 +23,7 @@ type jailPackageService interface {
 	GetPackages(context.Context, uint) (jailTypes.PackageView, error)
 	StartPackageOperation(context.Context, uint, string, jailTypes.PackageRequest, string, string) (jailTypes.PackageJob, error)
 	GetPackageJob(context.Context, uint, uint) (jailTypes.PackageJob, error)
+	CancelPackageOperation(context.Context, uint, uint) (jailTypes.PackageJob, error)
 	PackageLogs(context.Context, uint, uint, int64) (jailTypes.PackageLog, error)
 	GetPackageMonitoring(context.Context, uint) (jailTypes.PackageMonitoring, error)
 	SetPackageMonitoring(context.Context, uint, jailTypes.PackageMonitoring) (jailTypes.PackageMonitoring, error)
@@ -123,6 +124,23 @@ func GetJailPackageJob(service jailPackageService, logs bool) gin.HandlerFunc {
 		}
 		value, err := service.GetPackageJob(c.Request.Context(), ctID, taskID)
 		packageResponse(c, value, err, http.StatusOK)
+	}
+}
+
+func CancelJailPackageJob(service jailPackageService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctID, err := utils.ParamUint(c, "ctid")
+		if err != nil {
+			packageResponse(c, nil, err, 0)
+			return
+		}
+		taskID, err := utils.ParamUint(c, "taskId")
+		if err != nil {
+			packageResponse(c, nil, err, 0)
+			return
+		}
+		value, err := service.CancelPackageOperation(c.Request.Context(), ctID, taskID)
+		packageResponse(c, value, err, http.StatusAccepted)
 	}
 }
 

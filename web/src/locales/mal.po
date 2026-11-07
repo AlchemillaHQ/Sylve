@@ -2209,7 +2209,9 @@ msgid "Error starting jail"
 msgstr "Jail ആരംഭിക്കുന്നതിൽ പിശക്"
 
 #: src/lib/components/custom/Dialog/GuestAction.svelte
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
 #: src/routes/[node]/container/[ocid]/+layout.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
@@ -23451,4 +23453,12 @@ msgstr ""
 
 #: src/lib/components/custom/Cluster/LeaveProgress.svelte
 msgid "Cancel Leave"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Stopping..."
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Stopping…"
 msgstr ""

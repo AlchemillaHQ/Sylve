@@ -38,6 +38,18 @@ export const getPackageJob = (ctId: number, taskId: number, options: NodeAPIRequ
 		undefined,
 		options
 	);
+export const cancelPackageJob = (
+	ctId: number,
+	taskId: number,
+	options: NodeAPIRequestOptions = {}
+) =>
+	apiRequestResult(
+		`/jail/${ctId}/packages/jobs/${taskId}/cancel`,
+		PackageJobSchema,
+		'POST',
+		undefined,
+		options
+	);
 export const getPackageLogs = (
 	ctId: number,
 	taskId: number,

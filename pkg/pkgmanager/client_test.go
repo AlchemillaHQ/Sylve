@@ -21,7 +21,7 @@ func TestPackageCommandsRequireJailAndCannotInjectFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, " ")
-	if !strings.HasPrefix(joined, "-j 23 ") || !strings.Contains(joined, "IGNORE_OSVERSION=false") || !strings.Contains(joined, "REPO_AUTOUPDATE=false") || !strings.Contains(joined, "PKG_ENABLE_PLUGINS=false") {
+	if !strings.HasPrefix(joined, "-j 23 ") || !strings.Contains(joined, "IGNORE_OSVERSION=false") || !strings.Contains(joined, "REPO_AUTOUPDATE=false") || !strings.Contains(joined, "PKG_ENABLE_PLUGINS=false") || !strings.Contains(joined, "PKG_ENV={}") {
 		t.Fatal(args)
 	}
 	for _, target := range []Target{{}, {JID: 23, Name: "jail", Root: "/"}, {Name: "jail", Root: "/private"}} {
@@ -64,6 +64,30 @@ func TestApplyStopsWithDaemonContext(t *testing.T) {
 	defer cancel()
 	if err := client.Apply(ctx, []string{"upgrade"}, Plan{}); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("installer ignored cancellation: %v", err)
+	}
+}
+
+func TestPackageCommandCancellationKillsChildren(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "pkg-fixture")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\n/bin/sleep 30 &\nexec /bin/sleep 30\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	client := Client{Binary: binary, Target: Target{JID: 4, Name: "fixture", Root: "/fixture"}}
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if _, err := client.Run(ctx, "update"); !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 1500*time.Millisecond {
+		t.Fatalf("run outlived cancellation by %s: %v", time.Since(start), err)
+	}
+}
+
+func TestPackageEnvironmentPassesOnlyProxySettings(t *testing.T) {
+	t.Setenv("HTTP_PROXY", "http://proxy:3128")
+	t.Setenv("no_proxy", "mirror.local")
+	t.Setenv("ASSUME_ALWAYS_YES", "yes")
+	env := Environment()
+	if !slices.Contains(env, "HTTP_PROXY=http://proxy:3128") || !slices.Contains(env, "no_proxy=mirror.local") || slices.ContainsFunc(env, func(value string) bool { return strings.HasPrefix(value, "ASSUME_ALWAYS_YES=") }) {
+		t.Fatal(env)
 	}
 }
 

@@ -126,7 +126,7 @@ func (s *Service) storeAvailable(inventory []pkgmanager.Package, plan pkgmanager
 }
 
 func (s *Service) failedCheck(action string, cause error) error {
-	if errors.Is(cause, context.Canceled) {
+	if errors.Is(cause, context.Canceled) || errors.Is(cause, errCancelled) {
 		return nil
 	}
 	return s.DB.Transaction(func(tx *gorm.DB) error {

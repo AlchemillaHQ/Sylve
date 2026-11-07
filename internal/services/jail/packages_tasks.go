@@ -25,6 +25,8 @@ func (s *Service) packagePhase(op *jailModels.JailPackageOperation, phase string
 	return s.DB.Model(op).Update("phase", phase).Error
 }
 
+var errPackageCancelled = errors.New("package_operation_cancelled")
+
 func (s *Service) ExecutePackageTask(ctx context.Context, taskID uint) (runErr error) {
 	var op jailModels.JailPackageOperation
 	if err := s.DB.First(&op, "task_id = ?", taskID).Error; err != nil {
@@ -41,12 +43,24 @@ func (s *Service) ExecutePackageTask(ctx context.Context, taskID uint) (runErr e
 		s.finishPackageOperation(op, err)
 		return err
 	}
+	// Upgrades can't be stopped: killing pkg mid-install could leave the jail
+	// half-upgraded.
+	if op.Action != "pkg-upgrade" {
+		var cancel context.CancelCauseFunc
+		ctx, cancel = context.WithCancelCause(ctx)
+		defer cancel(nil)
+		s.packages.mu.Lock()
+		if gate := s.packages.admission[op.CTID]; gate != nil && gate.operation == op.ID {
+			gate.cancel = cancel
+		}
+		s.packages.mu.Unlock()
+	}
 	select {
 	case s.packages.slots <- struct{}{}:
 		defer func() { <-s.packages.slots }()
 	case <-ctx.Done():
-		s.finishPackageOperation(op, ctx.Err())
-		return ctx.Err()
+		s.finishPackageOperation(op, context.Cause(ctx))
+		return context.Cause(ctx)
 	}
 	defer func() {
 		if runErr != nil && (op.Action == "pkg-check-updates" || op.Action == "pkg-preview") {
@@ -66,6 +80,11 @@ func (s *Service) ExecutePackageTask(ctx context.Context, taskID uint) (runErr e
 			}
 		}
 		s.finishPackageOperation(op, runErr)
+	}()
+	defer func() {
+		if runErr != nil && errors.Is(context.Cause(ctx), errPackageCancelled) {
+			runErr = errPackageCancelled
+		}
 	}()
 	applyCtx := ctx
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Minute)

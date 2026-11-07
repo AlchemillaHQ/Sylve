@@ -1,5 +1,10 @@
 <script lang="ts">
-	import { getHostUpdateJob, getHostUpdateLogs, startHostUpdate } from '$lib/api/system/updates';
+	import {
+		cancelHostUpdate,
+		getHostUpdateJob,
+		getHostUpdateLogs,
+		startHostUpdate
+	} from '$lib/api/system/updates';
 	import ModalTable from '$lib/components/custom/ModalTable.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -36,6 +41,7 @@
 	let error = $state('');
 	let loading = $state(false);
 	let applying = $state(false);
+	let cancelling = $state(false);
 	let acknowledge = $state(false);
 	let bootEnvironment = $state(untrack(() => bootEnvironmentSupported));
 	let now = $state(Date.now());
@@ -45,6 +51,7 @@
 	const controller = new AbortController();
 	const options = () => ({ hostname: node, signal: controller.signal });
 	const running = $derived(!job || ['queued', 'running'].includes(job.status));
+	const cancellable = $derived(running && !!job && !job.action.endsWith('-apply'));
 	const expired = $derived(!job?.plan || new Date(job.plan.expiresAt).getTime() <= now);
 	const preview = $derived(
 		job?.action.endsWith('-preview') && job.status === 'success' && !!job.plan
@@ -164,6 +171,20 @@
 			if (!isRequestCancellation(cause)) throw cause;
 		} finally {
 			applying = false;
+		}
+	}
+	async function cancel() {
+		if (!job || cancelling) return;
+		cancelling = true;
+		try {
+			const result = await cancelHostUpdate(job.id, options());
+			if (isAPIResponse(result) && !controller.signal.aborted) {
+				error = hostUpdateReason(result.message);
+				cancelling = false;
+			}
+		} catch (cause) {
+			cancelling = false;
+			if (!isRequestCancellation(cause)) throw cause;
 		}
 	}
 </script>
@@ -299,7 +320,11 @@
 						class="bg-muted mt-3 max-h-64 overflow-auto rounded-md border p-3 font-mono text-xs break-words whitespace-pre-wrap">{logs}</pre>
 				</details>{/if}
 		</div>
-		{#if preview}<Dialog.Footer class="border-t px-6 py-4">
+		{#if cancellable}<Dialog.Footer class="border-t px-6 py-4">
+				<Button variant="outline" disabled={cancelling} onclick={cancel}
+					>{cancelling ? 'Stopping…' : 'Stop'}</Button
+				>
+			</Dialog.Footer>{:else if preview}<Dialog.Footer class="border-t px-6 py-4">
 				<Button disabled={!acknowledge || expired || applying || loading} onclick={apply}
 					>{applying ? 'Starting…' : sylveUpdate ? 'Update & restart' : 'Upgrade'}</Button
 				>

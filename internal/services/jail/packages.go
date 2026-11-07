@@ -35,6 +35,7 @@ type packageTaskPayload struct {
 type packageAdmission struct {
 	ordinary  int
 	operation string
+	cancel    context.CancelCauseFunc
 }
 type packageOwnerKey struct{}
 
@@ -575,7 +576,7 @@ func (s *Service) finishPackageOperation(op jailModels.JailPackageOperation, err
 	if s.packages != nil {
 		s.packages.mu.Lock()
 		if gate := s.packages.admission[op.CTID]; gate != nil && gate.operation == op.ID {
-			gate.operation = ""
+			gate.operation, gate.cancel = "", nil
 			if gate.ordinary == 0 {
 				delete(s.packages.admission, op.CTID)
 			}
@@ -601,6 +602,24 @@ func (s *Service) GetPackageJob(ctx context.Context, ctID, taskID uint) (jailTyp
 	if err != nil {
 		return jailTypes.PackageJob{}, err
 	}
+	return s.packageJob(op)
+}
+
+func (s *Service) CancelPackageOperation(ctx context.Context, ctID, taskID uint) (jailTypes.PackageJob, error) {
+	op, err := s.packageOperation(ctx, ctID, taskID)
+	if err != nil {
+		return jailTypes.PackageJob{}, err
+	}
+	var cancel context.CancelCauseFunc
+	s.packages.mu.Lock()
+	if gate := s.packages.admission[ctID]; gate != nil && gate.operation == op.ID {
+		cancel = gate.cancel
+	}
+	s.packages.mu.Unlock()
+	if cancel == nil {
+		return jailTypes.PackageJob{}, fmt.Errorf("package_operation_not_cancellable")
+	}
+	cancel(errPackageCancelled)
 	return s.packageJob(op)
 }
 

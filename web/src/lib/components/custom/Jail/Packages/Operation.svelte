@@ -1,5 +1,6 @@
 <script lang="ts">
 	import {
+		cancelPackageJob,
 		getJailPackages,
 		getPackageJob,
 		getPackageLogs,
@@ -43,6 +44,7 @@
 	let error = $state('');
 	let logError = $state('');
 	let applying = $state(false);
+	let cancelling = $state(false);
 	let snapshot = $state(false);
 	let acknowledge = $state(false);
 	let snapshotSupported = $state(false);
@@ -53,6 +55,7 @@
 	const controller = new AbortController();
 	const options = () => ({ hostname: node, signal: controller.signal });
 	const running = $derived(job === null || ['queued', 'running'].includes(job.status));
+	const cancellable = $derived(running && !!job && job.action !== 'pkg-upgrade');
 	const destructive = $derived(
 		job?.plan?.transaction.changes.some((c) => ['remove', 'downgrade'].includes(c.action)) ?? false
 	);
@@ -253,6 +256,21 @@
 			if (!isRequestCancellation(cause)) throw cause;
 		} finally {
 			applying = false;
+		}
+	}
+
+	async function cancel() {
+		if (!job || cancelling) return;
+		cancelling = true;
+		try {
+			const result = await cancelPackageJob(ctId, job.taskId, options());
+			if (isAPIResponse(result) && !controller.signal.aborted) {
+				toast.error(packageReason(result.message), { position: 'bottom-center' });
+				cancelling = false;
+			}
+		} catch (cause) {
+			cancelling = false;
+			if (!isRequestCancellation(cause)) throw cause;
 		}
 	}
 
@@ -481,7 +499,13 @@
 				</details>
 			{/if}
 		</div>
-		{#if job?.action === 'pkg-preview' && job.status === 'success' && (job.plan?.transaction.changes.length ?? 0) > 0}
+		{#if cancellable}
+			<Dialog.Footer class="border-t px-6 py-4">
+				<Button variant="outline" onclick={cancel} disabled={cancelling}
+					>{cancelling ? 'Stopping...' : 'Stop'}</Button
+				>
+			</Dialog.Footer>
+		{:else if job?.action === 'pkg-preview' && job.status === 'success' && (job.plan?.transaction.changes.length ?? 0) > 0}
 			<Dialog.Footer class="border-t px-6 py-4">
 				<Button
 					onclick={upgrade}

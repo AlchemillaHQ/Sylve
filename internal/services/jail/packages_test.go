@@ -160,6 +160,44 @@ func TestPackageAdmissionCoversLifecycleAndStorage(t *testing.T) {
 	release()
 }
 
+func TestPackageAuditCancelStopsCommandWithoutRecordingFailure(t *testing.T) {
+	s, jail := newPackageTestService(t)
+	entered := make(chan struct{}, 1)
+	s.packages.client = func(target pkgmanager.Target, log io.Writer) *pkgmanager.Client {
+		return &pkgmanager.Client{Target: target, Log: log, RunCommand: func(ctx context.Context, _ []string) (pkgmanager.Result, error) {
+			entered <- struct{}{}
+			<-ctx.Done()
+			return pkgmanager.Result{}, context.Cause(ctx)
+		}}
+	}
+	job, err := s.StartPackageOperation(t.Context(), jail.CTID, "pkg-audit", jailTypes.PackageRequest{}, "user", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- s.ExecutePackageTask(t.Context(), job.TaskID) }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("package command not reached")
+	}
+	if _, err = s.CancelPackageOperation(t.Context(), jail.CTID, job.TaskID); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err = <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("package task outlived cancel")
+	}
+	var state jailModels.JailPackageState
+	if lookup := s.DB.Where("jail_id = ?", jail.ID).Find(&state).Error; !errors.Is(err, errPackageCancelled) || lookup != nil || state.FailureCount != 0 || state.AuditError != "" {
+		t.Fatalf("cancel not recorded as a user stop: %v %+v", err, state)
+	}
+	if _, err = s.CancelPackageOperation(t.Context(), jail.CTID, job.TaskID); err == nil || err.Error() != "package_operation_not_cancellable" {
+		t.Fatalf("finished operation accepted cancel: %v", err)
+	}
+}
+
 func TestPackagePlansBoundToIdentitySingleUseAndAcknowledgement(t *testing.T) {
 	s, jail := newPackageTestService(t)
 	plan := jailModels.JailPackagePlan{ID: uuid.NewString(), JailID: jail.ID, GUID: jail.Storages[0].GUID, ExpiresAt: time.Now().Add(time.Minute), Plan: pkgmanager.Plan{Changes: []pkgmanager.Change{{Action: "remove", Name: "old"}}}}

@@ -153,6 +153,8 @@ export function hostUpdateReason(reason = ''): string {
 		host_updates_require_host:
 			'Host updates are unavailable when Sylve itself is running inside a jail.',
 		host_update_in_progress: 'Another host update operation is in progress.',
+		host_update_cancelled: 'The operation was stopped. Nothing was installed.',
+		host_update_not_cancellable: 'This operation has finished or cannot be stopped.',
 		host_update_acknowledgement_required:
 			'Confirm the maintenance impact before installing updates.',
 		host_update_plan_stale: 'This preview is no longer current. Request a new preview.',

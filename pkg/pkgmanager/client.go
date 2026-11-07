@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -85,8 +86,17 @@ type Repository struct {
 	Enabled bool
 }
 
+// pkg reads pkg.conf options from the environment, so only the proxy settings
+// Sylve's own downloads use are passed through. pkg 2.8 honours HTTP_PROXY for
+// https URLs too and ignores HTTPS_PROXY.
 func Environment() []string {
-	return []string{"PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin", "HOME=/root", "LC_ALL=C", "TERM=dumb"}
+	env := []string{"PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin", "HOME=/root", "LC_ALL=C", "TERM=dumb"}
+	for _, name := range []string{"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "NO_PROXY", "no_proxy"} {
+		if value, ok := os.LookupEnv(name); ok {
+			env = append(env, name+"="+value)
+		}
+	}
+	return env
 }
 
 func (c *Client) args(args ...string) ([]string, error) {
@@ -113,11 +123,15 @@ func (c *Client) args(args ...string) ([]string, error) {
 		"-o", "PKG_ENABLE_PLUGINS=false", "-o", "ASSUME_ALWAYS_YES=false",
 		"-o", "DEFAULT_ALWAYS_YES=false", "-o", "REPO_AUTOUPDATE=false",
 		"-o", "WARN_SIZE_LIMIT=0", "-o", "AUDIT_IGNORE_GLOB=[]", "-o", "AUDIT_IGNORE_REGEX=[]",
-		"-o", "ALIAS={}", "-o", "PKG_ENV={}", "-o", "SAT_SOLVER=", "-o", "CUDF_SOLVER=",
+		"-o", "ALIAS={}", "-o", "SAT_SOLVER=", "-o", "CUDF_SOLVER=",
 		"-o", "HANDLE_RC_SCRIPTS=false",
 	)
+	// A jail's pkg.conf is jail-controlled (offline targets run as host root in a
+	// chroot), while the host's PKG_ENV is the admin's documented proxy setting.
 	if c.Target.Host {
 		base = append(base, "-o", "AUTOREMOVE=false", "-o", "AUTOMERGE=true", "-o", "MERGETOOL=", "-o", "RUN_SCRIPTS=true", "-o", "PKG_TRIGGERS_ENABLE=true")
+	} else {
+		base = append(base, "-o", "PKG_ENV={}")
 	}
 	if c.Target.Offline && !(len(args) == 1 && args[0] == "-vv") {
 		base = append(base, "-o", "RUN_SCRIPTS=false", "-o", "PKG_TRIGGERS_ENABLE=false",
@@ -196,6 +210,11 @@ func (c *Client) Run(ctx context.Context, args ...string) (result Result, err er
 	}
 	cmd := exec.CommandContext(ctx, c.Binary, argv...)
 	cmd.Env = Environment()
+	// pkg forks (pkg update does, as does ssh for pkg+ssh repositories), and a
+	// child that outlives a kill keeps our pipes and pkg's repository lock.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	cmd.WaitDelay = 2 * time.Second
 	stdout := &boundedBuffer{limit: 16 << 20}
 	stderr := &boundedBuffer{limit: 64 << 10}
 	cmd.Stdout = stdout
@@ -216,7 +235,7 @@ func (c *Client) Run(ctx context.Context, args ...string) (result Result, err er
 		return result, fmt.Errorf("package_output_truncated")
 	}
 	if err != nil && ctx.Err() != nil {
-		return result, ctx.Err()
+		return result, context.Cause(ctx)
 	}
 	var exit *exec.ExitError
 	if err != nil && !errors.As(err, &exit) {

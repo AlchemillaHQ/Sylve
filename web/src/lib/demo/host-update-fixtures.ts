@@ -254,6 +254,21 @@ export function demoHostUpdates(
 		}
 		return success(view);
 	}
+	const cancel = path.match(/^jobs\/(\d+)\/cancel$/);
+	if (cancel && method === 'POST') {
+		const entry = jobs.get(Number(cancel[1]));
+		if (!entry || view.activeJob?.id !== entry.job.id || entry.job.action.endsWith('-apply'))
+			return failure('host_update_not_cancellable');
+		Object.assign(entry.job, {
+			status: 'failed',
+			phase: 'failed',
+			error: 'host_update_cancelled',
+			finishedAt: now()
+		});
+		view.history.unshift(entry.job);
+		view.activeJob = null;
+		return success(entry.job, 202);
+	}
 	const match = path.match(/^jobs\/(\d+)(\/logs)?$/);
 	if (match) {
 		const entry = jobs.get(Number(match[1]));

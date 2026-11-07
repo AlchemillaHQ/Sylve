@@ -353,7 +353,7 @@ func expectedPackageSkip(err error) bool {
 		return true
 	}
 	switch packageErrorCode(err) {
-	case "jail_not_running", "package_root_not_mounted", "jail_operation_in_progress", "package_operation_in_progress", "lifecycle_task_in_progress", "replication_lease_not_owned", "replication_operation_in_progress", "migration_in_progress":
+	case "jail_not_running", "package_root_not_mounted", "jail_operation_in_progress", "package_operation_in_progress", "package_operation_cancelled", "lifecycle_task_in_progress", "replication_lease_not_owned", "replication_operation_in_progress", "migration_in_progress":
 		return true
 	}
 	return false

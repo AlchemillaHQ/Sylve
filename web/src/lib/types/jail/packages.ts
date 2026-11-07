@@ -187,6 +187,8 @@ export function packageReason(
 		package_mount_state_changed: 'The jail’s mounted filesystems changed. Refresh and try again.',
 		package_offline_repository_unsupported: 'Offline checks require HTTP(S) or local repositories',
 		package_operation_in_progress: 'Operation in progress',
+		package_operation_cancelled: 'The operation was stopped. Nothing was installed.',
+		package_operation_not_cancellable: 'This operation has finished or cannot be stopped',
 		pkg_static_not_found: 'pkg-static unavailable',
 		pkg_static_not_trusted: 'The host package tool could not be verified',
 		pkg_version_unsupported: 'Requires host pkg-static 2.8.4',

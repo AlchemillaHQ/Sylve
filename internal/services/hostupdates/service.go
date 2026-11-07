@@ -78,6 +78,9 @@ type Service struct {
 	mu               sync.Mutex
 	releaseMu        sync.Mutex
 	releaseAttemptAt time.Time
+	readMu           sync.Mutex
+	readID           uint
+	cancelRead       context.CancelCauseFunc
 	client           func(io.Writer) *pkgmanager.Client
 	probe            func() error
 	command          func(context.Context, string, ...string) (string, error)
@@ -614,9 +617,24 @@ func (s *Service) execute(op models.HostUpdateOperation, selection []string) {
 		s.finish(op, err, message)
 		return
 	}
-	ctx, cancel := context.WithTimeout(s.context, 30*time.Minute)
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(s.context)
+	defer cancel(nil)
+	s.readMu.Lock()
+	s.readID, s.cancelRead = op.ID, cancel
+	s.readMu.Unlock()
+	defer func() {
+		s.readMu.Lock()
+		if s.readID == op.ID {
+			s.readID, s.cancelRead = 0, nil
+		}
+		s.readMu.Unlock()
+	}()
+	ctx, stop := context.WithTimeout(ctx, 30*time.Minute)
+	defer stop()
 	err = s.readOperation(ctx, &op, selection, log)
+	if err != nil && errors.Is(context.Cause(ctx), errCancelled) {
+		err = errCancelled
+	}
 	if err != nil {
 		_, _ = fmt.Fprintln(log, pkgmanager.Redact(err.Error()))
 		if op.Action == "audit" || op.Action == "check" {
@@ -628,6 +646,24 @@ func (s *Service) execute(op models.HostUpdateOperation, selection []string) {
 		}
 	}
 	s.finish(op, err, "")
+}
+
+var errCancelled = errors.New("host_update_cancelled")
+
+// Only read operations can be cancelled; killing pkg mid-install could leave
+// the host half-upgraded.
+func (s *Service) Cancel(ctx context.Context, id uint) (Job, error) {
+	s.readMu.Lock()
+	cancel := s.cancelRead
+	if s.readID != id {
+		cancel = nil
+	}
+	s.readMu.Unlock()
+	if cancel == nil {
+		return Job{}, fmt.Errorf("host_update_not_cancellable")
+	}
+	cancel(errCancelled)
+	return s.Job(ctx, id)
 }
 
 func (s *Service) readOperation(ctx context.Context, op *models.HostUpdateOperation, selection []string, log io.Writer) error {

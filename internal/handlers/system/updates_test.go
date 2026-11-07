@@ -43,6 +43,9 @@ func (s *updateStub) Start(_ context.Context, action string, request hostupdates
 	return hostupdates.Job{HostUpdateOperation: models.HostUpdateOperation{ID: 17, Status: "queued"}}, nil
 }
 func (*updateStub) Job(context.Context, uint) (hostupdates.Job, error) { return hostupdates.Job{}, nil }
+func (*updateStub) Cancel(context.Context, uint) (hostupdates.Job, error) {
+	return hostupdates.Job{}, nil
+}
 func (s *updateStub) Logs(context.Context, uint, int64) (string, int64, error) {
 	s.logCalls++
 	return "output", 6, nil

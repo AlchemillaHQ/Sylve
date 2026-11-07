@@ -184,6 +184,22 @@ export function demoPackages(
 			? success({ package: pkg, dependencies: [], dependenciesAvailable: view.ready })
 			: failure('package_not_found');
 	}
+	const cancel = path.match(/^jobs\/(\d+)\/cancel$/);
+	if (cancel && method === 'POST') {
+		const entry = jobs.get(Number(cancel[1]));
+		if (!entry || view.activeJob?.taskId !== entry.job.taskId || entry.job.action === 'pkg-upgrade')
+			return failure('package_operation_not_cancellable');
+		Object.assign(entry.job, {
+			status: 'failed',
+			phase: 'failed',
+			error: 'package_operation_cancelled',
+			finishedAt: currentTime()
+		});
+		view.activeJob = null;
+		view.ready = true;
+		view.reason = '';
+		return success(entry.job, 202);
+	}
 	const match = path.match(/^jobs\/(\d+)(\/logs)?$/);
 	if (match) {
 		const entry = jobs.get(Number(match[1]));
