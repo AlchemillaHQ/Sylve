@@ -17,6 +17,7 @@
 	import { sleep } from '$lib/utils';
 	import { watch } from 'runed';
 	import SpanWithIcon from '../SpanWithIcon.svelte';
+	import SimpleSelect from '../SimpleSelect.svelte';
 	import { toast } from 'svelte-sonner';
 	import { isDemoMode } from '$lib/demo/runtime';
 
@@ -115,6 +116,41 @@
 	let sourceNode = $state('');
 	let cancellationRequested = $state(false);
 	let validationRequestGeneration = 0;
+
+	// Pools the guest's datasets live on, the selected node's usable pools, and
+	// the user's choice of target pool for a source pool.
+	let guestPools = $state.raw<string[]>([]);
+	let targetNodePools = $state.raw<string[]>([]);
+	let targetPools = $state<Record<string, string>>({});
+	let showPoolMapping = $derived(
+		guestPools.length > 0 &&
+			targetNodePools.length > 0 &&
+			(Object.keys(targetPools).length > 0 ||
+				guestPools.some((pool) => !targetNodePools.includes(pool)))
+	);
+
+	function targetPoolFor(pool: string): string {
+		return targetPools[pool] ?? (targetNodePools.includes(pool) ? pool : '');
+	}
+
+	// Gives each pool the target lacks a target pool nothing else uses, or
+	// merges it into the first one when none is left, so the usual case needs
+	// no choice. The picker still shows it and can change it.
+	function defaultMissingPools(): boolean {
+		const used = guestPools.map(targetPoolFor).filter(Boolean);
+		const next = { ...targetPools };
+		let changed = false;
+		for (const pool of guestPools) {
+			if (targetPoolFor(pool)) continue;
+			const free = targetNodePools.find((target) => !used.includes(target)) ?? targetNodePools[0];
+			if (!free) continue;
+			next[pool] = free;
+			used.push(free);
+			changed = true;
+		}
+		if (changed) targetPools = next;
+		return changed;
+	}
 
 	function cancellationAvailableInCurrentPhase(): boolean {
 		return (
@@ -265,20 +301,41 @@
 
 	async function onTargetSelect(nodeUuid: string) {
 		if (nodeUuid === selectedNodeUuid && validating) return;
-		const requestGeneration = ++validationRequestGeneration;
+		if (nodeUuid !== selectedNodeUuid) {
+			guestPools = [];
+			targetNodePools = [];
+			targetPools = {};
+		}
 		selectedNodeUuid = nodeUuid;
+		await runValidation(isDemoMode ? 450 : 1500);
+	}
+
+	async function onTargetPoolSelect(sourcePool: string, targetPool: string) {
+		targetPools = { ...targetPools, [sourcePool]: targetPool };
+		await runValidation(0);
+	}
+
+	async function runValidation(delay: number) {
+		const requestGeneration = ++validationRequestGeneration;
+		const nodeUuid = selectedNodeUuid;
 		error = '';
 		validation = null;
 		validating = true;
 
-		await sleep(isDemoMode ? 450 : 1500);
+		await sleep(delay);
 		if (requestGeneration !== validationRequestGeneration || nodeUuid !== selectedNodeUuid) return;
 
-		const result = await validateMigration(guestType, guestId, nodeUuid, node);
+		const result = await validateMigration(guestType, guestId, nodeUuid, targetPools, node);
 		if (requestGeneration !== validationRequestGeneration || nodeUuid !== selectedNodeUuid) return;
 		if (isAPIResponse(result)) {
 			error = String(result.error || 'Validation failed');
 		} else {
+			guestPools = result.guestPools;
+			targetNodePools = result.targetNodePools;
+			if (defaultMissingPools()) {
+				await runValidation(0);
+				return;
+			}
 			validation = result;
 		}
 		validating = false;
@@ -295,9 +352,9 @@
 
 		let result;
 		if (guestType === 'vm') {
-			result = await migrateVM(guestId, selectedNodeUuid, node);
+			result = await migrateVM(guestId, selectedNodeUuid, targetPools, node);
 		} else {
-			result = await migrateJail(guestId, selectedNodeUuid, node);
+			result = await migrateJail(guestId, selectedNodeUuid, targetPools, node);
 		}
 
 		if (isAPIResponse(result)) {
@@ -399,6 +456,9 @@
 		validationRequestGeneration++;
 		selectedNodeUuid = '';
 		validation = null;
+		guestPools = [];
+		targetNodePools = [];
+		targetPools = {};
 		loading = false;
 		validating = false;
 		error = '';
@@ -596,7 +656,7 @@
 				{/if}
 			</Dialog.Footer>
 		{:else}
-			<ScrollArea orientation="vertical" class="h-[40vh] max-h-96">
+			<ScrollArea orientation="vertical" class="h-[60vh] max-h-[36rem]">
 				<div class="pr-1">
 					<div class="divide-y rounded-md border">
 						{#each nodes as n (n)}
@@ -631,6 +691,27 @@
 					</div>
 
 					<div class="space-y-2 pt-2">
+						{#if showPoolMapping}
+							<div class="space-y-2 rounded-md border p-3">
+								<p class="text-xs text-muted-foreground">
+									Choose the target node pool for each pool this {guestTypeLabel()} uses.
+								</p>
+								<div class="grid grid-cols-[auto_auto_1fr] items-center gap-2 text-sm">
+									{#each guestPools as pool (pool)}
+										<span class="max-w-40 truncate font-medium" title={pool}>{pool}</span>
+										<span class="icon-[mdi--arrow-right] h-4 w-4 text-muted-foreground"></span>
+										<SimpleSelect
+											options={targetNodePools.map((target) => ({ value: target, label: target }))}
+											value={targetPoolFor(pool)}
+											placeholder="Choose a pool"
+											disabled={validating}
+											onChange={(target) => onTargetPoolSelect(pool, target)}
+										/>
+									{/each}
+								</div>
+							</div>
+						{/if}
+
 						{#if validating}
 							<Alert>
 								<AlertDescription class="flex items-center justify-center gap-2 text-base">

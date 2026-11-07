@@ -10,6 +10,7 @@ package jail
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
@@ -42,9 +43,9 @@ func TestRebaseTemplateFstabOnlyChangesContainedDestinations(t *testing.T) {
 		"/mnt/source /somewhere/with/100/mnt/data nullfs rw 0 0\n" +
 		"malformed\n"
 
-	got, err := rebaseTemplateFstab(input, sourceRoot, targetRoot)
+	got, err := RebaseFstab(input, sourceRoot, targetRoot)
 	if err != nil {
-		t.Fatalf("rebaseTemplateFstab failed: %v", err)
+		t.Fatalf("RebaseFstab failed: %v", err)
 	}
 	if got != expected {
 		t.Fatalf("rebased fstab mismatch\ngot:\n%s\nwant:\n%s", got, expected)
@@ -53,7 +54,7 @@ func TestRebaseTemplateFstabOnlyChangesContainedDestinations(t *testing.T) {
 
 func TestRebaseTemplateFstabPreservesEmptyDocument(t *testing.T) {
 	const input = " \t\r\n"
-	got, err := rebaseTemplateFstab(input, "", "")
+	got, err := RebaseFstab(input, "", "")
 	if err != nil {
 		t.Fatalf("empty fstab should not require roots: %v", err)
 	}
@@ -95,7 +96,7 @@ func TestRebaseTemplateFstabRejectsUnsafeRoots(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := rebaseTemplateFstab(
+			_, err := RebaseFstab(
 				"devfs /jails/100/dev devfs rw 0 0\n",
 				tt.sourceRoot,
 				tt.targetRoot,
@@ -179,5 +180,23 @@ func TestResolveTemplateFstabSourceRootAllowsEmptyFstab(t *testing.T) {
 	template := &jailModels.JailTemplate{Fstab: " \n\t"}
 	if err := (&Service{}).resolveTemplateFstabSourceRoot(context.Background(), template); err != nil {
 		t.Fatalf("empty fstab should not require source metadata: %v", err)
+	}
+}
+
+func TestMarshalJailJSONRecordsRootMountpoint(t *testing.T) {
+	raw, err := marshalJailJSON(&jailModels.Jail{CTID: 23, Fstab: "/a /b nullfs ro 0 0"}, "/tank/sylve/jails/23")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		CTID           uint   `json:"ctId"`
+		Fstab          string `json:"fstab"`
+		RootMountpoint string `json:"rootMountpoint"`
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.CTID != 23 || got.Fstab != "/a /b nullfs ro 0 0" || got.RootMountpoint != "/tank/sylve/jails/23" {
+		t.Fatalf("jail.json = %s", raw)
 	}
 }

@@ -28,7 +28,8 @@ import (
 )
 
 type MigrateGuestRequest struct {
-	TargetNodeUUID string `json:"targetNodeUuid"`
+	TargetNodeUUID string            `json:"targetNodeUuid"`
+	TargetPools    map[string]string `json:"targetPools,omitempty"`
 }
 
 type MigrationTaskResponse struct {
@@ -161,6 +162,7 @@ func migrateGuest(
 			GuestType:      options.guestType,
 			GuestID:        guestID,
 			TargetNodeUUID: req.TargetNodeUUID,
+			TargetPools:    req.TargetPools,
 		})
 		if err != nil {
 			status, message := classifyMigrationValidationError(err)
@@ -283,6 +285,8 @@ func classifyMigrationValidationResult(
 			code == "jail_lookup_failed",
 			code == "jail_storage_lookup_failed",
 			code == "jail_network_lookup_failed",
+			code == "guest_dataset_resolution_failed",
+			code == "backup_job_lookup_failed",
 			(strings.HasPrefix(code, "network_") && strings.HasSuffix(code, "_lookup_failed")):
 			return http.StatusInternalServerError, "migration_validation_failed"
 		case code == "target_node_offline",
@@ -291,7 +295,7 @@ func classifyMigrationValidationResult(
 			code == "cluster_ssh_key_unavailable",
 			code == "target_check_failed",
 			code == "target_guest_record_check_failed",
-			strings.HasPrefix(code, "target_pool_check_failed_"),
+			code == "target_pool_check_failed",
 			strings.HasPrefix(code, "target_guest_check_failed_"),
 			(strings.HasPrefix(code, "network_") && strings.Contains(code, "_bridge_check_failed_")),
 			strings.HasPrefix(code, "target_identity_inventory_"):
@@ -406,6 +410,7 @@ func classifyCancelMigrationError(err error) (int, string) {
 // @Param guestType query string true "Guest type" Enums(vm,jail)
 // @Param guestId query int true "Positive guest ID" minimum(1)
 // @Param targetNodeUuid query string true "Target cluster node UUID"
+// @Param targetPools query object false "Source pool to target pool, as targetPools[source]=target"
 // @Success 200 {object} internal.APIResponse[migrationIface.ValidateResult] "Validation complete"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
@@ -438,6 +443,7 @@ func ValidateMigration(migrationService migrationIface.MigrationServiceInterface
 			GuestType:      guestType,
 			GuestID:        guestID,
 			TargetNodeUUID: targetNodeUUID,
+			TargetPools:    c.QueryMap("targetPools"),
 		})
 		if err != nil {
 			status, message := classifyMigrationValidationError(err)

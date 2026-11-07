@@ -1007,7 +1007,7 @@ func (s *Service) createJailFromTemplateTarget(
 		if strings.TrimSpace(template.FstabSourceRoot) == "" {
 			rebasedFstab = disableUnresolvedTemplateFstab(rebasedFstab)
 		} else {
-			rebasedFstab, err = rebaseTemplateFstab(rebasedFstab, template.FstabSourceRoot, mountPoint)
+			rebasedFstab, err = RebaseFstab(rebasedFstab, template.FstabSourceRoot, mountPoint)
 			if err != nil {
 				return fmt.Errorf("failed_to_rebase_template_fstab: %w", err)
 			}

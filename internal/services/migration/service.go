@@ -61,13 +61,14 @@ var (
 )
 
 type migrationPayload struct {
-	TargetNodeUUID     string   `json:"targetNodeUuid"`
-	OperationToken     string   `json:"operationToken,omitempty"`
-	OriginalRunning    *bool    `json:"originalRunning,omitempty"`
-	Phase              string   `json:"phase"`
-	PhaseMessage       string   `json:"phaseMessage"`
-	Warnings           []string `json:"warnings,omitempty"`
-	SourceDatasetRoots []string `json:"sourceDatasetRoots,omitempty"`
+	TargetNodeUUID     string            `json:"targetNodeUuid"`
+	TargetPools        map[string]string `json:"targetPools,omitempty"`
+	OperationToken     string            `json:"operationToken,omitempty"`
+	OriginalRunning    *bool             `json:"originalRunning,omitempty"`
+	Phase              string            `json:"phase"`
+	PhaseMessage       string            `json:"phaseMessage"`
+	Warnings           []string          `json:"warnings,omitempty"`
+	SourceDatasetRoots []string          `json:"sourceDatasetRoots,omitempty"`
 }
 
 type guestWorkloadGurad interface {
@@ -277,25 +278,22 @@ func (s *Service) ValidateMigration(ctx context.Context, req migrationIface.Migr
 		return result, nil
 	}
 
-	if req.GuestType == taskModels.GuestTypeVM {
-		reasons := s.validateVMPreflight(ctx, req.GuestID, targetNode)
-		for _, reason := range reasons {
-			if strings.HasPrefix(strings.ToLower(reason), "warning_") {
-				result.Warnings = append(result.Warnings, reason)
-			} else {
-				result.Allowed = false
-				result.Reasons = append(result.Reasons, reason)
-			}
-		}
-	} else if req.GuestType == taskModels.GuestTypeJail {
-		reasons := s.validateJailPreflight(ctx, req.GuestID, targetNode)
-		for _, reason := range reasons {
-			if strings.HasPrefix(strings.ToLower(reason), "warning_") {
-				result.Warnings = append(result.Warnings, reason)
-			} else {
-				result.Allowed = false
-				result.Reasons = append(result.Reasons, reason)
-			}
+	req.TargetPools = normalizeTargetPools(req.TargetPools)
+	var reasons []string
+	switch req.GuestType {
+	case taskModels.GuestTypeVM:
+		reasons = s.validateVMPreflight(ctx, req.GuestID, targetNode)
+	case taskModels.GuestTypeJail:
+		reasons = s.validateJailPreflight(ctx, req.GuestID, targetNode)
+	}
+	poolReasons, guestPools, nodePools := s.targetPoolPreflight(ctx, req.GuestType, req.GuestID, targetNode, req.TargetPools)
+	result.GuestPools, result.TargetNodePools = guestPools, nodePools
+	for _, reason := range append(reasons, poolReasons...) {
+		if strings.HasPrefix(strings.ToLower(reason), "warning_") {
+			result.Warnings = append(result.Warnings, reason)
+		} else {
+			result.Allowed = false
+			result.Reasons = append(result.Reasons, reason)
 		}
 	}
 
@@ -303,8 +301,6 @@ func (s *Service) ValidateMigration(ctx context.Context, req migrationIface.Migr
 }
 
 func (s *Service) validateVMPreflight(ctx context.Context, rid uint, targetNode clusterModels.ClusterNode) []string {
-	var reasons []string
-
 	var vm vmModels.VM
 	if err := s.DB.
 		Preload("Storages").
@@ -315,50 +311,8 @@ func (s *Service) validateVMPreflight(ctx context.Context, rid uint, targetNode 
 		return []string{fmt.Sprintf("vm_not_found: %v", err)}
 	}
 
-	pools := make(map[string]bool)
-	for _, storage := range vm.Storages {
-		pool := strings.TrimSpace(storage.Pool)
-		if pool != "" {
-			pools[pool] = true
-		}
-	}
-
-	identity, sshErr := s.getNodeSSHIdentity(targetNode.NodeUUID)
-	if sshErr != nil {
-		reasons = append(reasons, fmt.Sprintf("target_ssh_identity_unavailable: %v", sshErr))
-		return reasons
-	}
-
-	privateKeyPath, keyErr := s.Cluster.ClusterSSHPrivateKeyPath()
-	if keyErr != nil {
-		reasons = append(reasons, fmt.Sprintf("cluster_ssh_key_unavailable: %v", keyErr))
-		return reasons
-	}
-
-	for pool := range pools {
-		exists, err := s.remotePoolExists(ctx, identity, pool)
-		if err != nil {
-			reasons = append(reasons, fmt.Sprintf("target_pool_check_failed_%s: %v", pool, err))
-			continue
-		}
-		if !exists {
-			reasons = append(reasons, fmt.Sprintf("target_missing_pool: %s", pool))
-			continue
-		}
-
-		guestDataset := fmt.Sprintf("%s/sylve/virtual-machines/%d", pool, rid)
-		datasetExists, dsErr := s.remoteDatasetExists(ctx, identity, privateKeyPath, guestDataset)
-		if dsErr != nil {
-			reasons = append(reasons, fmt.Sprintf("target_guest_check_failed_%s: %v", pool, dsErr))
-		} else if datasetExists {
-			reasons = append(reasons, fmt.Sprintf("warning_stale_dataset_on_target: %s", guestDataset))
-		}
-	}
-
-	reasons = append(reasons, s.vmConfigPreflightReasons(vm, targetNode)...)
-	reasons = append(reasons, s.vmTargetPreflightReasons(ctx, vm, targetNode)...)
-
-	return reasons
+	reasons := s.vmConfigPreflightReasons(vm, targetNode)
+	return append(reasons, s.vmTargetPreflightReasons(ctx, vm, targetNode)...)
 }
 
 func collectVMISOUUIDs(storages []vmModels.Storage) ([]string, map[string]string) {
@@ -436,10 +390,11 @@ type vmTargetProbe struct {
 
 type vmTargetResult struct {
 	networkAttachment.TargetResult
-	BootErrors        []string `json:"bootErrors"`
-	MissingMedia      []string `json:"missingMedia"`
-	VNCPortInUse      bool     `json:"vncPortInUse"`
-	MissingFsDatasets []string `json:"missingFsDatasets"`
+	BootErrors             []string `json:"bootErrors"`
+	MissingMedia           []string `json:"missingMedia"`
+	VNCPortInUse           bool     `json:"vncPortInUse"`
+	MissingFsDatasets      []string `json:"missingFsDatasets"`
+	VirtualizationDisabled bool     `json:"virtualizationDisabled"`
 }
 
 type jailTargetProbe struct {
@@ -605,13 +560,12 @@ func (s *Service) vmTargetPreflightReasons(ctx context.Context, vm vmModels.VM, 
 	if probeErr != nil {
 		return []string{probeErr.Error()}
 	}
-	if probe.BootRequirement == nil && len(probe.MediaUUIDs) == 0 && len(probe.Switches) == 0 && len(probe.FsDatasets) == 0 && probe.VNCPort == 0 {
-		return nil
-	}
-
 	result, err := s.remoteCheckVMTarget(ctx, targetNode, probe)
 	if err != nil {
 		return []string{fmt.Sprintf("target_check_failed: %v", err)}
+	}
+	if result.VirtualizationDisabled {
+		return []string{"target_virtualization_disabled"}
 	}
 	if probe.BootRequirement != nil && len(result.BootErrors) > 0 {
 		return result.BootErrors
@@ -700,47 +654,6 @@ func (s *Service) validateJailPreflight(ctx context.Context, ctID uint, targetNo
 		)}
 	}
 
-	identity, sshErr := s.getNodeSSHIdentity(targetNode.NodeUUID)
-	if sshErr != nil {
-		reasons = append(reasons, fmt.Sprintf("target_ssh_identity_unavailable: %v", sshErr))
-		return reasons
-	}
-
-	privateKeyPath, keyErr := s.Cluster.ClusterSSHPrivateKeyPath()
-	if keyErr != nil {
-		reasons = append(reasons, fmt.Sprintf("cluster_ssh_key_unavailable: %v", keyErr))
-		return reasons
-	}
-
-	var jailStorages []string
-	if err := s.DB.Raw("SELECT DISTINCT pool FROM jail_storages WHERE jid = ?", sourceJail.ID).Scan(&jailStorages).Error; err != nil {
-		return []string{fmt.Sprintf("jail_storage_lookup_failed: %v", err)}
-	}
-
-	for _, pool := range jailStorages {
-		pool = strings.TrimSpace(pool)
-		if pool == "" {
-			continue
-		}
-		exists, err := s.remotePoolExists(ctx, identity, pool)
-		if err != nil {
-			reasons = append(reasons, fmt.Sprintf("target_pool_check_failed_%s: %v", pool, err))
-			continue
-		}
-		if !exists {
-			reasons = append(reasons, fmt.Sprintf("target_missing_pool: %s", pool))
-			continue
-		}
-
-		guestDataset := fmt.Sprintf("%s/sylve/jails/%d", pool, ctID)
-		datasetExists, dsErr := s.remoteDatasetExists(ctx, identity, privateKeyPath, guestDataset)
-		if dsErr != nil {
-			reasons = append(reasons, fmt.Sprintf("target_guest_check_failed_%s: %v", pool, dsErr))
-		} else if datasetExists {
-			reasons = append(reasons, fmt.Sprintf("warning_stale_dataset_on_target: %s", guestDataset))
-		}
-	}
-
 	probe, probeErr := s.buildJailTargetProbe(sourceJail.ID)
 	if probeErr != nil {
 		return append(reasons, probeErr.Error())
@@ -827,32 +740,25 @@ func (s *Service) phaseFinalCutoverRevalidation(
 	default:
 		return fmt.Errorf("unsupported_guest_type: %s", task.GuestType)
 	}
+	poolReasons, _, _ := s.targetPoolPreflight(ctx, task.GuestType, task.GuestID, targetNode, mp.TargetPools)
+	reasons = append(reasons, poolReasons...)
 	if hard := hardMigrationPreflightReasons(reasons); len(hard) != 0 {
 		return fmt.Errorf("migration_cutover_target_revalidation_failed: %s", strings.Join(hard, "; "))
 	}
 
-	for _, root := range roots {
-		root = strings.TrimSpace(root)
-		if !isCanonicalMigrationGuestDataset(root, task.GuestType, task.GuestID) {
-			return fmt.Errorf("migration_cutover_dataset_root_invalid: %s", root)
+	for _, target := range TargetDatasetRoots(roots, mp.TargetPools) {
+		if !isCanonicalMigrationGuestDataset(target.Source, task.GuestType, task.GuestID) {
+			return fmt.Errorf("migration_cutover_dataset_root_invalid: %s", target.Source)
 		}
-		if _, err := s.GZFS.ZFS.Get(ctx, root, false); err != nil {
-			return fmt.Errorf("migration_cutover_source_dataset_unavailable_%s: %w", root, err)
+		if _, err := s.GZFS.ZFS.Get(ctx, target.Source, false); err != nil {
+			return fmt.Errorf("migration_cutover_source_dataset_unavailable_%s: %w", target.Source, err)
 		}
-		pool := strings.SplitN(root, "/", 2)[0]
-		exists, err := s.remotePoolExists(ctx, identity, pool)
+		exists, err := s.remoteDatasetExists(ctx, identity, privateKeyPath, target.Receive)
 		if err != nil {
-			return fmt.Errorf("migration_cutover_target_pool_check_failed_%s: %w", pool, err)
+			return fmt.Errorf("migration_cutover_target_dataset_check_failed_%s: %w", target.Receive, err)
 		}
 		if !exists {
-			return fmt.Errorf("migration_cutover_target_pool_missing: %s", pool)
-		}
-		exists, err = s.remoteDatasetExists(ctx, identity, privateKeyPath, root)
-		if err != nil {
-			return fmt.Errorf("migration_cutover_target_dataset_check_failed_%s: %w", root, err)
-		}
-		if !exists {
-			return fmt.Errorf("migration_cutover_target_dataset_missing: %s", root)
+			return fmt.Errorf("migration_cutover_target_dataset_missing: %s", target.Receive)
 		}
 	}
 
@@ -898,6 +804,7 @@ func (s *Service) ExecuteMigration(ctx context.Context, taskID uint) (retErr err
 			return err
 		}
 	}
+	mp.TargetPools = normalizeTargetPools(mp.TargetPools)
 	// A finalize checkpoint with no remaining cutover operation is historical
 	// completion recovery, not a new migration attempt. Reconcile it before the
 	// current-policy gate: once Complete removed the durable guard, a user may
@@ -1516,31 +1423,6 @@ func (s *Service) backupEventReferencesGuest(event clusterModels.BackupEvent, gu
 	}
 
 	return false
-}
-
-func (s *Service) remotePoolExists(ctx context.Context, identity *clusterModels.ClusterSSHIdentity, pool string) (bool, error) {
-	privateKeyPath, err := s.Cluster.ClusterSSHPrivateKeyPath()
-	if err != nil {
-		return false, err
-	}
-	parsedPool, err := remoteexec.ParseZFSDataset(pool)
-	if err != nil || parsedPool.String() != parsedPool.Pool() {
-		return false, fmt.Errorf("invalid_remote_pool")
-	}
-	pool = parsedPool.String()
-	output, err := runClusterRemoteCommand(
-		ctx, identity, privateKeyPath, "zpool.list", pool,
-		"zpool", "list", "-H", "-o", "name", pool,
-	)
-	if err != nil {
-		combined := strings.ToLower(strings.TrimSpace(output + " " + err.Error()))
-		if strings.Contains(combined, "no such pool") {
-			return false, nil
-		}
-		return false, err
-	}
-
-	return true, nil
 }
 
 func (s *Service) resolveGuestDatasets(ctx context.Context, guestType string, guestID uint) ([]string, error) {

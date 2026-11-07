@@ -18,16 +18,18 @@ import {
 import { apiRequest } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
+// targetPools maps a source pool to the target pool that receives its datasets.
 export async function migrateVM(
 	rid: number,
 	targetNodeUuid: string,
+	targetPools: Record<string, string>,
 	hostname?: string
 ): Promise<MigrationTaskResponse | APIResponse> {
 	return await apiRequest(
 		`/vm/${rid}/migrations`,
 		MigrationTaskResponseSchema,
 		'POST',
-		{ targetNodeUuid },
+		{ targetNodeUuid, targetPools },
 		{ hostname }
 	);
 }
@@ -35,13 +37,14 @@ export async function migrateVM(
 export async function migrateJail(
 	ctId: number,
 	targetNodeUuid: string,
+	targetPools: Record<string, string>,
 	hostname?: string
 ): Promise<MigrationTaskResponse | APIResponse> {
 	return await apiRequest(
 		`/jail/${ctId}/migrations`,
 		MigrationTaskResponseSchema,
 		'POST',
-		{ targetNodeUuid },
+		{ targetNodeUuid, targetPools },
 		{ hostname }
 	);
 }
@@ -50,9 +53,13 @@ export async function validateMigration(
 	guestType: 'vm' | 'jail',
 	guestId: number,
 	targetNodeUuid: string,
+	targetPools: Record<string, string>,
 	hostname?: string
 ): Promise<ValidateResult | APIResponse> {
 	const params = new URLSearchParams({ guestType, guestId: String(guestId), targetNodeUuid });
+	for (const [source, target] of Object.entries(targetPools)) {
+		params.append(`targetPools[${source}]`, target);
+	}
 	return await apiRequest(
 		`/tasks/migration/validate?${params.toString()}`,
 		ValidateResultSchema,

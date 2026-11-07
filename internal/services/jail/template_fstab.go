@@ -125,7 +125,9 @@ func disableUnresolvedTemplateFstab(fstab string) string {
 		strings.Join(lines, "\n")
 }
 
-func rebaseTemplateFstab(fstab, sourceRoot, targetRoot string) (string, error) {
+// RebaseFstab moves every mount destination under sourceRoot to the same
+// place under targetRoot, for a jail whose root now mounts elsewhere.
+func RebaseFstab(fstab, sourceRoot, targetRoot string) (string, error) {
 	if strings.TrimSpace(fstab) == "" {
 		return fstab, nil
 	}

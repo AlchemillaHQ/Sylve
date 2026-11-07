@@ -161,7 +161,9 @@ func TestTargetMigrationImportReceiptMustMatchTokenGuestAndRootManifest(t *testi
 		GuestID: 42, OperationToken: "migration:source:42", StartGuest: &started,
 		SourceDatasetRoots: []string{roots[1], roots[0]},
 	}
-	if err := validateTargetMigrationImportReceipt(valid, 42, "migration:source:42", true, roots); err != nil {
+	pools := map[string]string{"pool-b": "tank"}
+	valid.TargetPools = map[string]string{"pool-b": "tank"}
+	if err := validateTargetMigrationImportReceipt(valid, 42, "migration:source:42", true, roots, pools); err != nil {
 		t.Fatalf("valid token-bound receipt rejected: %v", err)
 	}
 
@@ -171,10 +173,11 @@ func TestTargetMigrationImportReceiptMustMatchTokenGuestAndRootManifest(t *testi
 		"stopped guest": func(r *targetMigrationImportReceipt) { r.StartGuest = &stopped },
 		"no run state":  func(r *targetMigrationImportReceipt) { r.StartGuest = nil },
 		"missing root":  func(r *targetMigrationImportReceipt) { r.SourceDatasetRoots = roots[:1] },
+		"pools ignored": func(r *targetMigrationImportReceipt) { r.TargetPools = nil },
 	} {
 		receipt := valid
 		mutate(&receipt)
-		if err := validateTargetMigrationImportReceipt(receipt, 42, "migration:source:42", true, roots); err == nil {
+		if err := validateTargetMigrationImportReceipt(receipt, 42, "migration:source:42", true, roots, pools); err == nil {
 			t.Fatalf("%s receipt was accepted: %+v", name, receipt)
 		}
 	}

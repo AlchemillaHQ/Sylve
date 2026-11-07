@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -175,19 +176,21 @@ type countingWriter struct {
 }
 
 type targetMigrationImportRequest struct {
-	GuestID            uint     `json:"guestId"`
-	OperationToken     string   `json:"operationToken"`
-	StartGuest         *bool    `json:"startGuest"`
-	SourceDatasetRoots []string `json:"sourceDatasetRoots"`
+	GuestID            uint              `json:"guestId"`
+	OperationToken     string            `json:"operationToken"`
+	StartGuest         *bool             `json:"startGuest"`
+	SourceDatasetRoots []string          `json:"sourceDatasetRoots"`
+	TargetPools        map[string]string `json:"targetPools,omitempty"`
 }
 
 type targetMigrationImportReceipt struct {
-	Message            string   `json:"message"`
-	Warnings           []string `json:"warnings"`
-	GuestID            uint     `json:"guestId"`
-	OperationToken     string   `json:"operationToken"`
-	StartGuest         *bool    `json:"startGuest"`
-	SourceDatasetRoots []string `json:"sourceDatasetRoots"`
+	Message            string            `json:"message"`
+	Warnings           []string          `json:"warnings"`
+	GuestID            uint              `json:"guestId"`
+	OperationToken     string            `json:"operationToken"`
+	StartGuest         *bool             `json:"startGuest"`
+	SourceDatasetRoots []string          `json:"sourceDatasetRoots"`
+	TargetPools        map[string]string `json:"targetPools,omitempty"`
 }
 
 func (cw *countingWriter) Write(p []byte) (int, error) {
@@ -339,7 +342,8 @@ func (s *Service) replicateGuestDatasets(ctx context.Context, mp *migrationPaylo
 		}
 	}
 
-	for _, dataset := range datasets {
+	for _, target := range TargetDatasetRoots(datasets, mp.TargetPools) {
+		dataset := target.Source
 		snapName := fmt.Sprintf("%s-%s", migrationSnapPrefix, snapSuffix)
 
 		mp.PhaseMessage = fmt.Sprintf("replicating_dataset: %s", dataset)
@@ -351,7 +355,7 @@ func (s *Service) replicateGuestDatasets(ctx context.Context, mp *migrationPaylo
 			s.writeTransferProgress(taskID, ds, currentPhase, total, sent)
 		}
 
-		if err := s.sendDatasetToNode(ctx, dataset, snapName, identity, privateKeyPath, incremental, progressFn, taskID); err != nil {
+		if err := s.sendDatasetToNode(ctx, dataset, target.Receive, snapName, identity, privateKeyPath, incremental, progressFn, taskID); err != nil {
 			if isExplicitMigrationCancellation(err) {
 				return err
 			}
@@ -365,6 +369,7 @@ func (s *Service) replicateGuestDatasets(ctx context.Context, mp *migrationPaylo
 func (s *Service) sendDatasetToNode(
 	ctx context.Context,
 	dataset string,
+	targetDataset string,
 	snapName string,
 	identity *clusterModels.ClusterSSHIdentity,
 	privateKeyPath string,
@@ -376,11 +381,16 @@ func (s *Service) sendDatasetToNode(
 	if err != nil {
 		return fmt.Errorf("migration_dataset_invalid: %w", err)
 	}
+	parsedTarget, err := remoteexec.ParseZFSDataset(targetDataset)
+	if err != nil {
+		return fmt.Errorf("migration_target_dataset_invalid: %w", err)
+	}
 	parsedSnapshot, err := remoteexec.ParseZFSSnapshotName(snapName)
 	if err != nil || !isMigrationOwnedSnapshot(parsedSnapshot.String()) {
 		return fmt.Errorf("migration_snapshot_invalid")
 	}
 	dataset = parsedDataset.String()
+	targetDataset = parsedTarget.String()
 	snapName = parsedSnapshot.String()
 	commonSnap := ""
 	if incremental {
@@ -388,7 +398,7 @@ func (s *Service) sendDatasetToNode(
 		if snapErr != nil {
 			return fmt.Errorf("list_migration_snapshots_failed: %w", snapErr)
 		}
-		remoteSnaps, remoteErr := s.listRemoteMigrationSnapshots(ctx, dataset, identity, privateKeyPath)
+		remoteSnaps, remoteErr := s.listRemoteMigrationSnapshots(ctx, targetDataset, identity, privateKeyPath)
 		if remoteErr != nil {
 			return fmt.Errorf("list_remote_migration_snapshots_failed: %w", remoteErr)
 		}
@@ -400,13 +410,13 @@ func (s *Service) sendDatasetToNode(
 
 	if !incremental {
 		output, err := runClusterRemoteCommand(
-			ctx, identity, privateKeyPath, "zfs.destroy", dataset,
-			"zfs", "destroy", "-rf", dataset,
+			ctx, identity, privateKeyPath, "zfs.destroy", targetDataset,
+			"zfs", "destroy", "-rf", targetDataset,
 		)
 		if err != nil {
 			if isDatasetNotFound(err) {
 				logger.L.Debug().
-					Str("dataset", dataset).
+					Str("dataset", targetDataset).
 					Str("host", identity.SSHHost).
 					Msg("migration_target_dataset_already_absent")
 
@@ -417,8 +427,8 @@ func (s *Service) sendDatasetToNode(
 		}
 
 		if verifyOut, verifyErr := runClusterRemoteCommand(
-			ctx, identity, privateKeyPath, "zfs.list", dataset,
-			"zfs", "list", "-H", dataset,
+			ctx, identity, privateKeyPath, "zfs.list", targetDataset,
+			"zfs", "list", "-H", targetDataset,
 		); verifyErr == nil {
 			return fmt.Errorf("target_dataset_still_exists_on_%s_after_destroy: %s",
 				identity.SSHHost, strings.TrimSpace(verifyOut))
@@ -437,8 +447,8 @@ func (s *Service) sendDatasetToNode(
 	sendArgs = append(sendArgs, fullSnap)
 
 	recvArgs, err := clusterRemoteCommandArgs(
-		identity, privateKeyPath, true, "zfs.recv", dataset,
-		"zfs", "recv", "-u", "-x", "mountpoint", "-o", "canmount=noauto", "-F", dataset,
+		identity, privateKeyPath, true, "zfs.recv", targetDataset,
+		"zfs", "recv", "-u", "-x", "mountpoint", "-o", "canmount=noauto", "-F", targetDataset,
 	)
 	if err != nil {
 		return fmt.Errorf("migration_receive_command_invalid: %w", err)
@@ -842,9 +852,9 @@ func (s *Service) cleanupPreCutoverMigrationSnapshots(
 		cleanupErrs = append(cleanupErrs, fmt.Errorf("migration_cleanup_cluster_key_unavailable: %w", err))
 		return errors.Join(cleanupErrs...)
 	}
-	for _, root := range roots {
-		if err := s.destroyRemoteMigrationSnapshots(ctx, root, identity, privateKeyPath); err != nil {
-			cleanupErrs = append(cleanupErrs, fmt.Errorf("cleanup_remote_migration_snapshots_%s_failed: %w", root, err))
+	for _, target := range TargetDatasetRoots(roots, payload.TargetPools) {
+		if err := s.destroyRemoteMigrationSnapshots(ctx, target.Receive, identity, privateKeyPath); err != nil {
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("cleanup_remote_migration_snapshots_%s_failed: %w", target.Receive, err))
 		}
 	}
 	return errors.Join(cleanupErrs...)
@@ -983,6 +993,7 @@ func (s *Service) phaseStartTarget(ctx context.Context, mp *migrationPayload, ta
 		OperationToken:     strings.TrimSpace(operationToken),
 		StartGuest:         mp.OriginalRunning,
 		SourceDatasetRoots: append([]string(nil), mp.SourceDatasetRoots...),
+		TargetPools:        mp.TargetPools,
 	}
 	callCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
@@ -993,7 +1004,7 @@ func (s *Service) phaseStartTarget(ctx context.Context, mp *migrationPayload, ta
 		return fmt.Errorf("import_on_target_failed: %w", err)
 	}
 	if err := validateTargetMigrationImportReceipt(
-		receipt, task.GuestID, operationToken, *mp.OriginalRunning, mp.SourceDatasetRoots,
+		receipt, task.GuestID, operationToken, *mp.OriginalRunning, mp.SourceDatasetRoots, mp.TargetPools,
 	); err != nil {
 		return err
 	}
@@ -1048,11 +1059,13 @@ func validateTargetMigrationImportReceipt(
 	operationToken string,
 	startGuest bool,
 	sourceDatasetRoots []string,
+	targetPools map[string]string,
 ) error {
 	if receipt.GuestID != guestID ||
 		strings.TrimSpace(receipt.OperationToken) != strings.TrimSpace(operationToken) ||
 		receipt.StartGuest == nil || *receipt.StartGuest != startGuest ||
-		!sameMigrationDatasetRootManifest(receipt.SourceDatasetRoots, sourceDatasetRoots) {
+		!sameMigrationDatasetRootManifest(receipt.SourceDatasetRoots, sourceDatasetRoots) ||
+		!maps.Equal(receipt.TargetPools, targetPools) {
 		return fmt.Errorf("import_on_target_receipt_mismatch")
 	}
 	return nil

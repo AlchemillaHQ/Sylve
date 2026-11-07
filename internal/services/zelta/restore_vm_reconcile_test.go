@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -109,7 +110,7 @@ func TestIntegrationRestoreVMReleasesSwitchLockBeforeRuntimeRebuild(t *testing.T
 			t.Error("runtime rebuild still holds the switch lifecycle lock; VM CRUD lock ordering would deadlock")
 		}
 	}}
-	err = svc.reconcileRestoredVMFromDataset(context.Background(), dataset, "", true, false, false)
+	err = svc.reconcileRestoredVMFromDataset(context.Background(), dataset, "", true, false, false, false)
 	if !errors.Is(err, stopAfterRebuild) {
 		t.Fatalf("expected runtime lock probe error, got %v", err)
 	}
@@ -388,5 +389,48 @@ func TestNormalizeRestoredVMNetworksPreservesEffectiveAccessVLAN(t *testing.T) {
 	_, err = svc.normalizeRestoredVMNetworks(tx, 10, []vmModels.Network{network})
 	if err == nil || !strings.Contains(err.Error(), "vm_network_default_access_vlan_mismatch") {
 		t.Fatalf("different effective VLAN accepted: %v", err)
+	}
+}
+
+func TestReconcileRestoredVMSnapshotsKeepsGuestSnapshotsOnlyForMigration(t *testing.T) {
+	db := newZeltaServiceTestDB(t, &vmModels.VMSnapshot{})
+	root := "tank/sylve/virtual-machines/40"
+	allRoots := []string{"fast/sylve/virtual-machines/40", root}
+	storages := []vmModels.Storage{
+		{Type: vmModels.VMStorageTypeZVol, Pool: "tank"},
+		{Type: vmModels.VMStorageTypeZVol, Pool: "fast"},
+	}
+	parentID := uint(1)
+	created := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	snapshots := []vmModels.VMSnapshot{
+		{ID: 1, Name: "before upgrade", SnapshotName: "svms_before_upgrade_1", RootDatasets: []string{root}, CreatedAt: created},
+		{ID: 2, ParentSnapshotID: &parentID, SnapshotName: "bk_jabc_2", CreatedAt: created.Add(time.Hour)},
+	}
+
+	for _, keep := range []bool{false, true} {
+		if err := reconcileRestoredVMSnapshots(db, 7, 40, snapshots, storages, root, keep); err != nil {
+			t.Fatalf("keep=%v: %v", keep, err)
+		}
+		var got []vmModels.VMSnapshot
+		if err := db.Where("vm_id = ?", 7).Order("created_at ASC").Find(&got).Error; err != nil {
+			t.Fatal(err)
+		}
+		if !keep {
+			if len(got) != 1 || got[0].SnapshotName != "bk_jabc_2" || !slices.Equal(got[0].RootDatasets, allRoots) {
+				t.Fatalf("restore kept %+v, want only the backup snapshot", got)
+			}
+			continue
+		}
+		if len(got) != 2 {
+			t.Fatalf("migration kept %d snapshots, want 2", len(got))
+		}
+		if got[0].SnapshotName != "svms_before_upgrade_1" || got[0].Name != "before upgrade" ||
+			!slices.Equal(got[0].RootDatasets, []string{root}) {
+			t.Fatalf("guest snapshot = %+v", got[0])
+		}
+		if got[1].ParentSnapshotID == nil || *got[1].ParentSnapshotID != got[0].ID ||
+			!slices.Equal(got[1].RootDatasets, allRoots) {
+			t.Fatalf("backup snapshot = %+v", got[1])
+		}
 	}
 }

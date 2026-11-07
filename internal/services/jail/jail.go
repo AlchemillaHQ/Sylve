@@ -2195,6 +2195,15 @@ func (s *Service) UpdateName(ctID uint, name string) error {
 	return nil
 }
 
+// marshalJailJSON records the root's mountpoint next to the jail, so a copy
+// received under another mountpoint can rebase its fstab.
+func marshalJailJSON(jail *jailModels.Jail, mountPoint string) ([]byte, error) {
+	return json.MarshalIndent(struct {
+		*jailModels.Jail
+		RootMountpoint string `json:"rootMountpoint"`
+	}{jail, mountPoint}, "", "  ")
+}
+
 func (s *Service) WriteJailJSON(ctId uint) error {
 	if ctId == 0 {
 		return fmt.Errorf("invalid_ct_id")
@@ -2219,7 +2228,7 @@ func (s *Service) WriteJailJSON(ctId uint) error {
 	}
 
 	jailJsonPath := filepath.Join(sylveDir, "jail.json")
-	jailJsonData, err := json.MarshalIndent(jail, "", "  ")
+	jailJsonData, err := marshalJailJSON(jail, mountPoint)
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_jail_to_json: %w", err)
 	}

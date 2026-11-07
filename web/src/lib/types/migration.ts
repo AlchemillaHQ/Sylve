@@ -13,7 +13,9 @@ import { z } from 'zod/v4';
 export const ValidateResultSchema = z.object({
 	allowed: z.boolean(),
 	reasons: z.array(z.string()).catch([]),
-	warnings: z.array(z.string()).catch([])
+	warnings: z.array(z.string()).catch([]),
+	guestPools: z.array(z.string()).catch([]),
+	targetNodePools: z.array(z.string()).catch([])
 });
 
 export const MigrationTaskResponseSchema = z.object({

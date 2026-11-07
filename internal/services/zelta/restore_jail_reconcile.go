@@ -92,11 +92,18 @@ func (s *Service) reconcileRestoredJailFromDataset(ctx context.Context, dataset 
 }
 
 func (s *Service) reconcileRestoredJailFromDatasetWithOptions(ctx context.Context, dataset string, restoreNetwork bool) error {
-	return s.reconcileRestoredJailFromDatasetMode(ctx, dataset, restoreNetwork, false)
+	return s.reconcileRestoredJailFromDatasetMode(ctx, dataset, restoreNetwork, false, false)
+}
+
+// reconcileMigratedJailFromDataset imports a jail received by migration. The
+// replication stream carries every snapshot in jail.json, so the user's own
+// snapshot records are kept alongside the backup ones.
+func (s *Service) reconcileMigratedJailFromDataset(ctx context.Context, dataset string) error {
+	return s.reconcileRestoredJailFromDatasetMode(ctx, dataset, true, false, true)
 }
 
 func (s *Service) reconcileRestoredJailFromDatasetAsNew(ctx context.Context, dataset string, restoreNetwork bool) error {
-	return s.reconcileRestoredJailFromDatasetMode(ctx, dataset, restoreNetwork, true)
+	return s.reconcileRestoredJailFromDatasetMode(ctx, dataset, restoreNetwork, true, false)
 }
 
 func (s *Service) reconcileRestoredJailFromDatasetMode(
@@ -104,6 +111,7 @@ func (s *Service) reconcileRestoredJailFromDatasetMode(
 	dataset string,
 	restoreNetwork bool,
 	strictAsNew bool,
+	keepGuestSnapshots bool,
 ) error {
 	dataset = strings.TrimSpace(dataset)
 	if dataset == "" {
@@ -134,7 +142,7 @@ func (s *Service) reconcileRestoredJailFromDatasetMode(
 		}
 	}
 
-	reconciled, err := s.upsertRestoredJailState(ctx, dataset, restoredMeta, restoreNetwork, strictAsNew)
+	reconciled, err := s.upsertRestoredJailState(ctx, dataset, restoredMeta, restoreNetwork, strictAsNew, keepGuestSnapshots)
 	if err != nil {
 		return err
 	}
@@ -167,6 +175,9 @@ func (s *Service) reconcileRestoredJailFromDatasetMode(
 type restoredJailMetadata struct {
 	Jail      jailModels.Jail
 	Snapshots []jailModels.JailSnapshot
+	// RootMountpoint is where the jail's root was mounted when jail.json was
+	// written.
+	RootMountpoint string
 }
 
 func rewriteRestoredJailMetadataIdentity(meta *restoredJailMetadata, ctid uint) {
@@ -209,7 +220,8 @@ func (s *Service) readLocalRestoredJailMetadata(ctx context.Context, dataset str
 
 	type jailMetadataPayload struct {
 		jailModels.Jail
-		Snapshots []jailModels.JailSnapshot `json:"snapshots"`
+		Snapshots      []jailModels.JailSnapshot `json:"snapshots"`
+		RootMountpoint string                    `json:"rootMountpoint"`
 	}
 
 	payload := jailMetadataPayload{}
@@ -218,8 +230,9 @@ func (s *Service) readLocalRestoredJailMetadata(ctx context.Context, dataset str
 	}
 
 	return &restoredJailMetadata{
-		Jail:      payload.Jail,
-		Snapshots: payload.Snapshots,
+		Jail:           payload.Jail,
+		Snapshots:      payload.Snapshots,
+		RootMountpoint: payload.RootMountpoint,
 	}, mountPoint, nil
 }
 
@@ -229,6 +242,7 @@ func (s *Service) upsertRestoredJailState(
 	restoredMeta *restoredJailMetadata,
 	restoreNetwork bool,
 	strictAsNew bool,
+	keepGuestSnapshots bool,
 ) (*jailModels.Jail, error) {
 	if restoredMeta == nil {
 		return nil, fmt.Errorf("restored_jail_metadata_not_found")
@@ -321,14 +335,14 @@ func (s *Service) upsertRestoredJailState(
 			InheritIPv6:       restored.InheritIPv6,
 			ResourceLimits:    restored.ResourceLimits,
 			Cores:             restored.Cores,
-			CPUSet:            append([]int(nil), restored.CPUSet...),
+			CPUSet:            append([]int{}, restored.CPUSet...),
 			Memory:            restored.Memory,
 			DevFSRuleset:      restored.DevFSRuleset,
 			Fstab:             restored.Fstab,
 			CleanEnvironment:  restored.CleanEnvironment,
 			ExecTimeout:       restored.ExecTimeout,
 			AdditionalOptions: restored.AdditionalOptions,
-			AllowedOptions:    append([]string(nil), restored.AllowedOptions...),
+			AllowedOptions:    append([]string{}, restored.AllowedOptions...),
 			MetadataMeta:      restored.MetadataMeta,
 			MetadataEnv:       restored.MetadataEnv,
 			StartLogs:         restored.StartLogs,
@@ -425,6 +439,7 @@ func (s *Service) upsertRestoredJailState(
 			ctid,
 			restoredMeta.Snapshots,
 			dataset,
+			keepGuestSnapshots,
 		); err != nil {
 			return err
 		}
@@ -452,6 +467,7 @@ func reconcileRestoredJailSnapshots(
 	ctid uint,
 	snapshots []jailModels.JailSnapshot,
 	rootDataset string,
+	keepGuestSnapshots bool,
 ) error {
 	if tx == nil || jailID == 0 || ctid == 0 {
 		return nil
@@ -486,7 +502,7 @@ func reconcileRestoredJailSnapshots(
 			continue
 		}
 
-		if !isBackupSnapshotShortName(snapshotName) {
+		if !keepGuestSnapshots && !isBackupSnapshotShortName(snapshotName) {
 			continue
 		}
 

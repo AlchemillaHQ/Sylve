@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -20,11 +21,13 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
 	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
+	migrationService "github.com/alchemillahq/sylve/internal/services/migration"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	goLibvirt "github.com/digitalocean/go-libvirt"
@@ -36,27 +39,52 @@ func RegisterCalls(
 	zeltaService *zelta.Service,
 	libvirtService *libvirt.Service,
 	jailService *jail.Service,
+	systemService systemServiceInterfaces.SystemServiceInterface,
 ) {
 	cluster.OnNode(clusterService, "migration-import-vm", targetMigrationImport(vmImportOperations(zeltaService, libvirtService)))
 	cluster.OnNode(clusterService, "migration-import-jail", targetMigrationImport(jailImportOperations(zeltaService, jailService)))
 	cluster.OnNode(clusterService, "migration-check-vm-target", checkVMTarget(libvirtService))
 	cluster.OnNode(clusterService, "migration-check-jail-target", checkJailTarget(jailService))
+	cluster.OnNode(clusterService, "migration-target-pools", targetPools(systemService))
+}
+
+// targetPools lists the pools this node lets guests live on, which are the
+// only pools a migration may receive datasets into.
+func targetPools(
+	systemService systemServiceInterfaces.SystemServiceInterface,
+) func(context.Context, string, struct{}) ([]string, error) {
+	return func(ctx context.Context, _ string, _ struct{}) ([]string, error) {
+		pools, err := systemService.GetUsablePools(ctx)
+		if err != nil {
+			return nil, err
+		}
+		names := make([]string, 0, len(pools))
+		for _, pool := range pools {
+			if pool != nil {
+				names = append(names, pool.Name)
+			}
+		}
+		slices.Sort(names)
+		return names, nil
+	}
 }
 
 type targetMigrationImportRequest struct {
-	GuestID            uint     `json:"guestId"`
-	OperationToken     string   `json:"operationToken"`
-	StartGuest         *bool    `json:"startGuest"`
-	SourceDatasetRoots []string `json:"sourceDatasetRoots"`
+	GuestID            uint              `json:"guestId"`
+	OperationToken     string            `json:"operationToken"`
+	StartGuest         *bool             `json:"startGuest"`
+	SourceDatasetRoots []string          `json:"sourceDatasetRoots"`
+	TargetPools        map[string]string `json:"targetPools,omitempty"`
 }
 
 type targetMigrationImportReceipt struct {
-	Message            string   `json:"message"`
-	Warnings           []string `json:"warnings"`
-	GuestID            uint     `json:"guestId"`
-	OperationToken     string   `json:"operationToken"`
-	StartGuest         *bool    `json:"startGuest"`
-	SourceDatasetRoots []string `json:"sourceDatasetRoots"`
+	Message            string            `json:"message"`
+	Warnings           []string          `json:"warnings"`
+	GuestID            uint              `json:"guestId"`
+	OperationToken     string            `json:"operationToken"`
+	StartGuest         *bool             `json:"startGuest"`
+	SourceDatasetRoots []string          `json:"sourceDatasetRoots"`
+	TargetPools        map[string]string `json:"targetPools,omitempty"`
 }
 
 type targetMigrationRuntimeState string
@@ -75,10 +103,13 @@ type targetMigrationImportOperations struct {
 	AlreadyActiveMessage   string
 	Authorize              func(context.Context, uint, string) error
 	ValidateRoots          func(context.Context, uint, []string) ([]string, error)
-	RuntimeState           func(uint) (targetMigrationRuntimeState, error)
-	Import                 func(context.Context, uint, []string) ([]string, error)
-	SetIntentionalStop     func(uint, bool) error
-	Start                  func(context.Context, uint) error
+	// MergeRoots moves datasets received into staging beside a guest root into
+	// that root. Only VMs can span pools, so jails leave it nil.
+	MergeRoots         func(context.Context, uint, map[string][]string) error
+	RuntimeState       func(uint) (targetMigrationRuntimeState, error)
+	Import             func(context.Context, uint, []string, map[string]string) ([]string, error)
+	SetIntentionalStop func(uint, bool) error
+	Start              func(context.Context, uint) error
 }
 
 type targetMigrationGuestLockEntry struct {
@@ -192,7 +223,24 @@ func targetMigrationImport(
 		if err := ops.Authorize(ctx, req.GuestID, req.OperationToken); err != nil {
 			return none, fmt.Errorf("migration_target_cutover_guard_rejected: %w", err)
 		}
-		roots, err := ops.ValidateRoots(ctx, req.GuestID, req.SourceDatasetRoots)
+		var roots []string
+		staged := make(map[string][]string)
+		for _, target := range migrationService.TargetDatasetRoots(req.SourceDatasetRoots, req.TargetPools) {
+			if target.Receive == target.Root {
+				roots = append(roots, target.Root)
+			} else {
+				staged[target.Root] = append(staged[target.Root], target.Receive)
+			}
+		}
+		if len(staged) > 0 {
+			if ops.MergeRoots == nil {
+				return none, fmt.Errorf("migration_target_merge_not_supported")
+			}
+			if err := ops.MergeRoots(ctx, req.GuestID, staged); err != nil {
+				return none, fmt.Errorf("migration_target_merge_failed: %w", err)
+			}
+		}
+		roots, err := ops.ValidateRoots(ctx, req.GuestID, roots)
 		if err != nil {
 			return none, fmt.Errorf("migration_target_dataset_manifest_rejected: %w", err)
 		}
@@ -202,7 +250,8 @@ func targetMigrationImport(
 			}
 			return targetMigrationImportReceipt{
 				Message: message, Warnings: warnings, GuestID: req.GuestID, OperationToken: req.OperationToken,
-				StartGuest: req.StartGuest, SourceDatasetRoots: append([]string(nil), roots...),
+				StartGuest: req.StartGuest, SourceDatasetRoots: append([]string(nil), req.SourceDatasetRoots...),
+				TargetPools: req.TargetPools,
 			}
 		}
 
@@ -218,7 +267,7 @@ func targetMigrationImport(
 			return receipt(ops.AlreadyActiveMessage, nil), nil
 		}
 
-		warnings, err := ops.Import(ctx, req.GuestID, roots)
+		warnings, err := ops.Import(ctx, req.GuestID, roots, req.TargetPools)
 		if err != nil {
 			logger.L.Warn().Err(err).
 				Str("guest_type", ops.GuestType).
@@ -328,6 +377,7 @@ func vmImportOperations(
 			)
 		}
 		ops.ValidateRoots = zeltaService.ValidateMigratedVMRoots
+		ops.MergeRoots = zeltaService.MergeMigratedVMRoots
 		ops.Import = zeltaService.ImportMigratedVMWithRoots
 	}
 	if libvirtService == nil {
@@ -383,7 +433,9 @@ func jailImportOperations(
 			)
 		}
 		ops.ValidateRoots = zeltaService.ValidateMigratedJailRoots
-		ops.Import = zeltaService.ImportMigratedJailWithRoots
+		ops.Import = func(ctx context.Context, ctID uint, roots []string, _ map[string]string) ([]string, error) {
+			return zeltaService.ImportMigratedJailWithRoots(ctx, ctID, roots)
+		}
 	}
 	if jailService == nil {
 		if ops.UnavailableReason == "" {
@@ -430,10 +482,11 @@ type CheckVMTargetRequest struct {
 
 type CheckVMTargetResult struct {
 	networkAttachment.TargetResult
-	MissingMedia      []string `json:"missingMedia"`
-	VNCPortInUse      bool     `json:"vncPortInUse"`
-	MissingFsDatasets []string `json:"missingFsDatasets"`
-	BootErrors        []string `json:"bootErrors"`
+	MissingMedia           []string `json:"missingMedia"`
+	VNCPortInUse           bool     `json:"vncPortInUse"`
+	MissingFsDatasets      []string `json:"missingFsDatasets"`
+	BootErrors             []string `json:"bootErrors"`
+	VirtualizationDisabled bool     `json:"virtualizationDisabled"`
 }
 
 var validateTargetNetworkAttachments = func(
@@ -461,9 +514,10 @@ func checkVMTarget(
 				MissingSwitches:      []string{},
 				IncompatibleSwitches: []string{},
 			},
-			MissingMedia:      make([]string, 0, len(req.MediaUUIDs)),
-			MissingFsDatasets: make([]string, 0, len(req.FsDatasets)),
-			BootErrors:        []string{},
+			MissingMedia:           make([]string, 0, len(req.MediaUUIDs)),
+			MissingFsDatasets:      make([]string, 0, len(req.FsDatasets)),
+			BootErrors:             []string{},
+			VirtualizationDisabled: !libvirtService.IsVirtualizationEnabled(),
 		}
 		seenMedia := make(map[string]struct{}, len(req.MediaUUIDs))
 		for _, uuid := range req.MediaUUIDs {

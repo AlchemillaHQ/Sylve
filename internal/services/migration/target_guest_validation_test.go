@@ -197,3 +197,20 @@ func TestVMTargetPreflightReturnsHelperBootErrors(t *testing.T) {
 		t.Fatalf("reasons = %v", reasons)
 	}
 }
+
+func TestVMTargetPreflightBlocksTargetWithoutVirtualization(t *testing.T) {
+	target := clusterService.NewClusterService(testutil.NewSQLiteTestDB(t), nil, nil).(*clusterService.Service)
+	target.NodeID = "target-node"
+	clusterService.OnNode(target, "migration-check-vm-target",
+		func(context.Context, string, vmTargetProbe) (vmTargetResult, error) {
+			return vmTargetResult{VirtualizationDisabled: true}, nil
+		})
+
+	// A plain UEFI VM with nothing else to check still asks the target.
+	reasons := (&Service{Cluster: target}).vmTargetPreflightReasons(t.Context(), vmModels.VM{
+		RID: 92, BootROM: vmModels.VMBootROMUEFI, CPUSockets: 1, CPUCores: 1, CPUThreads: 1,
+	}, clusterModels.ClusterNode{NodeUUID: "target-node"})
+	if !slices.Equal(reasons, []string{"target_virtualization_disabled"}) {
+		t.Fatalf("reasons = %v", reasons)
+	}
+}

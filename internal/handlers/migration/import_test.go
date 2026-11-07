@@ -5,6 +5,8 @@ package migrationHandlers
 import (
 	"context"
 	"errors"
+	"maps"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -53,7 +55,7 @@ func TestTargetMigrationImportSerializesSameGuest(t *testing.T) {
 			}
 			return targetMigrationRuntimeInactive, nil
 		},
-		Import: func(context.Context, uint, []string) ([]string, error) {
+		Import: func(context.Context, uint, []string, map[string]string) ([]string, error) {
 			if imports.Add(1) == 1 {
 				close(entered)
 			}
@@ -148,7 +150,7 @@ func TestTargetMigrationImportPreservesStoppedState(t *testing.T) {
 					}
 					return targetMigrationRuntimeInactive, nil
 				},
-				Import: func(context.Context, uint, []string) ([]string, error) {
+				Import: func(context.Context, uint, []string, map[string]string) ([]string, error) {
 					imports++
 					return nil, nil
 				},
@@ -382,7 +384,7 @@ func TestTargetMigrationImportIsTokenScopedAndIdempotentForVMAndJail(t *testing.
 							}
 							return targetMigrationRuntimeInactive, nil
 						},
-						Import: func(context.Context, uint, []string) ([]string, error) {
+						Import: func(context.Context, uint, []string, map[string]string) ([]string, error) {
 							imports++
 							if test.importRemovesGuard {
 								if err := db.Where("guest_type = ? AND guest_id = ?", guestType, uint(1)).
@@ -427,5 +429,68 @@ func TestTargetMigrationImportIsTokenScopedAndIdempotentForVMAndJail(t *testing.
 				})
 			}
 		})
+	}
+}
+
+func TestTargetMigrationImportReceivesIntoMappedPools(t *testing.T) {
+	var validated, imported []string
+	var importedPools map[string]string
+	ops := targetMigrationImportOperations{
+		GuestType:              clusterModels.ReplicationGuestTypeVM,
+		ImportedStoppedMessage: "vm_imported_and_left_stopped",
+		Authorize:              func(context.Context, uint, string) error { return nil },
+		ValidateRoots: func(_ context.Context, _ uint, roots []string) ([]string, error) {
+			validated = roots
+			return roots, nil
+		},
+		RuntimeState: func(uint) (targetMigrationRuntimeState, error) {
+			return targetMigrationRuntimeInactive, nil
+		},
+		Import: func(_ context.Context, _ uint, roots []string, pools map[string]string) ([]string, error) {
+			imported, importedPools = roots, pools
+			return nil, nil
+		},
+		SetIntentionalStop: func(uint, bool) error { return nil },
+		Start:              func(context.Context, uint) error { return nil },
+	}
+	startGuest := false
+	sourceRoots := []string{"tank/sylve/virtual-machines/40", "fast/sylve/virtual-machines/40"}
+	pools := map[string]string{"tank": "data"}
+	request := targetMigrationImportRequest{
+		GuestID: 40, OperationToken: "migration:source:1", StartGuest: &startGuest,
+		SourceDatasetRoots: sourceRoots, TargetPools: pools,
+	}
+
+	receipt, err := targetMigrationImport(ops)(t.Context(), "", request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	localRoots := []string{"fast/sylve/virtual-machines/40", "data/sylve/virtual-machines/40"}
+	if !slices.Equal(validated, localRoots) || !slices.Equal(imported, localRoots) || !maps.Equal(importedPools, pools) {
+		t.Fatalf("validated %v, imported %v with pools %v", validated, imported, importedPools)
+	}
+	if !slices.Equal(receipt.SourceDatasetRoots, sourceRoots) || !maps.Equal(receipt.TargetPools, pools) {
+		t.Fatalf("receipt roots %v, pools %v", receipt.SourceDatasetRoots, receipt.TargetPools)
+	}
+
+	// tank merges into fast: its datasets are moved out of staging before the
+	// one remaining root is validated and imported.
+	request.TargetPools = map[string]string{"tank": "fast"}
+	if _, err := targetMigrationImport(ops)(t.Context(), "", request); err == nil ||
+		!strings.Contains(err.Error(), "migration_target_merge_not_supported") {
+		t.Fatalf("merge without MergeRoots: err = %v", err)
+	}
+	var merged map[string][]string
+	ops.MergeRoots = func(_ context.Context, _ uint, staged map[string][]string) error {
+		merged = staged
+		return nil
+	}
+	if _, err := targetMigrationImport(ops)(t.Context(), "", request); err != nil {
+		t.Fatal(err)
+	}
+	root := "fast/sylve/virtual-machines/40"
+	if !slices.Equal(merged[root], []string{root + ".merge-1"}) || len(merged) != 1 ||
+		!slices.Equal(validated, []string{root}) || !slices.Equal(imported, []string{root}) {
+		t.Fatalf("merged %v, validated %v, imported %v", merged, validated, imported)
 	}
 }

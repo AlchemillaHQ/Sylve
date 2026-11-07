@@ -22,7 +22,18 @@ const REASON_MESSAGES: Record<string, string | ReasonFormatter> = {
 	target_check_failed: (d) =>
 		`Could not verify the target node\u2019s readiness${d ? `: ${d}` : ''}.`,
 	target_missing_pool: (d) =>
-		`The target node is missing the required ZFS pool${d ? ` \u201c${d}\u201d` : ''}.`,
+		`The target node has no usable ZFS pool${d ? ` \u201c${d}\u201d` : ''}. Choose another pool for it.`,
+	target_has_no_usable_pools:
+		'The target node has no usable ZFS pools. Add a pool to it in its basic settings first.',
+	target_virtualization_disabled: 'Virtualization is not enabled on the target node.',
+	target_pool_check_failed: (d) =>
+		`Could not list the target node\u2019s ZFS pools${d ? `: ${d}` : ''}.`,
+	target_pool_mapping_unknown: (d) =>
+		`This guest has no datasets on the pool${d ? ` \u201c${d}\u201d` : ''}.`,
+	target_pool_change_with_backup_jobs:
+		'This guest has backup jobs, which name its datasets by pool. Keep the same pool names, or remove its backup jobs first.',
+	guest_dataset_resolution_failed: (d) =>
+		`Could not list this guest\u2019s datasets${d ? `: ${d}` : ''}.`,
 	target_already_has_guest: 'A guest with this ID already exists on the target node.',
 	target_node_offline: 'The target node is offline.',
 	target_node_not_found: 'The target node could not be found in the cluster.',
@@ -82,10 +93,6 @@ const PREFIX_MESSAGES: Array<{ prefix: string; format: ReasonFormatter }> = [
 	{
 		prefix: 'target_guest_check_failed_',
 		format: (d) => `Could not verify the guest on the target node${d ? `: ${d}` : ''}.`
-	},
-	{
-		prefix: 'target_pool_check_failed_',
-		format: (d) => `Could not verify a ZFS pool on the target node${d ? `: ${d}` : ''}.`
 	}
 ];
 

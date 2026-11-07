@@ -990,7 +990,7 @@ func RegisterRoutes(r *gin.Engine,
 
 	leaderOnly := clusterHandlers.LeaderOnly(clusterService)
 
-	migrationHandlers.RegisterCalls(clusterService, zeltaService, libvirtService, jailService)
+	migrationHandlers.RegisterCalls(clusterService, zeltaService, libvirtService, jailService, systemService)
 
 	intraCluster := api.Group("/intra-cluster")
 	intraCluster.Use(middleware.EnsureAuthenticated(authService))

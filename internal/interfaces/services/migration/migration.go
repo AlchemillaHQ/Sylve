@@ -16,13 +16,18 @@ type MigrateRequest struct {
 	GuestType      string `json:"guestType"`
 	GuestID        uint   `json:"guestId"`
 	TargetNodeUUID string `json:"targetNodeUuid"`
-	RequestedBy    string `json:"requestedBy"`
+	// TargetPools maps a source pool to the target pool that receives its
+	// datasets. A pool missing from the map keeps its name.
+	TargetPools map[string]string `json:"targetPools,omitempty"`
+	RequestedBy string            `json:"requestedBy"`
 }
 
 type ValidateResult struct {
-	Allowed  bool     `json:"allowed"`
-	Reasons  []string `json:"reasons"`
-	Warnings []string `json:"warnings,omitempty"`
+	Allowed         bool     `json:"allowed"`
+	Reasons         []string `json:"reasons"`
+	Warnings        []string `json:"warnings,omitempty"`
+	GuestPools      []string `json:"guestPools,omitempty"`
+	TargetNodePools []string `json:"targetNodePools,omitempty"`
 }
 
 type MigrationServiceInterface interface {

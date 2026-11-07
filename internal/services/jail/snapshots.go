@@ -581,7 +581,7 @@ func (s *Service) writeJailJSONAtMountPoint(ctID uint, mountPoint string) error 
 		return err
 	}
 
-	data, err := json.MarshalIndent(jail, "", "  ")
+	data, err := marshalJailJSON(jail, mountPoint)
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_jail_to_json: %w", err)
 	}

@@ -404,6 +404,7 @@ func TestOOBJailReconcileNeverUpdatesExistingDestinationRecord(t *testing.T) {
 		&restoredJailMetadata{Jail: jailModels.Jail{CTID: 108, Name: "replacement-108"}},
 		false,
 		true,
+		false,
 	)
 	if err == nil || !strings.Contains(err.Error(), "guest_id_already_in_use") {
 		t.Fatalf("strict jail reconcile error = %v", err)

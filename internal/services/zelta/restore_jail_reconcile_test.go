@@ -10,8 +10,10 @@ package zelta
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -116,6 +118,7 @@ func TestUpsertRestoredJailStateNormalizesHardwareBeforePersistence(t *testing.T
 		}},
 		false,
 		false,
+		false,
 	)
 	if err != nil {
 		t.Fatalf("upsertRestoredJailState failed: %v", err)
@@ -130,6 +133,10 @@ func TestUpsertRestoredJailStateNormalizesHardwareBeforePersistence(t *testing.T
 	}
 	if len(persisted.CPUSet) != 1 || persisted.CPUSet[0] != 1 {
 		t.Fatalf("persisted CPU set = %v, want [1]", persisted.CPUSet)
+	}
+	// The UI rejects null lists, so an empty list must stay [] after import.
+	if persisted.AllowedOptions == nil {
+		t.Fatal("persisted allowed options = null, want []")
 	}
 }
 
@@ -304,4 +311,34 @@ func newTestZeltaServiceWithDB(t *testing.T, models ...any) (*Service, *gorm.DB)
 	t.Helper()
 	db := newZeltaServiceTestDB(t, models...)
 	return newTestZeltaService(db), db
+}
+
+func TestReconcileRestoredJailSnapshotsKeepsGuestSnapshotsOnlyForMigration(t *testing.T) {
+	db := newZeltaServiceTestDB(t, &jailModels.JailSnapshot{})
+	root := "tank/sylve/jails/23"
+	created := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	snapshots := []jailModels.JailSnapshot{
+		{ID: 1, Name: "clean", SnapshotName: "sjs_clean_1", RootDataset: root, CreatedAt: created},
+		{ID: 2, SnapshotName: "bk_jabc_2", RootDataset: root, CreatedAt: created.Add(time.Hour)},
+	}
+
+	for _, tc := range []struct {
+		keep bool
+		want []string
+	}{
+		{keep: false, want: []string{"bk_jabc_2"}},
+		{keep: true, want: []string{"sjs_clean_1", "bk_jabc_2"}},
+	} {
+		if err := reconcileRestoredJailSnapshots(db, 5, 23, snapshots, root, tc.keep); err != nil {
+			t.Fatalf("keep=%v: %v", tc.keep, err)
+		}
+		var names []string
+		if err := db.Model(&jailModels.JailSnapshot{}).Where("jid = ?", 5).
+			Order("created_at ASC").Pluck("snapshot_name", &names).Error; err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(names, tc.want) {
+			t.Fatalf("keep=%v kept %v, want %v", tc.keep, names, tc.want)
+		}
+	}
 }

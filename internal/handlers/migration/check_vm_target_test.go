@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/config"
+	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -39,6 +40,28 @@ func TestCheckVMTargetChecksHelperWithoutNetworks(t *testing.T) {
 	}
 	if len(result.BootErrors) != 1 {
 		t.Fatalf("incompatible helper not rejected: %+v", result)
+	}
+}
+
+func TestCheckVMTargetReportsVirtualizationSetting(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &models.BasicSettings{})
+	settings := models.BasicSettings{Pools: []string{"tank"}}
+	if err := db.Create(&settings).Error; err != nil {
+		t.Fatal(err)
+	}
+	check := checkVMTarget(&libvirt.Service{DB: db})
+
+	result, err := check(t.Context(), "", CheckVMTargetRequest{})
+	if err != nil || !result.VirtualizationDisabled {
+		t.Fatalf("virtualization off: result %+v, err %v", result, err)
+	}
+	settings.Services = []models.AvailableService{models.Virtualization}
+	if err := db.Save(&settings).Error; err != nil {
+		t.Fatal(err)
+	}
+	result, err = check(t.Context(), "", CheckVMTargetRequest{})
+	if err != nil || result.VirtualizationDisabled {
+		t.Fatalf("virtualization on: result %+v, err %v", result, err)
 	}
 }
 

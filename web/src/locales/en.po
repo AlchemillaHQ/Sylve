@@ -23466,3 +23466,12 @@ msgstr "Stopping..."
 #: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "Stopping…"
 msgstr "Stopping…"
+
+#. 0: guestTypeLabel()
+#: src/lib/components/custom/VM/MigrateModal.svelte
+msgid "Choose the target node pool for each pool this {0} uses."
+msgstr "Choose the target node pool for each pool this {0} uses."
+
+#: src/lib/components/custom/VM/MigrateModal.svelte
+msgid "Choose a pool"
+msgstr "Choose a pool"

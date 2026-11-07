@@ -93,14 +93,21 @@ func normalizeRestoredVMBootROM(value vmModels.VMBootROM) vmModels.VMBootROM {
 }
 
 func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context, dataset string, restoreNetwork bool) error {
-	return s.reconcileRestoredVMFromDataset(ctx, dataset, "", restoreNetwork, false, false)
+	return s.reconcileRestoredVMFromDataset(ctx, dataset, "", restoreNetwork, false, false, false)
+}
+
+// reconcileMigratedVMFromDataset imports a VM received by migration. The
+// replication stream carries every snapshot in vm.json, so the user's own
+// snapshot records are kept alongside the backup ones.
+func (s *Service) reconcileMigratedVMFromDataset(ctx context.Context, dataset string) error {
+	return s.reconcileRestoredVMFromDataset(ctx, dataset, "", true, false, false, true)
 }
 
 // reconcileRestoredVMFromDatasetForOwnerRecovery rebuilds a registration that
 // was retired on the active owner. Its caller has already proven the owner
 // lease, so the restored storage rows are not a user topology change.
 func (s *Service) reconcileRestoredVMFromDatasetForOwnerRecovery(ctx context.Context, dataset string) error {
-	return s.reconcileRestoredVMFromDataset(ctx, dataset, "", true, false, true)
+	return s.reconcileRestoredVMFromDataset(ctx, dataset, "", true, false, true, false)
 }
 
 func (s *Service) reconcileRestoredVMFromDatasetAsNew(
@@ -108,7 +115,7 @@ func (s *Service) reconcileRestoredVMFromDatasetAsNew(
 	dataset, sourcePrimaryRoot string,
 	restoreNetwork bool,
 ) error {
-	return s.reconcileRestoredVMFromDataset(ctx, dataset, sourcePrimaryRoot, restoreNetwork, true, false)
+	return s.reconcileRestoredVMFromDataset(ctx, dataset, sourcePrimaryRoot, restoreNetwork, true, false, false)
 }
 
 func (s *Service) reconcileRestoredVMFromDataset(
@@ -117,6 +124,7 @@ func (s *Service) reconcileRestoredVMFromDataset(
 	restoreNetwork bool,
 	strictAsNew bool,
 	recoverOwnerRegistration bool,
+	keepGuestSnapshots bool,
 ) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -263,7 +271,7 @@ func (s *Service) reconcileRestoredVMFromDataset(
 			CloudInitData:          restored.CloudInitData,
 			CloudInitMetaData:      restored.CloudInitMetaData,
 			CloudInitNetworkConfig: restored.CloudInitNetworkConfig,
-			ExtraBhyveOptions:      append([]string(nil), restored.ExtraBhyveOptions...),
+			ExtraBhyveOptions:      append([]string{}, restored.ExtraBhyveOptions...),
 			IgnoreUMSR:             restored.IgnoreUMSR,
 			QemuGuestAgent:         restored.QemuGuestAgent,
 		}
@@ -381,6 +389,7 @@ func (s *Service) reconcileRestoredVMFromDataset(
 			restoredMeta.Snapshots,
 			normalizedStorages,
 			dataset,
+			keepGuestSnapshots,
 		); err != nil {
 			return err
 		}
@@ -869,6 +878,7 @@ func reconcileRestoredVMSnapshots(
 	snapshots []vmModels.VMSnapshot,
 	storages []vmModels.Storage,
 	destinationDataset string,
+	keepGuestSnapshots bool,
 ) error {
 	if tx == nil || vmID == 0 || rid == 0 {
 		return nil
@@ -903,7 +913,7 @@ func reconcileRestoredVMSnapshots(
 			continue
 		}
 
-		if !isBackupSnapshotShortName(snapshotName) {
+		if !keepGuestSnapshots && !isBackupSnapshotShortName(snapshotName) {
 			continue
 		}
 
@@ -916,13 +926,19 @@ func reconcileRestoredVMSnapshots(
 			name = snapshotName
 		}
 
+		// A guest snapshot covers only the roots that existed when it was taken.
+		recordRoots := roots
+		if keepGuestSnapshots && len(snapshot.RootDatasets) > 0 {
+			recordRoots = snapshot.RootDatasets
+		}
+
 		record := vmModels.VMSnapshot{
 			VMID:         vmID,
 			RID:          rid,
 			Name:         name,
 			Description:  strings.TrimSpace(snapshot.Description),
 			SnapshotName: snapshotName,
-			RootDatasets: append([]string(nil), roots...),
+			RootDatasets: append([]string(nil), recordRoots...),
 		}
 		if !snapshot.CreatedAt.IsZero() {
 			record.CreatedAt = snapshot.CreatedAt
