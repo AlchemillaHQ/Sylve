@@ -70,66 +70,31 @@ func TestEnsureZeltaInstalledRefreshesChangedEmbeddedAssets(t *testing.T) {
 }
 
 func TestEmbeddedZeltaParsesBracketedIPv6Endpoints(t *testing.T) {
-	awk, err := exec.LookPath("awk")
-	if err != nil {
+	if _, err := exec.LookPath("awk"); err != nil {
 		t.Skip("awk unavailable")
 	}
-	common, err := zeltaFS.ReadFile("zelta/share/zelta/zelta-common.awk")
+	dir := extractZeltaToTemp(t)
+	// ipc-env prints the options zelta resolved from its arguments without running a verb.
+	cmd := exec.Command(filepath.Join(dir, "bin", "zelta"), "ipc-env", "backup",
+		"tank/source", "root@[2001:db8::1]:tank/backups@bk_test")
+	cmd.Env = append(os.Environ(),
+		"PATH="+filepath.Join(dir, "bin")+":"+os.Getenv("PATH"),
+		"ZELTA_SHARE="+filepath.Join(dir, "share", "zelta"),
+		"ZELTA_ENV=/dev/null",
+	)
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("read common parser: %v", err)
+		t.Fatalf("zelta ipc-env: %v: %s", err, output)
 	}
-	commonSource := string(common)
-	commonStart := strings.Index(commonSource, "function load_endpoint")
-	if commonStart < 0 {
-		t.Fatal("load_endpoint source not found")
-	}
-	commonEnd := strings.Index(commonSource[commonStart:], "# Output")
-	if commonEnd < 0 {
-		t.Fatal("load_endpoint source end not found")
-	}
-	commonProgram := commonSource[commonStart:commonStart+commonEnd] +
-		"\nBEGIN {\n" +
-		"  load_endpoint(\"root@[2001:db8::1]:tank/backups@bk_test\", parsed)\n" +
-		"  print parsed[\"REMOTE\"] \"\\t\" parsed[\"HOST\"] \"\\t\" parsed[\"DS\"] \"\\t\" parsed[\"SNAP\"]\n" +
-		"}\n"
-	commonCommand := exec.Command(awk, "-f", "-")
-	commonCommand.Stdin = strings.NewReader(commonProgram)
-	commonOutput, err := commonCommand.CombinedOutput()
-	if err != nil {
-		t.Fatalf("run common parser: %v: %s", err, commonOutput)
-	}
-	if got := strings.TrimSpace(string(commonOutput)); got != "root@2001:db8::1\t2001:db8::1\ttank/backups\t@bk_test" {
-		t.Fatalf("common endpoint=%q", got)
-	}
-
-	args, err := zeltaFS.ReadFile("zelta/share/zelta/zelta-args.awk")
-	if err != nil {
-		t.Fatalf("read argument parser: %v", err)
-	}
-	argsSource := string(args)
-	argsStart := strings.Index(argsSource, "function validate_host")
-	if argsStart < 0 {
-		t.Fatal("get_endpoint source not found")
-	}
-	argsEnd := strings.Index(argsSource[argsStart:], "function match_arg")
-	if argsEnd < 0 {
-		t.Fatal("get_endpoint source end not found")
-	}
-	argsProgram := argsSource[argsStart:argsStart+argsEnd] +
-		"\nBEGIN {\n" +
-		"  Opt[\"HOSTNAME\"] = \"local\"\n" +
-		"  $0 = \"root@[2001:db8::1]:tank/backups@bk_test\"\n" +
-		"  get_endpoint()\n" +
-		"  print NewOpt[\"SRC_REMOTE\"] \"\\t\" NewOpt[\"SRC_HOST\"] \"\\t\" NewOpt[\"SRC_DS\"] \"\\t\" NewOpt[\"SRC_SNAP\"]\n" +
-		"}\n"
-	argsCommand := exec.Command(awk, "-f", "-")
-	argsCommand.Stdin = strings.NewReader(argsProgram)
-	argsOutput, err := argsCommand.CombinedOutput()
-	if err != nil {
-		t.Fatalf("run argument parser: %v: %s", err, argsOutput)
-	}
-	if got := strings.TrimSpace(string(argsOutput)); got != "root@2001:db8::1\t2001:db8::1\ttank/backups\t@bk_test" {
-		t.Fatalf("argument endpoint=%q", got)
+	for _, want := range []string{
+		"export ZELTA_TGT_REMOTE=root@2001:db8::1\n",
+		"export ZELTA_TGT_HOST=2001:db8::1\n",
+		"export ZELTA_TGT_DS=tank/backups\n",
+		"export ZELTA_TGT_SNAP=@bk_test\n",
+	} {
+		if !strings.Contains(string(output), want) {
+			t.Fatalf("missing %q in:\n%s", want, output)
+		}
 	}
 }
 

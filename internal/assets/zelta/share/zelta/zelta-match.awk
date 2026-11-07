@@ -24,7 +24,7 @@ function usage(message,		_counter, _c, _key) {
 	STDERR = "/dev/stderr"
 	usage_table = "\t%-13s%s\n"
 	printf (message ? message "\n" : "") "usage:"                    > STDERR
-	print "\tmatch [-Hp] [-d max] [-o field[,...]] SOURCE TARGET\n"  > STDERR
+	print "\tmatch [-Hp] [FILTERS] [-o field[,...]] SOURCE TARGET\n" > STDERR
 	print "The following fields are supported:\n"                    > STDERR
 	printf usage_table"\n", "PROPERTY", "VALUES"                     > STDERR
 	for(_counter in ColInfo) {
@@ -33,6 +33,10 @@ function usage(message,		_counter, _c, _key) {
 			continue
 		printf usage_table, _key, ColInfo[_key] > STDERR
 	}
+	print "\nFilter options:"                                                    > STDERR
+	print "\t--depth num          Limit to 'num' dataset levels" > STDERR
+	print "\t--exclude pattern    Exclude datasets or snapshots matching pattern" > STDERR
+	print "\t--include pattern    Include only datasets or snapshots matching pattern" > STDERR
 	print "\nSizes are specified in bytes with standard units such as K, M, G, etc.\n"         > STDERR
 	print "SOURCE and TARGET endpoints are in the form: [user@host:]pool[/dataset/][@snap]\n"  > STDERR
 	print "For complete documentation:  zelta help [<topic>]"                                  > STDERR
@@ -42,18 +46,29 @@ function usage(message,		_counter, _c, _key) {
 
 function usage_prune(message) {
 	STDERR = "/dev/stderr"
-	printf (message ? message "\n" : "") "usage:"                                                       > STDERR
-	print "\tprune [--keep-snap-num=N] [--keep-snap-days=N] [-X pattern] SOURCE TARGET\n"               > STDERR
-	print "Identifies snapshots on SOURCE that exist on TARGET.\n"                                       > STDERR
-	print "Options:"                                                                                    > STDERR
-	print "\t--keep-snap-num=N    Minimum number of snapshots to keep after match (default: 10)"        > STDERR
-	print "\t--keep-snap-days=N   Minimum age in days for snapshot deletion (default: 90)"              > STDERR
-	print "\t--no-ranges          Disable range compression (output individual snapshots)"              > STDERR
-	print "\t-X pattern           Exclude datasets matching pattern\n"                                  > STDERR
-	print "Only snapshots older than the common match point and replicated to TARGET are considered."   > STDERR
-	print "Output shows snapshot names (one per line) that are safe to prune.\n"                        > STDERR
-	print "For complete documentation:  zelta help prune"                                               > STDERR
-	print "                             https://zelta.space"                                            > STDERR
+	printf (message ? message "\n" : "") "usage:"                                                 > STDERR
+	print "\tprune [OPTIONS] ENDPOINT\n"                                                          > STDERR
+	print "Reports snapshot prune candidates on ENDPOINT.\n"                                      > STDERR
+	print "Guard Options:"                                                                        > STDERR
+	print "  --match-endpoint=GUARD  Compare against GUARD for match protection"                  > STDERR
+	print "  --prune-guard=latest    Protect latest match with GUARD"                             > STDERR
+	print "  --prune-guard=unsynced  Only consider pruning snapshots replicated with GUARD"       > STDERR
+	print "  --no-prune-guard        Disable match-endpoint safety checks"                        > STDERR
+	print "Filter Options:"                                                                       > STDERR
+	print "  --depth=NUM             Set max dataset depth"                                       > STDERR
+	print "  --exclude=pattern       Exclude datasets or snapshots matching pattern"              > STDERR
+	print "  --include=pattern       Include only datasets or snapshots matching pattern"         > STDERR
+	print "  --prune-name=pattern    Select snapshot names: zfsnap, truenas, sanoid, or glob"       > STDERR
+	print "Retention Options:"                                                                    > STDERR
+	print "  --prune-num=N           Minimum number of snapshots to keep"                         > STDERR
+	print "  --prune-time=T          Keep snapshots newer than duration T (from current time)"    > STDERR
+	print "  --prune-size=N          Select oldest eligible snapshots until N bytes are reached"  > STDERR
+	print "  --prune-grid=GRID       GFS grid such as '30x1 day, 52x1 week, 1 year', measured"    > STDERR
+	print "                          from  the latest unfiltered snapshot"
+	print "Default: '--prune-num=30 --prune-time=1month'\n"                                       > STDERR
+	print "To review and destroy snapshots, use 'zprune'.\n"                                      > STDERR
+	print "For complete documentation:  zelta help prune"                                         > STDERR
+	print "                             https://zelta.space"                                      > STDERR
 	stop(1)
 }
 
@@ -62,12 +77,21 @@ function usage_prune(message) {
 ###################
 
 # Default to 'zfs list ... -o written', but implicitly avoid since it's slow
-function add_written() {
+function add_written(endpoint) {
+	if (Opt["VERB"] == "prune") {
+		if (endpoint["ID"] == Source["ID"])
+			return ",written,creation,used,referenced,clones"
+		return ",written,creation,used,referenced"
+	}
 	if (Opt["LIST_WRITTEN"] && Opt["PROPLIST"]) {
 		if (Opt["PARSABLE"] && (Opt["PROPLIST"] !~ /(all|written|size)/))
 			return ""
 	}
-	return Opt["LIST_WRITTEN"] ? ",written,creation" : ""
+	return Opt["LIST_WRITTEN"] ? ",written,creation,used" : ""
+}
+
+function add_ivsetguid() {
+	return NeedMatchIVSet ? ",ivsetguid" : ""
 }
 
 # TO-DO: Add this feature to build_command()
@@ -86,11 +110,12 @@ function zfs_list_cmd(endpoint,		_ep, _ds, _remote, _cmd) {
 	_ep			= endpoint["ID"]
 	_ds			= endpoint["DS"]
 	_remote			= endpoint["REMOTE"]
-	_cmd_arr["props"]	= "name,guid" add_written()
+	_cmd_arr["props"]	= "name,guid" add_ivsetguid() add_written(endpoint)
 	_cmd_arr["remote"]	= get_remote_cmd(endpoint)
 	_cmd_arr["ds"]		= rq(_remote, _ds)
+	_cmd_arr["flags"]	= "-t all -Screatetxg"
 	if (Opt["DEPTH"])
-		_cmd_arr["flags"] = "-d" Opt["DEPTH"]
+		_cmd_arr["flags"] = str_add(_cmd_arr["flags"], "-d" Opt["DEPTH"])
 	_cmd			= build_command("LIST", _cmd_arr)
 	if (Opt["DRYRUN"]) _cmd	= report(LOG_NOTICE, "+ " _cmd)
 	if (Opt["CHECK_TIME"]) _cmd	= wrap_time_cmd(_cmd)
@@ -159,13 +184,25 @@ function object_type(symbol) {
 }
 
 # Load each row into memory
-function process_row(ep,		_name, _guid, _written, _name_suffix, _ds_suffix, _savepoint,
-		     			_type, _ep_id, _ds_id, _ds_snap, _row_id, _tmp_arr, _num_snaps) {
+function process_row(ep,		_name, _guid, _ivsetguid, _written, _referenced, _clones, _name_suffix, _ds_suffix, _savepoint,
+					_type, _ep_id, _ds_id, _ds_snap, _row_id, _tmp_arr, _num_snaps,
+					_all_snap_idx, _field, _prune_filtered) {
 	# Read the row data
 	_name      = $1
 	_guid      = $2
-	_written   = $3
-	_creation  = $4
+	_field     = 2
+	if (NeedMatchIVSet)
+		_ivsetguid = $++_field
+	if (Opt["LIST_WRITTEN"] || (Opt["VERB"] == "prune")) {
+		_written   = $++_field
+		_creation  = $++_field
+		_used      = $++_field
+	}
+	if (Opt["VERB"] == "prune") {
+		_referenced = $++_field
+		if (ep["ID"] == Source["ID"])
+			_clones = $++_field
+	}
 
 	# Get the relative dataset suffix and then split to dataset and snapshot/bookmark name
 	_name_suffix		= substr(_name, ep["ds_length"])
@@ -182,28 +219,43 @@ function process_row(ep,		_name, _guid, _written, _name_suffix, _ds_suffix, _sav
 	_ds_id			= _ep_id S _ds_suffix S ""
 	_row_id			= _ep_id S _ds_suffix S _savepoint
 	_type			= object_type(_type)
+	if ((_type == IS_SNAPSHOT) && (_ep_id == Source["ID"]))
+		_all_snap_idx = ++AllSnapIdx[_ds_id]
 
 	# Check for exclusion
 	if (_type == IS_DATASET) {
 		if (is_ds_excluded(_name))
 			return
-		if (regex_loop(_ds_suffix, ExcludeDSPattern, NumExcludeDS))
+		if (regex_loop(_ds_suffix, ExcludeDSPattern, ExcludeDSPattern["count"]))
+			return
+		if (!is_ds_included(_name) && !is_ds_included(_ds_suffix))
 			return
 	}
-	if ((_type == IS_SNAPSHOT) && (_ep_id == Source["ID"]))
-		if (regex_loop(_savepoint, ExcludeSnapPattern, NumExcludeSnap))
-			return
+	if ((_type == IS_SNAPSHOT) && (_ep_id == Source["ID"])) {
+		if (regex_loop(_savepoint, ExcludeSnapPattern, ExcludeSnapPattern["count"]) ||
+		    !is_snap_or_ds_included(_savepoint, _name, _ds_suffix)) {
+			if (Opt["VERB"] != "prune")
+				return
+			_prune_filtered = 1
+		}
+	}
 
 	Row[_row_id, "exists"]     = 1
 	Row[_row_id, "guid"]       = _guid
+	Row[_row_id, "ivsetguid"]  = _ivsetguid
 	Row[_row_id, "written"]    = _written
 	Row[_row_id, "creation"]   = _creation
+	Row[_row_id, "used"]       = _used
+	Row[_row_id, "referenced"] = _referenced
+	Row[_row_id, "clones"]     = _clones
+	Row[_row_id, "snap_idx"]   = _all_snap_idx
 	Row[_row_id, "name"]       = _name
 	Row[_row_id, "type"]       = _type
 	Row[_row_id, "ds_suffix"]  = _ds_suffix
+	Row[_row_id, "prune_filtered"] = _prune_filtered
 
 	# Snapshots will be used for match GUID over bookmarks
-	if (!Guid[_ds_id, _guid] || (_type == IS_SNAPSHOT))
+	if (!_prune_filtered && (!Guid[_ds_id, _guid] || (_type == IS_SNAPSHOT)))
 		Guid[_ds_id, _guid] = _row_id
 
 	# Dataset
@@ -211,7 +263,7 @@ function process_row(ep,		_name, _guid, _written, _name_suffix, _ds_suffix, _sav
 		# Note: 'zfs list -S createtxg' gives us a reverse view of datasets
 		_num_ds				= ++ep["num_ds"]
 		Dataset[_ep_id, _num_ds]	= _row_id
-		Global["written"]		+= $3
+		Global["written"]		+= _written
 	# Snapshot or bookmark
 	} else if ((_type == IS_SNAPSHOT) || (_type == IS_BOOKMARK)) {
 		_num_snaps			= ++NumSnaps[_ds_id]
@@ -241,22 +293,30 @@ function load_zfs_list_row(ep,		_time_arr) {
 
 
 # Exclude patterns
-function load_exclude_patterns(    _i, _n, _pat_arr, _pat, _g2r) {
-	if (!Opt["EXCLUDE"]) return
+function load_filter_patterns(opt, ds_assoc, ds_pat_arr, snap_pat_arr,    _i, _n, _pat_arr, _pat) {
+	if (!opt) return 0
 
-	_n = split(Opt["EXCLUDE"], _pat_arr, ",")
+	_n = split(opt, _pat_arr, ",")
 	for (_i = 1; _i <= _n; _i++) {
 		_pat = _pat_arr[_i]
 
 		if (_pat ~ /^\/|^\*.*\//)
-			ExcludeDSPattern[++NumExcludeDS] = glob_to_regex(_pat, "(/.*)?")
+			ds_pat_arr[++ds_pat_arr["count"]] = glob_to_regex(_pat, "(/.*)?")
 		else if (_pat ~ /^@/)
-			ExcludeSnapPattern[++NumExcludeSnap] = glob_to_regex(_pat)
+			snap_pat_arr[++snap_pat_arr["count"]] = glob_to_regex(_pat)
 		else if (_pat ~ /[\*\?]/)
-			report(LOG_WARNING, "invalid exclusion pattern '"_pat"' must start with '@' or include '/'")
+			report(LOG_WARNING, "invalid filter pattern '"_pat"' must start with '@' or include '/'")
 		else
-			ExcludeDS[_pat] = 1
+			ds_assoc[_pat] = 1
 	}
+	return _n
+
+}
+
+# Exclude and include patterns
+function load_exclude_patterns() {
+	NumExcludeDS = load_filter_patterns(Opt["EXCLUDE"], ExcludeDS, ExcludeDSPattern, ExcludeSnapPattern)
+	NumIncludeDS = load_filter_patterns(Opt["INCLUDE"], IncludeDS, IncludeDSPattern, IncludeSnapPattern)
 }
 
 function regex_loop(string, pat_arr,        n, _i) {
@@ -275,6 +335,39 @@ function is_ds_excluded(string,             _i, _pat) {
 		if (index(string, _pat) == 1)
 			return 1
 	}
+}
+
+function is_ds_included(string,             _i, _pat) {
+	if (!Opt["INCLUDE"])
+		return 1
+	if (!arr_len(IncludeDS) && !IncludeDSPattern["count"])
+		return 1
+	if (string in IncludeDS)
+		return 1
+	for (_i in IncludeDS) {
+		if (!_i) continue
+		_pat = _i "/"
+		if (index(string, _pat) == 1)
+			return 1
+	}
+	return regex_loop(string, IncludeDSPattern, IncludeDSPattern["count"])
+}
+
+function is_snap_included(savepoint) {
+	if (!Opt["INCLUDE"])
+		return 1
+	return regex_loop(savepoint, IncludeSnapPattern, IncludeSnapPattern["count"])
+}
+
+function is_snap_or_ds_included(savepoint, ds_name, ds_suffix) {
+	if (!Opt["INCLUDE"])
+		return 1
+	if (is_snap_included(savepoint))
+		return 1
+	if ((arr_len(IncludeDS) || IncludeDSPattern["count"]) &&
+	    (is_ds_included(ds_name) || is_ds_included(ds_suffix)))
+		return 1
+	return 0
 }
 
 # Load DSPair keys for summary output
@@ -321,6 +414,8 @@ function validate_match(src_row, tgt_row, ds_suffix, savepoint, snap_idx) {
 	if (!DSPair[ds_suffix, "num_matches"]++) {
 		# TO-DO: Validate by filter
 		DSPair[ds_suffix, "match"] = savepoint
+		if (NeedMatchIVSet && Row[src_row, "ivsetguid"] && (Row[src_row, "ivsetguid"] == Row[tgt_row, "ivsetguid"]))
+			DSPair[ds_suffix, "match_ivset"] = Row[src_row, "ivsetguid"]
 		# Record match index for pruning
 		DSPair[ds_suffix, "match_idx"] = snap_idx
 	}
@@ -328,6 +423,9 @@ function validate_match(src_row, tgt_row, ds_suffix, savepoint, snap_idx) {
 
 # Step through snapshots for counters and to find common snapshots
 function compare_snapshots(src_row, idx,	_src_row_arr, _ds_suffix, _savepoint, _src_guid, _tgt_ds_id, _tgt_match) {
+	if (Row[src_row, "prune_filtered"])
+		return
+
 	# Identify a match candidate by GUID
 	split(src_row, _src_row_arr, S)
 	_ds_suffix	= _src_row_arr[2]
@@ -474,30 +572,138 @@ function target_has_snap_name(tgt_ds_id, savepoint,		_num_snaps, _s, _tgt_row, _
 	return 0
 }
 
-# Analyze snapshots for pruning eligibility
-# Only outputs snapshots that ARE replicated to target (safe to prune)
-# Requires both GUID match AND name match for deletion
+function prune_init(		_prune_size, _prune_name) {
+	_prune_name = Opt["PRUNE_NAME"]
+	if (_prune_name == "zfsnap") _prune_name = "zfsnap_*"
+	else if (_prune_name == "truenas") _prune_name = "auto-*"
+	else if (_prune_name == "sanoid") _prune_name = "autosnap_*"
+	if (!is_null(_prune_name))
+		PruneNamePattern = glob_to_regex("@" _prune_name)
+
+	if ((Opt["PRUNE_NUM"] "")  == "" &&
+		(Opt["PRUNE_TIME"] "") == "" &&
+		(Opt["PRUNE_GRID"] "") == "" &&
+		(Opt["PRUNE_SIZE"] "") == "") {
+		Opt["PRUNE_NUM"] = 30
+		Opt["PRUNE_TIME"] = "30days"
+	}
+
+	if (Opt["PRUNE_SIZE"] != "") {
+		_prune_size = parse_size(Opt["PRUNE_SIZE"])
+		if (_prune_size == "")
+			usage_prune("invalid --prune-size: " Opt["PRUNE_SIZE"])
+		Opt["PRUNE_SIZE_BYTES"] = _prune_size
+	}
+
+	if (Opt["PRUNE_GRID"])
+		parse_prune_grid()
+}
+
+function parse_prune_grid(	_grid, _parts, _n, _i, _term, _x, _count, _interval) {
+	_grid = Opt["PRUNE_GRID"]
+	gsub(/[ 	]*x[ 	]*/, "x", _grid)
+	_n = split(_grid, _parts, /[,|]+/)
+	for (_i = 1; _i <= _n; _i++) {
+		_term = _parts[_i]
+		sub(/^[ 	]+/, "", _term)
+		sub(/[ 	]+$/, "", _term)
+		if (!_term) continue
+		_x = index(_term, "x")
+		if (_x) {
+			_count = substr(_term, 1, _x - 1)
+			_interval = parse_duration(substr(_term, _x + 1))
+		} else {
+			_count = -1
+			_interval = parse_duration(_term)
+		}
+		if (((_count != -1) && (_count !~ /^[0-9]+$/)) || !_interval)
+			usage_prune("invalid --prune-grid term: " _term)
+		PruneGridCount[++NumPruneGrid] = _count
+		PruneGridInterval[NumPruneGrid] = _interval
+	}
+}
+
+function grid_keeps_snapshot(creation, anchor_creation,	_age, _g, _start, _end, _bucket) {
+	if (!NumPruneGrid)
+		return 0
+	_age = anchor_creation - creation
+	if (_age < 0)
+		return 0
+	_start = 0
+	for (_g = 1; _g <= NumPruneGrid; _g++) {
+		if (PruneGridCount[_g] == -1) {
+			if (_age < _start)
+				return 0
+			_bucket = _g S int((_age - _start) / PruneGridInterval[_g])
+			if (!PruneGridBucket[_bucket]++)
+				return 1
+			return 0
+		}
+		_end = _start + (PruneGridCount[_g] * PruneGridInterval[_g])
+		if ((_age >= _start) && (_age < _end)) {
+			_bucket = _g S int((_age - _start) / PruneGridInterval[_g])
+			if (!PruneGridBucket[_bucket]++)
+				return 1
+			return 0
+		}
+		_start = _end
+	}
+	return 0
+}
+
+function synced_allows_prune(tgt_ds_id, guid, savepoint) {
+	if (Opt["PRUNE_GUARD"] == GUARD_NONE)
+		return 1
+	if (Opt["PRUNE_GUARD"] == GUARD_UNSYNCED)
+		return (Guid[tgt_ds_id, guid] && target_has_snap_name(tgt_ds_id, savepoint))
+	return 1
+}
+
+# Analyze snapshots for pruning eligibility.
+# Target safety is controlled by --prune-guard.
 function analyze_prune_candidates(		_d, _ds_suffix, _src_ds_id, _tgt_ds_id, _num_snaps,
 						_s, _src_row, _savepoint, _guid, _creation,
 						_match_idx, _snap_seconds, _min_age, _keep_after_match,
-						_has_name_match) {
+						_grid_anchor_creation,
+						_seen_after_match, _eligible_num, _written_total, _prune_estimate, _p,
+						_warned_no_target, _warned_no_match,
+						_selected_num, SelectedSnap, SelectedSnapIdx,
+						EligibleSnap, EligibleSnapIdx, EligibleSnapWritten, EligibleSnapReferenced) {
 
-	# SECONDS overrides DAYS if set
-	if (Opt["KEEP_SNAP_SECONDS"])
-		_snap_seconds = Opt["KEEP_SNAP_SECONDS"]
-	else
-		_snap_seconds = Opt["KEEP_SNAP_DAYS"] * 86400
-	_min_age = sys_time() - _snap_seconds
-	_keep_after_match = Opt["KEEP_SNAP_NUM"]
+	prune_init()
+	Global["now"] = sys_time()
+
+	if (Opt["PRUNE_TIME"] != "") {
+		_snap_seconds = parse_duration(Opt["PRUNE_TIME"])
+		if (_snap_seconds == "")
+			stop(1, "invalid --prune-time: " Opt["PRUNE_TIME"])
+	}
+	_min_age = Global["now"] - _snap_seconds
+	_keep_after_match = Opt["PRUNE_NUM"]
+
 
 	for (_d = 1; _d <= NumDSPair; _d++) {
 		_ds_suffix = DSPairList[_d]
 		_src_ds_id = Source["ID"] S _ds_suffix S ""
 		_tgt_ds_id = Target["ID"] S _ds_suffix S ""
 		_num_snaps = NumSnaps[_src_ds_id]
+		delete PruneGridBucket
+		delete EligibleSnap
+		delete EligibleSnapIdx
+		delete EligibleSnapWritten
+		delete EligibleSnapReferenced
+		delete SelectedSnap
+		delete SelectedSnapIdx
+		_eligible_num = 0
+		_selected_num = 0
+		_written_total = 0
+		_prune_estimate = 0
+		_seen_after_match = 0
 
 		_match_idx = DSPair[_ds_suffix, "match_idx"]
-		if (!_match_idx) continue
+		if (!_match_idx)
+			_match_idx = 0
+		_grid_anchor_creation = _match_idx ? Row[Snap[_src_ds_id, _match_idx], "creation"] : Row[Snap[_src_ds_id, 1], "creation"]
 
 		# Analyze snapshots older than match (higher index = older)
 		for (_s = _match_idx + 1; _s <= _num_snaps; _s++) {
@@ -508,23 +714,87 @@ function analyze_prune_candidates(		_d, _ds_suffix, _src_ds_id, _tgt_ds_id, _num
 
 			# Only consider snapshots (not bookmarks)
 			if (Row[_src_row, "type"] != IS_SNAPSHOT) continue
-
-			# Only prune if replicated to target (GUID exists on target)
-			if (!Guid[_tgt_ds_id, _guid]) continue
-
-			# Check if target has snapshot with same name
-			_has_name_match = target_has_snap_name(_tgt_ds_id, _savepoint)
-
-			# Keep if within retention window OR if name doesn't match on target
-			if (((_s - _match_idx) <= _keep_after_match) || (_min_age && (_creation >= _min_age)) || !_has_name_match) {
+			# Narrow pruning only; keep other names visible to guard matching.
+			if (Row[_src_row, "prune_filtered"] ||
+			    (PruneNamePattern && (_savepoint !~ PruneNamePattern))) {
 				KeptSnap[_src_ds_id, ++NumKeptSnap[_src_ds_id]] = _savepoint
-				KeptSnapIdx[_src_ds_id, NumKeptSnap[_src_ds_id]] = _s
+				KeptSnapIdx[_src_ds_id, NumKeptSnap[_src_ds_id]] = Row[_src_row, "snap_idx"]
+				continue
+			}
+			_seen_after_match++
+			if ((Row[_src_row, "clones"] != "") && (Row[_src_row, "clones"] != "-")) {
+				KeptSnap[_src_ds_id, ++NumKeptSnap[_src_ds_id]] = _savepoint
+				KeptSnapIdx[_src_ds_id, NumKeptSnap[_src_ds_id]] = Row[_src_row, "snap_idx"]
 				continue
 			}
 
-			# Mark as prune candidate (store with index for range compression)
-			PruneSnap[_src_ds_id, ++PruneSnapNum[_src_ds_id]] = _savepoint
-			PruneSnapIdx[_src_ds_id, PruneSnapNum[_src_ds_id]] = _s
+			if (!synced_allows_prune(_tgt_ds_id, _guid, _savepoint)) {
+				KeptSnap[_src_ds_id, ++NumKeptSnap[_src_ds_id]] = _savepoint
+				KeptSnapIdx[_src_ds_id, NumKeptSnap[_src_ds_id]] = Row[_src_row, "snap_idx"]
+				continue
+			}
+
+			if ((NumPruneGrid && ((_s == 1) || (_s == _num_snaps) || grid_keeps_snapshot(_creation, _grid_anchor_creation))) ||
+			    (_keep_after_match != "" && (_keep_after_match > 0) && (_seen_after_match <= _keep_after_match)) ||
+			    (_snap_seconds != "" && (_creation >= _min_age))) {
+				KeptSnap[_src_ds_id, ++NumKeptSnap[_src_ds_id]] = _savepoint
+				KeptSnapIdx[_src_ds_id, NumKeptSnap[_src_ds_id]] = Row[_src_row, "snap_idx"]
+				continue
+			}
+
+			if (Opt["PRUNE_SIZE_BYTES"]) {
+				EligibleSnap[++_eligible_num] = _savepoint
+				EligibleSnapIdx[_eligible_num] = Row[_src_row, "snap_idx"]
+				EligibleSnapWritten[_eligible_num] = Row[_src_row, "written"]
+				EligibleSnapReferenced[_eligible_num] = Row[_src_row, "referenced"]
+			} else {
+				PruneSnap[_src_ds_id, ++PruneSnapNum[_src_ds_id]] = _savepoint
+				PruneSnapIdx[_src_ds_id, PruneSnapNum[_src_ds_id]] = Row[_src_row, "snap_idx"]
+			}
+		}
+
+		for (_p = _eligible_num; Opt["PRUNE_SIZE_BYTES"] && (_p >= 1); _p--) {
+			SelectedSnap[++_selected_num] = EligibleSnap[_p]
+			SelectedSnapIdx[_selected_num] = EligibleSnapIdx[_p]
+			_written_total += EligibleSnapWritten[_p]
+			_prune_estimate = _written_total - EligibleSnapReferenced[_p]
+			if (_prune_estimate >= Opt["PRUNE_SIZE_BYTES"])
+				break
+		}
+		for (_p = _selected_num; _p >= 1; _p--) {
+			PruneSnap[_src_ds_id, ++PruneSnapNum[_src_ds_id]] = SelectedSnap[_p]
+			PruneSnapIdx[_src_ds_id, PruneSnapNum[_src_ds_id]] = SelectedSnapIdx[_p]
+		}
+	}
+}
+
+# List filtered source snapshots after the requested match. output_prune() reverses
+# individual snapshot output, so populate newest first to print oldest first.
+function analyze_send_range(		_d, _ds_suffix, _src_ds_id, _num_snaps, _s,
+					_match_idx, _src_row, _savepoint) {
+	for (_d = 1; _d <= NumDSPair; _d++) {
+		_ds_suffix = DSPairList[_d]
+		_src_ds_id = Source["ID"] S _ds_suffix S ""
+		_num_snaps = NumSnaps[_src_ds_id]
+		_match_idx = 0
+
+		for (_s = 1; _s <= _num_snaps; _s++) {
+			_src_row = Snap[_src_ds_id, _s]
+			if (Row[_src_row, "type"] != IS_SNAPSHOT) continue
+			if (Row[_src_row, "savepoint"] == Opt["SEND_RANGE"]) {
+				_match_idx = _s
+				break
+			}
+		}
+
+		if (!_match_idx)
+			continue
+
+		for (_s = 1; _s < _match_idx; _s++) {
+			_src_row = Snap[_src_ds_id, _s]
+			if (Row[_src_row, "type"] != IS_SNAPSHOT) continue
+			PruneSnap[_src_ds_id, ++PruneSnapNum[_src_ds_id]] = Row[_src_row, "savepoint"]
+			PruneSnapIdx[_src_ds_id, PruneSnapNum[_src_ds_id]] = Row[_src_row, "snap_idx"]
 		}
 	}
 }
@@ -655,6 +925,22 @@ function output_prune(		_d, _ds_suffix, _src_ds_id, _p, _range, _base_name, _kep
 	}
 }
 
+function output_prune_visual(		_d, _ds_suffix, _src_ds_id, _p, _s, _row) {
+	for (_d = 1; _d <= NumDSPair; _d++) {
+		_ds_suffix = DSPairList[_d]
+		_src_ds_id = Source["ID"] S _ds_suffix S ""
+		printf "%s\n", Source["ID"] _ds_suffix
+		for (_p = 1; _p <= PruneSnapNum[_src_ds_id]; _p++)
+			Kill[_src_ds_id, PruneSnapIdx[_src_ds_id, _p]] = 1
+		for (_s = NumSnaps[_src_ds_id]; _s >= 1; _s--) {
+			_row = Snap[_src_ds_id, _s]
+			if (Row[_row, "type"] == IS_SNAPSHOT)
+				printf "%s", (Kill[_src_ds_id, Row[_row, "snap_idx"]] ? "❌" : "🔹")
+		}
+		printf "\n"
+	}
+}
+
 ## Output
 #########
 
@@ -696,6 +982,8 @@ function load_columns(		_tsv, _key, _opt_list, _opt, _idx, _c, _default_proplist
 			_np = split(_prop_opts, _prop_opt_arr, S)
 			for (_p = 1; _p <= _np; _p++) {
 				PropList[++NumProps] = _prop_opt_arr[_p]
+				if (_prop_opt_arr[_p] == "match_ivset")
+					NeedMatchIVSet = 1
 			}
 		}
 	}
@@ -811,6 +1099,33 @@ BEGIN {
 	FS             = "\t"
 	OFS            = "\t"
 
+	GUARD_NONE     = 0
+	GUARD_LATEST   = 1
+	GUARD_UNSYNCED = 2
+
+	GUARD[""]         = GUARD_LATEST
+	GUARD["none"]     = GUARD_NONE
+	GUARD["latest"]   = GUARD_LATEST
+	GUARD["unsynced"] = GUARD_UNSYNCED
+
+	Opt["PRUNE_GUARD"] = tolower(Opt["PRUNE_GUARD"])
+	if (Opt["PRUNE_GUARD"] in GUARD) {
+		Opt["PRUNE_GUARD"] = GUARD[Opt["PRUNE_GUARD"]]
+	}
+
+	if (! ((Opt["PRUNE_GUARD"] >= 0) && (Opt["PRUNE_GUARD"] <= 2)))
+		stop(1, "invalid prune-guard mode: " Opt["PRUNE_GUARD"])
+
+	if (Opt["VERB"] == "prune" && (Opt["MATCH_ENDPOINT"] != "")) {
+		if (Operands[2] != "")
+			stop(1, "cannot use --match-endpoint with a second positional operand")
+		Operands[2] = Opt["MATCH_ENDPOINT"]
+		NumOperands = 2
+	}
+
+	if (NumOperands < 2)
+		Opt["PRUNE_GUARD"] = GUARD_NONE
+
 	load_endpoint(Operands[1], Source)
 	load_endpoint(Operands[2], Target)
 	load_columns()
@@ -820,6 +1135,8 @@ BEGIN {
 		else
 			usage()
 	}
+	if (!is_null(Opt["DEPTH"]) && (Opt["DEPTH"] < 1))
+		stop(1, "depth of '"Opt["DEPTH"]"' invalid; must be positive")
 	if (!Source["DS"] && !Target["DS"]) { usage("no datasets defined") }
 
 	if (Opt["MATCH_PIPE"]) {
@@ -849,8 +1166,14 @@ END {
 		process_datasets()
 
 		if (Opt["VERB"] == "prune") {
-			analyze_prune_candidates()
-			output_prune()
+			if (Opt["SEND_RANGE"])
+				analyze_send_range()
+			else
+				analyze_prune_candidates()
+			if (Opt["PRUNE_VISUAL"])
+				output_prune_visual()
+			else
+				output_prune()
 		} else {
 			get_info()
 			summary()

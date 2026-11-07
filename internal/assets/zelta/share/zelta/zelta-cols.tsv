@@ -1,6 +1,7 @@
 # COLNAME	# SYNONYMS	# TYPE	# DESCRIPTION	# DEPRECATION
 ds_suffix	relname,dssuffix	ds	Relative dataset name
 match	match	snap	Latest matching snapshot
+match_ivset	matchivset	text	IV set GUID for the selected match
 num_matches	nummatches,matches,count	num	Total number of matches
 xfer_size	xfersize,size	bytes	Unsynced data size based on snapshots
 xfer_num	xfernum,count,num	num	Unsynced snapshot count

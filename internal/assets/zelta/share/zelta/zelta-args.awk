@@ -2,64 +2,21 @@
 #
 # zelta-args.awk: serialize common zelta arguments
 
-# Choose a hostname for logging
-function validate_host(host,		_hostname_cmd) {
-	if (!host || (host == "localhost"))
-		return Opt["HOSTNAME"]
-	else
-		return host
-}
-
-# TO-DO: Move to 'zelta-common.awk' as a generic endpoint calculator
-# Load and parse two endpoints, the source and target, sequentially
-# Create a set of variables from an scp-like host-dataset argument
-# [[user@]host:]dataset[@snapshot]
-function get_endpoint(		ep_type, _str_parts, _id, _remote ,_user, _host, _ds, _snap) {
-
+# Load SRC then TGT Opt fields from scp-like operands via load_endpoint()
+# [[user@]host:]dataset[@snapshot]  or  [[user@][ipv6]:]dataset[@snapshot]
+function get_endpoint(		ep_type, ep_arr) {
 	if (!NewOpt["SRC_ID"]) ep_type = "SRC_"
 	else if (!NewOpt["TGT_ID"]) ep_type = "TGT_"
 	else return
 
-	_id = $0				# ID is the user's endpoint string
-
-	# Find the connection info for ssh, '[user@]host'
-	if (/^([^ @:\/]+@)?\[[^]]+\]:/) {
-		_remote = $0
-		sub(/]:.*/, "]", _remote)
-		$0 = substr($0, length(_remote) + 2)
-		if (split(_remote, _str_parts, "@")==2) {
-			_user = _str_parts[1]
-			_host = _str_parts[2]
-		} else _host = _str_parts[1]
-		sub(/^\[/, "", _host)
-		sub(/\]$/, "", _host)
-		_remote = (_user ? _user "@" : "") _host
-	} else if (/^[^ :\/]+:/) {
-		_remote = $0
-		sub(/:.*/, "", _remote)		# REMOTE is '[user@]host'
-		sub(/^[^ :\/]+:/,i "")		# Don't split(), $0 may have ':'
-		if (split(_remote, _str_parts, "@")==2) {
-			_user = _str_parts[1]	# USER from 'user@host'
-			_host = _str_parts[2]	# HOST
-		} else _host = _str_parts[1]	# HOST only
-		# Special case: If the DS or SNAP contains a ':' and our target is local, we
-		# have a work around: 'localhost:' _remote (with no user) gets cleared (so no ssh).
-		if (!_user && (_host == "localhost")) _remote = ""
-	}
-	if (split($0, _str_parts, "@") == 2) {
-		_snap = "@" _str_parts[2]
-	}
-	_ds = _str_parts[1]
-	if (!_user) { _user = ENVIRON["USER"] }	# USER may be useful for logging
-
-	# Validate and define the endpoint
-	if (! _ds) stop(1, "invalid endpoint '"_id"'")
-	NewOpt[ep_type "ID"]		= _id
-	NewOpt[ep_type "REMOTE"]	= _remote
-	NewOpt[ep_type "USER"]		= _user
-	NewOpt[ep_type "HOST"]		= validate_host(_host)
-	NewOpt[ep_type "DS"]		= _ds
-	NewOpt[ep_type "SNAP"]		= _snap
+	load_endpoint($0, ep_arr)
+	if (!ep_arr["DS"]) stop(1, "invalid endpoint '"$0"'")
+	NewOpt[ep_type "ID"]		= ep_arr["ID"]
+	NewOpt[ep_type "REMOTE"]	= ep_arr["REMOTE"]
+	NewOpt[ep_type "USER"]		= ep_arr["USER"]
+	NewOpt[ep_type "HOST"]		= ep_arr["HOST"]
+	NewOpt[ep_type "DS"]		= ep_arr["DS"]
+	NewOpt[ep_type "SNAP"]		= ep_arr["SNAP"]
 }
 
 function match_arg(arg, 	_flag) {
@@ -69,10 +26,10 @@ function match_arg(arg, 	_flag) {
 	stop(1, "invalid option '"arg"'")
 }
 
-function set_arg(flag, subopt,		_type, key) {
+function set_arg(flag, subopt, argval,		_type, key) {
 	_type = OptListType[flag]
 	_key  = OptListKey[flag]
-	if (_type == "arglist")       NewOpt[_key] = str_add(NewOpt[_key], $0)
+	if (_type == "arglist")       NewOpt[_key] = str_add(NewOpt[_key], argval)
 	else if (_type == "list")     NewOpt[_key] = str_add(NewOpt[_key], subopt, ",")
 	else if (_type == "true")     NewOpt[_key] = "1"
 	else if (_type == "false")    NewOpt[_key] = "0"
@@ -129,7 +86,7 @@ function get_args(		_i, _flag, _arg, _m, _subopt, _opts_done) {
 		else if (/^--[^-]/) {
 			_flag = match_arg($1)
 			_subopt = get_subopt(_flag)
-			set_arg(_flag, _subopt)
+			set_arg(_flag, _subopt, $1)
 		}
 		else if (/^-[^-]/) {
 			# step through basic -opts
@@ -137,9 +94,9 @@ function get_args(		_i, _flag, _arg, _m, _subopt, _opts_done) {
 				_arg = "-" substr($0, _m, 1)
 				_flag = match_arg(_arg)
 				_subopt = get_subopt(_flag, _m)
-				set_arg(_flag, _subopt)
+				set_arg(_flag, _subopt, _arg)
 				# If our _subopt was an argument, skip to the next word
-				if (_subopt && !OptListValue[_flag]) break
+				if (!is_null(_subopt) && is_null(OptListValue[_flag])) break
 			}
 		} else stop(1, "invalid option: '"$0"'")
 	}
@@ -151,9 +108,10 @@ function load_option_list(		_tsv, _flag, _flags, _idx, _flag_arr) {
 	FS="\t"
 	# TO-DO: Complain if TSV doesn't load
 	while ((getline<_tsv)>0) {
+		if (/^#/) continue
 		if (index($1, Opt["VERB"]) || ($1 == "all")) {
 			# 1:VERBS 2:FLAGS 3:KEY 4:KEY_ALIAS 5:TYPE 6:VALUE 7:DESCRIPTION 8:WARNING
-			if (/^#/ || !$2) continue
+			if (!$2) continue
 			_flags = $2
 			split(_flags, _flag_arr, ",")
 			# Make an dictionary for flag synonyms
@@ -167,7 +125,8 @@ function load_option_list(		_tsv, _flag, _flags, _idx, _flag_arr) {
 				_incr_decr_key = OptListKey[_flags]
 				NewOpt[_incr_decr_key] = Opt[_incr_decr_key]
 			}
-		} else if (Opt[$4] && !Opt["LEGACY_ENV"]) {
+		}
+		if (($4 != "") && !is_null(Opt[$4]) && is_null(Opt["LEGACY_ENV"])) {
 			# Check for legacy variables and reassign them
 			if ($8) report(LOG_WARNING, $8)
 			NewOpt[$3] = Opt[$4]
@@ -182,7 +141,7 @@ function load_option_list(		_tsv, _flag, _flags, _idx, _flag_arr) {
 # Send an override back to 'zelta' when an arg has changed
 function override_options(	_e) {
 	for (_e in NewOpt) {
-		if (NewOpt[_e] != Opt[_e]) {
+		if (NewOpt[_e] "" != Opt[_e] "") {
 			# TO-DO: Ensure numerical '0' exports properly
 			export = export " " (ENV_PREFIX _e) "='" NewOpt[_e] "'"
 		}

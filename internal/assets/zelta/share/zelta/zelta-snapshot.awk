@@ -5,7 +5,7 @@
 # Make a snapshot
 
 function snapshot(	_snap_name, _ds_snap, _cmd_arr, _cmdk) {
-	_snap_name = Opt["SRC_SNAP"] ? Opt["SRC_SNAP"] : get_snap_name()
+	_snap_name = !is_null(Opt["SRC_SNAP"]) ? Opt["SRC_SNAP"] : get_snap_name()
 
 	_ds_snap = Opt["SRC_DS"] _snap_name
 	_cmd_arr["endpoint"] = "SRC"

@@ -1,0 +1,526 @@
+#!/bin/sh
+#
+# zprune - destructive snapshot pruning wrapper for Zelta
+#
+# zelta prune selects snapshots. zprune adds the destructive prompt and runs
+# zfs destroy against the exact candidates emitted by zelta prune.
+
+ZPRUNE_VERSION="zprune 1.2.0"
+
+zprune_usage() {
+	exec >&2
+	cat << 'EOF'
+usage: zprune [OPTIONS] --match-endpoint=GUARD ENDPOINT
+       zprune [OPTIONS] --no-prune-guard ENDPOINT
+
+Destructively prune snapshots on ENDPOINT selected by 'zelta prune'.
+
+zprune options:
+  --force                 Destroy without asking for confirmation
+  --quiet                 Decrease verbosity (-qq skips dry-run/summary)
+  --dryrun                Preview destroy commands and exit
+
+EOF
+  zelta prune --help 2>&1 | grep -e Options -e --
+	cat << 'EOF'
+
+For complete documentation:  man zprune
+                             zelta help prune
+                             https://zelta.space
+EOF
+	exit 1
+}
+
+zprune_version() {
+	echo "$ZPRUNE_VERSION"
+	exit 0
+}
+
+error() {
+	# %b interprets \n etc.; trailing \n is always added
+	printf 'zprune: %b\n' "$1" >&2
+}
+
+init_zelta_env() {
+	if _env=$(zelta ipc-env prune "$@"); then
+		eval "$_env"
+	else
+		exit 1
+	fi
+}
+
+prune_guard_disabled() {
+	case "$ZELTA_PRUNE_GUARD" in
+		0|none)
+			return 0
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+zelta_bool_true() {
+	case "$1" in
+		1|[Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|[Oo][Nn])
+			return 0
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+parse_args() {
+	ZPRUNE_QUIET=""
+	ZPRUNE_DRYRUN=""
+
+	case "$1" in
+		-h|--help)
+			zprune_usage
+			;;
+		-V|--version)
+			zprune_version
+			;;
+	esac
+
+	init_zelta_env "$@"
+
+	ZPRUNE_LOG_LEVEL=${ZELTA_LOG_LEVEL:-2}
+	[ "${ZELTA_LOG_LEVEL:-2}" -lt 2 ] && ZPRUNE_QUIET=1
+	zelta_bool_true "$ZELTA_DRYRUN" && ZPRUNE_DRYRUN=1
+	unset ZELTA_DRYRUN
+	zelta_bool_true "$ZELTA_PRUNE_FORCE" || unset ZELTA_PRUNE_FORCE
+	ZELTA_LOG_LEVEL=2
+	ZELTA_VERB=prune
+	export ZELTA_LOG_LEVEL ZELTA_VERB ZPRUNE_DRYRUN ZPRUNE_LOG_LEVEL
+
+	if zelta_bool_true "$ZELTA_PRUNE_VISUAL"; then
+		run_zelta_prune
+		unset ZELTA_PRUNE_VISUAL
+	fi
+
+	if [ -z "$ZELTA_SRC_ID" ]; then
+		error "endpoint required"
+		zprune_usage
+	fi
+}
+
+run_zelta_prune() {
+	if [ "${ZPRUNE_LOG_LEVEL:-2}" -ge 4 ]; then
+		printf 'debug: `zelta ipc-run prune`\n' >&2
+	fi
+	zelta ipc-run prune
+}
+
+count_candidates() {
+	awk 'index($0, "@") { n++ } END { print n + 0 }'
+}
+
+validate_candidates() {
+	_candidates=$1
+	_invalid=""
+
+	IFS='
+'
+	for _candidate in $_candidates; do
+		[ -n "$_candidate" ] || continue
+		case "$_candidate" in
+			*"'"*)
+				_invalid=$_invalid$(printf '\n%s' "$_candidate")
+				;;
+			*@*)
+				;;
+			*)
+				_invalid=$_invalid$(printf '\n%s' "$_candidate")
+				;;
+		esac
+	done
+	unset IFS
+
+	if [ -n "$_invalid" ]; then
+		error "refusing unexpected prune output:"
+		printf '%s\n' "$_invalid" >&2
+		return 1
+	fi
+
+	return 0
+}
+
+format_destroy_command() {
+	_flags=$1
+	_destroy_target=$2
+
+	if [ -n "$ZELTA_SRC_REMOTE" ]; then
+		: ${ZELTA_REMOTE_COMMAND:=ssh}
+		if [ -n "$_flags" ]; then
+			printf '%s %s "zfs destroy %s '\''%s'\''"' \
+				"$ZELTA_REMOTE_COMMAND" "$ZELTA_SRC_REMOTE" "$_flags" "$_destroy_target"
+		else
+			printf '%s %s "zfs destroy '\''%s'\''"' \
+				"$ZELTA_REMOTE_COMMAND" "$ZELTA_SRC_REMOTE" "$_destroy_target"
+		fi
+	elif [ -n "$_flags" ]; then
+		printf 'zfs destroy %s %s' "$_flags" "$_destroy_target"
+	else
+		printf 'zfs destroy %s' "$_destroy_target"
+	fi
+}
+
+run_zfs_destroy() {
+	_flags=$1
+	_destroy_target=$2
+
+	# Log real destroys only (not -nvp preview probes)
+	if [ -z "$_flags" ] && [ "${ZPRUNE_LOG_LEVEL:-2}" -ge 4 ]; then
+		printf 'debug: `%s`\n' "$(format_destroy_command "$_flags" "$_destroy_target")" >&2
+	fi
+
+	if [ -n "$ZELTA_SRC_REMOTE" ]; then
+		: ${ZELTA_REMOTE_COMMAND:=ssh}
+		_cmd="zfs destroy $_flags '$_destroy_target'"
+		$ZELTA_REMOTE_COMMAND "$ZELTA_SRC_REMOTE" "$_cmd"
+	else
+		zfs destroy $_flags "$_destroy_target"
+	fi
+}
+
+run_zfs_list() {
+	_flags=$1
+	_dataset=$ZELTA_SRC_DS
+
+	if [ -n "$ZELTA_SRC_REMOTE" ]; then
+		: ${ZELTA_REMOTE_COMMAND:=ssh}
+		_cmd="zfs list $_flags '$_dataset'"
+		$ZELTA_REMOTE_COMMAND "$ZELTA_SRC_REMOTE" "$_cmd"
+	else
+		zfs list $_flags "$_dataset"
+	fi
+}
+
+count_source_snapshots() {
+	run_zfs_list "-H -r -t snapshot -o name" 2>/dev/null | awk 'END { print NR + 0 }'
+}
+
+sum_source_snapshot_written() {
+	run_zfs_list "-H -r -p -t snapshot -o written" 2>/dev/null |
+	awk '{ total += $1 } END { print total + 0 }'
+}
+
+human_size() {
+	awk -v bytes="$1" '
+	BEGIN {
+		split("B K M G T P E", unit, " ")
+		value = bytes + 0
+		idx = 1
+		while (value >= 1024 && idx < 7) {
+			value /= 1024
+			idx++
+		}
+		if (idx == 1) printf "%d%s\n", value, unit[idx]
+		else printf "%.1f%s\n", value, unit[idx]
+	}'
+}
+
+destroy_candidate_group() {
+	_flags=$1
+	_destroy_arg=$2
+
+	[ -n "$_destroy_arg" ] || return 0
+	if [ -n "$_flags" ]; then
+		printf '%s\n' "$_destroy_arg"
+	fi
+	run_zfs_destroy "$_flags" "$_destroy_arg"
+}
+
+run_grouped_destroy() {
+	_candidates=$1
+	_flags=$2
+	_failed=0
+	_ds=""
+	_arg=""
+
+	IFS='
+'
+	for _candidate in $_candidates; do
+		[ -n "$_candidate" ] || continue
+		case "$_candidate" in
+			*@*) ;;
+			*) continue ;;
+		esac
+
+		_candidate_ds=${_candidate%@*}
+		_candidate_spec=${_candidate#*@}
+		if [ -z "$_ds" ]; then
+			_ds=$_candidate_ds
+			_arg=$_candidate
+		elif [ "$_candidate_ds" = "$_ds" ]; then
+			_arg=$_arg,$_candidate_spec
+		else
+			if ! destroy_candidate_group "$_flags" "$_arg"; then
+				error "destroy command failed: $_arg"
+				_failed=1
+			fi
+			_ds=$_candidate_ds
+			_arg=$_candidate
+		fi
+	done
+	unset IFS
+
+	if ! destroy_candidate_group "$_flags" "$_arg"; then
+		error "destroy command failed: $_arg"
+		_failed=1
+	fi
+
+	return $_failed
+}
+
+# Print grouped destroy commands from candidates (no zfs dry-run required).
+print_destroy_commands() {
+	_candidates=$1
+	_ds=""
+	_arg=""
+
+	IFS='
+'
+	for _candidate in $_candidates; do
+		[ -n "$_candidate" ] || continue
+		case "$_candidate" in
+			*@*) ;;
+			*) continue ;;
+		esac
+
+		_candidate_ds=${_candidate%@*}
+		_candidate_spec=${_candidate#*@}
+		if [ -z "$_ds" ]; then
+			_ds=$_candidate_ds
+			_arg=$_candidate
+		elif [ "$_candidate_ds" = "$_ds" ]; then
+			_arg=$_arg,$_candidate_spec
+		else
+			printf '%s\n' "$(format_destroy_command "" "$_arg")"
+			_ds=$_candidate_ds
+			_arg=$_candidate
+		fi
+	done
+	unset IFS
+
+	if [ -n "$_arg" ]; then
+		printf '%s\n' "$(format_destroy_command "" "$_arg")"
+	fi
+}
+
+preview_candidates() {
+	_candidates=$1
+
+	if ! run_grouped_destroy "$_candidates" "-nvp"; then
+		return 1
+	fi
+	return 0
+}
+
+destroy_candidates() {
+	_candidates=$1
+
+	if ! run_grouped_destroy "$_candidates" ""; then
+		return 1
+	fi
+	return 0
+}
+
+preview_destroy_count() {
+	awk '/^destroy[ 	]/ || /^would destroy / { count++ } END { print count + 0 }' "$1"
+}
+
+preview_reclaim_bytes() {
+	awk '/^reclaim[ 	]/ { bytes += $2 } /would reclaim / { bytes += $NF } END { print bytes + 0 }' "$1"
+}
+
+preview_dataset_count() {
+	awk '
+	function remember(ds) {
+		if (!(ds in seen)) {
+			seen[ds] = 1
+			num_ds++
+		}
+	}
+	/^destroy[ 	]/ {
+		ds = $2
+		sub(/@.*/, "", ds)
+		remember(ds)
+		next
+	}
+	/^would destroy / {
+		ds = $3
+		sub(/@.*/, "", ds)
+		remember(ds)
+		next
+	}
+	END { print num_ds + 0 }
+	' "$1"
+}
+
+print_prune_size_notice() {
+	_dataset_count=$1
+
+	[ -n "$ZELTA_PRUNE_SIZE" ] || return 0
+	[ "$_dataset_count" -gt 1 ] || return 0
+
+	printf 'Estimating %s per dataset savings on %s datasets.\n\n' \
+		"$ZELTA_PRUNE_SIZE" "$_dataset_count"
+}
+
+print_dataset_summary() {
+	awk '
+	function human_size(bytes,    unit, value, idx) {
+		split("B K M G T P E", unit, " ")
+		value = bytes + 0
+		idx = 1
+		while (value >= 1024 && idx < 7) {
+			value /= 1024
+			idx++
+		}
+		if (idx == 1) return sprintf("%d%s", value, unit[idx])
+		return sprintf("%.1f%s", value, unit[idx])
+	}
+	function remember(ds) {
+		if (!(ds in seen)) {
+			seen[ds] = 1
+			list[++num_ds] = ds
+		}
+	}
+	/^destroy[ 	]/ {
+		current_ds = $2
+		sub(/@.*/, "", current_ds)
+		remember(current_ds)
+		count[current_ds]++
+		next
+	}
+	/^would destroy / {
+		current_ds = $3
+		sub(/@.*/, "", current_ds)
+		remember(current_ds)
+		count[current_ds]++
+		next
+	}
+	/^reclaim[ 	]/ {
+		if (current_ds) bytes[current_ds] += $2
+		next
+	}
+	/^would reclaim / {
+		if (current_ds) bytes[current_ds] += $NF
+		next
+	}
+	END {
+		if (num_ds <= 1) exit
+		for (idx = 1; idx <= num_ds; idx++) {
+			ds = list[idx]
+			printf "%s: %d snapshots, %s\n", ds, count[ds], human_size(bytes[ds])
+		}
+	}
+	' "$1"
+}
+
+percent_of() {
+	awk -v part="$1" -v total="$2" 'BEGIN { if (total > 0) printf "%d", ((part / total) * 100) + 0.5; else printf "0" }'
+}
+
+print_summary() {
+	_destroy_count=$1
+	_total_count=$2
+	_reclaim_bytes=$3
+	_total_bytes=$4
+
+	printf '%s snapshots (%s%% of %s) will be destroyed\n' \
+		"$_destroy_count" "$(percent_of "$_destroy_count" "$_total_count")" "$_total_count"
+	printf '%s total reclaimed (%s%% of %s)\n' \
+		"$(human_size "$_reclaim_bytes")" "$(percent_of "$_reclaim_bytes" "$_total_bytes")" "$(human_size "$_total_bytes")"
+
+}
+
+confirm_destruction() {
+	printf '%s' "Destroy now? [y/N] "
+	read _confirm < /dev/tty
+
+	case "$_confirm" in
+		y|Y|yes|YES) ;;
+		*)
+		echo "Aborted."
+		exit 1
+		;;
+	esac
+}
+
+want_preview_summary() {
+	# LOG_LEVEL < 1 (-qq): skip expensive destroy dry-run and summary.
+	# -qqf is silent (cron); -qq still prompts; -nqq selects candidates only.
+	[ "${ZPRUNE_LOG_LEVEL:-2}" -ge 1 ] || return 1
+	[ -n "$ZPRUNE_DRYRUN" ] || [ -z "$ZPRUNE_QUIET" ] || [ -z "$ZELTA_PRUNE_FORCE" ]
+}
+
+main() {
+	parse_args "$@"
+
+	_candidates=$(run_zelta_prune)
+	_status=$?
+	if [ $_status -ne 0 ]; then
+		exit $_status
+	fi
+
+	_count=$(printf '%s\n' "$_candidates" | count_candidates)
+	if [ "$_count" -eq 0 ]; then
+		[ -z "$ZPRUNE_QUIET" ] && echo "No snapshots to prune."
+		exit 0
+	fi
+
+	if ! validate_candidates "$_candidates"; then
+		error "destroy aborted"
+		exit 1
+	fi
+
+	if want_preview_summary; then
+		# Normal+ (LOG_LEVEL >= 2): show destroy commands first, then dry-run.
+		if [ "${ZPRUNE_LOG_LEVEL:-2}" -ge 2 ]; then
+			printf 'Preparing to prune "%s" using the following commands:\n' "$ZELTA_SRC_ID"
+			print_destroy_commands "$_candidates"
+			echo ""
+			printf 'Calculating snapshots and space to be freed...\n'
+		fi
+
+		_preview_file=${TMPDIR:-/tmp}/zprune.$$.preview
+		if ! preview_candidates "$_candidates" > "$_preview_file"; then
+			[ -z "$ZPRUNE_QUIET" ] && cat "$_preview_file"
+			rm -f "$_preview_file"
+			error "destroy aborted"
+			exit 1
+		fi
+		[ "${ZPRUNE_LOG_LEVEL:-2}" -ge 2 ] && echo ""
+
+		_destroy_count=$(preview_destroy_count "$_preview_file")
+		_reclaim_bytes=$(preview_reclaim_bytes "$_preview_file")
+		_dataset_count=$(preview_dataset_count "$_preview_file")
+		_total_count=$(count_source_snapshots)
+		_total_bytes=$(sum_source_snapshot_written)
+		print_prune_size_notice "$_dataset_count"
+		print_dataset_summary "$_preview_file"
+		print_summary "$_destroy_count" "$_total_count" "$_reclaim_bytes" "$_total_bytes"
+		rm -f "$_preview_file"
+	fi
+
+	if [ -n "$ZPRUNE_DRYRUN" ]; then
+		exit 0
+	fi
+
+	if [ -z "$ZELTA_TGT_ID" ] && [ -z "$ZELTA_MATCH_ENDPOINT" ] && ! prune_guard_disabled; then
+		error "match endpoint required to destroy snapshots with prune guard enabled;\n  use --match-endpoint=GUARD or --no-prune-guard"
+		exit 1
+	fi
+
+	if [ -z "$ZELTA_PRUNE_FORCE" ]; then
+		confirm_destruction
+	fi
+
+	destroy_candidates "$_candidates"
+}
+
+main "$@"
