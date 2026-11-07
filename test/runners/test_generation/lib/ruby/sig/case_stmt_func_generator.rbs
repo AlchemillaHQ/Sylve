@@ -1,0 +1,21 @@
+class CaseStmtFuncGenerator
+  DEFAULT_ENV_VAR_NAMES: String
+
+  @env_substitutor: EnvSubstitutor
+
+  def self.matcher_function_from_file: (String path, String func_name, bool clean_output, ?String env_var_names) -> Array[String]
+  def self.format_expected_error: (String stderr_file, ?String env_var_names) -> String
+
+  def initialize: (?String env_var_names) -> void
+  def matcher_function_from_file: (String path, String func_name, bool clean_output) -> Array[String]
+  def format_expected_error: (String stderr_file) -> String
+
+  private
+
+  def read_stderr_file: (String stderr_file) -> Array[String]
+  def clean_up_output_line: (String line) -> String
+  def normalize_output_line: (String line) -> String
+  def clean_up_output: (Array[String] lines) -> Array[String]
+  def generate_function: (Array[String] lines, String func_name) -> Array[String]
+  def build_function: (Array[String] patterns, String func_name) -> Array[String]
+end

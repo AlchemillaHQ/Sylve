@@ -1,0 +1,51 @@
+module ShellSpecGen
+  HOOK_NAMES: Array[String]
+  HOOK_INVOCATIONS: Array[String]
+
+  class Config < Data
+    attr_reader shellspec_name: String
+    attr_reader output_dir: String
+    attr_reader capture_output: bool
+    attr_reader example_list: Array[ExampleDefinition]
+
+    def self.load_file: (String path) -> Config
+    def self.from_h: (Hash[Symbol, untyped] h) -> Config
+  end
+
+  class ExampleDefinition < Data
+    attr_reader describe_desc: String
+    attr_reader tag: String?
+    attr_reader hooks_list: Array[Hook]
+    attr_reader skip_if_list: Array[SkipIf]
+    attr_reader test_list: Array[TestDefinition]
+
+    def self.from_h: (Hash[Symbol, untyped] h) -> ExampleDefinition
+  end
+
+  class Hook < Data
+    attr_reader name: String
+    attr_reader invocation: String
+    attr_reader command: String
+
+    def self.from_h: (Hash[Symbol, untyped] h) -> Hook
+    def initialize: (name: String, invocation: String, command: String) -> void
+  end
+
+  class TestDefinition < Data
+    attr_reader test_name: String
+    attr_reader it_desc: String
+    attr_reader tag: String?
+    attr_reader when_command: String
+    attr_reader capture_output: bool
+    attr_reader allow_no_output: bool
+    attr_reader setup_scripts: Array[String]
+
+    def self.from_h: (Hash[Symbol, untyped] h) -> TestDefinition
+  end
+
+  class SkipIf < Data
+    attr_reader condition: String
+
+    def self.from_h: (Hash[Symbol, untyped] h) -> SkipIf
+  end
+end

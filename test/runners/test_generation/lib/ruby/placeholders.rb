@@ -16,8 +16,6 @@ module Placeholders
              extract_vars_from_object(source, inclusions, exclusions)
            end
 
-    print "Substituting variables in string: #{string}\n"
-    print "Using variables: #{vars.inspect}\n"
     string.gsub(/%\{(\w+)\}/) { vars[$1] || vars[$1.to_sym] }
   end
 
@@ -25,11 +23,7 @@ module Placeholders
     def filter_hash(hash, inclusions, exclusions)
       return hash if inclusions.nil? && exclusions.nil?
 
-      hash.select do |key, _|
-        key_matches = key_matches_filter?(key, inclusions, exclusions)
-        puts "Filtering key: #{key}" if key_matches
-        key_matches
-      end
+      hash.select { |key, _| key_matches_filter?(key, inclusions, exclusions) }
     end
 
     def key_matches_filter?(key, inclusions, exclusions)
@@ -45,6 +39,23 @@ module Placeholders
     end
 
     def extract_vars_from_object(obj, inclusions, exclusions)
+      if obj.is_a?(Data) || obj.is_a?(Struct)
+        extract_vars_from_members(obj, inclusions, exclusions)
+      else
+        extract_vars_from_ivars(obj, inclusions, exclusions)
+      end
+    end
+
+    def extract_vars_from_members(obj, inclusions, exclusions)
+      obj.members.each_with_object({}) do |member, hash|
+        var_name = member.to_s
+        next unless var_matches_filter?(var_name, inclusions, exclusions)
+
+        hash[var_name] = obj.public_send(member)
+      end
+    end
+
+    def extract_vars_from_ivars(obj, inclusions, exclusions)
       obj.instance_variables.each_with_object({}) do |var, hash|
         var_name = var.to_s.delete('@')
         next unless var_matches_filter?(var_name, inclusions, exclusions)

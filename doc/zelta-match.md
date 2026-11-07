@@ -2,60 +2,73 @@
 
 # NAME
 
-**zelta match** - Describes the relationship between a dataset tree and its replica.
+**zelta match** - compare a ZFS dataset tree with its replica
 
 # SYNOPSIS
 
-**zelta match** [**-Hp**] [**-d** _depth_] [**-o** _field_[,...]] _source_ _target_
+**zelta match** [_OPTIONS_] _source_ _target_
 
 # DESCRIPTION
 
-`zelta match` recursively displays a dataset and its children, the _source_, and compares it to its replica, the _target_. `zelta match` displays fields describing differences and similarities between the two dataset trees. This is useful for assisting with replication operations and confirming backups.
+**zelta match** recursively displays a dataset and its children, the _source_, and compares it to its replica, the _target_. **zelta match** displays fields describing differences and similarities between the two dataset trees. This is useful for assisting with replication operations and confirming backups.
+
+# OPTIONS
+
+**Endpoint Arguments (Required)**
+
+_source_
+: Dataset tree to compare.
+
+_target_
+: Replica dataset tree to compare against the source.
 
 **Logging Options**
 
 **-v, \--verbose**
-:    Increase verbosity. Specify once for operational detail and twice (-vv) for debug output.
+: Increase verbosity. Specify once for operational detail, twice (`-vv`) for debug output.
 
 **-q, \--quiet**
-:    Decrease log level. Specify once to suppress notices, twice (-qq) to suppress warnings.
+: Decrease log level. Specify once to suppress notices, twice (`-qq`) to suppress warnings.
 
-**\--log-level**
-:    Specify a log level value 0-4: errors (0), warnings (1), notices (2, default), info (3, verbose), and debug (4).
+**\--log-level** _LEVEL_
+: Specify a log level value 0-4: errors (0), warnings (1), notices (2, default), info (3, verbose), and debug (4).
 
-**\--log-mode**
-:    Enable the specified log modes: 'text' and 'json' are currently supported.
+**\--log-mode** _MODE_
+: Enable the specified log mode. Currently supported: `text` and `json`.
 
 **\--text**
-:    Forces default output (notices) to print as plain text standard output.
+: Force default output notices to print as plain text standard output.
 
-**-n, \--dryrun**
-:    Display 'zfs' commands related to the action rather than running them.
+**-n, \--dryrun, \--dry-run**
+: Display `zfs` commands without executing them.
 
 **Dataset and Snapshot Options**
 
-**-d, \--depth**
-:    Limit the recursion depth of operations to the number of levels indicated. For example, a depth of 1 will only include the indicated dataset.
+**-d, \--depth** _LEVELS_
+: Limit recursion depth. For example, a depth of 1 includes only the specified dataset.
 
-**\--exclude, -X**
-:    Exclude datasets or source snapshots matching the specified exclusion pattern. This option can include multiple patterns separated by commas and can be specified multiple times. See _EXCLUSION PATTERNS_ in **zelta-options(7)** for details.
+**-X, \--exclude** _PATTERN_
+: Exclude datasets or source snapshots matching the specified pattern. This option can include multiple patterns separated by commas and can be specified multiple times. See _INCLUDE AND EXCLUDE PATTERNS_ in **zelta-options(7)** for details.
+
+**\--include** _PATTERN_
+: Include only datasets or source snapshots matching the specified pattern. This option can include multiple patterns separated by commas and can be specified multiple times. See _INCLUDE AND EXCLUDE PATTERNS_ in **zelta-options(7)** for details.
 
 **Columns and Summary Behavior**
 
 **-H**
-:    Suppress column headers and separate columns with a single tab.
+: Suppress column headers and separate columns with a single tab.
 
 **-p**
-:    Output sizes in exact numbers instead of human-readable values like '1M'.
+: Output sizes in exact numbers instead of human-readable values like `1M`.
 
-**-o**
-:    Specify a list of 'zelta match' columns. See _FIELD OPTIONS_ below for detail.
+**-o** _FIELD_[,...]
+: Specify a list of **zelta match** columns. See _FIELD OPTIONS_ below for detail.
 
 **\--written**
-:    Calculate data sizes for datasets and snapshots. Enabled by default, but it can impact list time.
+: Calculate data sizes for datasets and snapshots. Enabled by default, but it can impact list time.
 
 **\--time**
-:    Calculate the time of each 'zfs list' operation.
+: Calculate the time of each `zfs list` operation.
 
 # FIELD OPTIONS
 

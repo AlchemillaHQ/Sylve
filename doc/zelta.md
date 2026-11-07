@@ -16,6 +16,7 @@ Examples:
 
     Local:  pool/dataset@snapshot
     Remote: user@example.com:pool/dataset@snapshot
+    IPv6:   user@[2001:db8::1]:pool/dataset
 
 See **zfs(8)** for dataset naming conventions.
 
@@ -33,7 +34,7 @@ For detailed usage of each subcommand, run **zelta help <subcommand>** or see th
 **zelta match** _source_ _target_
 :    Compare two dataset trees and report matching snapshots or discrepancies. See **zelta-match(8)**.
 
-## Replication
+## Backup
 
 **zelta backup** _source_ _target_
 :    Replicate a dataset tree. Creates snapshots if needed, detects optimal send options, and replicates intermediate snapshots. See **zelta-backup(8)**.
@@ -52,6 +53,29 @@ For detailed usage of each subcommand, run **zelta help <subcommand>** or see th
 **zelta rotate** _source_ _target_
 :    Preserve divergent dataset versions through rename and clone operations. See **zelta-rotate(8)**.
 
+**zelta failover** _source_ _target_
+:    Lock an active source, perform a final backup, sync local properties, and unlock the promoted target. See **zelta-failover(8)**.
+
+**zelta rebase** _upstream_ _target_
+:    Rebase a dataset onto an upgraded upstream while preserving local files and incremental backup continuity. See **zelta-rebase(8)**.
+
+**zelta lock** _endpoint_
+:    Apply ordered dataset-tree readonly, canmount, unmount, and remount operations for promotion workflows. See **zelta-failover(8)**.
+
+**zelta unlock** _endpoint_
+:    Reverse **zelta lock** for a promoted or maintained dataset tree. See **zelta-failover(8)**.
+
+**zelta propsync** _source_ _target_
+:    Replay local ZFS properties from one dataset tree to another while preserving target-only local overrides. See **zelta-failover(8)**.
+
+## Retention
+
+**zelta prune** _endpoint_
+:    Plan snapshot pruning without destroying data. See **zelta-prune(8)**.
+
+**zprune** **--match-endpoint=**_guard_ _endpoint_
+:    Validate and destroy snapshots selected by **zelta prune**. See **zprune(8)**.
+
 ## Automation
 
 **zelta policy** [_options_]
@@ -61,7 +85,7 @@ For detailed usage of each subcommand, run **zelta help <subcommand>** or see th
 Configuration follows a hierarchy from lowest to highest precedence:
 
     1. Internal defaults
-    2. `/usr/local/etc/zelta/zelta.env`
+    2. `~/.config/zelta/zelta.env` if present, otherwise `/usr/local/etc/zelta/zelta.env`
     3. Policy configuration (`zelta.conf`)
     4. Environment variables
     5. Command-line arguments
@@ -69,11 +93,23 @@ Configuration follows a hierarchy from lowest to highest precedence:
 See **zelta-options(7)** for details.
 
 # FILES
+**~/.config/zelta/zelta.conf**
+:    User policy configuration file, used by default when present.
+
 **/usr/local/etc/zelta/zelta.conf**
-:    Default policy configuration file.
+:    System policy configuration file, used when user configuration is absent.
+
+**~/.config/zelta/zelta.env**
+:    User default setting overrides, used by default when present.
 
 **/usr/local/etc/zelta/zelta.env**
-:    Global default setting overrides.
+:    System default setting overrides, used when user configuration is absent.
+
+**~/.local/share/zelta/doc**
+:    User-installed Zelta manual root, containing `man7` and `man8` directories.
+
+**/usr/local/man**
+:    System manual root used by root installs.
 
 # EXAMPLES
 The following examples use "sink" as the source pool and "tank" as the backup target.
@@ -101,12 +137,19 @@ Back up everything defined in policy settings (**zelta.conf**).
 # EXIT STATUS
 Returns 0 on success, non-zero on error.
 
+# BUGS
+When using Original Awk, Zelta cannot reliably obtain command exit codes from pipes. A failed or interrupted command can produce a partial dataset or snapshot listing that is mistaken for a complete list. This general limitation affects **zelta match** and operations that consume its output; some listing paths do not check completion even with other AWK implementations.
+
+The whole-tree preflight for **zelta revert** checks an explicit completion status and rejects failed or interrupted listings before renaming datasets. This check does not resolve the general listing-truncation limitation elsewhere.
+
 # NOTES
 
 See **zelta-options(7)** for environment variables and `zelta.env` configuration.
 
+**zelta sync** remains available for compatibility as an alias for **zelta backup -i**. New documentation uses explicit **zelta backup** commands.
+
 # SEE ALSO
-zelta-match(8), zelta-backup(8), zelta-policy(8), zelta-clone(8), zelta-options(7), zelta-revert(8), zelta-rotate(8), zelta-snapshot(8), cron(8), ssh(1), zfs(8)
+zelta-match(8), zelta-backup(8), zelta-policy(8), zelta-clone(8), zelta-options(7), zelta-prune(8), zprune(8), zelta-rebase(8), zelta-failover(8), zelta-revert(8), zelta-rotate(8), zelta-snapshot(8), cron(8), ssh(1), zfs(8)
 
 # AUTHORS
 Daniel J. Bell <_bellhyve@zelta.space_>

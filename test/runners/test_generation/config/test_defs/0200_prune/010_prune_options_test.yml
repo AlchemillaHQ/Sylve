@@ -1,0 +1,77 @@
+output_dir: tmp
+shellspec_name: "010_prune_options_spec"
+
+example_list:
+  - describe_desc: "Test prune options"
+    tag: prune-scenario:10
+    shell_code: |
+      Include "${SHELLSPEC_HELPERDIR}/golden_pool_helper.sh"
+      
+      EXPECTED_SNAPSHOTS=168
+      PRUNE_HOOK_DEBUG_LOG="/tmp/zelta_sandbox_prune_hooks_log.txt"
+
+      # don't use ShellSpec Before/After All hooks, they are executed even when this spec isn't selected
+      # before / after hooks are not It clauses 'restores golden pools' and 'removes golden pools' respectively
+      # TODO: after testing redirect stdout to /dev/null, stderr output is intended to fail the tests
+      setup_pools() { make_golden_pools > $PRUNE_HOOK_DEBUG_LOG; }
+      teardown_pools() { teardown_golden_pools >> $PRUNE_HOOK_DEBUG_LOG; }
+  
+      snapshot_count() {
+        out=$(tgt_exec zfs list -r -t snapshot "$1") || return
+        printf '%s\n' "$out" | wc
+      }
+
+    skip_if_list:
+      - condition: if 'SANDBOX_ZELTA_SRC_EP undefined' test -z "$SANDBOX_ZELTA_SRC_EP"
+      - condition: if 'SANDBOX_ZELTA_TGT_EP undefined' test -z "$SANDBOX_ZELTA_TGT_EP"
+
+    test_list:
+      - test_name: setup_pools
+        tag: prune-scenario:restore
+        allow_no_output: true
+        it_desc: restores golden pools
+        when_command: call setup_pools
+
+      - test_name: check_source_snapshot_count
+        output_clause: The output should include "$EXPECTED_SNAPSHOTS"
+        allow_no_output: true
+        it_desc: ${SANDBOX_ZELTA_SRC_EP} has $EXPECTED_SNAPSHOTS snapshots
+        when_command: call snapshot_count "$SANDBOX_ZELTA_TGT_DS"
+
+      - test_name: check_target_snapshot_count
+        output_clause: The output should include "$EXPECTED_SNAPSHOTS"
+        allow_no_output: true
+        it_desc: ${SANDBOX_ZELTA_TGT_EP} has $EXPECTED_SNAPSHOTS snapshots
+        when_command: call snapshot_count "$SANDBOX_ZELTA_TGT_DS"
+
+      - test_name: prune_newest_3_without_guard
+        it_desc: prune keep 3 without guard - %{when_command}
+        remove_timestamps: false
+        when_command: run zelta prune --prune-num=3 --no-prune-guard "$SANDBOX_ZELTA_SRC_EP"
+
+      - test_name: prune_all_without_guard
+        it_desc: prune all without guard - %{when_command}
+        remove_timestamps: false
+        when_command: run zelta prune --prune-num=0 --no-prune-guard "$SANDBOX_ZELTA_SRC_EP"
+
+      - test_name: prune_3_with_guard
+        it_desc: prune 3 with guard - %{when_command}
+        remove_timestamps: false
+        when_command: run zelta prune --prune-num=3 "$SANDBOX_ZELTA_SRC_EP" "$SANDBOX_ZELTA_TGT_EP"
+
+      - test_name: prune_all_synced
+        it_desc: prune all with unsynced guard - %{when_command}
+        remove_timestamps: false
+        when_command: run zelta prune --prune-num=0 --prune-guard=unsynced "$SANDBOX_ZELTA_SRC_EP" "$SANDBOX_ZELTA_TGT_EP"
+
+      - test_name: prune_grid_weekly
+        it_desc: prune all with unsynced guard - %{when_command}
+        remove_timestamps: false
+        when_command: run zelta prune --prune-grid=1week "$SANDBOX_ZELTA_SRC_EP" "$SANDBOX_ZELTA_TGT_EP"
+
+      - test_name: teardown_pools
+        tag: prune-scenario:teardown
+        allow_no_output: true
+        it_desc: teardown golden pools
+        when_command: call teardown_pools
+

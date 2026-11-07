@@ -1,0 +1,147 @@
+# Centralized Zelta policy for a bastion host.
+
+RETRY: 1
+JOBS: 4
+SNAP_TIME: 8h
+INTERMEDIATE: 0
+EXCLUDE: /backups,/swap,/tmp
+
+AWS0:
+  app2.cloud0:
+    options:
+      import: targets/vault1.den0.yaml
+      import: rules/hostbackup.yaml
+    datasets:
+      import: sources/app2.cloud0.yaml
+    options:
+      import: targets/vault1.nyc1.yaml
+      import: rules/hostbackup.yaml
+    datasets:
+      import: sources/app2.cloud0.yaml
+
+CLIENT0:
+  disco.client0:
+    options:
+      import: targets/vault1.den0.yaml
+    datasets:
+      import: sources/disco.client0.yaml
+    options:
+      import: targets/vault1.nyc1.yaml
+    datasets:
+      import: sources/disco.client0.yaml
+  host1.client0:
+    options:
+      import: targets/vault1.den0.yaml
+    datasets:
+      import: sources/host1.client0.yaml
+    options:
+      import: targets/vault1.nyc1.yaml
+    datasets:
+      import: sources/host1.client0.yaml
+
+NYC1:
+  compute1.bts.nyc1:
+    options:
+      import: targets/vault1.den0.yaml
+    datasets:
+      import: sources/compute1.nyc1.yaml
+    options:
+      import: targets/vault1.nyc1.yaml
+    datasets:
+      import: sources/compute1.nyc1.yaml
+    options:
+      import: targets/host2015.client2.yaml
+    datasets:
+      - ssd09/vm/mail.client2
+  compute2.bts.nyc1:
+    options:
+      import: targets/vault1.den0.yaml
+    datasets:
+      import: sources/compute2.nyc1.yaml
+    options:
+      import: targets/vault1.nyc1.yaml
+    datasets:
+      import: sources/compute2.nyc1.yaml
+  vault1.bts.nyc1:
+    options:
+      import: targets/vault1.den0.yaml
+    datasets:
+      import: sources/vault1.nyc1.yaml
+
+DAL1:
+  host00.bts:
+    options:
+      import: targets/vault1.den0.yaml
+    datasets:
+      import: sources/host00.bts.yaml
+    options:
+      import: targets/vault1.nyc1.yaml
+    datasets:
+      import: sources/host00.bts.yaml
+  host02.bts:
+    options:
+      import: targets/vault1.den0.yaml
+    datasets:
+      import: sources/host02.bts.yaml
+    options:
+      import: targets/vault1.nyc1.yaml
+    datasets:
+      import: sources/host02.bts.yaml
+  host08.bts:
+    options:
+      import: targets/vault1.den0.yaml
+    datasets:
+      import: sources/host08.bts.yaml
+    options:
+      import: targets/vault1.nyc1.yaml
+    datasets:
+      import: sources/host08.bts.yaml
+  fw2.dal1:
+    options:
+      import: targets/vault1.den0.yaml
+    datasets:
+      - fw2-dal1-boot/jail/webproxy_bts
+    options:
+      import: targets/vault1.nyc1.yaml
+    datasets:
+      - fw2-dal1-boot/jail/webproxy_bts
+
+CLIENT1:
+  lab1.client1.client1:
+    options:
+      import: targets/vault1.den0.yaml
+    datasets:
+      import: sources/lab1.client1.client1.yaml
+  lab2.client1.client1:
+    options:
+      import: targets/vault1.den0.yaml
+    datasets:
+      import: sources/lab2.client1.client1.yaml
+
+CLIENT2:
+  host04.bts.client2:
+    options:
+      import: targets/vault1.den0.yaml
+    datasets:
+      import: sources/host04.bts.client2.yaml
+    options:
+      import: targets/vault1.nyc1.yaml
+    datasets:
+      import: sources/host04.bts.client2.yaml
+    options:
+      import: targets/host2015.client2.yaml
+    datasets:
+      import: sources/host04.bts.client2.yaml
+  host2015.client2:
+    options:
+      import: targets/vault1.den0.yaml
+    datasets:
+      import: sources/host2015.client2.yaml
+    options:
+      import: targets/vault1.nyc1.yaml
+    datasets:
+      import: sources/host2015.client2.yaml
+    options:
+      import: targets/host04.bts.client2.yaml
+    datasets:
+      import: sources/host2015.client2.yaml

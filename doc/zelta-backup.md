@@ -30,8 +30,8 @@ Prior to replication, **zelta backup** analyzes both source and target to automa
 
 The following `zfs send` options are applied based on dataset properties:
 
-- **Default**: `--large-block`, `--compressed`, `--embed`
-- **Encrypted Datasets**: `--large-block`, `--raw`
+- **Default**: `--raw` (equivalent to `-Lce`)
+- **Encrypted Datasets**: `--raw`
 - **New/Full Syncs**: Also includes `--props`
 - **Replicate Mode** (`-R`): `--replicate`, `--large-block`, `--raw`, `--skip-missing`
 
@@ -54,6 +54,7 @@ Examples:
     Local:  pool/dataset@snapshot
     Remote: user@example.com:pool/dataset
     Remote: user@example.com:pool/dataset@snapshot
+    IPv6:   user@[2001:db8::1]:pool/dataset
 
 # OPTIONS
 
@@ -97,6 +98,9 @@ _target_
 **\--exclude, -X** _PATTERN_
 : Exclude /dataset/suffix, @snapshot, or #bookmark beginning with the indicated symbol. Wildcards `?` and `*` are permitted. See **zelta-match(8)**.
 
+**\--include** _PATTERN_
+: Only include /dataset/suffix, @snapshot, or #bookmark beginning with the indicated symbol. Wildcards `?` and `*` are permitted. See **zelta-match(8)**.
+
 ## Snapshot Options
 
 **\--no-snapshot**
@@ -108,10 +112,35 @@ _target_
 **\--snap-name** _NAME_
 : Specify snapshot name. Use `$(command)` for dynamic generation. Default: `$(date -u +zelta_%Y-%m-%d_%H.%M.%S)`.
 
+**\--snap-prefix** _PREFIX_
+: Prefix generated snapshot names. If the resolved name starts with `zelta`, _PREFIX_ replaces `zelta`; otherwise _PREFIX_ is prepended verbatim. Example: `--snap-prefix=daily --include='@daily*'`.
+
 **\--snap-mode** _MODE_
 : Specify when to snapshot: `NEVER` (or `0`), `IF_NEEDED` (default, only if source has new data or no recent snapshot), or `ALWAYS`.
 
+**\--snap-time** _DURATION_
+: In `IF_NEEDED` mode, skip snapshot creation if every source dataset has a recent enough `snapshots_changed` timestamp. Bare numbers are Unix epoch seconds and are compared directly. Relative values use the same unambiguous duration syntax as **zelta-prune(8)**: `seconds`, `minutes`, `hours`, `days`, `weeks`, `months`, or `years` may be abbreviated to any unambiguous prefix. The units `m` and `M` are invalid because they are ambiguous between minutes and months. Examples: `--snap-time 1715200000`, `--snap-time 8h`, `--snap-time '30 minutes'`.
+
+**\--snap-size** _SIZE_
+: In `IF_NEEDED` mode, skip snapshot creation if cumulative source writes are below the threshold. Bare numbers are bytes; supported suffixes are `K`, `M`, `G`, `T`, `P`, and `E`. Example: `--snap-size 128K`.
+
+`--snapshot` and `--no-snapshot` ignore `--snap-time` and `--snap-size`.
+
+## Bookmark Options
+
+**\--bookmark**
+: After a successful receive, create a ZFS bookmark on each confirmed source snapshot. Default is off.
+
+**\--no-bookmark**
+: Do not create source bookmarks after replication (default).
+
+**\--bookmark-prefix** _PREFIX_
+: Prefix for bookmark names. Default is `{targethost}_`, producing names such as `pool/ds#backuphost_snapname`.
+
 ## Sync Options
+
+**\--target-origin**, **\--origin** _TARGET_ORIGIN_
+: Back up an existing clone by using the source clone's detected origin snapshot as the incremental basis and setting the receive origin on the target. For example, `zelta backup --target-origin=cpool/treetop apool/treetop1234 cpool/treetop1234` sends from the source clone origin and receives with `-o origin=cpool/treetop@...`.
 
 **-R, \--replicate**
 : Use `zfs send --replicate` instead of Zelta's per-snapshot analysis. This sends all snapshots, bookmarks, and properties in a single process but provides less granular control over send options.
@@ -124,6 +153,9 @@ _target_
 
 **\--resume, \--no-resume**
 : Enable (default) or disable automatic resume of interrupted syncs.
+
+**\--send-check**
+:   Attempt to detect and drop Zelta's default `zfs send` options (`-L`, `-c`, `e`) if the _source_ does not support them.
 
 ## Advanced Override Options
 
@@ -153,7 +185,7 @@ Several `zfs send` and `zfs recv` options have special meaning in Zelta and shou
 
 **These have Zelta-specific behavior (see OPTIONS above):**
 - `-I` and `-i` — Control incremental behavior; use the flags documented above instead
-- `--exclude, -X` — Has additional Zelta functionality beyond the `zfs send` version
+- `--include, --exclude, -X` — Can be used to skip snapshots during a backup, such as only send snapshots matching '@daily*'.
 - `--dryrun, -n` — Shows commands that would run; handled by Zelta
 - `-t` — Used automatically for resume tokens
 
@@ -166,10 +198,13 @@ Several `zfs send` and `zfs recv` options have special meaning in Zelta and shou
 For precise control in a dataset tree with mixed types, override specific contexts. These options are **cumulative**—for example, a filesystem receive will combine options from `--recv-default`, `--recv-top` (if applicable), and `--recv-fs`.
 
 **--send-default** *"OPTIONS"*
-: `zfs send` options for **unencrypted** datasets (default: `-Lce`)
+: `zfs send` options for **unencrypted** datasets (default: `--raw`, equivalent to `-Lce`)
+
+**--send-decrypted** *"OPTIONS"*
+: `zfs send` options for encrypted datasets when raw incremental send is unavailable (default: `-Lc`). This sends a decrypted stream with large blocks and preserves existing send-stream compression. Use `-L` instead when you want the receiving side to recompress or encrypt from plaintext.
 
 **--send-raw** *"OPTIONS"*
-: `zfs send` options for **encrypted** datasets (default: `-Lw`)
+: `zfs send` options for **encrypted** datasets (default: `--raw`)
 
 **--send-new** *"OPTIONS"*
 : Additional `zfs send` options during full (non-incremental) backups (default: `-p`)
@@ -271,7 +306,7 @@ Returns 0 on success, non-zero on error.
 
 See **zelta-options(7)** for environment variables, `zelta.env` configuration, and `zelta policy` integration.
 
-The `zelta sync` command is a convenience alias for `zelta backup -i` and may be extended in future versions with additional optimizations for continuous replication workflows.
+The `zelta sync` command remains available for compatibility as a convenience alias for `zelta backup -i`. New scripts should prefer explicit `zelta backup` commands.
 
 # SEE ALSO
 

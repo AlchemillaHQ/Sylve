@@ -2,17 +2,44 @@ name: ShellSpec Tests
 
 on:
   push:
-    branches: [main, dev, "feature/**"]
+    branches: [main, dev, "feature/**", "release/**"]
+    paths-ignore:
+      - "**.md"
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, "release/**"]
+    paths-ignore:
+      - "**.md"    
+
+env:
+  SANDBOX_ZELTA_GOLD_PRUNE_SCEN_DIR: test/spec/helpers/golden/0200_prune
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # --- fetch golden fixtures BEFORE the copy to testuser ---
+      - name: Restore golden fixtures
+        uses: actions/cache@v4
+        id: goldens
+        with:
+          path: ${{ env.SANDBOX_ZELTA_GOLD_PRUNE_SCEN_DIR }}/*.img
+          key: goldens-test-fixtures-v1
+
+      - name: Download golden fixtures
+        if: steps.goldens.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$SANDBOX_ZELTA_GOLD_PRUNE_SCEN_DIR"
+          gh release download test-fixtures/v1 --pattern '*.img.gz' \
+            --dir "$SANDBOX_ZELTA_GOLD_PRUNE_SCEN_DIR"
+          gunzip "$SANDBOX_ZELTA_GOLD_PRUNE_SCEN_DIR"/*.gz
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+      # ---------------------------------------------------------
 
       - name: Install dependencies
         run: |
@@ -31,16 +58,38 @@ jobs:
           sudo chmod 0440 /etc/sudoers.d/testuser
           sudo visudo -cf /etc/sudoers.d/testuser
 
+      # Linux cannot delegate ZFS mounts. Keep the suite unprivileged, but
+      # elevate its local ZFS commands, including clone's implicit mount.
+      - name: Configure privileged ZFS for Linux tests
+        run: |
+          sudo install -d -m 0755 /home/testuser/ci-bin
+          printf '%s\n' '#!/bin/sh' 'exec sudo -n /usr/sbin/zfs "$@"' \
+            | sudo tee /home/testuser/ci-bin/zfs
+          sudo chmod 0755 /home/testuser/ci-bin/zfs
+          sudo -u testuser /home/testuser/ci-bin/zfs version
+
       - name: Copy repo for test user
         run: |
           sudo cp -r "$GITHUB_WORKSPACE" /home/testuser/zelta
           sudo chown -R testuser:testuser /home/testuser/zelta
 
-      - name: Run ShellSpec tests
+      - name: Run Standard ShellSpec tests
         run: |
           sudo -u testuser env \
+            PATH="/home/testuser/ci-bin:$PATH" \
             SANDBOX_ZELTA_SRC_POOL=apool \
             SANDBOX_ZELTA_TGT_POOL=bpool \
             SANDBOX_ZELTA_SRC_DS=apool/treetop \
             SANDBOX_ZELTA_TGT_DS=bpool/backups \
-            bash -c 'cd /home/testuser/zelta && shellspec'
+            bash -c 'cd /home/testuser/zelta && shellspec --tag install,initialize,standard,cleanup'
+
+      - name: Run Prune Scenario ShellSpec tests
+        run: |
+          sudo -u testuser env \
+            PATH="/home/testuser/ci-bin:$PATH" \
+            SANDBOX_ZELTA_SRC_POOL=apool \
+            SANDBOX_ZELTA_TGT_POOL=bpool \
+            SANDBOX_ZELTA_SRC_DS=apool/treetop \
+            SANDBOX_ZELTA_TGT_DS=bpool/backups \
+            SANDBOX_ZELTA_GOLD_PRUNE_SCEN_DIR="$SANDBOX_ZELTA_GOLD_PRUNE_SCEN_DIR" \
+            bash -c 'cd /home/testuser/zelta && shellspec --tag install,prune-scenario,cleanup:install'

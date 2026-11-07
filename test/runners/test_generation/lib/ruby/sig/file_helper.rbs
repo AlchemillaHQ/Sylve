@@ -1,0 +1,3 @@
+class FileHelper
+  def self.move_file_to_dir: (String src, String dest_dir) -> Pathname
+end

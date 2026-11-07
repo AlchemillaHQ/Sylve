@@ -4,7 +4,7 @@
 #
 # Initialize the environment for Zelta subcommands
 
-ZELTA_VERSION="Zelta 1.1.0"
+ZELTA_VERSION="Zelta 1.2.0"
 
 zelta_usage() {
 	exec >&2
@@ -27,6 +27,10 @@ Where 'command' is one of the following:
   clone                      Clone ZFS datasets
   revert                     Rename and clone a dataset in-place
   rotate                     Recover sync continuity
+  lock                       Make datasets read-only and unmount them
+  unlock                     Inherit readonly and mount datasets
+  failover                   Promote a target dataset tree
+  propsync                   Sync local ZFS properties between trees
 
   version                    Show version information
 
@@ -45,13 +49,14 @@ zelta_man() {
 
 	_man_section=8
 	case $1 in
-		'')					_manpage=zelta ;;
-		options)				_manpage=zelta-$1
-							_man_section=7 ;;
+		'')          _manpage=zelta ;;
+		options)     _manpage=zelta-$1
+		             _man_section=7 ;;
+		zprune)      _manpage=zprune ;;
 		# Legacy symlinks (from Zelta pre-1.0)
-		zmatch)					_manpage=zelta-match ;;
-		zpull|zpush)				_manpage=zelta-backup ;;
-		*)					_manpage=zelta-$1 ;;
+		zmatch)      _manpage=zelta-match ;;
+		zpull|zpush) _manpage=zelta-backup ;;
+		*)           _manpage=zelta-$1 ;;
 	esac
 	if [ -d "$ZELTA_DOC" ] ; then
 		man -M "$ZELTA_DOC" $_man_section $_manpage
@@ -60,13 +65,38 @@ zelta_man() {
 	fi
 }
 
+zelta_default_paths() {
+	_user_share="${HOME:+$HOME/.local/share/zelta}"
+	_user_etc="${HOME:+$HOME/.config/zelta}"
+	_user_doc="${HOME:+$HOME/.local/share/zelta/doc}"
+
+	if [ -z "$ZELTA_ETC" ]; then
+		if [ -n "$_user_etc" ] && [ -d "$_user_etc" ]; then
+			ZELTA_ETC="$_user_etc"
+		else
+			ZELTA_ETC="/usr/local/etc/zelta"
+		fi
+	fi
+	: ${ZELTA_ENV:="$ZELTA_ETC/zelta.env"}
+
+	if [ -z "$ZELTA_SHARE" ]; then
+		if [ -n "$_user_share" ] && [ -r "$_user_share/zelta-common.awk" ]; then
+			ZELTA_SHARE="$_user_share"
+		else
+			ZELTA_SHARE="/usr/local/share/zelta"
+		fi
+	fi
+
+	if [ -z "$ZELTA_DOC" ] && [ -n "$_user_doc" ] && [ -d "$_user_doc" ]; then
+		ZELTA_DOC="$_user_doc"
+	fi
+}
 
 zelta_init() {
 	AWK="${ZELTA_AWK:-${AWK:-awk}}"
 	ZELTA_VERB="${zelta_verb}"
 
-	: ${ZELTA_ETC:="/usr/local/etc/zelta"}	# Dir for the default env and policy
-	: ${ZELTA_ENV:="$ZELTA_ETC/zelta.env"}	# Edit this file to change command defaults
+	zelta_default_paths				# Resolve user install paths before loading env
 
 	ZELTA_HOSTNAME="${HOSTNAME:-$(hostname)}"
 	: "${ZELTA_HOSTNAME:=localhost}"
@@ -98,17 +128,18 @@ zelta_init() {
 	fi
 
 	# Debian/Ubuntu awk bug workaround
+	# https://lists.gnu.org/archive/html/bug-gawk/2026-06/msg00067.html
 	if [ -z "$ZELTA_AWK" ]; then
 		_awk_ver=$(awk -V 2>/dev/null | head -n 1)
 		case "$_awk_ver" in
-		*"GNU Awk 5.2.1"*)
+		*"GNU Awk 5.2.1"*|*"GNU Awk 5.3.2"*)
 			if command -v mawk >/dev/null 2>&1; then
 				_good_awk=mawk
 			elif command -v original-awk >/dev/null 2>&1; then
 				_good_awk=original-awk
 			else
 				cat >&2 <<-EOF
-				warning: GNU Awk 5.2.1 has a serious memory bug; upgrade gawk or install original-awk/mawk:
+				warning: GNU Awk 5.2.1/5.3.2 has a serious memory bug; upgrade gawk or install original-awk/mawk:
 				  Ubuntu/Debian: apt install mawk
 				EOF
 			fi
@@ -135,7 +166,6 @@ zelta_init() {
 
 
 
-	: ${ZELTA_SHARE:="/usr/local/share/zelta"}	# Dir for helper scripts
 	: ${ZELTA_CONFIG:="$ZELTA_ETC/zelta.conf"}	# YAML for "zelta policy"
 
 	# Zelta defaults:
@@ -159,6 +189,7 @@ zelta_init() {
 
 	# `zfs send` defaults
 	: ${ZELTA_SEND_DEFAULT:="-L -c -e"}
+	: ${ZELTA_SEND_DECRYPTED:="-L -c"}
 	: ${ZELTA_SEND_RAW:="--raw"}
 	: ${ZELTA_SEND_NEW:="-p"}
 	: ${ZELTA_SEND_INTR:="1"}
@@ -174,10 +205,6 @@ zelta_init() {
 	# `zfs clone` defaults
 	: ${ZELTA_CLONE_DEFAULT:="-po readonly=off"}
 
-	# `zelta match` defaults
-	: ${ZELTA_KEEP_SNAP_NUM:="100"}
-	: ${ZELTA_KEEP_SNAP_DAYS:="90"}
-
 	# Remote (ssh) options
 	: ${ZELTA_REMOTE_COMMAND:="ssh"}
 	: ${ZELTA_REMOTE_DEFAULT:="${ZELTA_REMOTE_COMMAND} -n"}
@@ -192,13 +219,17 @@ zelta_export() {
 	export AWK $(set | $AWK -F= '/^ZELTA_.*=/{print $1}')
 }
 
+zelta_print_env() {
+	set | $AWK -F= '/^(AWK|ZELTA_[A-Za-z0-9_]*)=/{print "export " $0}'
+}
+
 # Load awk common functions plus the verb utility
 zelta_run_awk() {
 	_verb="$1"
-	_yule="$AWK -f $ZELTA_SHARE/zelta-color.awk"
 	shift
-	if [ -z "$ZELTA_LOG_MODE" ] && [ -n "$ZELTA_YULE" ] ; then
-		$AWK -f "$ZELTA_SHARE/zelta-common.awk" -f "$ZELTA_SHARE/zelta-$_verb.awk" -- "$@" |$_yule
+	if [ "$_verb" != "args" ] && [ "$ZELTA_LOG_MODE" = json ] && [ -n "$ZELTA_LOG_FILE" ]; then
+		_log_file="$ZELTA_LOG_FILE"
+		(unset ZELTA_LOG_FILE; $AWK -f "$ZELTA_SHARE/zelta-common.awk" -f "$ZELTA_SHARE/zelta-$_verb.awk" -- "$@") >>"$_log_file"
 	else
 		$AWK -f "$ZELTA_SHARE/zelta-common.awk" -f "$ZELTA_SHARE/zelta-$_verb.awk" -- "$@"
 	fi
@@ -223,18 +254,19 @@ zelta_log() {
 	_fd_term=4
 	_sep="$(printf '\034')"
 	if [ -n "$ZELTA_LOG_FILE" ] ; then
-		#_fd=" >> '${ZELTA_LOG_FILE}'"
 		exec 3>>"$ZELTA_LOG_FILE"
 		exec 4>&3
 	else
 		exec 3>&2
 		exec 4>&1
 	fi
-	case "$ZELTA_LOG_MODE" in
-	'')    _term="1" ;;
-	text)  unset ZELTA_LOG_PREFIX
-	       _term="1" ;;
-	esac
+	if [ -z "$ZELTA_LOG_FILE" ] ; then
+		case "$ZELTA_LOG_MODE" in
+		'')    _term="1" ;;
+		text)  unset ZELTA_LOG_PREFIX
+		       _term="1" ;;
+		esac
+	fi
 	while IFS="$_sep" read log_level log_message; do
 		: ${log_level:=${log_level:-2}}
 		# If no log_level is given, treat it as a "notice"
@@ -258,17 +290,21 @@ zelta_log() {
 			# "Info" is regular stderr on a term
 			printf '%s\n' "$log_message" >&${_fd}
 		else
-			case "$log_level" in
-			1)	log_prefix="warning: " ;;
-			2)	log_prefix="notice: " ;;
-			3)	log_prefix="info: " ;;
-			4)	log_prefix="debug: " ;;
-			*)	log_prefix="error: " ;;
-			esac
-			printf '%s\n' "${log_prefix}${log_message}" >&${_fd}
+			zelta_log_prefixed "$log_level" "$log_message"
 		fi
 	done
 	exit
+}
+
+zelta_log_prefixed() {
+	case "$1" in
+	1)	_log_prefix="warning: " ;;
+	2)	_log_prefix="notice: " ;;
+	3)	_log_prefix="info: " ;;
+	4)	_log_prefix="debug: " ;;
+	*)	_log_prefix="error: " ;;
+	esac
+	printf '%s\n' "${_log_prefix}${2}" >&${_fd}
 }
 
 # Try script name or legacy symlink name as command, else he verb to the first argument.
@@ -295,6 +331,17 @@ ipc-run)
 		export ZELTA_VERB="$1"
 		zelta_verb="$1"
 		shift
+		;;
+ipc-env)
+		# For wrappers that need zelta bootstrap without running a verb.
+		zelta_verb="$1"
+		shift
+		zelta_init "$@"
+		zelta_export
+		zelta_args "$@"
+		[ -n "$ZELTA_USAGE" ] && exit 1
+		zelta_print_env
+		exit
 		;;
 policy)		# Don't export defaults or zelta.env so we can override them with policy
 		export ZELTA_POLICY_LOG_MODE="$ZELTA_LOG_MODE"
@@ -329,16 +376,19 @@ case $zelta_verb in
 	zp |\
 	policy)		zelta_run_awk "policy" ;;
 	# Utilities
+	failover |\
+	lock |\
+	propsync |\
+	unlock)		zelta_run_awk "failover" "$@" ;;
 	zeport)		zelta_run_awk "report" ;;
 	# Time
 	time)		"$@" | sh -c "time -p cat" ;;
 	# Info
-	--help|\
 	-V|\
 	--version |\
 	version)	echo $ZELTA_VERSION ;;
-	''|-?|usage)	zelta_usage ;;
-	help)		zelta_man "$@" ;;
+	''|usage|-h|-?)	zelta_usage ;;
+	help|--help)	zelta_man "$@" ;;
 	*)		# Try zelta-VERB.awk
 			if [ -r "$ZELTA_SHARE/zelta-$zelta_verb.awk" ]; then
 				zelta_run_awk "$zelta_verb"

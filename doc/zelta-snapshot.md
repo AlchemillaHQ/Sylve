@@ -46,6 +46,15 @@ _endpoint_
 **\--snap-name** _NAME_
 : Specify snapshot name. Use `$(command)` for dynamic generation. Default: `$(date -u +zelta_%Y-%m-%d_%H.%M.%S)`. This option is ignored if a snapshot name is provided in the endpoint argument.
 
+**\--snap-prefix** _PREFIX_
+: Prefix generated snapshot names. If the resolved name starts with `zelta`, _PREFIX_ replaces `zelta`; otherwise _PREFIX_ is prepended verbatim. This option is ignored if a snapshot name is provided in the endpoint argument.
+
+**\--snap-time** _TIME_
+: Skip snapshot creation unless the newest existing snapshot is older than _TIME_. Bare numbers are seconds; suffixes such as `h`, `d`, `w`, and `y` are accepted.
+
+**\--snap-size** _SIZE_
+: Skip snapshot creation unless the dataset tree has at least _SIZE_ of written data since the newest existing snapshot. _SIZE_ accepts ZFS-style byte counts and suffixes.
+
 **Dataset Options**
 
 **-d, \--depth** _LEVELS_
@@ -68,6 +77,10 @@ Create a snapshot on a remote host:
 Create a snapshot with a custom naming scheme:
 
     zelta snapshot --snap-name "manual_$(date +%Y%m%d)" tank/data
+
+Create a snapshot only when the newest existing snapshot is at least six hours old:
+
+    zelta snapshot --snap-time 6h tank/data
 
 Dry run to preview the command:
 

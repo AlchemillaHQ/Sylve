@@ -8,11 +8,15 @@
 
 **zelta clone** [_OPTIONS_] _source_[@_snapshot_] _target_
 
+**zelta clone** [_OPTIONS_] _source_ _target_ _origin-backup_ _target-backup_
+
 # DESCRIPTION
 
 **zelta clone** performs a recursive **zfs clone** operation on a dataset. This is useful for recursive duplication of dataset trees and backup inspection and recovery of files replicated with **zelta backup**. The clones will reference the latest or indicated snapshot, and consume practically no additional space. Clones can be modified and destroyed without affecting their origin datasets.
 
 The _source_ and _target_ must be on the same host and pool. The mountpoint will be inherited below the target parent (as provided by **zfs clone**). The _target_ dataset must not exist. To create a clone on a remote host, ensure the _source_ and _target_ are identical including the username and hostname used.
+
+With four endpoints, **zelta clone** first creates the local clone, snapshots the new clone, then backs up that clone to _target-backup_ using _origin-backup_ as the replicated origin. This preserves incremental backup continuity for newly cloned datasets without sending a full backup.
 
 Remote endpoint names follow **scp(1)** conventions. Dataset names follow **zfs(8)** naming conventions.
 
@@ -29,6 +33,12 @@ _source_
 
 _target_
 : A dataset on the same pool as the _source_, where the clones will be created. This dataset must not exist.
+
+_origin-backup_
+: The backup-side dataset corresponding to _source_. Used only with the four-endpoint form.
+
+_target-backup_
+: The backup destination for _target_ which will be created. Used only with the four-endpoint form.
 
 **Output Options**
 
@@ -49,6 +59,9 @@ _target_
 **\--snap-name** _NAME_
 : Specify snapshot name. Use `$(command)` for dynamic generation. Default: `$(date -u +zelta_%Y-%m-%d_%H.%M.%S)`.
 
+**\--snap-prefix** _PREFIX_
+: Prefix generated snapshot names. If the resolved name starts with `zelta`, _PREFIX_ replaces `zelta`; otherwise _PREFIX_ is prepended verbatim.
+
 **Dataset Options**
 
 **-d, \--depth** _LEVELS_
@@ -59,6 +72,10 @@ _target_
 Clone a dataset tree:
 
     zelta clone tank/vm/myos tank/temp/myos-202404
+
+Clone a dataset tree and add a backup for the clone using the existing origin backup:
+
+    zelta clone sink/source sink/target tank/source tank/target
 
 Recover a dataset tree, in place, to a previous snapshot's state:
 

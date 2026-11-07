@@ -1,0 +1,178 @@
+#!/bin/sh
+#
+# zrecurseback - recursively roll back a ZFS dataset tree
+#
+# Stolen with love from zfsnap. This intentionally stays dumb: one dataset
+# tree, one snapshot name, explicit preview, explicit confirmation.
+
+ZRECURSEBACK_VERSION="zrecurseback 0.1.0"
+
+usage() {
+	exec >&2
+	cat << 'EOF'
+usage: zrecurseback [OPTIONS] dataset@snapshot
+
+Recursively roll back every dataset in a ZFS dataset tree to a snapshot name.
+
+Options:
+  -f, --force      Roll back without asking for confirmation
+  -n, --dry-run    Show rollback commands without running them
+  -h, --help       Show this help
+  -V, --version    Show version
+
+Examples:
+  zrecurseback tank/jails@before-upgrade
+  zrecurseback -n tank/jails@before-upgrade
+  zrecurseback -f tank/jails@before-upgrade
+
+Safety:
+  - rolls back only datasets that have the requested snapshot name
+  - previews the exact zfs rollback commands before destructive rollback
+  - confirmation requires typing: rollback
+  - does not use zfs rollback -r or -R
+EOF
+	exit 1
+}
+
+version() {
+	echo "$ZRECURSEBACK_VERSION"
+	exit 0
+}
+
+error() {
+	echo "zrecurseback: $1" >&2
+}
+
+parse_args() {
+	Force=""
+	DryRun=""
+	DSSnap=""
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			-f|--force)
+				Force=1
+				;;
+			--force=*)
+				error "--force does not take a value"
+				exit 1
+				;;
+			-n|--dry-run|--dryrun)
+				DryRun=1
+				;;
+			--dry-run=*|--dryrun=*)
+				error "--dry-run does not take a value"
+				exit 1
+				;;
+			-h|--help)
+				usage
+				;;
+			-V|--version)
+				version
+				;;
+			-*)
+				error "invalid option: $1"
+				usage
+				;;
+			*)
+				if [ -n "$DSSnap" ]; then
+					error "only one dataset@snapshot operand is supported"
+					usage
+				fi
+				DSSnap=$1
+				;;
+		esac
+		shift
+	done
+
+	case "$DSSnap" in
+		*@*) ;;
+		*)
+			error "dataset@snapshot operand required"
+			usage
+			;;
+	esac
+
+	Dataset=${DSSnap%@*}
+	Snapshot=${DSSnap#*@}
+	if [ -z "$Dataset" ] || [ -z "$Snapshot" ]; then
+		error "dataset@snapshot operand required"
+		usage
+	fi
+}
+
+list_rollback_targets() {
+	zfs list -H -r -o name -t filesystem,volume "$Dataset" |
+	while IFS= read -r _ds; do
+		[ -n "$_ds" ] || continue
+		if zfs list -H -o name -t snapshot "$_ds@$Snapshot" >/dev/null 2>&1; then
+			printf '%s@%s\n' "$_ds" "$Snapshot"
+		fi
+	done
+}
+
+preview_targets() {
+	_targets=$1
+
+	IFS='
+'
+	for _target in $_targets; do
+		[ -n "$_target" ] || continue
+		printf 'zfs rollback %s\n' "$_target"
+	done
+	unset IFS
+}
+
+confirm_rollback() {
+	echo ""
+	echo "WARNING: This will roll back the listed dataset snapshots."
+	printf '%s' "Type 'rollback' to confirm: "
+	read _confirm < /dev/tty
+
+	if [ "$_confirm" != "rollback" ]; then
+		echo "Aborted."
+		exit 1
+	fi
+}
+
+rollback_targets() {
+	_targets=$1
+	_failed=0
+
+	IFS='
+'
+	for _target in $_targets; do
+		[ -n "$_target" ] || continue
+		if ! zfs rollback "$_target"; then
+			error "failed to roll back: $_target"
+			_failed=1
+		fi
+	done
+	unset IFS
+
+	return $_failed
+}
+
+main() {
+	parse_args "$@"
+
+	Targets=$(list_rollback_targets)
+	if [ -z "$Targets" ]; then
+		error "no matching snapshots found below: $Dataset@$Snapshot"
+		exit 1
+	fi
+
+	preview_targets "$Targets"
+
+	if [ -n "$DryRun" ]; then
+		exit 0
+	fi
+
+	if [ -z "$Force" ]; then
+		confirm_rollback
+	fi
+
+	rollback_targets "$Targets"
+}
+
+main "$@"

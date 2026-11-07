@@ -1,0 +1,7 @@
+module RunTestGenerator
+  def self?.options_parser: (Hash[Symbol, untyped]) -> OptionParser
+  def self?.validate_options: (OptionParser parser, Hash[Symbol, untyped] options)
+  def self?.process_args: () -> {file: String, validate_file: bool, validate_all: bool, setup_shellspec: Array[String], verified_files_path_option: String?}?
+  def self?.usage_message: () -> String
+  def self?.run: () -> (Integer | SchemaValidator::Result | bool)?
+end

@@ -1,0 +1,46 @@
+output_dir: tmp
+shellspec_name: "050_zelta_revert_spec"
+
+example_list:
+  - describe_desc: "Test revert"
+    skip_if_list:
+      - condition: if 'SANDBOX_ZELTA_SRC_DS undefined' test -z "$SANDBOX_ZELTA_SRC_DS"
+    tag: standard:50
+    test_list:
+      - test_name: snapshot
+        it_desc: take a snapshot of tree before changes - %{when_command}
+        when_command: run zelta snapshot --snap-name "manual_test" "$SANDBOX_ZELTA_SRC_EP"
+
+      - test_name: add_and_remove_src_datasets
+        setup_scripts:
+          - "test/test_helper.sh"
+        allow_no_output: true
+        it_desc: add and remove src datasets - %{when_command}
+        when_command: call add_tree_delta
+
+      - test_name: backup_after_delta
+        it_desc: backup after deltas - %{when_command}
+        when_command: run zelta backup "$SANDBOX_ZELTA_SRC_EP" "$SANDBOX_ZELTA_TGT_EP"
+
+      - test_name: snapshot_again
+        it_desc: take a snapshot of tree after changes - %{when_command}
+        when_command: run zelta snapshot --snap-name "another_test" "$SANDBOX_ZELTA_SRC_EP"
+
+      - test_name: reject_mixed_tree
+        it_desc: rejects a mixed-snapshot tree without renaming or replacing datasets
+        allow_no_output: true
+        when_command: call reject_mixed_revert_tree
+
+      - test_name: preserve_new_children
+        it_desc: explicitly preserves the newer children outside the tree to be reverted
+        allow_no_output: true
+        when_command: call preserve_new_revert_children
+
+      - test_name: revert
+        it_desc: reverts the coherent remaining tree - %{when_command}
+        allow_no_output: true
+        when_command: run zelta revert -qq "$SANDBOX_ZELTA_SRC_EP"@manual_test
+
+      - test_name: rotate_after_revert
+        it_desc: rotates after divergence - %{when_command}
+        when_command: run zelta rotate "$SANDBOX_ZELTA_SRC_EP" "$SANDBOX_ZELTA_TGT_EP"

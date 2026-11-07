@@ -1,0 +1,49 @@
+output_dir: tmp
+shellspec_name: "010_prune_options_spec"
+shell_code: |
+  Include "${SHELLSPEC_HELPERDIR}/0200_prune/prepare-test-env.sh"
+
+example_list:
+  - describe_desc: "Test prune options"
+    tag: prune-scenario
+    shell_code: |
+      EXPECTED_SNAPSHOTS=168
+      
+      setup() {
+        restore_pools > /dev/null
+      }
+      
+      teardown() {
+        teardown_pools > /dev/null
+      }
+      
+      snapshot_count() {
+        out=$(tgt_exec zfs list -r -t snapshot "$1") || return
+        printf '%s\n' "$out" | wc
+      }
+
+    hook_list:
+      - name: BeforeAll
+        command: setup
+        invocation: evaluated_cmd
+
+      - name: BeforeAll
+        command: teardown
+        invocation: evaluated_cmd
+
+    skip_if_list:
+      - condition: if 'SANDBOX_ZELTA_SRC_DS undefined' test -z "$SANDBOX_ZELTA_SRC_DS"
+      - condition: if 'SANDBOX_ZELTA_TGT_DS undefined' test -z "$SANDBOX_ZELTA_TGT_DS"
+
+    test_list:
+      - test_name: check_source_snapshot_count
+        output_clause: The output should include "$EXPECTED_SNAPSHOTS"
+        allow_no_output: true
+        it_desc: ${SANDBOX_ZELTA_SRC_DS} has $EXPECTED_SNAPSHOTS snapshots
+        when_command: snapshot_count "$SANDBOX_ZELTA_TGT_DS"
+
+      - test_name: check_target_snapshot_count
+        output_clause: The output should include "$EXPECTED_SNAPSHOTS"
+        allow_no_output: true
+        it_desc: ${SANDBOX_ZELTA_TGT_DS} has $EXPECTED_SNAPSHOTS snapshots
+        when_command: snapshot_count "$SANDBOX_ZELTA_TGT_DS"

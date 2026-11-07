@@ -1,0 +1,14 @@
+class ShellspecRunner
+  TIMEOUT_SECONDS: Integer
+  attr_reader setup_cmds: [String]
+  attr_reader teardown_cmds: [String]
+  attr_reader yaml_test_def_path: String
+
+  def initialize: ([String] setup_cmds, [String] teardown_cmds, String test_cmd) -> ::ShellspecRunner
+  def generate_test: (String? verified_files_dir_option) -> bool
+
+  private
+
+  def prepare_test_env: () -> bool
+  def teardown_test_env: () -> bool
+end

@@ -1,0 +1,21 @@
+class SchemaValidator
+  class Result < Data
+    attr_reader valid: bool
+    attr_reader errors: Array[String]
+    attr_reader parsed_data: untyped
+
+    def valid?: () -> bool
+  end
+
+  @schema_doc: Hash[String, untyped]
+
+  attr_reader schema_doc: Hash[String, untyped]
+  attr_reader schemer: untyped
+
+  def initialize: (String yaml_schema_path) -> void
+  def validate_file: (String data_path) -> Result
+  def validate_all: (String data_files_glob) -> bool
+
+  private
+  def show_validation_result: (Result result, String path, ?[String]? validated_files, ?[String]? failed_files) -> void
+end

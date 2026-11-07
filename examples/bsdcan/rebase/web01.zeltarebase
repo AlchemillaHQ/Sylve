@@ -1,0 +1,2 @@
+# Paths are relative to the dataset mount root.
+etc/local.conf

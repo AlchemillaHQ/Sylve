@@ -1,0 +1,20 @@
+class TestGenerator
+  TIMEOUT_SECONDS: Integer
+  TEST_ENV_SETUP: String
+
+  attr_reader paths: PathConfig
+  attr_reader config: ShellSpecGen::Config
+  attr_reader spectest_def_yml_file: String
+
+
+  def initialize: (String spectest_def_yml_file) -> void
+  def validate_shellspec_test: (String? verified_files_dir_option) -> ::SchemaValidator::Result
+  def generate_shellspec_test: () -> void
+
+  private
+
+  def generate_shellspec_output: () -> void
+  def generate_final_spec: () -> void
+  def verify_final_specfile: (String? verified_files_dir_option) -> bool
+
+end

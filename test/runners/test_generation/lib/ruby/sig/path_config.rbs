@@ -1,0 +1,35 @@
+class PathConfig
+  SPEC_TEST_SCHEMA_PATH: String
+  SPEC_TESTS_GLOB_PATH: String
+  TEST_GEN_DIR: String
+  TEST_ENV_SETUP: String
+
+  self.@repo_root: String
+  self.@test_gen_dir: String
+  self.@yaml_schema_path: String
+  self.@test_specfiles_glob: String
+  self.@test_env_setup_path: String
+
+  def self.repo_root: () -> String
+  def self.test_gen_dir: () -> String
+  def self.yaml_schema_path: () -> String
+  def self.test_specfiles_glob: () -> String
+  def self.test_env_setup_path: () -> String
+  def self.verify_paths: () -> void
+
+  attr_reader shellspec_name: String
+  attr_reader test_gen_dir: String
+  attr_reader output_path: String
+  attr_reader output_spec_path: String
+  attr_reader final_spec_path: String
+  attr_reader captured_output_path: String
+  attr_reader default_verified_files_path: String
+
+  def testdef_stdout_path: (String test_name) -> String
+  def testdef_stderr_path: (String test_name) -> String
+  def testdef_status_path: (String test_name) -> String
+
+  private
+
+  def initialize: (String output_dir, String shellspec_name) -> void
+end

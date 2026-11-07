@@ -1,0 +1,18 @@
+output_dir: tmp
+shellspec_name: "070_zelta_prune_spec"
+
+example_list:
+  - describe_desc: "Test prune"
+    tag: standard:70
+    skip_if_list:
+      - condition: if 'SANDBOX_ZELTA_SRC_DS undefined' test -z "$SANDBOX_ZELTA_SRC_DS"
+      - condition: if 'SANDBOX_ZELTA_TGT_DS undefined' test -z "$SANDBOX_ZELTA_TGT_DS"
+
+    test_list:
+      - test_name: backup_with_snapshot
+        it_desc: backup with snapshot - %{when_command}
+        when_command: run zelta backup --snapshot "$SANDBOX_ZELTA_SRC_EP" "$SANDBOX_ZELTA_TGT_EP"
+
+      - test_name: prune_check
+        it_desc: only suggest snapshots existing on target - %{when_command}
+        when_command: run zelta prune --prune-num=0 --prune-time=0 "$SANDBOX_ZELTA_SRC_EP" "$SANDBOX_ZELTA_TGT_EP"

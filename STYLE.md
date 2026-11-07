@@ -220,3 +220,31 @@ The README is the project's front door: **welcoming**, **focused**, **honest**, 
 *   Internal docs: Relative links
 *   External docs: Full URLs
 *   Be specific: "See EXCLUSION PATTERNS in **zelta-options(7)**"
+*   Use backticks for `--options`; this saves characters and avoids the need of a dash escape: **\-**
+
+### Documentation Endpoint Names
+
+Use endpoint names that communicate the role of each system without making the
+source and target look interchangeable. Keep the host and pool initials aligned
+when an example has a meaningful role:
+
+| Role | Endpoint example | Use |
+| :--- | :--- | :--- |
+| Generic source | `source:sink` | A source system when the workflow itself is the focus |
+| Generic target | `target:tank` | A target system when the workflow itself is the focus |
+| Compute host | `compute:cask` | A container, VM, or database server |
+| Backup vault | `vault:vat` | A server intended for backup storage |
+| Twin primary | `alpha:amphora` | A primary member of a twin or fleet |
+| Twin secondary | `beta:barrel` | A secondary member of a twin or fleet |
+
+Do not reuse the same pool name across example endpoints. Distinct pool names
+make it clear which dataset is local and which dataset is remote.
+
+Use simple dataset names when the workflow does not need additional context:
+
+| Dataset | Meaning |
+| :--- | :--- |
+| `ds` | Generic dataset with no special role |
+| `vm` | One-online-at-a-time VM, jail, or similar workload |
+| `Backups/ds` | A dedicated parent for backup datasets |
+| `Archives/ds` | An archive location that is not an active backup target |

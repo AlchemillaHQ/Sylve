@@ -8,15 +8,24 @@
 # VARS: List of options provided from a referenced associative array.
 #
 CHECK	DEFAULT	zfs list	-Ho name	ds
-LIST	DEFAULT	zfs list	-Hpr -t all -Screatetxg -o	props flags ds
+LIST	DEFAULT	zfs list	-Hpr -o	props flags ds
 PROPS	DEFAULT	zfs get	-Hpr -s local,none -t filesystem,volume -o name,property,value	flags props ds
 CREATE	DEFAULT	zfs create	-vupo canmount=noauto	ds
+INHERIT	DEFAULT	zfs inherit		flags prop ds
+SET	DEFAULT	zfs set		flags prop ds
+MOUNT	DEFAULT	zfs mount		flags ds
+UNMOUNT	DEFAULT	zfs unmount		flags ds
 SNAP	DEFAULT	zfs snapshot	-r	flags ds_snap
 MATCH		zelta ipc-run match	--time --log-mode=text --log-level=2 -Hpo relname,match,srcnext,srclast,tgtlast	flags
+MATCH_IVSET		zelta ipc-run match	--time --log-mode=text --log-level=2 -Hpo relname,match,matchivset,srcnext,srclast,tgtlast	flags
 MATCH_ORIGIN		zelta ipc-run match	--log-mode=text --log-level=2 -Hpo relname,match
 CLONE	DEFAULT	zfs clone	-p -o readonly=off	flags ds_snap ds
 SEND	SEND	zfs send	-P	flags intr_snap ds_snap
+SEND_CHECK	SEND	zfs send	-nv	flags intr_snap ds_snap
 RECV	RECV	zfs recv	-v	flags origin ds
 SYNC	DEFAULT			zfs_send zfs_recv
 RENAME	DEFAULT	zfs rename	-fp	old_ds new_ds
+BOOKMARK	DEFAULT	zfs bookmark		source_snap bookmark
 BACKUP		zelta backup		flags source target
+BACKUP_IPC		zelta ipc-run	backup	flags source target
+ROTATE		zelta ipc-run	rotate --log-mode=text --log-level=2

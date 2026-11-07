@@ -1,0 +1,11 @@
+class EnvSubstitutor
+  attr_reader sorted_env_map: Array[[String, String]]
+
+  def initialize: (String env_var_names) -> void
+
+  def substitute: (String line) -> String
+
+  private
+
+  def build_sorted_env_map: (String env_var_names) -> Array[[String, String]]
+end

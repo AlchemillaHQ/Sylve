@@ -1,6 +1,7 @@
 # sourcing this file to setup some helpers
 # for debug environment management
 
+TEST_DIR="test"
 
 # create run environment
 # DEBUG_MODE - not empty = setup the debug environment
@@ -9,11 +10,11 @@ setup_env() {
     DEBUG_MODE=$1
 
     if [ -n "$DEBUG_MODE" ]; then
-        . test/runners/env/setup_debug_env.sh
+        . "$TEST_DIR/runners/env/setup_debug_env.sh"
     else
         printf '%s\n' "--> Normal shellspec Run"
-        . test/runners/env/reset_env.sh   # reset the env, use test_helper.sh version
-        . test/runners/env/test_env.sh    # set dataset, pools and remote env vars
+        . "$TEST_DIR/runners/env/reset_env.sh"   # reset the env, use test_helper.sh version
+        . "$TEST_DIR/runners/env/test_env.sh"    # set dataset, pools and remote env vars
         # on normal run shellspec will automatically run test/test_helper.sh
     fi
 }

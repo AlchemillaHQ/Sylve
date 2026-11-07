@@ -1,0 +1,12 @@
+- ssd09/jail/bellmgmt_bts
+- ssd09/jail/bind_bts
+- ssd09/jail/kms_bts
+- ssd09/jail/pkgcache_bts
+- ssd09/vm/app.client1
+- ssd09/vm/dc3.client2
+- ssd09/vm/kuma.bts.nyc1
+- ssd09/vm/meet.bts
+- ssd09/vm/salt.bts
+- ssd09/vm/win10.bts.nyc1
+- ssd09/vm/mail.client2
+#- ssd09/jail/x_bts_nyc1

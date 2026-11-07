@@ -6,8 +6,37 @@ module SysExec
   class ExecutionTimeout < StandardError; end
   class SysExecFailed < StandardError; end
 
+  class Result < Data.define(:stdout, :stderr, :exit_status) do |it|
+  end
+  end
+
+  # timeout - in seconds
+  def self.run_all(cmds, timeout: 30, raise_on_failure: true, debug: true)
+    all_stdout = []
+    all_stderr = []
+
+    cmds.each do |cmd|
+      result = run(cmd, timeout: timeout, raise_on_failure: raise_on_failure, debug: debug)
+      unless result[:exit_status].zero?
+        puts error_msg(reason: "Command failed with exit status #{result.exit_status}",
+                       cmd: cmd, stdout: stdout, stderr: stderr)
+
+        # noinspection RubyArgCount
+        return Result.new(stdout: stdout, stderr: stderr, exit_status: result.exit_status)
+      end
+
+      all_stdout << "\n\n#{'#' * 80}\n\n"
+      all_stdout << cmd
+      all_stdout << result[:stdout]
+      all_stderr << result[:stderr]
+    end
+    # noinspection RubyArgCount
+    Result.new(stdout: all_stdout, stderr: all_stderr, exit_status: 0)
+  end
+
   def self.run(cmd, timeout: 30, raise_on_failure: true, debug: true)
-    puts "Executing: #{cmd}" if debug
+    puts "\n⚡ Executing: #{cmd}" if debug
+    puts "=" * 80 if debug
 
     stdout = ''
     stderr = ''
@@ -54,6 +83,7 @@ module SysExec
 
     { stdout: stdout, stderr: stderr, exit_status: status&.exitstatus }
   end
+
   def self.read_streams_with_timeout(out, err, stdout, stderr, wait_thr, timeout)
     start_time = Time.now
 

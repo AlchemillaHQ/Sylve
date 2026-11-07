@@ -7,10 +7,22 @@
      - modify or create a new env setup script, see [test/runners/env/test_env.sh](runners/env/test_env.sh)
    - or set the environment variables directly in your shell session
    - >NOTE: you can run a basic smoke test without setting any environment variables
-- run `shellspec`
-   - cd to the repo root for `zelta`
-   - `shellspec`
-
+  - run `shellspec`
+     - cd to the repo root for `zelta`
+     - `shellspec`
+     - test scenarios
+        - cd to the repo root for `zelta`
+        - `./test/run_tests.sh (target scenario)`
+        - `run_test.sh standard` is equivalent to `shellspec --tag install,initialize,standard,cleanup`
+        - `run_test.sh` testing supports multiple shellspec invocations per scenario within the same context
+        - For example:
+          ```
+          SPECS_SHARED_DIR=$SPECS_DIR/shared
+          shellspec --tag install,initialize
+          shellspec $SPECS_DIR/0100_standard
+          shellspec --tag cleanup
+          ```
+     - > NOTE: shellspec runs matching *_spec.sh files in sorted (lexicographical) order by path. The current spec file naming ensures tests are run in the correct order for zelta testing.
 ### If testing remotely:
 - Setup your test user on your source and target machines
   - update sudoers

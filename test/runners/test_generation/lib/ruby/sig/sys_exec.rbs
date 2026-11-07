@@ -1,0 +1,24 @@
+module SysExec
+  class ExecutionTimeout < StandardError
+  end
+
+  class SysExecFailed < StandardError
+  end
+
+  class Result < Data
+    attr_reader stdout: String | Array[String]
+    attr_reader stderr: String | Array[String]
+    attr_reader exit_status: Integer
+
+    def self.new: (stdout: String | Array[String], stderr: String | Array[String], exit_status: Integer) -> Result
+  end
+
+  def self.run_all: (Array[String] cmds, ?timeout: Integer, ?raise_on_failure: bool, ?debug: bool) -> Result
+  def self.run: (String cmd, ?timeout: Integer, ?raise_on_failure: bool, ?debug: bool) -> { stdout: String, stderr: String, exit_status: Integer? }
+
+  private
+
+  def self.read_streams_with_timeout: (IO out, IO err, String stdout, String stderr, Thread wait_thr, Integer timeout) -> bool
+
+  def self.error_msg: (reason: String, cmd: String, stdout: String, stderr: String) -> String
+end

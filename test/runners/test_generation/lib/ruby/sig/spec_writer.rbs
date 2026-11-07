@@ -1,0 +1,29 @@
+class SpecWriter
+  include ShellSpecGen
+
+  attr_reader config: ShellSpecGen::Config
+  attr_reader paths: PathConfig
+  attr_reader capture_output_only: bool
+
+  def self.write_output_spec: (ShellSpecGen::Config config, PathConfig paths) -> void
+  def self.write_prod_spec: (ShellSpecGen::Config config, PathConfig paths) -> void
+
+  private
+
+  def initialize: (ShellSpecGen::Config config, PathConfig paths, bool capture_output_only) -> void
+
+  def create_prod_spec_file: () -> bool
+  def create_output_spec_file: () -> bool
+  def auto_generated_notice: () -> String
+  def write_prod_header: (File file) -> void
+  def create_spec_file: (File file) -> void
+  def add_error_lines: (File file, String test_name, String indent) -> void
+  def status_line: (String test_name, String indent) -> String
+  def capture_output_clause: (String subdir, String test_name, String indent) -> String
+  def matcher_func_name: (String test_name) -> String
+  def add_expected_output_clause: (File file, String test_name, bool allow_no_output, String output_clause, String indent) -> void
+  def append_it_clause: (File file, String indent, ShellSpecGen::TestDefinition test_def) -> void
+  def create_test_matcher_functions: (File file, Array[ShellSpecGen::TestDefinition] test_list) -> void
+  def process_tests: (File file, Array[ShellSpecGen::TestDefinition] test_list, String indent) -> void
+  def process_example: (File file, ShellSpecGen::ExampleDefinition example, String indent) -> void
+end

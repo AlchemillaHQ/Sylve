@@ -1,0 +1,20 @@
+module Placeholders
+  type filter_list = Array[String | Symbol]
+  type source = Hash[String | Symbol, untyped] | Object
+
+  def self.substitute: (String string, source source, ?inclusions: filter_list?, ?exclusions: filter_list?) -> String
+
+  private
+
+  def self.filter_hash: (Hash[String | Symbol, untyped] hash, filter_list? inclusions, filter_list? exclusions) -> Hash[String | Symbol, untyped]
+
+  def self.key_matches_filter?: (String | Symbol key, filter_list? inclusions, filter_list? exclusions) -> bool
+
+  def self.extract_vars_from_object: (Object obj, filter_list? inclusions, filter_list? exclusions) -> Hash[String, untyped]
+
+  def self.extract_vars_from_members: ((Data | Struct) obj, filter_list? inclusions, filter_list? exclusions) -> Hash[String, untyped]
+
+  def self.extract_vars_from_ivars: (Object obj, filter_list? inclusions, filter_list? exclusions) -> Hash[String, untyped]
+
+  def self.var_matches_filter?: (String var_name, filter_list? inclusions, filter_list? exclusions) -> bool
+end

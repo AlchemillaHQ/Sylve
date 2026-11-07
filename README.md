@@ -1,6 +1,6 @@
 ![Zelta Logo](https://zelta.space/index/zelta-banner.svg)
 # The Zelta Backup and Recovery Suite
-*Version 1.1, 2026-01-20*
+*Current release: 1.2.0*
 
 ---
 > - **What's New:** Check [CHANGELOG.md](CHANGELOG.md) for the latest changes
@@ -10,7 +10,7 @@
 >&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  ![ShellSpec Tests](https://github.com/bell-tower/zelta/actions/workflows/shellspec.yml/badge.svg)
 ---
 
-[zelta.space](https://zelta.space) | [Documentation](https://zelta.space/en/home) | [GitHub](https://github.com/bell-tower/zelta)
+[zelta.space](https://zelta.space) | [Documentation](https://zelta.space/docs/) | [GitHub](https://github.com/bell-tower/zelta)
 
 **Zelta** provides bulletproof backups that meet strict compliance requirements while remaining straightforward to deploy and operate. It transforms complex backup and recovery operations into safe, auditable commands—protecting your data without requiring specialized expertise.
 
@@ -38,7 +38,20 @@ Written in portable Bourne shell and AWK, Zelta runs anywhere ZFS runs. No packa
 
 ## Installation
 
-### From Source (Recommended for Zelta 1.1)
+### One-Shot Installer
+
+Run as root for a system install or as a backup user for a user-local install. No `git` required.
+
+```sh
+# Latest release from main
+curl -fsSL https://zelta.space/web-install.sh | sh
+```
+
+The installer uses sane defaults for system-wide or user installs. Advanced install paths can be overridden with `ZELTA_BIN`, `ZELTA_SHARE`, `ZELTA_ETC`, and `ZELTA_DOC`; see the install documentation for details.
+
+*Security Note: As with any script piped from the internet, inspect the [installer source](https://github.com/bell-tower/zelta/blob/main/contrib/web-install.sh) before execution.*
+
+### From Source
 ```sh
 git clone https://github.com/bell-tower/zelta.git
 cd zelta
@@ -48,76 +61,34 @@ sudo ./install.sh
 ```
 
 ### FreeBSD Ports
-Zelta 1.0.1_1 (March 2024) is available in the FreeBSD Ports Collection. For the latest features, install from GitHub.
+Zelta is available in the FreeBSD Ports Collection. Ports may lag the GitHub release; use the installer for current 1.2.0 features.
 ```sh
 pkg install zelta
 ```
 
-### Experimental: One-Shot Install
-
-The following command clones Zelta from the `main` branch and launches the installer. Run this as a personal or backup user for a local, non-root installation. If you prefer a system-wide installation, run the command as root or via `sudo/doas`.
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/bell-tower/zelta/main/contrib/install-from-git.sh | sh
-```
-
-The installer will detect your privileges and guide you through adding the necessary environment variables to your shell profile.
-
-*Security Note: As with any script piped from the internet, we encourage you to [inspect the installer source](https://github.com/bell-tower/zelta/blob/main/contrib/install-from-git.sh) before execution.*
-
 ---
 
-## Quickstart: Developer Workflow
+## First Backup
 
-Zelta makes operations that are tricky or dangerous with raw commands straightforward and safe. Here's a real-world developer scenario showing backup, recovery, and time travel—all without destroying data.
+Zelta commands use endpoint syntax familiar from **scp(1)**:
 
-### 1. Back Up Your Development Machine
-
-Snapshot and back up your entire laptop to a backup server. Zelta handles snapshot creation, incremental detection, and safe transfers automatically.
-
-```sh
-# Syntax: zelta backup <user@host:source> <user@host:target>
-zelta backup rpool backup-user@storage.example.com:tank/Backups/my-laptop
+```text
+[user@][host:]pool/dataset[@snapshot]
 ```
 
-### 2. Back Up a Container as Non-Root
-
-Grant a regular user minimal permissions to back up a specific dataset. This works well for containerized workloads, databases, or any delegated environment.
+Compare a source and target before backing up:
 
 ```sh
-# As root, delegate send permissions on source
-zfs allow -u developer send,snapshot,hold opt
-
-# Delegate receive permissions on backup target
-zfs allow -u developer receive:append,create,mount,canmount,volmode,readonly,clone,rename tank/Backups
-
-# As developer user, back up
-zelta backup opt/datasource/big-database-thing tank/Backups/big-database-thing
+zelta match rpool/data backup-user@storage.example.com:tank/Backups/data
 ```
 
-Run the same command again later to update incrementally. No configuration files, no daemon required.
-
-### 3. Time Travel: Revert to Previous State
-
-You need to roll back your development dataset to investigate a bug, but you don't want to lose your current environment.
+Create or update the backup:
 
 ```sh
-# Rewind the working dataset in place, renaming it to preserve current state
-zelta revert opt/datasource/big-database-thing
+zelta backup rpool/data backup-user@storage.example.com:tank/Backups/data
 ```
 
-Your dataset is now at its previous snapshot. Your current work is still there, just renamed to `big-database-thing_zelta_2026-01-12`.
-
-### 4. Keep the Backup Rolling After Divergence
-
-Now your source has diverged from your backup. Normally this requires manual work or destructive receives. Not with Zelta.
-
-```sh
-# Rotate the backup: preserve the old version, receive the new history
-zelta rotate opt/datasource/big-database-thing tank/Backups/big-database-thing
-```
-
-Done. You now have both versions preserved in your backup. No force flags, no data loss. This works between remote systems too.
+Run the same command again later to update incrementally. For non-root operation, delegate ZFS permissions with `zfs allow`; see the SSH and ZFS delegation guides for complete examples.
 
 ---
 
@@ -132,10 +103,10 @@ Robust backup with safe defaults. Creates consistent, read-only backups with int
 Compares two backup sets and reports matching snapshots or discrepancies. Essential for validating backups, planning rollbacks, and auditing.
 
 ### `zelta policy`
-Automates large-scale concurrent backup operations across many systems using a policy-based engine. Supports hierarchical configuration with YAML-style policies.
+Runs multiple backup jobs concurrently from a single configuration file. Policies are hierarchical: global settings, site, host, and dataset-level options cascade to specific jobs.
 
 ### `zelta clone`
-Creates temporary read-write clones of a backup set for zero-space iterative infrastructure, advanced development pipelines, recovery testing, or inspection—without disturbing the original. With `zelta clone`, there is never a reason to make your backup datasets writable.
+Creates temporary read-write clones of a backup set for recovery testing, inspection, or development—without disturbing the original. There is never a reason to make your backup datasets writable.
 
 ### `zelta revert`
 Carefully rewinds a dataset in place by renaming and cloning. Ideal for forensic analysis, testing, or recovering from mistakes without losing current state.
@@ -143,15 +114,29 @@ Carefully rewinds a dataset in place by renaming and cloning. Ideal for forensic
 ### `zelta rotate`
 Performs a multi-way rename and clone operation to keep backups rolling even after source or target has diverged. Preserves all versions without destructive receives.
 
-### `zelta prune` *(Experimental)*
-Identifies snapshots eligible for deletion based on backup state and retention windows. Only suggests snapshots that are safely backed up to the target. Output is in range syntax for review before execution.
+### `zelta prune`
+Plans snapshot pruning without destroying data. Candidate selection is separate from destruction and can use time, count, grid, reclaim-size, name, policy, and guard controls.
+
+### `zprune`
+Destructive companion for `zelta prune`. Validates prune candidates, previews `zfs destroy -nvp`, groups transactions, and prompts before destroying snapshots.
+
+### `zelta failover`
+Locks an active source, performs a final backup, syncs local ZFS properties, and unlocks the promoted target.
+
+### `zelta rebase`
+Rebase a dataset onto an upgraded upstream while preserving local files and incremental backup continuity.
+
+### `zelta lock` and `zelta unlock`
+Apply ordered dataset-tree readonly, canmount, unmount, and remount workflows for promotion and maintenance.
+
+### `zelta propsync`
+Replays local ZFS properties from one dataset tree to another while preserving target-only local overrides.
 
 ### Additional Commands
 
 - `zelta snapshot`: Creates recursive snapshots on a local or remote endpoint.
-- `zelta sync`: Runs `zelta backup -i` which skips intermediate snapshots.
 
-Legacy shortcuts `zpull`, `zmatch`, and `zp` are supported when symlinked or aliased to `zelta`.
+Compatibility aliases such as `zelta sync`, `zpull`, `zmatch`, and `zp` are supported for existing operators. New documentation uses explicit `zelta backup` commands.
 
 ---
 
@@ -180,9 +165,7 @@ Zelta can run entirely from a bastion host using SSH keys or agent forwarding. T
 
 ## Community & Support
 
-Zelta is open source under the BSD 2-Clause License and will always remain permissively licensed.
-
-We welcome contributors who are passionate about data protection and recovery. By contributing to Zelta, you help make reliable backup and recovery accessible to everyone.
+Zelta is open source under the BSD 2-Clause License and will always remain permissively licensed. Contributions welcome.
 
 ### Contact
 
@@ -205,14 +188,6 @@ For commercial support, custom feature development, and consulting on secure, hi
 
 ---
 
-## Roadmap
+## Current Direction
 
-Zelta 1.1 represents a major refactor that improves POSIX compliance, portability, and code maintainability. The following features are already used internally or by Bell Tower clients and will be upstreamed by Q2 2026.
-
-### Features In Development
-
-- **zelta lock/unlock**: Simplify failover by confirming the correct twin is read-only before promoting a read-write primary.
-- **zelta rebase**: Update base images across filesystems while preserving customizations.
-- **zelta prune**: Improve to identify snapshots based on additional metadata-driven policies such as snapshot density and usage patterns.
-- **Metadata-Aware Sync Protection**: Ensure backup continuity using automatic holds and bookmarks based on backup relationships, and track property changes with user properties.
-- **Flexible API**: Although `zelta backup` has a JSON output mode useful for telemetry, we intend to match native JSON output styles for more integration options. To support larger fleets, `zelta policy` configurations are being updated to support JSON, SQLite, and other database formats.
+Zelta 1.2.0 adds the prune planner/`zprune` split, rebase, failover, lock/unlock, propsync, snapshot thresholds, policy imports, replication-success bookmarks, and broader include/exclude filtering. See [CHANGELOG.md](CHANGELOG.md) for release details and current known issues.

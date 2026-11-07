@@ -77,6 +77,9 @@ _target_
 **\--snap-name** _NAME_
 : Specify snapshot name. Use `$(command)` for dynamic generation. Default: `$(date -u +zelta_%Y-%m-%d_%H.%M.%S)`.
 
+**\--snap-prefix** _PREFIX_
+: Prefix generated snapshot names. If the resolved name starts with `zelta`, _PREFIX_ replaces `zelta`; otherwise _PREFIX_ is prepended verbatim.
+
 # EXAMPLES
 
 A common workflow after accidentally diverging a source from its backup:
