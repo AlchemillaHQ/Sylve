@@ -16,3 +16,18 @@ export const InitializeResponseSchema = APIResponseSchema.extend({
 });
 
 export type InitializeResponse = z.infer<typeof InitializeResponseSchema>;
+
+export const InitializeHostStateSchema = z.object({
+	pf: z.object({
+		conf: z.enum(['missing', 'managed', 'unmanaged']),
+		backupExists: z.boolean(),
+		running: z.boolean(),
+		rules: z.number(),
+		natRules: z.number(),
+		enabledInRcConf: z.boolean()
+	}),
+	dhcpConfigCustom: z.boolean(),
+	racctLoaderChange: z.boolean()
+});
+
+export type InitializeHostState = z.infer<typeof InitializeHostStateSchema>;

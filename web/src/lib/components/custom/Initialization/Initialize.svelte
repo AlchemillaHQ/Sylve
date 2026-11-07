@@ -7,15 +7,22 @@
 	import { getPoolsResponse } from '$lib/api/zfs/pool';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Alert from '$lib/components/ui/alert/index.js';
-	import { initialize } from '$lib/api/basic';
+	import { getInitializeHostState, initialize } from '$lib/api/basic';
 	import { toast } from 'svelte-sonner';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import HostChanges from './HostChanges.svelte';
+	import { onMount } from 'svelte';
 	import { resource } from 'runed';
 	import type { AvailableService } from '$lib/types/system/settings';
-	import { INITIALIZATION_SERVICE_GROUPS, INITIALIZATION_SERVICES } from '$lib/system-services';
+	import {
+		INITIALIZATION_SERVICE_GROUPS,
+		INITIALIZATION_SERVICES,
+		pfInUse
+	} from '$lib/system-services';
 	import { getBasicHealth } from '$lib/api/system/system';
 	import { isAPIResponse } from '$lib/utils/http';
-	import type { InitializeResponse } from '$lib/types/basic';
+	import type { InitializeHostState, InitializeResponse } from '$lib/types/basic';
 
 	interface Props {
 		initialized: boolean;
@@ -27,14 +34,7 @@
 		() => 'initialization-pools',
 		async () => {
 			const response = await getPoolsResponse(true);
-			if (response.status !== 'success' || !Array.isArray(response.data)) {
-				const error = Array.isArray(response.error)
-					? response.error.join(', ')
-					: response.error || response.message || 'Unable to load ZFS pools';
-				throw new Error(error);
-			}
-
-			return response.data;
+			return response.status === 'success' && Array.isArray(response.data) ? response.data : [];
 		}
 	);
 
@@ -53,6 +53,43 @@
 	let initializing = $state(false);
 	let verifying = $state(false);
 	let initializationAccepted = $state(false);
+	let reviewing = $state(false);
+	let reviewOpen = $state(false);
+	let hostState = $state<InitializeHostState | null>(null);
+
+	let selectedServices = $derived(
+		INITIALIZATION_SERVICES.filter((service) => properties.services[service.id]).map(
+			(service) => service.id
+		)
+	);
+
+	async function loadHostState() {
+		const state = await getInitializeHostState();
+		hostState = isAPIResponse(state) ? null : state;
+	}
+
+	onMount(async () => {
+		await loadHostState();
+		if (hostState && pfInUse(hostState.pf)) {
+			properties.services.firewall = false;
+		}
+	});
+
+	async function reviewInit() {
+		if (initializing || verifying || reviewing) return;
+		if (initializationAccepted) {
+			await verifyInitialization();
+			return;
+		}
+
+		reviewing = true;
+		try {
+			await loadHostState();
+			reviewOpen = true;
+		} finally {
+			reviewing = false;
+		}
+	}
 
 	function getInitializationErrors(response: InitializeResponse): string[] {
 		if (Array.isArray(response.data) && response.data.length > 0) {
@@ -98,19 +135,11 @@
 
 	async function startInit() {
 		if (initializing || verifying) return;
-		if (initializationAccepted) {
-			await verifyInitialization();
-			return;
-		}
 
 		initializing = true;
 		try {
 			const pools = properties.pools.combobox.values;
-			const services = INITIALIZATION_SERVICES.filter(
-				(service) => properties.services[service.id]
-			).map((service) => service.id);
-
-			const response = await initialize(pools, services);
+			const response = await initialize(pools, selectedServices);
 			if (response.status !== 'success') {
 				shownErrors = getInitializationErrors(response);
 				return;
@@ -163,15 +192,6 @@
 
 			{#if pools.loading}
 				<p class="text-sm text-muted-foreground" role="status">Loading existing ZFS pools...</p>
-			{:else if pools.error}
-				<div class="flex items-center justify-between gap-3 text-sm text-destructive" role="alert">
-					<span>Existing ZFS pools could not be loaded. You can continue without one.</span>
-					<Button variant="outline" size="sm" onclick={() => void pools.refetch()}>Retry</Button>
-				</div>
-			{:else if pools.current?.length === 0}
-				<p class="text-sm text-muted-foreground">
-					No existing pools were found. You can continue and create one later in Sylve.
-				</p>
 			{/if}
 
 			<div class="space-y-2">
@@ -218,9 +238,16 @@
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={startInit} type="button" size="sm" disabled={initializing || verifying}>
+				<Button
+					onclick={reviewInit}
+					type="button"
+					size="sm"
+					disabled={initializing || verifying || reviewing}
+				>
 					{#if initializing}
 						Initializing...
+					{:else if reviewing}
+						Checking host...
 					{:else if verifying}
 						Checking status...
 					{:else if initializationAccepted}
@@ -233,3 +260,17 @@
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
+
+<AlertDialog
+	bind:open={reviewOpen}
+	class="sm:max-w-2xl"
+	title="Review changes to this host"
+	description="Initializing with the selected services makes these changes to this host."
+	confirmLabel="Initialize"
+	actions={{
+		onConfirm: startInit,
+		onCancel: () => (reviewOpen = false)
+	}}
+>
+	<HostChanges services={selectedServices} {hostState} />
+</AlertDialog>

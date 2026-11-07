@@ -76,3 +76,19 @@ func (s *Service) ensureJailRacctEnabledAtBoot() (bool, error) {
 
 	return true, nil
 }
+
+// RacctLoaderChangePending reports whether initializing with Jails would
+// add kern.racct.enable to /boot/loader.conf.
+func (s *Service) RacctLoaderChangePending() (bool, error) {
+	if err := s.CheckJails(); err == nil || err.Error() != "jails_racct_not_enabled" {
+		return false, nil
+	}
+
+	lines, _, err := readLoaderConf()
+	if err != nil {
+		return false, err
+	}
+
+	_, changed := upsertLoaderConfSetting(lines, jailRacctLoaderKey, jailRacctLoaderValue)
+	return changed, nil
+}

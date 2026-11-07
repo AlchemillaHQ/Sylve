@@ -164,6 +164,53 @@ func (s *Service) isSylveManagedPFConfig() (bool, error) {
 	return strings.Contains(content, pfManagedHeader), nil
 }
 
+func (s *Service) PFHostState() (networkServiceInterfaces.PFHostState, error) {
+	state := networkServiceInterfaces.PFHostState{Conf: "missing"}
+
+	data, err := os.ReadFile(pfMainConfPath)
+	switch {
+	case err == nil && strings.Contains(string(data), pfManagedHeader):
+		state.Conf = "managed"
+	case err == nil:
+		state.Conf = "unmanaged"
+	case !errors.Is(err, os.ErrNotExist):
+		return state, err
+	}
+
+	_, err = os.Stat(pfBackupConfPath)
+	state.BackupExists = err == nil
+
+	rcConf, err := os.ReadFile(firewallRCConfPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return state, err
+	}
+	for _, line := range strings.Split(string(rcConf), "\n") {
+		if key, value, ok := parseRCConfAssignment(line); ok && key == "pf_enable" {
+			state.EnabledInRCConf = strings.EqualFold(value, "yes")
+		}
+	}
+
+	state.Running = s.isPFEnabled()
+	state.Rules = countLoadedPFRules("-sr")
+	state.NATRules = countLoadedPFRules("-sn")
+	return state, nil
+}
+
+func countLoadedPFRules(show string) int {
+	out, err := firewallRunCommand("/sbin/pfctl", "-q", show)
+	if err != nil {
+		return 0
+	}
+
+	count := 0
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	return count
+}
+
 func (s *Service) IsFirewallServiceEnabled() bool {
 	var basicSettings models.BasicSettings
 	if err := s.DB.First(&basicSettings).Error; err != nil {

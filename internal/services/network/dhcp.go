@@ -30,6 +30,7 @@ const (
 	defaultDHCPConfigPath        = "/usr/local/etc/dnsmasq.conf"
 	defaultDHCPLeasePath         = "/var/db/dnsmasq.leases"
 	managedContainerBridgePrefix = "sylc"
+	dhcpManagedHeader            = "# This file is managed by Sylve. Manual changes will be overwritten."
 )
 
 var dhcpDomainRegex = regexp.MustCompile(`(?i)^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$`)
@@ -418,7 +419,7 @@ func renderDHCPConfig(db *gorm.DB) ([]byte, error) {
 	}
 
 	var config strings.Builder
-	config.WriteString("# This file is managed by Sylve. Manual changes will be overwritten.\n\n")
+	config.WriteString(dhcpManagedHeader + "\n\n")
 
 	interfaces := make([]string, 0, len(current.StandardSwitches)+len(current.ManualSwitches))
 	for _, sw := range current.StandardSwitches {
@@ -607,6 +608,28 @@ func (s *Service) readDHCPConfigFile() ([]byte, error) {
 		return s.dhcpRuntime.readFile(s.dhcpConfigPath())
 	}
 	return os.ReadFile(s.dhcpConfigPath())
+}
+
+// DHCPConfigCustom reports whether dnsmasq.conf holds settings Sylve didn't write.
+func (s *Service) DHCPConfigCustom() (bool, error) {
+	data, err := s.readDHCPConfigFile()
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if strings.Contains(string(data), dhcpManagedHeader) {
+		return false, nil
+	}
+
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "#") {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *Service) readDHCPLeaseFile() ([]byte, error) {

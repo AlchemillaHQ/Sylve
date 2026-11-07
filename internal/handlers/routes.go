@@ -154,6 +154,7 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		basic.GET("/settings", basicHandlers.GetBasicSettings(systemService))
 		basic.POST("/initialize", requireBasicAdmin, basicHandlers.Initialize(systemService))
+		basic.GET("/initialize/host-state", requireBasicAdmin, basicHandlers.GetInitializeHostState(systemService, networkService))
 		basic.POST("/system/reboot", requireBasicAdmin, basicHandlers.RebootSystem(systemService))
 	}
 

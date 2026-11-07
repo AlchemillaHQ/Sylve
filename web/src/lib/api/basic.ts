@@ -8,8 +8,18 @@
  * under sponsorship from the FreeBSD Foundation.
  */
 
-import { InitializeResponseSchema, type InitializeResponse } from '$lib/types/basic';
+import {
+	InitializeHostStateSchema,
+	InitializeResponseSchema,
+	type InitializeHostState,
+	type InitializeResponse
+} from '$lib/types/basic';
+import type { APIResponse } from '$lib/types/common';
 import { apiRequest } from '$lib/utils/http';
+
+export async function getInitializeHostState(): Promise<InitializeHostState | APIResponse> {
+	return await apiRequest('/basic/initialize/host-state', InitializeHostStateSchema, 'GET');
+}
 
 export async function initialize(pools: string[], services: string[]): Promise<InitializeResponse> {
 	const response = await apiRequest(

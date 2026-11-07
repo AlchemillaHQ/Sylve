@@ -21,6 +21,7 @@
 		loadingLabel?: string;
 		loading?: boolean;
 		keepOpenOnConfirm?: boolean;
+		class?: string;
 		children?: Snippet;
 	}
 
@@ -36,6 +37,7 @@
 		loadingLabel = 'Processing...',
 		loading = false,
 		keepOpenOnConfirm = false,
+		class: className = '',
 		children
 	}: Props = $props();
 
@@ -76,7 +78,7 @@
 		onInteractOutside={(e) => e.preventDefault()}
 		onEscapeKeydown={handleEscapeKeydown}
 		aria-busy={busy}
-		class="z-[80] p-5"
+		class="z-[80] p-5 {className}"
 		overlayClass="z-[80]"
 	>
 		<AlertDialog.Header>

@@ -138,6 +138,16 @@ type RenderedConfigResponse struct {
 	TrafficRules string `json:"trafficRules"`
 }
 
+// PFHostState is the PF setup that enabling the Firewall service takes over.
+type PFHostState struct {
+	Conf            string `json:"conf"` // missing, managed or unmanaged
+	BackupExists    bool   `json:"backupExists"`
+	Running         bool   `json:"running"`
+	Rules           int    `json:"rules"`
+	NATRules        int    `json:"natRules"`
+	EnabledInRCConf bool   `json:"enabledInRcConf"`
+}
+
 type FirewallLiveHitsResponse struct {
 	Items        []FirewallLiveHitEvent `json:"items"`
 	NextCursor   int64                  `json:"nextCursor"`

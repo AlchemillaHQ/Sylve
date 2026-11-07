@@ -9,14 +9,23 @@
 package basicHandlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
+	networkService "github.com/alchemillahq/sylve/internal/services/network"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/gin-gonic/gin"
 )
+
+type InitializeHostState struct {
+	PF                networkServiceInterfaces.PFHostState `json:"pf"`
+	DHCPConfigCustom  bool                                 `json:"dhcpConfigCustom"`
+	RacctLoaderChange bool                                 `json:"racctLoaderChange"`
+}
 
 func initializationHTTPStatus(errs []error) int {
 	status := http.StatusBadRequest
@@ -87,6 +96,42 @@ func Initialize(sS *system.Service) gin.HandlerFunc {
 			Message: "system_initialized",
 			Error:   "",
 			Data:    nil,
+		})
+	}
+}
+
+// @Summary Get Initialization Host State
+// @Description Report existing host configuration that initializing Sylve would replace or edit
+// @Tags Basic
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[InitializeHostState] "Success"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /basic/initialize/host-state [get]
+func GetInitializeHostState(sS *system.Service, nS *networkService.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var state InitializeHostState
+		var pfErr, dhcpErr, racctErr error
+		state.PF, pfErr = nS.PFHostState()
+		state.DHCPConfigCustom, dhcpErr = nS.DHCPConfigCustom()
+		state.RacctLoaderChange, racctErr = sS.RacctLoaderChangePending()
+
+		if err := errors.Join(pfErr, dhcpErr, racctErr); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_get_initialize_host_state",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[InitializeHostState]{
+			Status:  "success",
+			Message: "initialize_host_state_retrieved",
+			Error:   "",
+			Data:    state,
 		})
 	}
 }
