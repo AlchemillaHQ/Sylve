@@ -81,6 +81,9 @@ func TestInspectPkgbaseSystemFailsClosed(t *testing.T) {
 		{name: "locked base", inventory: func(p []Package) []Package { p[1].Locked = true; return p }, want: "package_locked"},
 		{name: "historical source alias after a partial update", inventory: func(p []Package) []Package { p[0].Repository = "FreeBSD-base"; return p }},
 		{name: "registered archives without a source annotation", inventory: func(p []Package) []Package { p[0].Repository = "unknown-repository"; return p }},
+		{name: "pkg library backups", inventory: func(p []Package) []Package {
+			return append(p, Package{Name: "FreeBSD-runtime-backup-libraries", Origin: "base/FreeBSD-runtime-backup", Version: "20261019120000"})
+		}},
 		{name: "old host", host: 1500999, want: "host_too_old"},
 		{name: "unknown host", hostError: true, want: "host_version_unavailable"},
 		{name: "wrong ABI", metadata: func(s string) string { return strings.ReplaceAll(s, "FreeBSD:15:amd64", "FreeBSD:16:amd64") }, want: "metadata_invalid"},

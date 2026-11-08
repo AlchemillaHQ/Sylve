@@ -21688,10 +21688,6 @@ msgstr "Some packages may have changed. Review command output and installed stat
 msgid "Available versions are shown in Packages. Nothing was installed."
 msgstr "Available versions are shown in Packages. Nothing was installed."
 
-#: src/lib/components/custom/System/Updates/Operation.svelte
-msgid "Update pkg first, then preview the remaining packages again. Jail package management and monitoring require pkg 2.8.4 and may become unavailable after this upgrade."
-msgstr "Update pkg first, then preview the remaining packages again. Jail package management and monitoring require pkg 2.8.4 and may become unavailable after this upgrade."
-
 #. 0: job?.plan ? convertDbTime(job.plan.expiresAt) \\: ''
 #: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "Expires {0}. Nothing has been installed."
@@ -23599,3 +23595,28 @@ msgstr "of about {0}"
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "No output recorded."
 msgstr "No output recorded."
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Operation unavailable"
+msgstr "Operation unavailable"
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "pkg must be upgraded on its own first. Apply this, then preview the remaining packages again."
+msgstr "pkg must be upgraded on its own first. Apply this, then preview the remaining packages again."
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Creating boot environment"
+msgstr "Creating boot environment"
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Downloading release"
+msgstr "Downloading release"
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Verifying release"
+msgstr "Verifying release"
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "pkg must be updated on its own first. Install this, then preview the remaining packages again."
+msgstr "pkg must be updated on its own first. Install this, then preview the remaining packages again."

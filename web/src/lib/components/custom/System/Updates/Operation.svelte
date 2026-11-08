@@ -48,9 +48,10 @@
 	let offset = 0;
 	let notifiedId = 0;
 	let logsComplete = false;
+	let unavailable = $state(false);
 	const controller = new AbortController();
 	const options = () => ({ hostname: node, signal: controller.signal });
-	const running = $derived(!job || ['queued', 'running'].includes(job.status));
+	const running = $derived(!unavailable && (!job || ['queued', 'running'].includes(job.status)));
 	const cancellable = $derived(running && !!job && !job.action.endsWith('-apply'));
 	const expired = $derived(!job?.plan || new Date(job.plan.expiresAt).getTime() <= now);
 	const preview = $derived(
@@ -58,7 +59,7 @@
 	);
 	const sylveUpdate = $derived(job?.plan?.kind === 'sylve');
 	const restarting = $derived(job?.phase === 'restarting');
-	const failed = $derived(job?.status === 'failed');
+	const failed = $derived(unavailable || job?.status === 'failed');
 	watch(
 		() => failed,
 		(value) => {
@@ -89,6 +90,8 @@
 		refreshing_repositories: 'Refreshing repositories',
 		solving: 'Resolving updates',
 		verifying: 'Downloading and verifying packages',
+		snapshotting: 'Creating boot environment',
+		downloading: 'Downloading release',
 		checking_release: 'Checking release',
 		applying: 'Preparing and applying update',
 		restarting: 'Restarting Sylve — waiting to reconnect',
@@ -104,6 +107,7 @@
 			if (controller.signal.aborted) return;
 			if (isAPIResponse(result)) {
 				error = restarting ? 'Waiting for Sylve to reconnect…' : hostUpdateReason(result.message);
+				unavailable = !job;
 				return;
 			}
 			job = result;
@@ -136,7 +140,13 @@
 	useInterval(2000, {
 		callback: () => {
 			now = Date.now();
-			if (open && !applying && (running || !logsComplete) && document.visibilityState === 'visible')
+			if (
+				open &&
+				!applying &&
+				!unavailable &&
+				(running || !logsComplete) &&
+				document.visibilityState === 'visible'
+			)
 				void refresh();
 		}
 	});
@@ -214,8 +224,12 @@
 					></span>
 					{#if preview}
 						{sylveUpdate ? 'Ready to update' : 'Preview ready'}
+					{:else if !job}
+						{unavailable ? 'Operation unavailable' : 'Loading operation…'}
+					{:else if job.phase === 'verifying' && sylveUpdate}
+						Verifying release
 					{:else}
-						{job ? (phases[job.phase] ?? job.phase) : 'Loading operation…'}
+						{phases[job.phase] ?? job.phase}
 					{/if}
 				</p>
 				{#if job?.finishedAt}<span class="text-muted-foreground text-xs"
@@ -246,8 +260,8 @@
 				{#if job.plan.selection.length === 1 && ['pkg', 'pkg-devel'].includes(job.plan.selection[0])}<p
 						class="text-muted-foreground text-xs"
 					>
-						Update pkg first, then preview the remaining packages again. Jail package management and
-						monitoring require pkg 2.8.4 and may become unavailable after this upgrade.
+						pkg must be upgraded on its own first. Upgrade it, then preview the remaining packages
+						again.
 					</p>{/if}
 				<section class="space-y-2">
 					<div class="h-64"><ModalTable rows={job.plan.transaction.changes} {columns} /></div>

@@ -125,8 +125,20 @@ func (s *Service) storeAvailable(inventory []pkgmanager.Package, plan pkgmanager
 	})
 }
 
-func (s *Service) failedCheck(action string, cause error) error {
-	if errors.Is(cause, context.Canceled) || errors.Is(cause, errCancelled) {
+func cancelled(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, errCancelled)
+}
+
+func (s *Service) storeError(column string, err error) {
+	if err != nil && !cancelled(err) {
+		_ = s.DB.Model(&models.HostUpdateState{ID: 1}).Update(column, pkgmanager.Redact(err.Error())).Error
+	}
+}
+
+// recordHealth counts consecutive failed checks and audits, and raises one event
+// when monitoring becomes unavailable and one when a check succeeds again.
+func (s *Service) recordHealth(action string, failure error) error {
+	if cancelled(failure) || (failure == nil && action != "check") {
 		return nil
 	}
 	return s.DB.Transaction(func(tx *gorm.DB) error {
@@ -134,34 +146,22 @@ func (s *Service) failedCheck(action string, cause error) error {
 		if err := tx.First(&state, 1).Error; err != nil {
 			return err
 		}
-		column := "check_error"
-		if action == "audit" {
-			column = "audit_error"
+		if failure == nil {
+			if state.HealthFailed {
+				if err := s.event(tx, "health", "Host update monitoring recovered", "Scheduled checks are available again. Review the latest findings and available updates.", "info", 0, "history"); err != nil {
+					return err
+				}
+			}
+			return tx.Model(&state).Updates(map[string]any{"failure_count": 0, "health_failed": false}).Error
 		}
-		failure := pkgmanager.Redact(cause.Error())
 		state.FailureCount++
 		if state.FailureCount >= 3 && !state.HealthFailed {
-			if err := s.event(tx, "health", "Host update monitoring unavailable", "Three or more consecutive checks failed. Last-successful findings are retained, not a clean result. "+failure, "warning", 0, "history"); err != nil {
+			if err := s.event(tx, "health", "Host update monitoring unavailable", "Three or more consecutive checks failed. Last-successful findings are retained, not a clean result. "+pkgmanager.Redact(failure.Error()), "warning", 0, "history"); err != nil {
 				return err
 			}
 			state.HealthFailed = true
 		}
-		return tx.Model(&state).Updates(map[string]any{column: failure, "failure_count": state.FailureCount, "health_failed": state.HealthFailed}).Error
-	})
-}
-
-func (s *Service) successfulCheck() error {
-	return s.DB.Transaction(func(tx *gorm.DB) error {
-		var state models.HostUpdateState
-		if err := tx.First(&state, 1).Error; err != nil {
-			return err
-		}
-		if state.HealthFailed {
-			if err := s.event(tx, "health", "Host update monitoring recovered", "Scheduled checks are available again. Review the latest findings and available updates.", "info", 0, "history"); err != nil {
-				return err
-			}
-		}
-		return tx.Model(&state).Updates(map[string]any{"failure_count": 0, "health_failed": false}).Error
+		return tx.Model(&state).Updates(map[string]any{"failure_count": state.FailureCount, "health_failed": state.HealthFailed}).Error
 	})
 }
 

@@ -637,13 +637,6 @@ func (s *Service) execute(op models.HostUpdateOperation, selection []string) {
 	}
 	if err != nil {
 		_, _ = fmt.Fprintln(log, pkgmanager.Redact(err.Error()))
-		if op.Action == "audit" || op.Action == "check" {
-			_ = s.failedCheck(op.Action, err)
-		}
-	} else if op.Action == "check" {
-		if err = s.successfulCheck(); err != nil {
-			logger.L.Warn().Err(err).Msg("host_update_health_persistence_failed")
-		}
 	}
 	s.finish(op, err, "")
 }
@@ -671,60 +664,17 @@ func (s *Service) readOperation(ctx context.Context, op *models.HostUpdateOperat
 	if err != nil {
 		return err
 	}
-	if op.Action == "sylve-preview" {
+	switch op.Action {
+	case "sylve-preview":
 		return s.releasePreview(ctx, op, state)
+	case "check":
+		return errors.Join(s.monitor(ctx, op, state, log), s.checkRelease(ctx))
+	case "audit":
+		return s.monitor(ctx, op, state, log)
 	}
-	if err = s.phase(op, "reading_inventory"); err != nil {
-		return err
-	}
-	client := s.client(log)
-	if err = s.probe(); err != nil {
-		if op.Action == "check" {
-			return errors.Join(err, s.checkRelease(ctx))
-		}
-		return err
-	}
-	inventory, err := client.Inventory(ctx)
+	client, inventory, err := s.inspect(ctx, op, state, log)
 	if err != nil {
-		if op.Action == "check" {
-			return errors.Join(err, s.checkRelease(ctx))
-		}
 		return err
-	}
-	now := time.Now().UTC()
-	if err = s.DB.Model(&state).Select("Inventory", "InventoryAt", "LastAttemptAt").Updates(&models.HostUpdateState{Inventory: inventory, InventoryAt: &now, LastAttemptAt: &now}).Error; err != nil {
-		return err
-	}
-	info, hostErr := client.InspectHost(ctx, inventory)
-	if hostErr != nil {
-		if op.Action == "check" {
-			if err := s.DB.Model(&state).Update("check_error", hostErr.Error()).Error; err != nil {
-				return err
-			}
-			releaseErr := s.checkRelease(ctx)
-			if code(hostErr) == "host_updates_require_pkgbase" {
-				return releaseErr
-			}
-			return errors.Join(hostErr, releaseErr)
-		}
-		return hostErr
-	}
-	client.HostSystem = &info
-	client.SylveVersion = s.version
-	installed := s.installed(ctx, state)
-	if installed.Mode != "package" {
-		client.PreserveExecutable = s.executable
-	}
-	if op.Action == "check" || op.Action == "audit" {
-		auditErr := s.auditPackages(ctx, op, client, inventory)
-		if op.Action == "audit" {
-			return auditErr
-		}
-		packageErr := s.checkPackages(ctx, op, client, inventory)
-		if packageErr != nil {
-			_ = s.DB.Model(&state).Update("check_error", pkgmanager.Redact(packageErr.Error())).Error
-		}
-		return errors.Join(auditErr, packageErr, s.checkRelease(ctx))
 	}
 	if len(selection) > 0 {
 		seen := map[string]bool{}
@@ -775,7 +725,7 @@ func (s *Service) readOperation(ctx context.Context, op *models.HostUpdateOperat
 		Kind:           "packages",
 		Selection:      selection,
 		Transaction:    plan,
-		Host:           info,
+		Host:           *client.HostSystem,
 		InventoryHash:  pkgmanager.InventoryDigest(inventory),
 		RepositoryHash: repoHash,
 		CatalogHash:    catalogHash,
@@ -789,13 +739,69 @@ func (s *Service) readOperation(ctx context.Context, op *models.HostUpdateOperat
 	return s.DB.Model(op).Update("plan_id", stored.ID).Error
 }
 
+func (s *Service) inspect(ctx context.Context, op *models.HostUpdateOperation, state models.HostUpdateState, log io.Writer) (*pkgmanager.Client, []pkgmanager.Package, error) {
+	if err := s.phase(op, "reading_inventory"); err != nil {
+		return nil, nil, err
+	}
+	client := s.client(log)
+	if err := s.probe(); err != nil {
+		return nil, nil, err
+	}
+	inventory, err := client.Inventory(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	now := time.Now().UTC()
+	if err = s.DB.Model(&state).Select("Inventory", "InventoryAt", "LastAttemptAt").Updates(&models.HostUpdateState{Inventory: inventory, InventoryAt: &now, LastAttemptAt: &now}).Error; err != nil {
+		return nil, nil, err
+	}
+	info, err := client.InspectHost(ctx, inventory)
+	if err != nil {
+		return nil, nil, err
+	}
+	client.HostSystem = &info
+	client.SylveVersion = s.version
+	if s.installed(ctx, state).Mode != "package" {
+		client.PreserveExecutable = s.executable
+	}
+	return client, inventory, nil
+}
+
+// monitor runs a check or an audit. Inspection, audit and package failures are
+// stored in their own columns, so a failing vulnerability feed doesn't hide
+// available updates.
+func (s *Service) monitor(ctx context.Context, op *models.HostUpdateOperation, state models.HostUpdateState, log io.Writer) error {
+	client, inventory, err := s.inspect(ctx, op, state, log)
+	if err != nil {
+		column := "check_error"
+		if op.Action == "audit" {
+			column = "audit_error"
+		}
+		s.storeError(column, err)
+		if op.Action == "check" && code(err) == "host_updates_require_pkgbase" {
+			return nil
+		}
+	} else {
+		err = s.auditPackages(ctx, op, client, inventory)
+		s.storeError("audit_error", err)
+		if op.Action == "check" {
+			packageErr := s.checkPackages(ctx, op, client, inventory)
+			s.storeError("check_error", packageErr)
+			err = errors.Join(err, packageErr)
+		}
+	}
+	if healthErr := s.recordHealth(op.Action, err); healthErr != nil {
+		logger.L.Warn().Err(healthErr).Msg("host_update_health_persistence_failed")
+	}
+	return err
+}
+
 func (s *Service) auditPackages(ctx context.Context, op *models.HostUpdateOperation, client *pkgmanager.Client, inventory []pkgmanager.Package) error {
 	if err := s.phase(op, "auditing"); err != nil {
 		return err
 	}
 	report, err := client.Audit(ctx, inventory, true)
 	if err != nil {
-		_ = s.DB.Model(&models.HostUpdateState{ID: 1}).Update("audit_error", pkgmanager.Redact(err.Error())).Error
 		return err
 	}
 	return s.storeAudit(inventory, report, op.ID)

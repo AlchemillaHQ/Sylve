@@ -17,6 +17,7 @@ func TestResolveQueueLane(t *testing.T) {
 		expected string
 	}{
 		{name: "lifecycle exec", job: "guest-lifecycle-exec", expected: queueLaneLifecycleID},
+		{name: "package exec", job: "guest-packages-exec", expected: queueLanePackagesID},
 		{name: "autostart", job: "guest-autostart-sequence", expected: queueLaneLifecycleID},
 		{name: "wol", job: "utils-wol-process", expected: queueLaneLifecycleID},
 		{name: "download start", job: "utils-download-start", expected: queueLaneDownloadsID},

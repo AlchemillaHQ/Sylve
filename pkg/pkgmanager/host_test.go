@@ -20,13 +20,13 @@ import (
 )
 
 func TestHostBranch(t *testing.T) {
-	for version, want := range map[string]string{"15.0": "15.0", "15.1p4": "15.1", "16.snap20261019120000": "16.snap", "15.snap20261019120000_1": "15.snap"} {
+	for version, want := range map[string]string{"15.0": "15.0", "15.1p4": "15.1", "16.snap20261019120000": "16.snap", "15.snap20261019120000_1": "15.snap", "15.1.a1.20261019120000": "15.1", "15.1.b2.20261019120000": "15.1", "15.1.rc1.20261019120000_1": "15.1"} {
 		got, err := HostBranch(version)
 		if err != nil || got != want {
 			t.Fatalf("%s: %s, %v", version, got, err)
 		}
 	}
-	for _, version := range []string{"14.3", "15.1.rc1", "15.snap1", "16.0-CURRENT", "", "15.1/../../"} {
+	for _, version := range []string{"15.1.rc1", "15.1.x1.20261019120000", "15.snap1", "16.0-CURRENT", "", "15.1/../../"} {
 		if _, err := HostBranch(version); err == nil {
 			t.Fatalf("accepted %q", version)
 		}
@@ -128,11 +128,11 @@ func TestPreviewWithoutSelectionRequiresHostScope(t *testing.T) {
 	}
 }
 
-func TestPackageVersionProbePreservesJailPinAndBinaryTrust(t *testing.T) {
+func TestPackageVersionProbeRangeAndBinaryTrust(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("pkg binaries must be root-owned")
 	}
-	for _, version := range []string{SupportedVersion, "2.8.5", "2.7.9", "3.0.0"} {
+	for _, version := range []string{"2.8.4", "2.8.5", "2.7.9", "3.0.0"} {
 		t.Run(version, func(t *testing.T) {
 			binary := filepath.Join(t.TempDir(), "pkg-static")
 			if err := os.WriteFile(binary, []byte("#!/bin/sh\nprintf '%s\\n' '"+version+"'\n"), 0755); err != nil {
@@ -142,8 +142,8 @@ func TestPackageVersionProbePreservesJailPinAndBinaryTrust(t *testing.T) {
 			if err != nil || got != version {
 				t.Fatalf("version probe: %q %v", got, err)
 			}
-			if err = Probe(binary); (err == nil) != (version == SupportedVersion) {
-				t.Fatalf("jail version pin changed for %s: %v", version, err)
+			if err = Probe(binary); (err == nil) != (version == "2.8.4" || version == "2.8.5") {
+				t.Fatalf("version %s: %v", version, err)
 			}
 			if err = os.Chmod(binary, 0777); err != nil {
 				t.Fatal(err)
@@ -165,7 +165,7 @@ func TestSylvePortsEpochCannotHideApplicationDowngrade(t *testing.T) {
 		}
 	}
 	for _, version := range []string{"2.7.9", "2.8.3", "3.0.0", "2.9.-1", "invalid"} {
-		if supportedHostPkgVersion(version) {
+		if supportedPkgVersion(version) {
 			t.Fatalf("accepted pkg %s", version)
 		}
 	}
@@ -234,6 +234,7 @@ func TestInspectHostSupportsSnapshotVersionsAndRegisteredKernel(t *testing.T) {
 		{Name: "FreeBSD-clibs", Origin: "base/FreeBSD-clibs", Version: "16.snap20261018120000", Repository: "base"},
 		{Name: "FreeBSD-kernel-generic", Origin: "base/FreeBSD-kernel-generic", Version: "16.snap20261019120000", Repository: "base"},
 		{Name: "pkg", Origin: "ports-mgmt/pkg", Version: "2.8.4", Repository: "ports"},
+		{Name: "FreeBSD-runtime-backup-libraries", Origin: "base/FreeBSD-runtime-backup", Version: "20261019120000"},
 	}
 	c.RunCommand = func(_ context.Context, args []string) (Result, error) {
 		if slices.Contains(args, "which") {

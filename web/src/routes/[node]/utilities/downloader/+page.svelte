@@ -722,7 +722,7 @@
 					<div class="flex flex-row items-end gap-4">
 						<CustomValueInput
 							label="Optional File Name"
-							placeholder="freebsd-14.3-base-amd64.txz"
+							placeholder="freebsd-15.1-base-amd64.txz"
 							bind:value={modalState.name}
 							topRightButton={isDownloadURL(modalState.url)
 								? {

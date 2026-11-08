@@ -165,10 +165,21 @@ export function safeAdvisoryURL(value: string): string | null {
 		return null;
 	}
 }
-export function packageReason(
-	reason = '',
-	fallback = 'The package operation could not be completed.'
-): string {
+// Joined Go errors arrive one per line, each as "code: detail".
+export function describeCodes(reason: string, describe: (code: string) => string): string {
+	const codes = reason
+		.split('\n')
+		.map((line) => line.split(':', 1)[0].trim())
+		.filter(Boolean);
+	return [...new Set((codes.length ? codes : ['']).map(describe))].join(' ');
+}
+
+export function packageReason(reason = '', fallback?: string): string {
+	const unverifiedPlan =
+		'pkg proposed a transaction that could not be verified. Nothing was installed. Create a fresh preview.';
+	const unverifiedData =
+		'Repository or package data could not be verified. Check for updates again.';
+	const invalidRequest = 'The request was invalid. Refresh and try again.';
 	const labels: Record<string, string> = {
 		no_eligible_packages: 'No eligible packages to upgrade',
 		no_eligible_package_changes: 'No package changes to apply',
@@ -191,7 +202,7 @@ export function packageReason(
 		package_operation_not_cancellable: 'This operation has finished or cannot be stopped',
 		pkg_static_not_found: 'pkg-static unavailable',
 		pkg_static_not_trusted: 'The host package tool could not be verified',
-		pkg_version_unsupported: 'Requires host pkg-static 2.8.4',
+		pkg_version_unsupported: 'Requires pkg 2.8.4 or newer in the 2.x series on the host',
 		package_database_unavailable: 'Package database unavailable',
 		package_audit_failed: 'The vulnerability audit failed. Check the command output for details.',
 		package_audit_database_unavailable: 'The vulnerability advisory database is unavailable',
@@ -265,8 +276,51 @@ export function packageReason(
 			'The monitoring settings could not be saved completely. Refresh and check them.',
 		lifecycle_task_in_progress: 'Another jail operation is in progress',
 		replication_lease_not_owned: 'Jail owned by another node',
-		package_shared_system_mount_unsupported: 'Shared system filesystem unsupported',
-		package_system_path_symlink_unsupported: 'Shared system path unsupported'
+		package_shared_system_mount_unsupported:
+			'Upgrades are unavailable while a shared filesystem is mounted over a system path in this jail',
+		package_system_path_symlink_unsupported: 'Shared system path unsupported',
+		jail_dataset_mountpoint_not_usable: 'The jail’s filesystem mountpoint is unavailable',
+		invalid_jail_runtime_state: 'The jail’s running state could not be checked',
+		package_operation_interrupted:
+			'Sylve restarted during this upgrade. Inspect installed packages and the command output before trying again.',
+		package_offline_command_unsupported: 'Start the jail to run this operation',
+		sylve_shutting_down: 'Sylve is shutting down. Try again after it restarts.',
+		duplicate_package_selection: 'A package was selected more than once',
+		too_many_packages: 'Too many packages selected. Preview all upgrades instead.',
+		package_repository_ambiguous:
+			'A package is offered by more than one repository. Disable the duplicate repository and try again.',
+		package_file_on_shared_mount_unsupported:
+			'A package would install files onto a shared filesystem. Nothing was installed.',
+		package_file_parent_symlink_unsupported:
+			'A package would install files through a symbolic link. Nothing was installed.',
+		invalid_package_file_path: 'A package contains an invalid file path. Nothing was installed.',
+		unsupported_package_plan: unverifiedPlan,
+		incomplete_package_plan: unverifiedPlan,
+		duplicate_package_plan_action: unverifiedPlan,
+		empty_package_confirmation: unverifiedPlan,
+		unexpected_package_prompt: unverifiedPlan,
+		package_transaction_not_confirmed: unverifiedPlan,
+		package_confirmation_output_too_large: unverifiedPlan,
+		invalid_package_catalog: unverifiedData,
+		invalid_package_repository: unverifiedData,
+		invalid_package_version: unverifiedData,
+		invalid_package_advisory: unverifiedData,
+		invalid_package_audit_report: unverifiedData,
+		protected_or_invalid_package_archive: unverifiedData,
+		package_archive_checksum_invalid: unverifiedData,
+		package_archive_checksum_unsupported: unverifiedData,
+		invalid_package_request: invalidRequest,
+		invalid_package_action: invalidRequest,
+		invalid_package_operation: invalidRequest,
+		invalid_package_target: invalidRequest,
+		invalid_package_task: invalidRequest,
+		invalid_log_offset: invalidRequest
 	};
-	return labels[reason.split(':', 1)[0].trim()] ?? fallback;
+	return describeCodes(
+		reason,
+		(code) =>
+			labels[code] ??
+			fallback ??
+			`The package operation could not be completed (${code || 'unknown error'}).`
+	);
 }

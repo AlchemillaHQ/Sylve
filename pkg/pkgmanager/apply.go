@@ -11,15 +11,30 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/creack/pty"
 )
 
+var installs sync.RWMutex
+
+// Drain waits for running installs and refuses new ones. Call it once, at shutdown.
+func Drain(waiting func()) {
+	if !installs.TryLock() {
+		waiting()
+		installs.Lock()
+	}
+}
+
 func (c *Client) Apply(ctx context.Context, args []string, approved Plan) error {
 	if c.Target.Offline {
 		return fmt.Errorf("jail_not_running")
 	}
+	if !installs.TryRLock() {
+		return fmt.Errorf("sylve_shutting_down")
+	}
+	defer installs.RUnlock()
 	if err := c.validateScopedChanges(approved); err != nil {
 		return err
 	}
@@ -40,7 +55,7 @@ func (c *Client) Apply(ctx context.Context, args []string, approved Plan) error 
 	if err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, c.Binary, argv...)
+	cmd := exec.Command(c.Binary, argv...)
 	cmd.Env = Environment()
 	terminal, err := pty.Start(cmd)
 	if err != nil {
@@ -48,7 +63,17 @@ func (c *Client) Apply(ctx context.Context, args []string, approved Plan) error 
 	}
 	defer terminal.Close()
 	transcript := ""
+	// Cancelling is only safe before pkg is told to proceed; after that, killing
+	// it would leave the target half-upgraded.
+	var mu sync.Mutex
 	confirmed := false
+	stop := context.AfterFunc(ctx, func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if !confirmed {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+	})
 	var approvalError error
 	buffer := make([]byte, 4096)
 	for {
@@ -89,14 +114,20 @@ func (c *Client) Apply(ctx context.Context, args []string, approved Plan) error 
 						approvalError = ValidatePackagePaths(ctx, c.Target, c.ManagedPaths)
 					}
 				}
+				mu.Lock()
+				if approvalError == nil {
+					approvalError = ctx.Err()
+				}
 				if approvalError != nil {
 					_, _ = terminal.Write([]byte("n\n"))
+				} else if _, err = terminal.Write([]byte("y\n")); err != nil {
+					approvalError = err
 				} else {
-					if _, err = terminal.Write([]byte("y\n")); err != nil {
-						approvalError = err
-						break
-					}
 					confirmed = true
+				}
+				mu.Unlock()
+				if err != nil {
+					break
 				}
 				transcript = ""
 			}
@@ -108,8 +139,9 @@ func (c *Client) Apply(ctx context.Context, args []string, approved Plan) error 
 			break
 		}
 	}
+	stop()
 	err = cmd.Wait()
-	if ctx.Err() != nil {
+	if !confirmed && ctx.Err() != nil {
 		return ctx.Err()
 	}
 	if approvalError != nil {

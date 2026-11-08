@@ -105,7 +105,9 @@ func TestAuditFindingsRetainedOnFailureAndNotificationsDeduplicated(t *testing.T
 		t.Fatal("repeated audit emitted duplicate findings")
 	}
 	for range 4 {
-		if err := s.failedCheck("audit", errors.New("network_unavailable: https://user:secret@example.org/feed")); err != nil {
+		failure := errors.New("network_unavailable: https://user:secret@example.org/feed")
+		s.storeError("audit_error", failure)
+		if err := s.recordHealth("audit", failure); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -120,7 +122,7 @@ func TestAuditFindingsRetainedOnFailureAndNotificationsDeduplicated(t *testing.T
 		t.Fatal("persistent failures should emit one health event")
 	}
 	for range 2 {
-		if err := s.successfulCheck(); err != nil {
+		if err := s.recordHealth("check", nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -180,16 +182,17 @@ func TestSystemChecksKeepAuditAndSelfUpdateEligibilityIndependent(t *testing.T) 
 				}
 				return client
 			}
-			op := models.HostUpdateOperation{UUID: uuid.NewString(), Action: "check"}
+			one := uint(1)
+			op := models.HostUpdateOperation{UUID: uuid.NewString(), Action: "check", Active: &one}
 			if err := s.DB.Create(&op).Error; err != nil {
 				t.Fatal(err)
 			}
-			err := s.readOperation(t.Context(), &op, nil, io.Discard)
-			if err == nil || code(err) != "package_audit_failed" || !audited || !refreshed || !solved {
-				t.Fatalf("system checks were blocked: audit=%v refresh=%v solve=%v err=%v", audited, refreshed, solved, err)
+			s.execute(op, nil)
+			if err := s.DB.First(&op, op.ID).Error; err != nil || op.Status != "failed" || !strings.HasPrefix(op.Error, "package_audit_failed") || !audited || !refreshed || !solved {
+				t.Fatalf("system checks were blocked: audit=%v refresh=%v solve=%v op=%+v err=%v", audited, refreshed, solved, op, err)
 			}
 			state, err := s.state()
-			if err != nil || state.CheckedAt == nil || state.CheckInventoryHash == "" || state.CheckError != "" || !strings.Contains(state.AuditError, "fixture feed unavailable") {
+			if err != nil || state.CheckedAt == nil || state.CheckInventoryHash == "" || state.CheckError != "" || state.FailureCount != 1 || !strings.Contains(state.AuditError, "fixture feed unavailable") {
 				t.Fatalf("partial check results lost: %+v %v", state, err)
 			}
 		})

@@ -276,7 +276,7 @@ func (s *Service) applyPackages(ctx context.Context, op *models.HostUpdateOperat
 	if err = client.Apply(applyCtx, pkgmanager.UpgradeArgs(repos, approved.Selection, false), approved.Transaction); err != nil {
 		return err
 	}
-	afterCtx, cancelAfter := context.WithTimeout(applyCtx, 2*time.Minute)
+	afterCtx, cancelAfter := context.WithTimeout(context.WithoutCancel(applyCtx), 2*time.Minute)
 	defer cancelAfter()
 	after, err := client.Inventory(afterCtx)
 	if err != nil {
@@ -396,7 +396,8 @@ func (s *Service) completeApply(ctx context.Context, op models.HostUpdateOperati
 	}
 	if err != nil {
 		message += " Follow-up audit unavailable: " + pkgmanager.Redact(err.Error())
-		_ = s.failedCheck("audit", err)
+		s.storeError("audit_error", err)
+		_ = s.recordHealth("audit", err)
 	}
 	return message, nil
 }

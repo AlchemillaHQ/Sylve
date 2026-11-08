@@ -67,6 +67,7 @@ const (
 
 const (
 	queueLaneLifecycleID   = "lifecycle"
+	queueLanePackagesID    = "packages"
 	queueLaneDownloadsID   = "downloads"
 	queueLaneZeltaID       = "zelta"
 	queueLaneMaintenanceID = "maintenance"
@@ -83,6 +84,7 @@ type queueLaneConfig struct {
 func queueLaneConfigs() []queueLaneConfig {
 	return []queueLaneConfig{
 		{LaneID: queueLaneLifecycleID, QueueName: "jobs-lifecycle", Limit: 8},
+		{LaneID: queueLanePackagesID, QueueName: "jobs-packages", Limit: 2},
 		{LaneID: queueLaneDownloadsID, QueueName: "jobs-downloads", Limit: 8},
 		{LaneID: queueLaneZeltaID, QueueName: "jobs-zelta", Limit: 8},
 		{LaneID: queueLaneMaintenanceID, QueueName: "jobs-maintenance", Limit: 4},
@@ -100,6 +102,8 @@ func resolveQueueLane(jobName string) string {
 		strings.HasPrefix(name, "guest-migrate-"),
 		strings.HasPrefix(name, "utils-wol-"):
 		return queueLaneLifecycleID
+	case strings.HasPrefix(name, "guest-packages-"):
+		return queueLanePackagesID
 	case strings.HasPrefix(name, "utils-download-"):
 		return queueLaneDownloadsID
 	case strings.HasPrefix(name, "zelta-"):
@@ -163,6 +167,7 @@ func StartQueue(ctx context.Context) {
 
 	startOrder := []string{
 		queueLaneLifecycleID,
+		queueLanePackagesID,
 		queueLaneDownloadsID,
 		queueLaneZeltaID,
 		queueLaneMaintenanceID,

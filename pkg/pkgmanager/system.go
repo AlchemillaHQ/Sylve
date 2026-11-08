@@ -59,6 +59,12 @@ func Classify(name, origin string) PackageKind {
 	return KindApplication
 }
 
+// pkg's BACKUP_LIBRARIES keeps the libraries an upgrade removed in a local
+// "<name>-backup-libraries" package versioned by timestamp, not by release.
+func backupLibraries(name string) bool {
+	return strings.HasSuffix(name, "-backup-libraries")
+}
+
 func HasPkgbase(inventory []Package) bool {
 	runtime, clibs := false, false
 	for _, pkg := range inventory {
@@ -159,7 +165,7 @@ func (c *Client) InspectSystem(ctx context.Context, inventory []Package) (System
 		return SystemInfo{}, err
 	}
 	for _, pkg := range inventory {
-		if !strings.HasPrefix(pkg.Name, "FreeBSD-") && !strings.HasPrefix(pkg.Origin, "base/") {
+		if backupLibraries(pkg.Name) || (!strings.HasPrefix(pkg.Name, "FreeBSD-") && !strings.HasPrefix(pkg.Origin, "base/")) {
 			continue
 		}
 		if pkg.Origin != "base/"+pkg.Name {
@@ -292,7 +298,7 @@ func (c *Client) validateScopedChanges(plan Plan) error {
 			return fmt.Errorf("invalid_package_name")
 		}
 		if scope == ScopeApplications {
-			if Protected(change.Name, "") {
+			if Protected(change.Name, "") && !managerOnly(plan) {
 				return fmt.Errorf("protected_package_change: %s", change.Name)
 			}
 			continue

@@ -35,15 +35,13 @@ func NewHostClient(log io.Writer) *Client {
 	return &Client{Binary: DefaultBinary, Target: Target{Host: true, Name: "host", Root: "/"}, Scope: ScopeHost, Log: log}
 }
 
-var hostPackageVersion = regexp.MustCompile(`^([1-9][0-9]*)(?:\.snap[0-9]{14}|\.([0-9]+)(?:p[0-9]+)?)(?:_[0-9]+)?$`)
+var hostPackageVersion = regexp.MustCompile(`^([1-9][0-9]*)(?:\.snap[0-9]{14}|\.([0-9]+)(?:p[0-9]+|\.(?:a|b|rc)[0-9]+\.[0-9]{14})?)(?:_[0-9]+)?$`)
 
+// HostBranch maps a pkgbase version to its branch. ALPHA, BETA and RC builds
+// belong to the release they lead up to.
 func HostBranch(version string) (string, error) {
 	parts := hostPackageVersion.FindStringSubmatch(version)
 	if parts == nil {
-		return "", fmt.Errorf("host_base_version_unsupported: %s", version)
-	}
-	major, _ := strconv.Atoi(parts[1])
-	if major < 15 {
 		return "", fmt.Errorf("host_base_version_unsupported: %s", version)
 	}
 	if parts[2] == "" {
@@ -72,12 +70,15 @@ func (c *Client) InspectHost(ctx context.Context, inventory []Package) (HostInfo
 			}
 			info.PackageManager = pkg.Name
 		}
-		if !strings.HasPrefix(pkg.Origin, "base/") && !strings.HasPrefix(pkg.Name, "FreeBSD-") {
+		if backupLibraries(pkg.Name) || (!strings.HasPrefix(pkg.Origin, "base/") && !strings.HasPrefix(pkg.Name, "FreeBSD-")) {
 			continue
 		}
+		if pkg.Origin != "base/"+pkg.Name {
+			return HostInfo{}, fmt.Errorf("host_base_metadata_invalid: %s", pkg.Name)
+		}
 		branch, err := HostBranch(pkg.Version)
-		if err != nil || pkg.Origin != "base/"+pkg.Name {
-			return HostInfo{}, fmt.Errorf("host_base_metadata_invalid")
+		if err != nil {
+			return HostInfo{}, fmt.Errorf("%w: %s", err, pkg.Name)
 		}
 		if info.Branch != "" && info.Branch != branch {
 			return HostInfo{}, fmt.Errorf("host_base_branch_mixed")
@@ -110,7 +111,7 @@ func (c *Client) InspectHost(ctx context.Context, inventory []Package) (HostInfo
 	info.ABI = "FreeBSD:" + major + ":" + arch
 	info.OSVersion = metadata.osVersion
 	if metadata.version != runtimeVersion || metadata.abi != info.ABI || info.OSVersion/100000 == 0 || strconv.Itoa(int(info.OSVersion/100000)) != major {
-		return HostInfo{}, fmt.Errorf("host_base_metadata_invalid")
+		return HostInfo{}, fmt.Errorf("host_base_metadata_invalid: FreeBSD-runtime")
 	}
 	readVersion := hostOSVersion
 	if c.HostOSVersion != nil {
@@ -139,18 +140,13 @@ func (c *Client) HostPreview(ctx context.Context, repos []Repository, names []st
 			return Plan{}, fmt.Errorf("invalid_package_name")
 		}
 	}
-	if manager := c.HostSystem.PackageManager; manager != "" {
-		if c.Log != nil {
-			_, _ = fmt.Fprintln(c.Log, "Checking for package-manager updates.")
-		}
-		managerPlan, err := c.Preview(ctx, repos, []string{manager})
-		if err != nil {
-			return Plan{}, err
-		}
-		if slices.ContainsFunc(managerPlan.Changes, func(change Change) bool { return change.Name == manager && change.Action == "upgrade" }) {
-			c.HostSelection = []string{manager}
-			return managerPlan, c.validateHostChanges(managerPlan)
-		}
+	managerPlan, pending, err := c.ManagerPreview(ctx, repos, c.HostSystem.PackageManager)
+	if err != nil {
+		return Plan{}, err
+	}
+	if pending {
+		c.HostSelection = []string{c.HostSystem.PackageManager}
+		return managerPlan, c.validateHostChanges(managerPlan)
 	}
 	c.HostSelection = slices.Clone(names)
 	if c.Log != nil {
@@ -290,7 +286,7 @@ func (c *Client) verifyHostCandidates(ctx context.Context, plan Plan, repos []Re
 			}
 			applications = append(applications, metadata)
 		}
-		if (change.Name == "pkg" || change.Name == "pkg-devel") && !supportedHostPkgVersion(metadata.version) {
+		if (change.Name == "pkg" || change.Name == "pkg-devel") && !supportedPkgVersion(metadata.version) {
 			return fmt.Errorf("pkg_version_unsupported")
 		}
 		if metadata.origin == "sysutils/sylve" || change.Name == "sylve" {
@@ -342,7 +338,7 @@ func ValidateHostResult(plan Plan, inventory []Package) error {
 	return nil
 }
 
-func supportedHostPkgVersion(version string) bool {
+func supportedPkgVersion(version string) bool {
 	version, _, _ = strings.Cut(version, ",")
 	version, _, _ = strings.Cut(version, "_")
 	return semver.IsValid("v"+version) && semver.Compare("v"+version, "v2.8.4") >= 0 && semver.Compare("v"+version, "v3.0.0") < 0
@@ -360,12 +356,5 @@ func ProbeHost() error {
 	if err := validateHostTarget(); err != nil {
 		return err
 	}
-	version, err := probeVersion(DefaultBinary)
-	if err != nil {
-		return err
-	}
-	if !supportedHostPkgVersion(version) {
-		return fmt.Errorf("pkg_version_unsupported")
-	}
-	return nil
+	return Probe(DefaultBinary)
 }

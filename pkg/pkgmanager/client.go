@@ -34,6 +34,9 @@ type Target struct {
 	Dataset string `json:"dataset"`
 	GUID    string `json:"guid"`
 	Offline bool   `json:"offline"`
+	// SharedSystem is set when a foreign mount covers a system path: reads are
+	// fine through pkg -j, but an upgrade could write through it.
+	SharedSystem bool `json:"sharedSystem,omitempty"`
 }
 
 func (t Target) validate() error {
@@ -264,8 +267,8 @@ func Probe(binary string) error {
 	if err != nil {
 		return err
 	}
-	if version != SupportedVersion {
-		return fmt.Errorf("pkg_version_unsupported: tested version is %s", SupportedVersion)
+	if !supportedPkgVersion(version) {
+		return fmt.Errorf("pkg_version_unsupported")
 	}
 	return nil
 }
@@ -285,7 +288,7 @@ func probeVersion(binary string) (string, error) {
 	cmd.Env = Environment()
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("pkg_version_unsupported: tested version is %s", SupportedVersion)
+		return "", fmt.Errorf("pkg_version_unsupported")
 	}
 	return strings.TrimSpace(string(out)), nil
 }
@@ -347,7 +350,7 @@ func (c *Client) Audit(ctx context.Context, inventory []Package, fetch bool) (Au
 		return Audit{}, err
 	}
 	defer directory.Close()
-	fd, err := unix.Openat(int(directory.Fd()), "vuln.xml", unix.O_RDONLY|unix.O_NOFOLLOW, 0)
+	fd, err := unix.Openat(int(directory.Fd()), "vuln.xml", unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return Audit{}, fmt.Errorf("package_audit_database_unavailable: %w", err)
 	}
@@ -387,7 +390,7 @@ func (c *Client) CatalogDigest(ctx context.Context, repos []Repository) (string,
 				return "", err
 			}
 			file := "db" + suffix
-			fd, err := unix.Openat(repofd, file, unix.O_RDONLY|unix.O_NOFOLLOW, 0)
+			fd, err := unix.Openat(repofd, file, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
 			_ = unix.Close(repofd)
 			if os.IsNotExist(err) && suffix != "" {
 				continue
@@ -605,6 +608,27 @@ func (c *Client) Preview(ctx context.Context, repos []Repository, names []string
 	return ParsePlan(result.Stdout)
 }
 
+// ManagerPreview previews an upgrade of pkg itself. pkg installs its own upgrade
+// before any other transaction but a dry run skips that step, so a pending one
+// has to be applied on its own first.
+func (c *Client) ManagerPreview(ctx context.Context, repos []Repository, manager string) (Plan, bool, error) {
+	if manager == "" {
+		return Plan{}, false, nil
+	}
+	if c.Log != nil {
+		_, _ = fmt.Fprintln(c.Log, "Checking for package-manager updates.")
+	}
+	plan, err := c.Preview(ctx, repos, []string{manager})
+	if err != nil {
+		return Plan{}, false, err
+	}
+	return plan, slices.ContainsFunc(plan.Changes, func(change Change) bool { return change.Name == manager && change.Action == "upgrade" }), nil
+}
+
+func managerOnly(plan Plan) bool {
+	return len(plan.Changes) == 1 && plan.Changes[0].Action == "upgrade" && Classify(plan.Changes[0].Name, "") == KindPackageManager
+}
+
 func (c *Client) VerifyCandidates(ctx context.Context, plan Plan, repos []Repository) error {
 	if c.Scope == ScopeHost {
 		return c.verifyHostCandidates(ctx, plan, repos)
@@ -632,7 +656,7 @@ func (c *Client) VerifyCandidates(ctx context.Context, plan Plan, repos []Reposi
 				return err
 			}
 			fields := strings.Split(strings.TrimSpace(result.Stdout), "\t")
-			if result.ExitCode != 0 || len(fields) != 3 || fields[0] != change.Name || fields[1] != change.To || fields[2] == "" || Protected(fields[0], fields[2]) {
+			if result.ExitCode != 0 || len(fields) != 3 || fields[0] != change.Name || fields[1] != change.To || fields[2] == "" || (Protected(fields[0], fields[2]) && !managerOnly(plan)) {
 				return fmt.Errorf("protected_or_invalid_package_archive: %s", change.Name)
 			}
 		}
@@ -683,7 +707,7 @@ func (c *Client) ValidateInstalled(plan Plan, inventory []Package) error {
 			}
 			continue
 		}
-		if pkg.Locked || (scope == ScopeApplications && pkg.Protected) {
+		if pkg.Locked || (scope == ScopeApplications && pkg.Protected && !managerOnly(plan)) {
 			return fmt.Errorf("protected_or_locked_package_change: %s", pkg.Name)
 		}
 		if scope == ScopeHost && change.From != "" && pkg.Version != change.From {

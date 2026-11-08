@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -64,6 +65,71 @@ func TestApplyStopsWithDaemonContext(t *testing.T) {
 	defer cancel()
 	if err := client.Apply(ctx, []string{"upgrade"}, Plan{}); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("installer ignored cancellation: %v", err)
+	}
+}
+
+func TestCatalogDigestRejectsFIFOWithoutBlocking(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "var/db/pkg/repos/ports")
+	if err := os.MkdirAll(repo, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(filepath.Join(repo, "db"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	client := Client{Target: Target{JID: 4, Name: "fixture", Root: root}}
+	done := make(chan error, 1)
+	go func() {
+		_, err := client.CatalogDigest(t.Context(), []Repository{{Name: "ports"}})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil || err.Error() != "invalid_package_catalog" {
+			t.Fatalf("accepted a FIFO catalog: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("catalog digest blocked on a FIFO")
+	}
+}
+
+func TestConfirmedApplyOutlivesCancellationAndDrain(t *testing.T) {
+	dir := t.TempDir()
+	plan := "The following 1 package(s) will be affected (of 1 checked):\n\nInstalled packages to be UPGRADED:\n\tapp: 1 -> 2 [ports]\n\nNumber of packages to be upgraded: 1\n"
+	approved, err := ParsePlan(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(dir, "pkg-fixture")
+	script := "#!/bin/sh\nprintf '" + strings.ReplaceAll(plan, "\n", "\\n") + "\\nProceed with this action? [y/N]: '\nread answer\n[ \"$answer\" = y ] || exit 1\ntouch " + dir + "/confirmed\n/bin/sleep 1\ntouch " + dir + "/installed\n"
+	if err = os.WriteFile(binary, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	client := NewHostClient(nil)
+	client.Binary, client.HostSystem = binary, &HostInfo{Branch: "16.snap"}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- client.Apply(ctx, []string{"upgrade"}, approved) }()
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if _, err = os.Stat(filepath.Join(dir, "confirmed")); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("installer was not confirmed")
+		}
+	}
+	cancel()
+	waited := false
+	Drain(func() { waited = true })
+	t.Cleanup(installs.Unlock)
+	if err = <-done; err != nil || !waited {
+		t.Fatalf("waited=%v: %v", waited, err)
+	}
+	if _, err = os.Stat(filepath.Join(dir, "installed")); err != nil {
+		t.Fatal("installer was killed after confirmation")
+	}
+	if err = client.Apply(t.Context(), []string{"upgrade"}, approved); err == nil || err.Error() != "sylve_shutting_down" {
+		t.Fatalf("started an install while draining: %v", err)
 	}
 }
 

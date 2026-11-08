@@ -52,9 +52,12 @@
 	let upgradeReason = $state('Checking jail availability...');
 	let now = $state(Date.now());
 	let notifiedTask = 0;
+	let unavailable = $state(false);
 	const controller = new AbortController();
 	const options = () => ({ hostname: node, signal: controller.signal });
-	const running = $derived(job === null || ['queued', 'running'].includes(job.status));
+	const running = $derived(
+		!unavailable && (job === null || ['queued', 'running'].includes(job.status))
+	);
 	const cancellable = $derived(running && !!job && job.action !== 'pkg-upgrade');
 	const destructive = $derived(
 		job?.plan?.transaction.changes.some((c) => ['remove', 'downgrade'].includes(c.action)) ?? false
@@ -100,9 +103,11 @@
 			((job.status === 'success' && !job.plan) ||
 				job.error.split(':', 1)[0].trim() === 'no_eligible_packages')
 	);
-	const failed = $derived(!emptyPreview && (job?.status === 'failed' || job?.phase === 'failed'));
+	const failed = $derived(
+		unavailable || (!emptyPreview && (job?.status === 'failed' || job?.phase === 'failed'))
+	);
 	const statusLabel = $derived.by(() => {
-		if (!job) return 'Loading operation...';
+		if (!job) return unavailable ? 'Operation unavailable' : 'Loading operation...';
 		if (emptyPreview) return 'No eligible packages to upgrade';
 		if (failed) return 'Operation failed';
 		if (running) return phaseLabels[job.phase] || 'In progress';
@@ -141,6 +146,7 @@
 			if (isAPIResponse(result)) {
 				error = packageReason(result.message, 'This package operation is unavailable.');
 				upgradeAvailable = false;
+				unavailable = !job;
 				return;
 			}
 			job = result;
@@ -207,7 +213,13 @@
 	useInterval(2000, {
 		callback: () => {
 			now = Date.now();
-			if (open && !applying && (running || !logsComplete) && document.visibilityState === 'visible')
+			if (
+				open &&
+				!applying &&
+				!unavailable &&
+				(running || !logsComplete) &&
+				document.visibilityState === 'visible'
+			)
 				void refresh();
 		}
 	});
@@ -394,8 +406,9 @@
 					{:else if !failed && job?.plan && job.plan.transaction.changes.length > 0}
 						<p class="text-muted-foreground text-xs">
 							{#if systemUpgrade}FreeBSD {job.plan.system?.release} userland and its base dependencies
-								only. Kernel, boot, package-manager, and application changes are excluded.{:else}Includes
-								all dependency changes, removals, and downgrades.{/if}
+								only. Kernel, boot, package-manager, and application changes are excluded.{:else if job.plan.selection.length === 1 && ['pkg', 'pkg-devel'].includes(job.plan.selection[0])}pkg
+								must be upgraded on its own first. Upgrade it, then preview the remaining packages
+								again.{:else}Includes all dependency changes, removals, and downgrades.{/if}
 						</p>
 					{/if}
 				</div>

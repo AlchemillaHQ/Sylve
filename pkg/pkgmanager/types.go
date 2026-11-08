@@ -13,8 +13,6 @@ import (
 
 const DefaultBinary = "/usr/local/sbin/pkg-static"
 
-const SupportedVersion = "2.8.4"
-
 type Advisory struct {
 	ID          string   `json:"id"`
 	Description string   `json:"description"`

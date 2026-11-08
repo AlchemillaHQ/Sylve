@@ -21688,10 +21688,6 @@ msgstr ""
 msgid "Available versions are shown in Packages. Nothing was installed."
 msgstr ""
 
-#: src/lib/components/custom/System/Updates/Operation.svelte
-msgid "Update pkg first, then preview the remaining packages again. Jail package management and monitoring require pkg 2.8.4 and may become unavailable after this upgrade."
-msgstr ""
-
 #. 0: job?.plan ? convertDbTime(job.plan.expiresAt) \\: ''
 #: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "Expires {0}. Nothing has been installed."
@@ -23594,4 +23590,29 @@ msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "No output recorded."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Operation unavailable"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "pkg must be upgraded on its own first. Apply this, then preview the remaining packages again."
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Creating boot environment"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Downloading release"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Verifying release"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "pkg must be updated on its own first. Install this, then preview the remaining packages again."
 msgstr ""

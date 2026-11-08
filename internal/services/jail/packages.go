@@ -36,6 +36,7 @@ type packageAdmission struct {
 	ordinary  int
 	operation string
 	cancel    context.CancelCauseFunc
+	cancelled bool
 }
 type packageOwnerKey struct{}
 
@@ -45,7 +46,6 @@ type packageRuntime struct {
 	telemetry *gorm.DB
 	request   PackageTaskRequester
 	dataPath  string
-	slots     chan struct{}
 	resolve   func(context.Context, *jailModels.Jail) (pkgmanager.Target, bool, error)
 	client    func(pkgmanager.Target, io.Writer) *pkgmanager.Client
 }
@@ -68,7 +68,6 @@ func (s *Service) InitializePackages(telemetry *gorm.DB, request PackageTaskRequ
 		request:   request,
 		dataPath:  filepath.Join(dataPath, "package-operations"),
 		admission: make(map[uint]*packageAdmission),
-		slots:     make(chan struct{}, 2),
 	}
 	s.packages.resolve = s.resolvePackageTarget
 	s.packages.client = func(target pkgmanager.Target, log io.Writer) *pkgmanager.Client {
@@ -136,13 +135,24 @@ func (s *Service) resolvePackageTarget(ctx context.Context, jail *jailModels.Jai
 		break
 	}
 	safe, err := pkgmanager.ValidatePrivateRoot(ctx, target)
-	if err != nil {
+	if err != nil && err.Error() != "package_shared_system_mount_unsupported" {
 		return pkgmanager.Target{}, false, err
 	}
+	target.SharedSystem = err != nil
 	if err := pkgmanager.Probe(""); err != nil {
 		return pkgmanager.Target{}, false, err
 	}
 	return target, safe && !target.Offline, nil
+}
+
+func upgradableTarget(target pkgmanager.Target) error {
+	if target.Offline {
+		return fmt.Errorf("jail_not_running")
+	}
+	if target.SharedSystem {
+		return fmt.Errorf("package_shared_system_mount_unsupported")
+	}
+	return nil
 }
 
 func (s *Service) packageState(jail *jailModels.Jail, guid string) (jailModels.JailPackageState, error) {
@@ -465,8 +475,10 @@ func (s *Service) StartPackageOperation(ctx context.Context, ctID uint, action s
 	if err != nil {
 		return jailTypes.PackageJob{}, err
 	}
-	if action == "pkg-upgrade" && target.Offline {
-		return jailTypes.PackageJob{}, fmt.Errorf("jail_not_running")
+	if action == "pkg-upgrade" {
+		if err = upgradableTarget(target); err != nil {
+			return jailTypes.PackageJob{}, err
+		}
 	}
 	runtime := s.packages
 	runtime.mu.Lock()
@@ -576,7 +588,7 @@ func (s *Service) finishPackageOperation(op jailModels.JailPackageOperation, err
 	if s.packages != nil {
 		s.packages.mu.Lock()
 		if gate := s.packages.admission[op.CTID]; gate != nil && gate.operation == op.ID {
-			gate.operation, gate.cancel = "", nil
+			gate.operation, gate.cancel, gate.cancelled = "", nil, false
 			if gate.ordinary == 0 {
 				delete(s.packages.admission, op.CTID)
 			}
@@ -611,15 +623,20 @@ func (s *Service) CancelPackageOperation(ctx context.Context, ctID, taskID uint)
 		return jailTypes.PackageJob{}, err
 	}
 	var cancel context.CancelCauseFunc
+	queued := false
 	s.packages.mu.Lock()
 	if gate := s.packages.admission[ctID]; gate != nil && gate.operation == op.ID {
 		cancel = gate.cancel
+		if cancel == nil && op.Action != "pkg-upgrade" {
+			gate.cancelled, queued = true, true
+		}
 	}
 	s.packages.mu.Unlock()
-	if cancel == nil {
+	if cancel != nil {
+		cancel(errPackageCancelled)
+	} else if !queued {
 		return jailTypes.PackageJob{}, fmt.Errorf("package_operation_not_cancellable")
 	}
-	cancel(errPackageCancelled)
 	return s.packageJob(op)
 }
 

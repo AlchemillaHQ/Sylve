@@ -35,6 +35,7 @@ import (
 
 const (
 	guestLifecycleExecQueueName = "guest-lifecycle-exec"
+	guestPackageExecQueueName   = "guest-packages-exec"
 	guestAutostartQueueName     = "guest-autostart-sequence"
 
 	lifecycleTaskInterruptedByRestartMessage = "interrupted_by_server_restart"
@@ -325,9 +326,11 @@ func (s *Service) finalizeTerminalLifecycleTaskAudit(task taskModels.GuestLifecy
 }
 
 func (s *Service) RegisterJobs() {
-	db.QueueRegisterJSON[guestLifecycleExecPayload](guestLifecycleExecQueueName, func(ctx context.Context, payload guestLifecycleExecPayload) error {
-		return s.executeQueuedTask(ctx, payload.TaskID)
-	})
+	for _, name := range []string{guestLifecycleExecQueueName, guestPackageExecQueueName} {
+		db.QueueRegisterJSON[guestLifecycleExecPayload](name, func(ctx context.Context, payload guestLifecycleExecPayload) error {
+			return s.executeQueuedTask(ctx, payload.TaskID)
+		})
+	}
 
 	db.QueueRegisterNoPayload(guestAutostartQueueName, func(ctx context.Context) error {
 		if err := s.runStartupAutostart(ctx); err != nil {
@@ -678,7 +681,11 @@ func (s *Service) createTask(
 			return nil, "", err
 		}
 
-		if err := db.EnqueueJSON(ctx, guestLifecycleExecQueueName, guestLifecycleExecPayload{TaskID: task.ID}); err != nil {
+		queue := guestLifecycleExecQueueName
+		if guestType == taskModels.GuestTypeJail && jail.IsPackageAction(action) {
+			queue = guestPackageExecQueueName
+		}
+		if err := db.EnqueueJSON(ctx, queue, guestLifecycleExecPayload{TaskID: task.ID}); err != nil {
 			err = s.cancelUnpublishedCreation(ctx, task, err)
 			s.markLifecycleTaskPublishFailed(task.ID, "enqueue_failed", err)
 			s.finalizePreparedLifecycleAudit(auditRef, err)
