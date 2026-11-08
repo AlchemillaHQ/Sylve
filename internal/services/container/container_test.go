@@ -279,6 +279,81 @@ func TestCatalogDirectoriesLeftEmptyBecomeVolumes(t *testing.T) {
 	}
 }
 
+func TestCatalogHintExamplesBecomePlaceholders(t *testing.T) {
+	service := newCatalogService(t)
+	for app, want := range map[string]map[string]string{
+		"adguardhome-sync": {"ORIGIN_URL": "http://192.168.1.2:3000", "REPLICA1_URL": ""},
+		"authelia-server":  {"PUBLIC_URL": "https://auth.example.com"},
+		"memcached":        {"MEMCACHED_ARGS": "-m 256 -c 2048"},
+		"vikunja":          {"VIKUNJA_SERVICE_PUBLICURL": "http://192.168.1.10:3456/"},
+		"plex":             {"ALLOWED_NETWORKS": "192.168.1.0/24"},
+	} {
+		template, err := service.CatalogTemplate(t.Context(), "daemonless", app)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, variable := range template.Variables {
+			if placeholder, ok := want[variable.Name]; ok && variable.Placeholder != placeholder {
+				t.Errorf("%s %s: placeholder %q, want %q", app, variable.Name, variable.Placeholder, placeholder)
+			}
+		}
+	}
+}
+
+func TestCatalogParentFoldersLeftEmptyBecomeStackDatasets(t *testing.T) {
+	service := newCatalogService(t)
+	manifest := `services:
+  api:
+    image: api
+    volumes:
+      - ${DATA_DIR}/files:/files
+      - ${DATA_DIR}/db:/db
+  worker:
+    image: worker
+    volumes:
+      - ${DATA_DIR}/files:/files
+x-fjord:
+  variables:
+    - name: DATA_DIR
+      label: Folder for uploads and the database
+      type: path
+      default: /containers/app
+`
+	if err := os.WriteFile(filepath.Join(service.DataDir, "catalog", "daemonless", "manifests", "immich.yaml"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	template, err := service.CatalogTemplate(t.Context(), "daemonless", "immich")
+	if err != nil || len(template.Variables) != 1 || template.Variables[0].Target != "" ||
+		!slices.Equal(template.Variables[0].Folders, []string{"db", "files"}) {
+		t.Fatal("a setting holding several folders lists them", template.Variables, err)
+	}
+
+	for value, want := range map[string]func(containerModels.Mount) bool{
+		"": func(mount containerModels.Mount) bool {
+			return mount.Type == containerModels.MountDataset && mount.Source == "."+mount.Target && mount.Owner == "1000:1000"
+		},
+		"/srv/app": func(mount containerModels.Mount) bool {
+			return mount.Type == containerModels.MountPath && mount.Source == "/srv/app"+mount.Target
+		},
+	} {
+		plan, err := renderDefaults(t, service, "daemonless/immich", map[string]string{"DATA_DIR": value}, nil)
+		if err != nil {
+			t.Fatal("the folder setting may be left empty", err)
+		}
+		mounts := 0
+		for _, create := range plan.Containers {
+			for _, mount := range create.Mounts {
+				if mounts++; !want(mount) {
+					t.Fatal("left empty, each folder is a dataset under the stack; given, a folder in it", value, create.Name, mount)
+				}
+			}
+		}
+		if mounts != 3 {
+			t.Fatal("every service mounts its folders", value, plan.Containers)
+		}
+	}
+}
+
 func envOf(create containerServiceInterfaces.CreateRequest) map[string]string {
 	env := map[string]string{}
 	for _, variable := range create.Env {

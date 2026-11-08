@@ -33,6 +33,7 @@ export const CatalogVariableSchema = z.object({
 	label: z.string(),
 	hint: z.string().catch(''),
 	type: z.string(),
+	placeholder: z.string().catch(''),
 	default: z.string(),
 	optional: z.boolean(),
 	advanced: z.boolean(),
@@ -40,6 +41,7 @@ export const CatalogVariableSchema = z.object({
 	owner: z.string().catch(''),
 	protocol: z.string().catch(''),
 	target: z.string().catch(''),
+	folders: z.array(z.string()).catch([]),
 	values: z
 		.record(z.string(), z.string())
 		.nullish()

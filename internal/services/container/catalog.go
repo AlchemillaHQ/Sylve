@@ -49,6 +49,7 @@ var (
 	catalogLogo     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*\.(svg|png)$`)
 	catalogVars     = regexp.MustCompile(`\$\{([A-Za-z0-9_]+)(?::-([^}]*))?\}`)
 	catalogLabelEnd = regexp.MustCompile(` \(|\s+[—–]\s+|\. |; |: |, (e\.g\.|such as) `)
+	catalogExample  = regexp.MustCompile(`^E\.g\. (.+?)(?:\.\s| \(|\.?$)`)
 
 	catalogNameRegex = regexp.MustCompile(`[^A-Za-z0-9-]+`)
 	volumeNameRegex  = regexp.MustCompile(`[^A-Za-z0-9_.-]+`)
@@ -381,7 +382,8 @@ func (s *Service) CatalogTemplate(ctx context.Context, source, id string) (conta
 			maps.Copy(every.Services, added)
 		}
 	}
-	directories, protocols := catalogDirectories(every), catalogPortProtocols(every)
+	directories, folders := catalogDirectories(every)
+	protocols := catalogPortProtocols(every)
 	defaults := map[string]string{}
 	for _, variable := range manifest.Fjord.Variables {
 		defaults[variable.Name] = variable.Default
@@ -395,6 +397,9 @@ func (s *Service) CatalogTemplate(ctx context.Context, source, id string) (conta
 		item := containerServiceInterfaces.CatalogVariable{Name: variable.Name, Type: variable.Type, Default: value,
 			Optional: variable.Optional, Advanced: variable.Level == "advanced", Protocol: protocols[variable.Name], Values: variable.Values}
 		item.Label, item.Hint = catalogLabel(variable.Name, variable.Label)
+		if example := catalogExample.FindStringSubmatch(item.Hint); example != nil {
+			item.Placeholder = example[1]
+		}
 		if target, ok := directories[variable.Name]; ok {
 			item.Target, item.Volume = target, volumeName(target, variable.Name)
 			item.Owner = appOwner
@@ -402,6 +407,7 @@ func (s *Service) CatalogTemplate(ctx context.Context, source, id string) (conta
 				item.Owner = fmt.Sprintf("%d:%d", permissions.UID, permissions.GID)
 			}
 		}
+		item.Folders = folders[variable.Name]
 		return item
 	}
 	originals := []string{}
@@ -641,8 +647,9 @@ func (s *Service) RenderCatalogApp(ctx context.Context, source, id string, req c
 		return plan, err
 	}
 
+	directories, folders := catalogDirectories(catalogManifest{Services: resolved.services})
 	r := catalogRender{os: app.OS, values: map[string]string{}, types: map[string]string{}, optional: map[string]bool{},
-		owners: map[string][2]string{}, directories: catalogDirectories(catalogManifest{Services: resolved.services})}
+		owners: map[string][2]string{}}
 	for _, variable := range variables {
 		r.values[variable.Name], r.types[variable.Name], r.optional[variable.Name] = catalogDefault(variable.Default), variable.Type, variable.Optional
 		if permissions := variable.HostPermissions; permissions != nil {
@@ -696,8 +703,9 @@ func (s *Service) RenderCatalogApp(ctx context.Context, source, id string, req c
 		}
 	}
 	for _, variable := range variables {
-		_, directory := r.directories[variable.Name]
-		if !variable.Optional && !directory && strings.TrimSpace(r.values[variable.Name]) == "" {
+		_, directory := directories[variable.Name]
+		_, parent := folders[variable.Name]
+		if !variable.Optional && !directory && !parent && strings.TrimSpace(r.values[variable.Name]) == "" {
 			label, _ := catalogLabel(variable.Name, variable.Label)
 			return plan, fmt.Errorf("catalog_setting_required: %s", label)
 		}
@@ -736,13 +744,12 @@ func (s *Service) RenderCatalogApp(ctx context.Context, source, id string, req c
 }
 
 type catalogRender struct {
-	os          string
-	values      map[string]string
-	types       map[string]string
-	optional    map[string]bool
-	owners      map[string][2]string
-	directories map[string]string
-	appOwner    string
+	os       string
+	values   map[string]string
+	types    map[string]string
+	optional map[string]bool
+	owners   map[string][2]string
+	appOwner string
 }
 
 func (r catalogRender) expand(text string) string {
@@ -784,8 +791,11 @@ func (r catalogRender) spec(service composeService) (containerServiceInterfaces.
 		if len(parts) < 2 {
 			return spec, fmt.Errorf("invalid_catalog_volume: %s", volume)
 		}
-		variable := strings.TrimSuffix(strings.TrimPrefix(parts[0], "${"), "}")
+		variable, folder, _ := strings.Cut(strings.TrimPrefix(parts[0], "${"), "}")
 		source, target := r.expand(parts[0]), r.expand(parts[1])
+		if folder != "" && source == folder {
+			source = "." + folder
+		}
 		mount := containerModels.Mount{Type: containerModels.MountVolume, Source: source, Target: target,
 			ReadOnly: len(parts) > 2 && parts[2] == "ro"}
 		switch {
@@ -885,18 +895,30 @@ func renderPort(port composePort, expand func(string) string) (containerModels.P
 	return mapping, err == nil && err2 == nil && hostPort > 0 && containerPort > 0
 }
 
-func catalogDirectories(manifest catalogManifest) map[string]string {
-	directories := map[string]string{}
+// catalogDirectories maps the settings a volume names to its target, and those
+// it names the parent of, as in ${DATA_DIR}/postgres, to their folders.
+func catalogDirectories(manifest catalogManifest) (map[string]string, map[string][]string) {
+	directories, folders := map[string]string{}, map[string][]string{}
 	for _, service := range manifest.Services {
 		for _, volume := range service.Volumes {
 			raw, _, _ := strings.Cut(volume, "#")
 			parts := strings.Split(strings.TrimSpace(raw), ":")
-			if name, ok := strings.CutPrefix(parts[0], "${"); ok && len(parts) > 1 {
-				directories[strings.TrimSuffix(name, "}")] = parts[1]
+			name, ok := strings.CutPrefix(parts[0], "${")
+			if !ok || len(parts) < 2 {
+				continue
+			}
+			name, folder, _ := strings.Cut(name, "}")
+			folder = strings.TrimPrefix(folder, "/")
+			switch {
+			case folder == "":
+				directories[name] = parts[1]
+			case !slices.Contains(folders[name], folder):
+				folders[name] = append(folders[name], folder)
+				slices.Sort(folders[name])
 			}
 		}
 	}
-	return directories
+	return directories, folders
 }
 
 func catalogOwner(source string, values map[string]string) string {

@@ -175,18 +175,20 @@ type CatalogVariant struct {
 }
 
 type CatalogVariable struct {
-	Name     string            `json:"name"`
-	Label    string            `json:"label"`
-	Hint     string            `json:"hint,omitempty"`
-	Type     string            `json:"type"`
-	Default  string            `json:"default"`
-	Optional bool              `json:"optional"`
-	Advanced bool              `json:"advanced"`
-	Volume   string            `json:"volume"`
-	Owner    string            `json:"owner,omitempty"`
-	Protocol string            `json:"protocol,omitempty"`
-	Target   string            `json:"target,omitempty"`
-	Values   map[string]string `json:"values,omitempty"`
+	Name        string            `json:"name"`
+	Label       string            `json:"label"`
+	Hint        string            `json:"hint,omitempty"`
+	Type        string            `json:"type"`
+	Placeholder string            `json:"placeholder,omitempty"`
+	Default     string            `json:"default"`
+	Optional    bool              `json:"optional"`
+	Advanced    bool              `json:"advanced"`
+	Volume      string            `json:"volume"`
+	Owner       string            `json:"owner,omitempty"`
+	Protocol    string            `json:"protocol,omitempty"`
+	Target      string            `json:"target,omitempty"`
+	Folders     []string          `json:"folders,omitempty"`
+	Values      map[string]string `json:"values,omitempty"`
 }
 
 type UsedPort struct {

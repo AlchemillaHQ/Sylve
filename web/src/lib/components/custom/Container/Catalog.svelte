@@ -175,9 +175,11 @@ under sponsorship from the FreeBSD Foundation.
 		open = false;
 	}
 
-	function back() {
+	async function back() {
 		template = null;
 		error = '';
+		await tick();
+		content?.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: 'center' });
 	}
 
 	const daemonlessLogo = resource(
@@ -195,6 +197,10 @@ under sponsorship from the FreeBSD Foundation.
 		variable.type === 'secret' ? 'password' : variable.type === 'port' ? 'number' : 'text';
 
 	const placeholders: Record<string, string> = { public_url: 'http://192.168.1.10:8080/' };
+	const placeholder = (variable: CatalogVariable) =>
+		variable.placeholder ||
+		(variable.folders.length ? 'New datasets under the stack' : placeholders[variable.type]) ||
+		(variable.optional ? 'Not set' : 'Required');
 </script>
 
 {#snippet linuxChip()}
@@ -213,13 +219,17 @@ under sponsorship from the FreeBSD Foundation.
 {#snippet field(variable: CatalogVariable)}
 	<div class="space-y-1.5">
 		<div class="flex items-center justify-between gap-2">
-			<Label class="gap-1 text-sm leading-snug" for="catalog-{variable.name}">
-				{variable.label || variable.name}
+			<Label
+				class="min-w-0 gap-1 text-sm leading-snug"
+				for="catalog-{variable.name}"
+				title={variable.label || variable.name}
+			>
+				<span class="min-w-0 truncate">{variable.label || variable.name}</span>
 				{#if variable.optional}
-					<span class="text-muted-foreground font-normal">(Optional)</span>
+					<span class="text-muted-foreground shrink-0 font-normal">(Optional)</span>
 				{/if}
 			</Label>
-			{#if variable.hint || variable.target}
+			{#if variable.hint || variable.target || variable.folders.length}
 				<Tooltip.Root>
 					<Tooltip.Trigger aria-label="Help" class="inline-flex shrink-0 items-center">
 						<span class="icon-[mdi--help-circle-outline] size-4"></span>
@@ -233,6 +243,12 @@ under sponsorship from the FreeBSD Foundation.
 								Mounted at {variable.target} in the container. Pick a ZFS dataset or type a host directory{variable.optional
 									? ''
 									: '; leave empty for a new volume'}.
+							</p>
+						{/if}
+						{#if variable.folders.length}
+							<p>
+								Holds {variable.folders.join(', ')}. Leave empty for a ZFS dataset per folder under
+								the stack; a host directory or dataset you give must already contain them.
 							</p>
 						{/if}
 					</Tooltip.Content>
@@ -261,7 +277,8 @@ under sponsorship from the FreeBSD Foundation.
 				id="catalog-{variable.name}"
 				type={inputType(variable)}
 				showPasswordOnFocus={variable.type === 'secret'}
-				placeholder={placeholders[variable.type] ?? ''}
+				autocomplete={variable.type === 'secret' ? 'new-password' : 'off'}
+				placeholder={placeholder(variable)}
 				bind:value={settings.values[variable.name]}
 			/>
 		{/if}
@@ -371,6 +388,7 @@ under sponsorship from the FreeBSD Foundation.
 								app
 									? 'border-blue-600 bg-blue-600/5'
 									: 'hover:border-muted-foreground/40'}"
+								aria-pressed={selected === app}
 								onclick={() => (selected = app)}
 								ondblclick={() => {
 									selected = app;
