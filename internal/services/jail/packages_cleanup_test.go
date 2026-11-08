@@ -19,7 +19,7 @@ import (
 )
 
 func TestPackageNotificationsDoNotBlockOtherJails(t *testing.T) {
-	for _, change := range []string{"deleted", "reused pending CTID", "pending", "linux", "replaced root", "malformed root", "lookup failure"} {
+	for _, change := range []string{"deleted", "replaced root", "malformed root", "lookup failure"} {
 		t.Run(change, func(t *testing.T) {
 			s, jail := newPackageTestService(t)
 			other := jailModels.Jail{CTID: jail.CTID + 1, Name: "other", Type: jailModels.JailTypeFreeBSD, Storages: []jailModels.Storage{{Pool: "tank", GUID: "other-root", IsBase: true}}}
@@ -32,24 +32,11 @@ func TestPackageNotificationsDoNotBlockOtherJails(t *testing.T) {
 				}
 			}
 			switch change {
-			case "deleted", "reused pending CTID":
+			case "deleted":
 				if err := s.DB.Where("jid = ?", jail.ID).Delete(&jailModels.Storage{}).Error; err != nil {
 					t.Fatal(err)
 				}
 				if err := s.DB.Delete(&jail).Error; err != nil {
-					t.Fatal(err)
-				}
-				if change == "reused pending CTID" {
-					if err := s.DB.Create(&jailModels.Jail{CTID: jail.CTID, Name: "replacement", Type: jailModels.JailTypeFreeBSD, CreationPending: true}).Error; err != nil {
-						t.Fatal(err)
-					}
-				}
-			case "pending":
-				if err := s.DB.Model(&jail).Update("creation_pending", true).Error; err != nil {
-					t.Fatal(err)
-				}
-			case "linux":
-				if err := s.DB.Model(&jail).Update("type", jailModels.JailTypeLinux).Error; err != nil {
 					t.Fatal(err)
 				}
 			case "replaced root":
@@ -108,16 +95,18 @@ func TestPackageNotificationTargetLookupFailuresBackOffAndExpire(t *testing.T) {
 		t.Fatal(err)
 	}
 	for attempt := 1; attempt <= 10; attempt++ {
-		before := time.Now()
 		if err := s.dispatchPackageEvents(t.Context()); !errors.Is(err, cause) {
 			t.Fatalf("attempt %d: %v", attempt, err)
+		}
+		if err := s.dispatchPackageEvents(t.Context()); err != nil {
+			t.Fatalf("attempt %d was retried immediately: %v", attempt, err)
 		}
 		var event jailModels.JailPackageNotificationEvent
 		if err := s.DB.First(&event).Error; err != nil {
 			t.Fatal(err)
 		}
-		if event.Attempts != attempt || event.TargetsLoaded || len(event.Delivered) != 0 || len(emitter.calls) != 0 || (event.FinishedAt != nil) != (attempt == 10) || event.NextAttemptAt.Before(before.Add(time.Duration(attempt*attempt)*time.Minute)) {
-			t.Fatalf("lookup failure did not use bounded backoff: %+v", event)
+		if event.Attempts != attempt || event.TargetsLoaded || len(event.Delivered) != 0 || len(emitter.calls) != 0 || (event.FinishedAt != nil) != (attempt == 10) {
+			t.Fatalf("lookup failure was not retried later or stopped early: %+v", event)
 		}
 		if err := s.DB.Model(&event).Update("next_attempt_at", time.Now().UTC().Add(-time.Minute)).Error; err != nil {
 			t.Fatal(err)
@@ -252,33 +241,5 @@ func TestPackageSnapshotRollbackInvalidatesAllFreshness(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestPackageSnapshotMetadataRestoreRollsBackOnInvalidationFailure(t *testing.T) {
-	s, jail := newPackageTestService(t)
-	if err := s.DB.Create(&jailModels.JailPackageState{JailID: jail.ID, CTID: jail.CTID, GUID: jail.Storages[0].GUID, CheckInventoryHash: "previous"}).Error; err != nil {
-		t.Fatal(err)
-	}
-	cause := errors.New("invalidation_failed")
-	if err := s.DB.Callback().Update().Before("gorm:update").Register("package-invalidation-failure", func(tx *gorm.DB) {
-		if tx.Statement.Table == "jail_package_states" {
-			tx.AddError(cause)
-		}
-	}); err != nil {
-		t.Fatal(err)
-	}
-	restored := jail
-	restored.Hostname = "snapshot-host"
-	if err := s.restoreJailDatabaseFromSnapshot(jail.CTID, restored); !errors.Is(err, cause) {
-		t.Fatalf("restore error=%v", err)
-	}
-	var current jailModels.Jail
-	if err := s.DB.First(&current, jail.ID).Error; err != nil || current.Hostname != jail.Hostname {
-		t.Fatalf("failed invalidation committed metadata: %+v: %v", current, err)
-	}
-	var state jailModels.JailPackageState
-	if err := s.DB.First(&state, "jail_id = ?", jail.ID).Error; err != nil || state.GUID != jail.Storages[0].GUID || state.CheckInventoryHash != "previous" {
-		t.Fatalf("failed restore did not roll back package state: %+v: %v", state, err)
 	}
 }

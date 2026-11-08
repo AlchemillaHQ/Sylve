@@ -11,14 +11,8 @@ import {
 
 export const getHostUpdates = (options: NodeAPIRequestOptions = {}) =>
 	apiRequestResult('/system/updates', HostUpdatesSchema, 'GET', undefined, options);
-export const getSylveRelease = (refresh = false, options: NodeAPIRequestOptions = {}) =>
-	apiRequestResult(
-		`/system/updates/sylve/release${refresh ? '?refresh=true' : ''}`,
-		SylveReleaseSchema,
-		'GET',
-		undefined,
-		options
-	);
+export const getSylveRelease = (options: NodeAPIRequestOptions = {}) =>
+	apiRequestResult('/system/updates/sylve/release', SylveReleaseSchema, 'GET', undefined, options);
 export const startHostUpdate = (
 	action: HostUpdateAction,
 	request: HostUpdateRequest = {},

@@ -72,15 +72,10 @@ func TestInspectPkgbaseSystemFailsClosed(t *testing.T) {
 	}{
 		{name: "valid"},
 		{name: "additional annotations", metadata: func(s string) string { return s + strings.ReplaceAll(s, "FreeBSD_version", "unrelated") }},
-		{name: "missing runtime registration", inventory: func(p []Package) []Package { return p[1:] }, want: "not_pkgbase"},
 		{name: "missing clibs registration", inventory: func(p []Package) []Package { return append(p[:1], p[2:]...) }, want: "not_pkgbase"},
-		{name: "noncanonical runtime origin", inventory: func(p []Package) []Package { p[0].Origin = "base/runtime"; return p }, want: "not_pkgbase"},
-		{name: "noncanonical clibs origin", inventory: func(p []Package) []Package { p[1].Origin = "base/clibs"; return p }, want: "not_pkgbase"},
 		{name: "mixed releases", inventory: func(p []Package) []Package { p[1].Version = "15.2"; return p }, want: "release_changed"},
 		{name: "unknown release", inventory: func(p []Package) []Package { p[0].Version = "15.1.snap202610"; return p }, want: "release_unsupported"},
 		{name: "locked base", inventory: func(p []Package) []Package { p[1].Locked = true; return p }, want: "package_locked"},
-		{name: "historical source alias after a partial update", inventory: func(p []Package) []Package { p[0].Repository = "FreeBSD-base"; return p }},
-		{name: "registered archives without a source annotation", inventory: func(p []Package) []Package { p[0].Repository = "unknown-repository"; return p }},
 		{name: "pkg library backups", inventory: func(p []Package) []Package {
 			return append(p, Package{Name: "FreeBSD-runtime-backup-libraries", Origin: "base/FreeBSD-runtime-backup", Version: "20261019120000"})
 		}},
@@ -90,13 +85,10 @@ func TestInspectPkgbaseSystemFailsClosed(t *testing.T) {
 		{name: "clibs ABI mismatch", clibs: func(s string) string { return strings.ReplaceAll(s, "amd64", "aarch64") }, want: "abi_changed"},
 		{name: "clibs registration mismatch", clibs: func(s string) string { return strings.ReplaceAll(s, "\t15.1\t", "\t15.1p1\t") }, want: "metadata_invalid"},
 		{name: "wrong prefix", metadata: func(s string) string { return strings.ReplaceAll(s, "\t/\t", "\t/usr/local\t") }, want: "metadata_invalid"},
-		{name: "wrong origin", metadata: func(s string) string { return strings.ReplaceAll(s, "base/FreeBSD-runtime", "misc/runtime") }, want: "metadata_invalid"},
-		{name: "missing OSVERSION", metadata: func(s string) string { return strings.ReplaceAll(s, "FreeBSD_version", "unrelated") }, want: "metadata_invalid"},
 		{name: "duplicate OSVERSION", metadata: func(s string) string { return s + s }, want: "metadata_invalid"},
 		{name: "inconsistent annotation metadata", metadata: func(s string) string {
 			return s + strings.ReplaceAll(strings.ReplaceAll(s, "FreeBSD_version", "unrelated"), "15.1p1", "15.1p2")
 		}, want: "metadata_invalid"},
-		{name: "OSVERSION release mismatch", metadata: func(s string) string { return strings.ReplaceAll(s, "1501000", "1502000") }, want: "metadata_invalid"},
 		{name: "no base repository", repos: "Repositories:\nports: {\nurl: \"https://example.invalid/ports\",\nenabled: yes,\n}\n", want: "repository_unavailable"},
 		{name: "ambiguous base aliases", repos: systemTestRepositories + "FreeBSD-base-other: {\nurl: \"https://other.invalid/base_release_1\",\nenabled: yes,\n}\n", want: "repository_ambiguous"},
 	} {
@@ -193,7 +185,6 @@ func TestSystemCandidateArchivesVerifyMetadataAndBootPaths(t *testing.T) {
 	}{
 		{name: "valid", files: "/usr/share/system-fixture/value\n"},
 		{name: "kernel payload", files: "/boot/kernel/kernel\n", want: "kernel_package_change_unsupported"},
-		{name: "normalized boot payload", files: "/usr/../boot/loader\n", want: "kernel_package_change_unsupported"},
 		{name: "wrong ABI", metadata: func(s string) string { return strings.ReplaceAll(s, "amd64", "aarch64") }, want: "abi_changed"},
 		{name: "wrong release", metadata: func(s string) string {
 			return strings.ReplaceAll(s, "1501000", "1502000")

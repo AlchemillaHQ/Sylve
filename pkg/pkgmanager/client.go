@@ -162,21 +162,27 @@ func offlineCommand(args []string) bool {
 	return false
 }
 
+// The buffer is a named field, not embedded: an embedded bytes.Buffer brings
+// ReadFrom along, and io.Copy (used by exec.Cmd) would call it and bypass Write.
 type boundedBuffer struct {
-	bytes.Buffer
+	buffer    bytes.Buffer
 	limit     int
 	truncated bool
 }
 
 func (b *boundedBuffer) Write(data []byte) (int, error) {
 	n := len(data)
-	left := b.limit - b.Len()
+	left := b.limit - b.buffer.Len()
 	if left < len(data) {
 		b.truncated = true
 		data = data[:left]
 	}
-	_, err := b.Buffer.Write(data)
+	_, err := b.buffer.Write(data)
 	return n, err
+}
+
+func (b *boundedBuffer) String() string {
+	return b.buffer.String()
 }
 
 func (c *Client) Run(ctx context.Context, args ...string) (result Result, err error) {

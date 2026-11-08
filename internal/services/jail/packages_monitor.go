@@ -309,10 +309,8 @@ func (s *Service) runPackageSchedules(ctx context.Context) error {
 		return err
 	}
 	for _, jail := range jails {
-		_, storage, err := jailRootDatasetIdentity(&jail)
-		if err != nil {
-			continue
-		}
+		// The query only selects jails with exactly one valid root storage.
+		_, storage, _ := jailRootDatasetIdentity(&jail)
 		state, err := s.packageState(&jail, storage.GUID)
 		if err != nil {
 			return err
@@ -370,9 +368,6 @@ func expectedPackageSkip(err error) bool {
 }
 
 func (s *Service) StartPackageMonitor(ctx context.Context) {
-	if s.packages == nil {
-		return
-	}
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	for {

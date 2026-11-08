@@ -185,7 +185,6 @@ export function packageReason(reason = '', fallback?: string): string {
 		no_eligible_packages: 'No eligible packages to upgrade',
 		no_eligible_package_changes: 'No package changes to apply',
 		package_management_unsupported_jail_type: 'Packages are available only for FreeBSD jails',
-		package_service_unavailable: 'Package management is unavailable on this node',
 		jail_not_running: 'Start the jail before applying upgrades',
 		jail_creation_in_progress: 'Wait for the jail to finish being created',
 		jail_operation_in_progress: 'Another jail operation is in progress',
@@ -315,7 +314,8 @@ export function packageReason(reason = '', fallback?: string): string {
 		invalid_package_operation: invalidRequest,
 		invalid_package_target: invalidRequest,
 		invalid_package_task: invalidRequest,
-		invalid_log_offset: invalidRequest
+		invalid_log_offset: invalidRequest,
+		invalid_ct_id: invalidRequest
 	};
 	return describeCodes(
 		reason,

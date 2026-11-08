@@ -42,7 +42,7 @@ func packageResponse(c *gin.Context, value any, err error, status int) {
 		status = http.StatusUnprocessableEntity
 	case code == "replication_lease_not_owned":
 		status = http.StatusForbidden
-	case code == "package_service_unavailable" || strings.HasPrefix(code, "pkg_"):
+	case strings.HasPrefix(code, "pkg_"):
 		status = http.StatusServiceUnavailable
 	case strings.HasPrefix(code, "invalid") || strings.HasSuffix(code, "_required") || code == "too_many_packages" || code == "duplicate_package_selection":
 		status = http.StatusBadRequest

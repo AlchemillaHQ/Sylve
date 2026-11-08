@@ -3,6 +3,7 @@
 package pkgmanager
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -58,15 +59,6 @@ func TestTransactionPlan(t *testing.T) {
 	if err != nil || len(plan.Changes) != 2 {
 		t.Fatalf("%+v %v", plan, err)
 	}
-	if err := ValidateTransaction(plan, plan); err != nil {
-		t.Fatal(err)
-	}
-	changed := plan
-	changed.Changes = append([]Change(nil), plan.Changes...)
-	changed.Changes[0].To = "unexpected"
-	if err := ValidateTransaction(changed, plan); err == nil {
-		t.Fatal("accepted changed transaction")
-	}
 	for _, output := range []string{strings.Replace(examplePlan, "2 package(s)", "3 package(s)", 1), strings.Replace(examplePlan, "to be installed: 1", "to be installed: 2", 1), strings.Replace(examplePlan, "new-library: 1.2", "not a package row", 1), strings.Split(examplePlan, "Number of packages")[0]} {
 		if _, err := ParsePlan(output); err == nil {
 			t.Fatalf("accepted incomplete/unknown plan %q", output)
@@ -77,10 +69,62 @@ func TestTransactionPlan(t *testing.T) {
 	}
 }
 
+func TestRecordedPkgPlan(t *testing.T) {
+	// Trimmed from pkg 2.8.4 output read through a pty: CRLF line endings and \r progress redraws.
+	output := `Updating FreeBSD-ports repository catalogue...
+FreeBSD-ports repository is up to date.
+Updating FreeBSD-base repository catalogue...
+FreeBSD-base repository is up to date.
+All repositories are up to date.
+Checking for upgrades (5 candidates):   0%` + "\r" + `Checking for upgrades (5 candidates): 100%
+Processing candidates (5 candidates):   0%` + "\r" + `Processing candidates (5 candidates): 100%
+Checking integrity... done (0 conflicting)
+The following 5 package(s) will be affected (of 0 checked):
+
+Installed packages to be REMOVED:
+	php82-zlib: 8.2.35_1
+
+New packages to be INSTALLED:
+	php85-zlib: 8.5.12_2 [FreeBSD-ports]
+
+Installed packages to be UPGRADED:
+	FreeBSD-runtime: 16.snap20261021210449 -> 16.snap20261105165144 [FreeBSD-base]
+	chromium: 154.0.8037.57_1 -> 156.0.8078.79 [FreeBSD-ports] (vulnerable!)
+	libarchive: 3.8.8,1 -> 3.8.11,1 [FreeBSD-ports]
+
+Number of packages to be removed: 1
+Number of packages to be installed: 1
+Number of packages to be upgraded: 3
+
+The operation will free 108 MiB.
+852 MiB to be downloaded.
+
+WARNING: 1 package(s) have known vulnerabilities
+`
+	plan, err := ParsePlan(strings.ReplaceAll(output, "\n", "\r\n"))
+	want := []Change{
+		{Action: "upgrade", Name: "FreeBSD-runtime", From: "16.snap20261021210449", To: "16.snap20261105165144", Repository: "FreeBSD-base"},
+		{Action: "upgrade", Name: "chromium", From: "154.0.8037.57_1", To: "156.0.8078.79", Repository: "FreeBSD-ports"},
+		{Action: "upgrade", Name: "libarchive", From: "3.8.8,1", To: "3.8.11,1", Repository: "FreeBSD-ports"},
+		{Action: "remove", Name: "php82-zlib", From: "8.2.35_1"},
+		{Action: "install", Name: "php85-zlib", To: "8.5.12_2", Repository: "FreeBSD-ports"},
+	}
+	if err != nil || !slices.Equal(plan.Changes, want) || plan.Space != "The operation will free 108 MiB." || plan.Download != "852 MiB to be downloaded." {
+		t.Fatalf("%+v %v", plan, err)
+	}
+}
+
 func TestRedact(t *testing.T) {
-	value := Redact("fetch pkg+https://user:secret@example.org/repo https://token@example.org/a")
-	if strings.Contains(value, "secret") || strings.Contains(value, "token") {
-		t.Fatal(value)
+	for input, want := range map[string]string{
+		"fetch pkg+https://user:secret@example.org/repo":                      "fetch pkg+https://[redacted]@example.org/repo",
+		"https://token@example.org/a":                                         "https://[redacted]@example.org/a",
+		"SSH://user@example.org/repo":                                         "SSH://[redacted]@example.org/repo",
+		"https://example.org/repo?token=secret&branch=stable&API_KEY=other":   "https://example.org/repo?token=[redacted]&branch=stable&API_KEY=[redacted]",
+		"mail admin@example.org about https://example.org/repo?branch=stable": "mail admin@example.org about https://example.org/repo?branch=stable",
+	} {
+		if got := Redact(input); got != want {
+			t.Fatalf("%q: %q", input, got)
+		}
 	}
 }
 
@@ -88,8 +132,5 @@ func TestRepositoryAnnotationDoesNotExposeURLCredentials(t *testing.T) {
 	packages, err := ParseInventory("app\t1\tmisc/app\thttps://user:secret@example.org/repo\t1\t0\t0")
 	if err != nil || len(packages) != 1 || packages[0].Repository != "unknown-repository" {
 		t.Fatalf("%+v %v", packages, err)
-	}
-	if value := Redact("https://example.org/repo?token=secret&branch=stable"); strings.Contains(value, "secret") {
-		t.Fatal(value)
 	}
 }

@@ -14708,6 +14708,7 @@ msgstr "The delete request could not be completed. Check your connection and clu
 msgid "Could not delete the policy. Check the reported error and cluster status, then retry."
 msgstr "Could not delete the policy. Check the reported error and cluster status, then retry."
 
+#: src/lib/components/custom/System/Updates/Operation.svelte
 #: src/routes/+error.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Request failed"
@@ -17679,7 +17680,7 @@ msgstr "Force Remove…"
 msgid "Restarting Sylve"
 msgstr "Restarting Sylve"
 
-#: src/routes/+layout.svelte
+#: src/lib/stores/api.svelte.ts
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "This node left the cluster. The page will refresh automatically."
 msgstr "This node left the cluster. The page will refresh automatically."
@@ -18577,6 +18578,7 @@ msgstr "Internal Server Error"
 msgid "Invalid response data"
 msgstr "Invalid response data"
 
+#: src/lib/components/custom/System/Updates/Operation.svelte
 #: src/routes/+error.svelte
 msgid "Invalid response format"
 msgstr "Invalid response format"
@@ -21595,10 +21597,6 @@ msgid "Restarting Sylve — waiting to reconnect"
 msgstr "Restarting Sylve — waiting to reconnect"
 
 #: src/lib/components/custom/System/Updates/Operation.svelte
-msgid "Waiting for Sylve to reconnect…"
-msgstr "Waiting for Sylve to reconnect…"
-
-#: src/lib/components/custom/System/Updates/Operation.svelte
 #: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "Host Update"
 msgstr "Host Update"
@@ -21974,10 +21972,6 @@ msgstr "Host Updates - Package Preview"
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Host Updates - Install Packages"
 msgstr "Host Updates - Install Packages"
-
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Host Updates - Check Sylve"
-msgstr "Host Updates - Check Sylve"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Host Updates - Sylve Preview"
@@ -23617,3 +23611,15 @@ msgstr "Verifying release"
 #: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "pkg must be upgraded on its own first. Upgrade it, then preview the remaining packages again."
 msgstr "pkg must be upgraded on its own first. Upgrade it, then preview the remaining packages again."
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Sylve is restarting to finish the update. The page will refresh automatically."
+msgstr "Sylve is restarting to finish the update. The page will refresh automatically."
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Sylve is restarting. Reconnecting…"
+msgstr "Sylve is restarting. Reconnecting…"
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Connection interrupted. Reconnecting…"
+msgstr "Connection interrupted. Reconnecting…"

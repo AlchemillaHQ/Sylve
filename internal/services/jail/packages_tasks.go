@@ -38,11 +38,6 @@ func (s *Service) ExecutePackageTask(ctx context.Context, taskID uint) (runErr e
 		}
 		return nil
 	}
-	if op.Phase == "applying" || op.Phase == "post_upgrade_audit" {
-		err := fmt.Errorf("package_operation_interrupted: inspect installed packages and logs before requesting a fresh preview; no automatic retry")
-		s.finishPackageOperation(op, err)
-		return err
-	}
 	// Upgrades can't be stopped: killing pkg mid-install could leave the jail
 	// half-upgraded.
 	if op.Action != "pkg-upgrade" {
@@ -117,12 +112,8 @@ func (s *Service) ExecutePackageTask(ctx context.Context, taskID uint) (runErr e
 	log := pkgmanager.NewLogWriter(file)
 	defer log.Flush()
 	client := s.packages.client(target, log)
-	scope, err := pkgmanager.NormalizeScope(op.Scope)
-	if err != nil {
-		return err
-	}
+	scope := op.Scope
 	client.Scope = scope
-	op.Scope = scope
 	if err = s.packagePhase(&op, "reading_inventory"); err != nil {
 		return err
 	}
@@ -190,17 +181,8 @@ func (s *Service) ExecutePackageTask(ctx context.Context, taskID uint) (runErr e
 		if err = s.DB.First(&plan, "id = ? AND jail_id = ? AND guid = ? AND applied_operation_id = ?", op.PlanID, op.JailID, op.GUID, op.ID).Error; err != nil {
 			return fmt.Errorf("package_plan_not_found")
 		}
-		planScope, err := pkgmanager.NormalizeScope(plan.Scope)
-		if err != nil || planScope != scope {
-			return fmt.Errorf("package_plan_scope_changed")
-		}
-		if scope == pkgmanager.ScopeSystem {
-			if !op.Acknowledge {
-				return fmt.Errorf("package_system_acknowledgement_required")
-			}
-			if plan.System == nil || client.System == nil || *plan.System != *client.System {
-				return fmt.Errorf("package_plan_stale")
-			}
+		if scope == pkgmanager.ScopeSystem && *plan.System != *client.System {
+			return fmt.Errorf("package_plan_stale")
 		}
 		if time.Now().After(plan.ExpiresAt) || plan.InventoryHash != pkgmanager.InventoryDigest(inventory) || plan.RepositoryHash != repoHash {
 			return fmt.Errorf("package_plan_stale")
@@ -484,9 +466,6 @@ func (s *Service) finalizeRecoveredPackageTask(op jailModels.JailPackageOperatio
 }
 
 func (s *Service) RecoverPackageTasks(ctx context.Context) error {
-	if s.packages == nil {
-		return nil
-	}
 	var operations []jailModels.JailPackageOperation
 	if err := s.DB.WithContext(ctx).Where("active_jail_id IS NOT NULL OR task_id IN (SELECT id FROM guest_lifecycle_tasks WHERE status IN ?)", []string{"queued", "running"}).Find(&operations).Error; err != nil {
 		return err

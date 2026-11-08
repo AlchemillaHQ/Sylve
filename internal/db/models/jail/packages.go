@@ -52,7 +52,6 @@ type JailPackageOperation struct {
 	PlanID       string            `json:"planId"`
 	Snapshot     bool              `json:"snapshot"`
 	SnapshotID   *uint             `json:"snapshotId"`
-	Acknowledge  bool              `json:"-"`
 	Result       string            `gorm:"type:text" json:"result"`
 	Audit        *pkgmanager.Audit `gorm:"serializer:json;type:json" json:"audit"`
 	Error        string            `gorm:"type:text" json:"error"`

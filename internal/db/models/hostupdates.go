@@ -41,9 +41,6 @@ type HostUpdateState struct {
 	Release                 *sylveupdate.Candidate `gorm:"serializer:json;type:json" json:"release"`
 	ReleaseCheckedAt        *time.Time             `json:"releaseCheckedAt"`
 	ReleaseError            string                 `json:"releaseError"`
-	InstalledChannel        string                 `json:"-"`
-	InstalledDigest         string                 `json:"-"`
-	InstalledBuiltAt        string                 `json:"-"`
 	CreatedAt               time.Time              `json:"-"`
 	UpdatedAt               time.Time              `json:"-"`
 }
@@ -72,7 +69,6 @@ type HostUpdateOperation struct {
 	Status          string     `json:"status"`
 	Phase           string     `json:"phase"`
 	PlanID          string     `json:"planId"`
-	Channel         string     `json:"channel"`
 	BootEnvironment bool       `json:"-"`
 	RestartDigest   string     `json:"-"`
 	Actor           string     `json:"actor"`

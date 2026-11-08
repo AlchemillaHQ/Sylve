@@ -56,7 +56,6 @@ type Installed struct {
 	Version string `json:"version"`
 	Commit  string `json:"commit"`
 	BuiltAt string `json:"builtAt"`
-	Channel string `json:"channel"`
 	SHA256  string `json:"sha256"`
 	Path    string `json:"path"`
 }

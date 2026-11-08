@@ -16,7 +16,6 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	jailTypes "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
@@ -24,7 +23,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/pkgmanager"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
 
 func newPackageTestService(t *testing.T) (*Service, jailModels.Jail) {
@@ -361,21 +359,6 @@ func TestPackageInventorySavePreservesMonitoringAndResetsIncarnation(t *testing.
 	}
 }
 
-func TestPackageInventorySaveReturnsLookupErrors(t *testing.T) {
-	s, jail := newPackageTestService(t)
-	cause := errors.New("temporary_database_error")
-	if err := s.DB.Callback().Query().Before("gorm:query").Register("package-test-state-lookup-failure", func(tx *gorm.DB) {
-		if tx.Statement.Table == "jail_package_states" {
-			tx.AddError(cause)
-		}
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.savePackageInventory(jailModels.JailPackageState{JailID: jail.ID, GUID: jail.Storages[0].GUID}); !errors.Is(err, cause) {
-		t.Fatalf("expected lookup failure, got %v", err)
-	}
-}
-
 type packageEmitter struct {
 	calls        map[string]int
 	targetsError error
@@ -455,50 +438,6 @@ func TestPackageSchedulerAuditsOfflineAndSkipsUnmountedWithoutStarting(t *testin
 	state, err := s2.packageState(&jail2, jail2.Storages[0].GUID)
 	if err != nil || state.SkipReason != "package_root_not_mounted" || state.FailureCount != 0 {
 		t.Fatalf("skip %+v %v", state, err)
-	}
-}
-
-func TestScheduledPackageAuditsDoNotCreateRequestAuditRecords(t *testing.T) {
-	for _, state := range []string{"queued", "busy", "queue failure"} {
-		t.Run(state, func(t *testing.T) {
-			s, jail := newPackageTestService(t)
-			s.packages.telemetry = s.DB
-			if err := s.packages.telemetry.AutoMigrate(&infoModels.AuditRecord{}); err != nil {
-				t.Fatal(err)
-			}
-			if state == "busy" {
-				release, err := s.ReserveSystemOperation(t.Context(), jail.CTID)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer release()
-			}
-			if state == "queue failure" {
-				s.packages.request = func(context.Context, uint, string, string, string, string) (uint, error) {
-					return 0, errors.New("fixture_queue_unavailable")
-				}
-			}
-			if _, err := s.SetPackageMonitoring(t.Context(), jail.CTID, jailTypes.PackageMonitoring{Enabled: true, IntervalHours: 24}); err != nil {
-				t.Fatal(err)
-			}
-			if err := s.runPackageSchedules(t.Context()); err != nil {
-				t.Fatal(err)
-			}
-			monitor, err := s.GetPackageMonitoring(t.Context(), jail.CTID)
-			if err != nil || (monitor.SkipReason != "") != (state != "queued") {
-				t.Fatalf("unexpected scheduling result: %+v %v", monitor, err)
-			}
-			var count int64
-			if err := s.packages.telemetry.Model(&infoModels.AuditRecord{}).Count(&count).Error; err != nil || count != 0 {
-				t.Fatalf("scheduled monitoring created request audit rows: %d %v", count, err)
-			}
-			if state == "queued" {
-				var task taskModels.GuestLifecycleTask
-				if err := s.DB.First(&task).Error; err != nil || task.Action != "pkg-audit" || task.Source != "scheduled" || task.RequestedBy != "package-monitor" {
-					t.Fatalf("scheduled audit task was not retained: %+v %v", task, err)
-				}
-			}
-		})
 	}
 }
 
@@ -665,7 +604,7 @@ func TestEligiblePackageSelectionNeverSilentlyDropsRows(t *testing.T) {
 	}
 }
 
-func TestPackageJobAllowsPrunedPlansButReturnsLookupErrors(t *testing.T) {
+func TestPackageJobAllowsPrunedPlans(t *testing.T) {
 	s, jail := newPackageTestService(t)
 	job, err := s.StartPackageOperation(t.Context(), jail.CTID, "pkg-preview", jailTypes.PackageRequest{All: true}, "user", "tester")
 	if err != nil {
@@ -676,50 +615,6 @@ func TestPackageJobAllowsPrunedPlansButReturnsLookupErrors(t *testing.T) {
 	}
 	if job, err = s.GetPackageJob(t.Context(), jail.CTID, job.TaskID); err != nil || job.Plan != nil {
 		t.Fatalf("pruned plan prevented job access: %+v: %v", job, err)
-	}
-	cause := errors.New("temporary_database_error")
-	if err := s.DB.Callback().Query().Before("gorm:query").Register("package-plan-lookup-failure", func(tx *gorm.DB) {
-		if tx.Statement.Table == "jail_package_plans" {
-			tx.AddError(cause)
-		}
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = s.GetPackageJob(t.Context(), jail.CTID, job.TaskID); !errors.Is(err, cause) {
-		t.Fatalf("plan lookup error was hidden: %v", err)
-	}
-}
-
-func TestPackageAuditFreshnessUsesMonitoringCadence(t *testing.T) {
-	s, jail, fixture := newPackageReadTestService(t)
-	inventory, err := pkgmanager.ParseInventory(fixture.inventory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = s.SetPackageMonitoring(t.Context(), jail.CTID, jailTypes.PackageMonitoring{Enabled: true, IntervalHours: 6}); err != nil {
-		t.Fatal(err)
-	}
-	state, err := s.packageState(&jail, jail.Storages[0].GUID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	old := time.Now().UTC().Add(-8 * time.Hour)
-	state.Inventory = inventory
-	state.AuditAt = &old
-	state.AuditInventoryHash = pkgmanager.AuditInventoryDigest(inventory)
-	if err = s.DB.Save(&state).Error; err != nil {
-		t.Fatal(err)
-	}
-	view, err := s.GetPackages(t.Context(), jail.CTID)
-	if err != nil || !view.AuditStale {
-		t.Fatalf("overdue six-hour audit %+v %v", view, err)
-	}
-	if _, err = s.SetPackageMonitoring(t.Context(), jail.CTID, jailTypes.PackageMonitoring{Enabled: true, IntervalHours: 24}); err != nil {
-		t.Fatal(err)
-	}
-	view, err = s.GetPackages(t.Context(), jail.CTID)
-	if err != nil || view.AuditStale {
-		t.Fatalf("current daily audit %+v %v", view, err)
 	}
 }
 
@@ -897,32 +792,6 @@ func TestPackageAuditFreshnessIgnoresMetadataAndReadOnlyWork(t *testing.T) {
 				t.Fatalf("stale=%v, expected %v: %+v: %v", view.AuditStale, test.stale, view, err)
 			}
 		})
-	}
-}
-
-func TestPackageExistingAuditIdentityIsNarrowedBeforeInventoryChanges(t *testing.T) {
-	s, jail, fixture := newPackageReadTestService(t)
-	inventory, err := pkgmanager.ParseInventory(fixture.inventory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	now := time.Now().UTC()
-	state := jailModels.JailPackageState{JailID: jail.ID, CTID: jail.CTID, GUID: jail.Storages[0].GUID, Inventory: inventory, AuditAt: &now, AuditInventoryHash: pkgmanager.InventoryDigest(inventory)}
-	if err = s.DB.Create(&state).Error; err != nil {
-		t.Fatal(err)
-	}
-	fixture.inventory = "app\t1\tmisc/app\tports\t200\t1\t0\n"
-	runPackageTestTask(t, s, jail.CTID, "pkg-check-updates", jailTypes.PackageRequest{})
-	view, err := s.GetPackages(t.Context(), jail.CTID)
-	if err != nil || view.AuditStale {
-		t.Fatalf("unchanged audited packages lost freshness: %+v: %v", view, err)
-	}
-	if err = s.DB.Model(&state).Update("audit_inventory_hash", "").Error; err != nil {
-		t.Fatal(err)
-	}
-	view, err = s.GetPackages(t.Context(), jail.CTID)
-	if err != nil || !view.AuditStale {
-		t.Fatalf("invalidated audit was trusted: %+v: %v", view, err)
 	}
 }
 

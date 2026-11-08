@@ -26,7 +26,7 @@ import (
 )
 
 func TestUpdatePolicy(t *testing.T) {
-	current := Installed{Mode: "standalone", Version: "0.3.1", Commit: strings.Repeat("a", 40), BuiltAt: "2026-10-19T12:00:00Z", SHA256: strings.Repeat("1", 64), Channel: "rolling"}
+	current := Installed{Mode: "standalone", Version: "0.3.1", BuiltAt: "2026-10-19T12:00:00Z", SHA256: strings.Repeat("1", 64)}
 	for _, test := range []struct {
 		version, channel, digest string
 		allow                    bool
@@ -38,10 +38,6 @@ func TestUpdatePolicy(t *testing.T) {
 		if (err == nil) != test.allow {
 			t.Fatalf("%+v: %v", test, err)
 		}
-	}
-	current.Channel, current.Commit = "tagged", "legacy-short-commit"
-	if err := Allowed(current, Candidate{Version: current.Version, Channel: "rolling", SHA256: strings.Repeat("2", 64), Commit: strings.Repeat("b", 40), BuiltAt: "2026-10-20T12:00:00Z"}); err != nil {
-		t.Fatalf("legacy commit with a verified build date unnecessarily blocked rolling update: %v", err)
 	}
 	current.Mode = "package"
 	if Allowed(current, Candidate{Version: "0.4.0", Channel: "rolling"}) == nil {

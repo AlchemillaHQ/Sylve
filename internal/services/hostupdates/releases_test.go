@@ -9,14 +9,19 @@
 package hostupdates
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"debug/elf"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -24,6 +29,8 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/pkg/pkgmanager"
+	"github.com/alchemillahq/sylve/pkg/sylveupdate"
+	"github.com/google/uuid"
 )
 
 func releaseReadService(t *testing.T) (*Service, *atomic.Int32) {
@@ -64,77 +71,91 @@ func releaseReadService(t *testing.T) (*Service, *atomic.Int32) {
 	return s, requests
 }
 
-func TestReleaseReadCacheExpiresAndFollowsSavedChannel(t *testing.T) {
-	s, requests := releaseReadService(t)
-	first, err := s.GetRelease(t.Context(), false)
-	if err != nil || first.Release == nil || first.ReleaseChannel != "rolling" || requests.Load() != 2 {
-		t.Fatalf("page load did not resolve the published release: %+v %v", first, err)
-	}
-	if cached, err := s.GetRelease(t.Context(), false); err != nil || cached.Release == nil || !cached.ReleaseCheckedAt.Equal(*first.ReleaseCheckedAt) || requests.Load() != 2 {
-		t.Fatalf("fresh metadata was not reused: %+v %v", cached, err)
-	}
-	expired := time.Now().Add(-releaseCacheTTL - time.Minute)
-	s.releaseAttemptAt = expired
-	if err := s.DB.Model(&models.HostUpdateState{ID: 1}).Update("release_checked_at", expired).Error; err != nil {
-		t.Fatal(err)
-	}
-	if refreshed, err := s.GetRelease(t.Context(), false); err != nil || refreshed.Release == nil || !refreshed.ReleaseCheckedAt.After(expired) || requests.Load() != 4 {
-		t.Fatalf("expired metadata was not refreshed: %+v %v", refreshed, err)
-	}
-	if _, err := s.SetReleaseChannel(t.Context(), "tagged"); err != nil {
-		t.Fatal(err)
-	}
-	if tagged, err := s.GetRelease(t.Context(), false); err != nil || tagged.Release == nil || tagged.Release.Channel != "tagged" || tagged.ReleaseChannel != "tagged" || requests.Load() != 6 {
-		t.Fatalf("channel change reused the previous channel's metadata: %+v %v", tagged, err)
-	}
-	if _, err := s.GetRelease(t.Context(), true); err != nil || requests.Load() != 8 {
-		t.Fatalf("explicit refresh did not bypass the metadata cache: %v", err)
-	}
-}
-
-func TestConcurrentReleaseReadsReuseOneMetadataFetch(t *testing.T) {
-	s, requests := releaseReadService(t)
-	start := make(chan struct{})
-	results := make(chan error, 8)
-	for range cap(results) {
-		go func() {
-			<-start
-			view, err := s.GetRelease(t.Context(), false)
-			if err == nil && (view.Release == nil || view.ReleaseChannel != "rolling") {
-				err = errors.New("missing_release_metadata")
-			}
-			results <- err
-		}()
-	}
-	close(start)
-	for range cap(results) {
-		if err := <-results; err != nil {
-			t.Error(err)
-		}
-	}
-	if requests.Load() != 2 {
-		t.Fatalf("concurrent page loads repeated the release fetch: %d", requests.Load())
-	}
-}
-
-func TestCanceledReleaseReadsDoNotPoisonTheCache(t *testing.T) {
-	s, requests := releaseReadService(t)
-	transport := s.releases.HTTP.Transport
+func TestCanceledReleaseReadIsNotRecordedAsFailure(t *testing.T) {
+	s, _ := releaseReadService(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	s.releases.HTTP.Transport = releaseTransport(func(request *http.Request) (*http.Response, error) {
 		cancel()
 		return nil, request.Context().Err()
 	})
-	if _, err := s.GetRelease(ctx, false); !errors.Is(err, context.Canceled) {
+	if _, err := s.GetRelease(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled read did not stop: %v", err)
 	}
 	state, err := s.state()
-	if err != nil || state.ReleaseError != "" || state.ReleaseCheckedAt != nil || !s.releaseAttemptAt.IsZero() {
-		t.Fatalf("canceled read was cached as a release failure: %+v %v", state, err)
+	if err != nil || state.ReleaseError != "" || state.ReleaseCheckedAt != nil {
+		t.Fatalf("canceled read was recorded as a release failure: %+v %v", state, err)
 	}
-	s.releases.HTTP.Transport = transport
-	if view, err := s.GetRelease(t.Context(), false); err != nil || view.Release == nil || requests.Load() != 2 {
-		t.Fatalf("canceled read suppressed the next page load: %+v %v", view, err)
+}
+
+// fakeSylveBuild copies the test binary and rewrites its embedded build info,
+// which is all a release download verifies.
+func fakeSylveBuild(t *testing.T, commit, builtAt string) []byte {
+	t.Helper()
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := elf.Open(self)
+	if err != nil {
+		t.Fatal(err)
+	}
+	section := file.Section(".go.buildinfo")
+	file.Close()
+	data, err := os.ReadFile(self)
+	if err != nil || section == nil {
+		t.Fatalf("no build info: %v", err)
+	}
+	info := debug.BuildInfo{Path: "github.com/alchemillahq/sylve/cmd/sylve", Settings: []debug.BuildSetting{
+		{Key: "-ldflags", Value: "-X github.com/alchemillahq/sylve/internal/cmd.Commit=" + commit + " -X github.com/alchemillahq/sylve/internal/cmd.BuiltAt=" + builtAt},
+		{Key: "GOARCH", Value: runtime.GOARCH}, {Key: "GOOS", Value: "freebsd"}, {Key: "vcs.revision", Value: commit},
+	}}
+	module := strings.Repeat("\x00", 16) + info.String() + strings.Repeat("\x00", 16)
+	blob := binary.AppendUvarint(nil, uint64(len(runtime.Version())))
+	blob = append(blob, runtime.Version()...)
+	blob = binary.AppendUvarint(blob, uint64(len(module)))
+	copy(data[section.Offset+32:section.Offset+section.Size], append(blob, module...))
+	return data
+}
+
+func TestSylveApplyInstallsReleaseAndKeepsPreviousBinary(t *testing.T) {
+	s := testService(t)
+	s.standalonePath = s.executable
+	s.ownership = func(context.Context, *pkgmanager.Client, string) (bool, string, error) {
+		return false, "", nil
+	}
+	s.command = func(context.Context, string, ...string) (string, error) { return "15.1-RELEASE", nil }
+	s.restart = func() {}
+	commit, builtAt := strings.Repeat("b", 40), "2026-10-24T12:00:00Z"
+	build := fakeSylveBuild(t, commit, builtAt)
+	sum := sha256.Sum256(build)
+	target := sylveupdate.Candidate{Channel: "rolling", Tag: "tip", Version: "0.3.2", Commit: commit, SHA256: hex.EncodeToString(sum[:]), AssetID: 1, Size: int64(len(build)), URL: "https://github.com/AlchemillaHQ/Sylve/releases/download/tip/sylve-" + runtime.GOARCH, FreeBSD: "15.1-RELEASE", BuiltAt: builtAt}
+	s.releases.HTTP.Transport = releaseTransport(func(request *http.Request) (*http.Response, error) {
+		if request.URL.String() != target.URL {
+			return nil, errors.New("unexpected_release_request")
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(build))}, nil
+	})
+	op := models.HostUpdateOperation{UUID: uuid.NewString(), Action: "sylve-apply", PlanID: uuid.NewString()}
+	if err := s.DB.Create(&op).Error; err != nil {
+		t.Fatal(err)
+	}
+	plan := models.HostUpdatePlan{ID: op.PlanID, Kind: "sylve", Release: &target, ExecutableHash: s.runningDigest, ExpiresAt: time.Now().Add(time.Hour), AppliedOperationID: &op.ID}
+	if err := s.DB.Create(&plan).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.apply(t.Context(), &op, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	job, err := s.Job(t.Context(), op.ID)
+	if err != nil || job.Phase != "restarting" || job.RestartDigest != target.SHA256 {
+		t.Fatalf("release install did not hand over to the restart: %+v %v", job, err)
+	}
+	if digest, err := sylveupdate.FileDigest(s.executable); err != nil || digest != target.SHA256 {
+		t.Fatalf("release was not installed: %s %v", digest, err)
+	}
+	previous, err := os.Stat(s.executable + ".prev")
+	if err != nil || !os.SameFile(previous, s.executableInfo) {
+		t.Fatalf("previous binary was not kept as a hard link: %v", err)
 	}
 }

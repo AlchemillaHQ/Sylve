@@ -14711,6 +14711,7 @@ msgstr ""
 msgid "Could not delete the policy. Check the reported error and cluster status, then retry."
 msgstr ""
 
+#: src/lib/components/custom/System/Updates/Operation.svelte
 #: src/routes/+error.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Request failed"
@@ -17682,7 +17683,7 @@ msgstr ""
 msgid "Restarting Sylve"
 msgstr ""
 
-#: src/routes/+layout.svelte
+#: src/lib/stores/api.svelte.ts
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "This node left the cluster. The page will refresh automatically."
 msgstr ""
@@ -18580,6 +18581,7 @@ msgstr ""
 msgid "Invalid response data"
 msgstr ""
 
+#: src/lib/components/custom/System/Updates/Operation.svelte
 #: src/routes/+error.svelte
 msgid "Invalid response format"
 msgstr ""
@@ -21598,10 +21600,6 @@ msgid "Restarting Sylve — waiting to reconnect"
 msgstr ""
 
 #: src/lib/components/custom/System/Updates/Operation.svelte
-msgid "Waiting for Sylve to reconnect…"
-msgstr ""
-
-#: src/lib/components/custom/System/Updates/Operation.svelte
 #: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "Host Update"
 msgstr ""
@@ -21976,10 +21974,6 @@ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Host Updates - Install Packages"
-msgstr ""
-
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Host Updates - Check Sylve"
 msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -23615,4 +23609,16 @@ msgstr ""
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
 #: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "pkg must be upgraded on its own first. Upgrade it, then preview the remaining packages again."
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Sylve is restarting to finish the update. The page will refresh automatically."
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Sylve is restarting. Reconnecting…"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Connection interrupted. Reconnecting…"
 msgstr ""

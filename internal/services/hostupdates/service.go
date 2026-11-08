@@ -72,11 +72,11 @@ type Service struct {
 	executable       string
 	executableInfo   os.FileInfo
 	runningDigest    string
+	standalonePath   string
 	bootEnvironments bool
 	restart          func()
 	mu               sync.Mutex
 	releaseMu        sync.Mutex
-	releaseAttemptAt time.Time
 	readMu           sync.Mutex
 	readID           uint
 	cancelRead       context.CancelCauseFunc
@@ -85,7 +85,7 @@ type Service struct {
 	command          func(context.Context, string, ...string) (string, error)
 	releases         *sylveupdate.Client
 	ownership        func(context.Context, *pkgmanager.Client, string) (bool, string, error)
-	installed        func(context.Context, models.HostUpdateState) sylveupdate.Installed
+	installed        func(context.Context) sylveupdate.Installed
 }
 
 func NewService(ctx context.Context, database, telemetry *gorm.DB, dataPath, version, commit, builtAt string, restart func()) (*Service, error) {
@@ -121,6 +121,7 @@ func NewService(ctx context.Context, database, telemetry *gorm.DB, dataPath, ver
 		executable:     executable,
 		executableInfo: info,
 		runningDigest:  digest,
+		standalonePath: "/usr/local/sbin/sylve",
 		restart:        restart,
 		client:         pkgmanager.NewHostClient,
 		probe:          pkgmanager.ProbeHost,
@@ -174,37 +175,8 @@ func (s *Service) state() (models.HostUpdateState, error) {
 	return state, err
 }
 
-func (s *Service) installedBuildTime(state models.HostUpdateState) string {
-	timestamps := []string{s.builtAt}
-	if state.InstalledDigest == s.runningDigest {
-		timestamps = append(timestamps, state.InstalledBuiltAt)
-	}
-	if state.Release != nil && state.Release.SHA256 == s.runningDigest {
-		timestamps = append(timestamps, state.Release.BuiltAt)
-	}
-	for _, value := range timestamps {
-		if timestamp, err := sylveupdate.ParseBuildTime(value); err == nil {
-			return timestamp.Format(time.RFC3339Nano)
-		}
-	}
-	var plan models.HostUpdatePlan
-	err := s.DB.Joins("JOIN host_update_operations AS operation ON operation.plan_id = host_update_plans.id").
-		Where("operation.action = ? AND operation.status = ?", "sylve-apply", "success").
-		Where("json_extract(host_update_plans.release, '$.sha256') = ?", s.runningDigest).
-		Order("operation.id DESC").Limit(1).Find(&plan).Error
-	if err == nil && plan.Release != nil {
-		if timestamp, err := sylveupdate.ParseBuildTime(plan.Release.BuiltAt); err == nil {
-			return timestamp.Format(time.RFC3339Nano)
-		}
-	}
-	return ""
-}
-
-func (s *Service) inspectInstalled(ctx context.Context, state models.HostUpdateState) sylveupdate.Installed {
-	installed := sylveupdate.Installed{Mode: "unknown", Version: s.version, Commit: s.commit, BuiltAt: s.installedBuildTime(state), Channel: "rolling", SHA256: s.runningDigest, Path: s.executable}
-	if state.InstalledDigest == s.runningDigest && state.InstalledChannel != "" {
-		installed.Channel = state.InstalledChannel
-	}
+func (s *Service) inspectInstalled(ctx context.Context) sylveupdate.Installed {
+	installed := sylveupdate.Installed{Mode: "unknown", Version: s.version, Commit: s.commit, BuiltAt: s.builtAt, SHA256: s.runningDigest, Path: s.executable}
 	info, err := os.Stat(s.executable)
 	if err != nil || !os.SameFile(info, s.executableInfo) || info.Size() != s.executableInfo.Size() || !info.ModTime().Equal(s.executableInfo.ModTime()) {
 		installed.Reason = "sylve_executable_changed_restart_required"
@@ -221,7 +193,6 @@ func (s *Service) inspectInstalled(ctx context.Context, state models.HostUpdateS
 			return installed
 		}
 		installed.Mode = "package"
-		installed.Channel = "package"
 		installed.Reason = "sylve_package_managed"
 		return installed
 	}
@@ -230,7 +201,7 @@ func (s *Service) inspectInstalled(ctx context.Context, state models.HostUpdateS
 		installed.Reason = "sylve_package_ownership_conflict"
 		return installed
 	}
-	if s.executable != "/usr/local/sbin/sylve" {
+	if s.executable != s.standalonePath {
 		installed.Reason = "sylve_standalone_path_required"
 		return installed
 	}
@@ -250,7 +221,7 @@ func (s *Service) Get(ctx context.Context) (View, error) {
 	view := View{HostUpdateState: state, AuditStale: true, BootEnvironmentSupported: s.bootEnvironments}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	view.Sylve = s.installed(ctx, state)
+	view.Sylve = s.installed(ctx)
 	view.ReleaseAvailable = releaseAvailable(state, view.Sylve)
 	var active models.HostUpdateOperation
 	if err = s.DB.Where("active IS NOT NULL").Limit(1).Find(&active).Error; err != nil {
@@ -404,7 +375,6 @@ func (s *Service) SetReleaseChannel(ctx context.Context, channel string) (models
 	if err != nil {
 		return state, err
 	}
-	s.releaseAttemptAt = time.Time{}
 	return s.state()
 }
 
@@ -451,19 +421,14 @@ func (s *Service) Start(ctx context.Context, action string, input Request, actor
 		if time.Now().After(plan.ExpiresAt) {
 			return Job{}, fmt.Errorf("host_update_plan_stale")
 		}
-		if plan.Kind == "packages" && len(plan.Transaction.Changes) == 0 {
-			return Job{}, fmt.Errorf("no_package_changes")
-		}
-	}
-	channel := ""
-	if strings.HasPrefix(action, "sylve-") {
-		state, err := s.state()
-		if err != nil {
-			return Job{}, err
-		}
-		channel = state.ReleaseChannel
-		if applying && (plan.Release == nil || plan.Release.Channel != channel) {
-			return Job{}, fmt.Errorf("host_update_plan_stale")
+		if plan.Kind == "sylve" {
+			state, err := s.state()
+			if err != nil {
+				return Job{}, err
+			}
+			if plan.Release == nil || plan.Release.Channel != state.ReleaseChannel {
+				return Job{}, fmt.Errorf("host_update_plan_stale")
+			}
 		}
 	}
 	one := uint(1)
@@ -474,7 +439,6 @@ func (s *Service) Start(ctx context.Context, action string, input Request, actor
 		Status:          "queued",
 		Phase:           "queued",
 		PlanID:          input.PlanID,
-		Channel:         channel,
 		Actor:           actor,
 		BootEnvironment: input.BootEnvironment,
 	}
@@ -786,7 +750,7 @@ func (s *Service) inspect(ctx context.Context, op *models.HostUpdateOperation, s
 	}
 	client.HostSystem = &info
 	client.SylveVersion = s.version
-	if s.installed(ctx, state).Mode != "package" {
+	if s.installed(ctx).Mode != "package" {
 		client.PreserveExecutable = s.executable
 	}
 	return client, inventory, nil

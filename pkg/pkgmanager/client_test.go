@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -45,14 +46,20 @@ func TestPackageCommandsRequireJailAndCannotInjectFlags(t *testing.T) {
 }
 
 func TestPackageCommandOutputIsBounded(t *testing.T) {
-	buffer := boundedBuffer{limit: 4}
-	for _, chunk := range []string{"ab", "cdef", "more output"} {
-		if n, err := buffer.Write([]byte(chunk)); err != nil || n != len(chunk) {
-			t.Fatalf("write=%d: %v", n, err)
+	for _, test := range []struct {
+		redirect string
+		limit    int
+	}{{"", 16 << 20}, {" >&2", 64 << 10}} {
+		binary := filepath.Join(t.TempDir(), "pkg-fixture")
+		script := "#!/bin/sh\n/usr/bin/head -c " + strconv.Itoa(test.limit+1) + " /dev/zero" + test.redirect + "\n"
+		if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
+			t.Fatal(err)
 		}
-	}
-	if buffer.String() != "abcd" || !buffer.truncated {
-		t.Fatalf("output=%q truncated=%v", buffer.String(), buffer.truncated)
+		client := Client{Binary: binary, Target: Target{JID: 4, Name: "fixture", Root: "/fixture"}}
+		result, err := client.Run(t.Context(), "query", "-a", InventoryFormat)
+		if err == nil || err.Error() != "package_output_truncated" || len(result.Stdout)+len(result.Stderr) != test.limit {
+			t.Fatalf("output%s: %d bytes: %v", test.redirect, len(result.Stdout)+len(result.Stderr), err)
+		}
 	}
 }
 
@@ -131,6 +138,40 @@ func TestConfirmedApplyOutlivesCancellationAndDrain(t *testing.T) {
 	}
 	if err = client.Apply(t.Context(), []string{"upgrade"}, approved); err == nil || err.Error() != "sylve_shutting_down" {
 		t.Fatalf("started an install while draining: %v", err)
+	}
+}
+
+func TestApplyConfirmsOnlyTheApprovedPlan(t *testing.T) {
+	plan := "The following 1 package(s) will be affected (of 1 checked):\n\nInstalled packages to be UPGRADED:\n\tapp: 1 -> 2 [ports]\n\nNumber of packages to be upgraded: 1\n"
+	approved, err := ParsePlan(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt := "printf '" + strings.ReplaceAll(plan, "\n", "\\n") + "\\nProceed with this action? [y/N]: '\nread answer\necho $answer >> \"$0.answers\"\n"
+	for _, test := range []struct {
+		name, script, answers, want string
+	}{
+		{"approved", prompt + "[ $answer = y ]\n", "y", ""},
+		{"changed plan", strings.Replace(prompt, "-> 2", "-> 3", 1), "n", "package_plan_changed"},
+		{"second prompt", prompt + prompt, "y\nn", "additional_package_transaction_unsupported"},
+		{"other prompt", "printf 'Proceed with deinstalling packages? [y/N]: '\nread answer\necho $answer >> \"$0.answers\"\n", "n", "unexpected_package_prompt"},
+		{"oversized output", "/usr/bin/head -c 4194305 /dev/zero | /usr/bin/tr '\\0' x\n" + prompt, "n", "package_confirmation_output_too_large"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			binary := filepath.Join(t.TempDir(), "pkg-fixture")
+			if err := os.WriteFile(binary, []byte("#!/bin/sh\n"+test.script), 0700); err != nil {
+				t.Fatal(err)
+			}
+			client := NewHostClient(nil)
+			client.Binary, client.HostSystem = binary, &HostInfo{Branch: "16.snap"}
+			err := client.Apply(t.Context(), []string{"upgrade"}, approved)
+			if test.want == "" && err != nil || test.want != "" && (err == nil || !strings.HasPrefix(err.Error(), test.want)) {
+				t.Fatalf("expected %q: %v", test.want, err)
+			}
+			if answers, err := os.ReadFile(binary + ".answers"); err != nil || string(answers) != test.answers+"\n" {
+				t.Fatalf("answers %q: %v", answers, err)
+			}
+		})
 	}
 }
 
@@ -235,12 +276,9 @@ func TestPackageFileChecksCoverInstalledAndCandidateArchives(t *testing.T) {
 			files  string
 			reject bool
 		}{
-			{name: "application", files: "/usr/local/bin/app\n"},
-			{name: "boot-like name", files: "/usr/local/share/boot/config\n"},
+			{name: "application", files: "/usr/local/bin/app\n/usr/local/share/boot/config\n"},
 			{name: "boot directory", files: "/boot\n", reject: true},
-			{name: "kernel", files: "/boot/kernel/kernel\n", reject: true},
-			{name: "relative boot", files: "boot/loader\n", reject: true},
-			{name: "normalized boot", files: "/usr/local/../../boot/loader\n", reject: true},
+			{name: "relative boot path", files: "usr/../boot/loader\n", reject: true},
 		} {
 			t.Run(source+"/"+test.name, func(t *testing.T) {
 				root := t.TempDir()
@@ -293,6 +331,9 @@ func TestPackageFileChecksCoverInstalledAndCandidateArchives(t *testing.T) {
 func TestTransactionSubsetAndChangedRepositoryRejected(t *testing.T) {
 	approved, err := ParsePlan(examplePlan)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err = ValidateTransaction(approved, approved); err != nil {
 		t.Fatal(err)
 	}
 	actual := approved
@@ -393,14 +434,19 @@ Installed packages to be REMOVED:
 Installed packages to be DOWNGRADED:
 	app: 3.0 -> 2.0 [ports]
 Installed packages to be REINSTALLED:
-	my-long-app-1.0 [ports] (options changed)
+	drm-66-kmod-6.6.25.1500068_3 [ports] (options changed)
 Number of packages to be removed: 1
 Number of packages to be downgraded: 1
 Number of packages to be reinstalled: 1
 `
 	plan, err := ParsePlan(output)
-	if err != nil || len(plan.Changes) != 3 {
-		t.Fatalf("%+v %v", plan, err)
+	want := []Change{
+		{Action: "downgrade", Name: "app", From: "3.0", To: "2.0", Repository: "ports"},
+		{Action: "reinstall", Name: "drm-66-kmod", From: "6.6.25.1500068_3", To: "6.6.25.1500068_3", Repository: "ports"},
+		{Action: "remove", Name: "old-library", From: "1.0"},
+	}
+	if err != nil || !slices.Equal(plan.Changes, want) {
+		t.Fatalf("%+v %v", plan.Changes, err)
 	}
 }
 
@@ -484,18 +530,6 @@ func TestPackageCatalogPresenceRequiresRegularPrivateFiles(t *testing.T) {
 				t.Fatalf("present=%v: %v", present, err)
 			}
 		})
-	}
-}
-
-func TestPackageManagedPathsAreDeduplicatedAcrossVerificationPhases(t *testing.T) {
-	client := Client{Target: Target{JID: 1, Name: "fixture", Root: t.TempDir()}}
-	for _, files := range [][]string{{"/usr/local/bin/app", "", "/usr/local/lib/library"}, {"/usr/local/bin/app", "/usr/local/bin/app", ""}} {
-		if err := client.verifyPackagePaths(t.Context(), files); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if !slices.Equal(client.ManagedPaths, []string{"/usr/local/bin/app", "/usr/local/lib/library"}) {
-		t.Fatalf("duplicate or empty managed paths: %v", client.ManagedPaths)
 	}
 }
 

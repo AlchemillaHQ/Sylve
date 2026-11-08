@@ -138,7 +138,7 @@ func (s *Service) apply(ctx context.Context, op *models.HostUpdateOperation, log
 		return "", err
 	}
 	preflight, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	installed := s.installed(preflight, state)
+	installed := s.installed(preflight)
 	cancel()
 	if installed.SHA256 != plan.ExecutableHash || installed.Reason == "sylve_executable_changed_restart_required" {
 		return "", fmt.Errorf("host_update_plan_stale")
@@ -291,7 +291,7 @@ func (s *Service) applyRelease(ctx context.Context, op *models.HostUpdateOperati
 	if err := sylveupdate.Allowed(installed, *plan.Release); err != nil {
 		return err
 	}
-	if installed.Path != "/usr/local/sbin/sylve" {
+	if installed.Path != s.standalonePath {
 		return fmt.Errorf("sylve_standalone_path_required")
 	}
 	if err := trustedExecutable(installed.Path); err != nil {
@@ -375,9 +375,6 @@ func (s *Service) completeApply(ctx context.Context, op models.HostUpdateOperati
 		targetTime, targetErr := sylveupdate.ParseBuildTime(plan.Release.BuiltAt)
 		if s.runningDigest != plan.Release.SHA256 || s.version != plan.Release.Version || s.commit != plan.Release.Commit || err != nil || targetErr != nil || !builtAt.Equal(targetTime) {
 			return "", fmt.Errorf("sylve_startup_identity_mismatch")
-		}
-		if err = s.DB.Model(&models.HostUpdateState{}).Where("id = 1").Updates(map[string]any{"installed_channel": plan.Release.Channel, "installed_digest": s.runningDigest, "installed_built_at": plan.Release.BuiltAt}).Error; err != nil {
-			return "", err
 		}
 		return "Sylve was updated and restarted successfully.", nil
 	}

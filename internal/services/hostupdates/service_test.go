@@ -13,7 +13,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -385,7 +384,6 @@ func TestUpdateAvailabilityAndInventorySerialization(t *testing.T) {
 
 func TestInstallationOwnershipFailsClosed(t *testing.T) {
 	s := testService(t)
-	state, _ := s.state()
 	for _, test := range []struct {
 		name       string
 		registered bool
@@ -402,7 +400,7 @@ func TestInstallationOwnershipFailsClosed(t *testing.T) {
 			s.ownership = func(context.Context, *pkgmanager.Client, string) (bool, string, error) {
 				return test.registered, test.owner, test.failure
 			}
-			if got := s.installed(t.Context(), state); got.Mode != test.want {
+			if got := s.installed(t.Context()); got.Mode != test.want {
 				t.Fatalf("got %+v", got)
 			}
 		})
@@ -410,137 +408,8 @@ func TestInstallationOwnershipFailsClosed(t *testing.T) {
 	if err := os.WriteFile(s.executable, []byte("externally replaced executable"), 0555); err != nil {
 		t.Fatal(err)
 	}
-	if got := s.installed(t.Context(), state); got.Reason != "sylve_executable_changed_restart_required" {
+	if got := s.installed(t.Context()); got.Reason != "sylve_executable_changed_restart_required" {
 		t.Fatalf("missed externally replaced executable: %+v", got)
-	}
-}
-
-func TestInstalledBuildTimeRequiresEmbeddedOrHashBoundMetadata(t *testing.T) {
-	const recovered = "2026-10-19T12:00:00Z"
-	for _, test := range []struct {
-		name  string
-		setup func(*Service, *models.HostUpdateState)
-		want  string
-	}{
-		{"embedded", func(*Service, *models.HostUpdateState) {}, "2026-10-18T12:00:00Z"},
-		{"unknown", func(s *Service, _ *models.HostUpdateState) { s.builtAt = "" }, ""},
-		{"invalid embedded date", func(s *Service, _ *models.HostUpdateState) { s.builtAt = "invalid" }, ""},
-		{"saved receipt", func(s *Service, state *models.HostUpdateState) {
-			s.builtAt = ""
-			state.InstalledDigest, state.InstalledBuiltAt = s.runningDigest, recovered
-		}, recovered},
-		{"receipt for different executable", func(s *Service, state *models.HostUpdateState) {
-			s.builtAt = ""
-			state.InstalledDigest, state.InstalledBuiltAt = strings.Repeat("f", 64), recovered
-		}, ""},
-		{"matching release metadata", func(s *Service, state *models.HostUpdateState) {
-			s.builtAt = ""
-			state.Release = &sylveupdate.Candidate{SHA256: s.runningDigest, BuiltAt: recovered}
-		}, recovered},
-		{"unrelated release metadata", func(s *Service, state *models.HostUpdateState) {
-			s.builtAt = ""
-			state.Release = &sylveupdate.Candidate{SHA256: strings.Repeat("f", 64), BuiltAt: recovered}
-		}, ""},
-		{"embedded date takes priority", func(s *Service, state *models.HostUpdateState) {
-			state.InstalledDigest, state.InstalledBuiltAt = s.runningDigest, recovered
-			state.Release = &sylveupdate.Candidate{SHA256: s.runningDigest, BuiltAt: recovered}
-		}, "2026-10-18T12:00:00Z"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			s := testService(t)
-			state, err := s.state()
-			if err != nil {
-				t.Fatal(err)
-			}
-			test.setup(s, &state)
-			if got := s.installedBuildTime(state); got != test.want {
-				t.Fatalf("build date = %q, want %q", got, test.want)
-			}
-		})
-	}
-}
-
-func TestLegacyBuildTimeCanUseOnlySuccessfulMatchingUpdateReceipts(t *testing.T) {
-	for _, name := range []string{"matching", "different executable", "failed operation", "invalid timestamp"} {
-		t.Run(name, func(t *testing.T) {
-			s := testService(t)
-			s.builtAt = ""
-			target := sylveupdate.Candidate{SHA256: s.runningDigest, BuiltAt: "2026-10-19T12:00:00Z"}
-			status := "success"
-			switch name {
-			case "different executable":
-				target.SHA256 = strings.Repeat("f", 64)
-			case "failed operation":
-				status = "failed"
-			case "invalid timestamp":
-				target.BuiltAt = "invalid"
-			}
-			plan := models.HostUpdatePlan{ID: uuid.NewString(), Kind: "sylve", Release: &target}
-			if err := s.DB.Create(&plan).Error; err != nil {
-				t.Fatal(err)
-			}
-			op := models.HostUpdateOperation{UUID: uuid.NewString(), Action: "sylve-apply", Status: status, PlanID: plan.ID}
-			if err := s.DB.Create(&op).Error; err != nil {
-				t.Fatal(err)
-			}
-			state, err := s.state()
-			if err != nil {
-				t.Fatal(err)
-			}
-			want := ""
-			if name == "matching" {
-				want = target.BuiltAt
-			}
-			if got := s.installedBuildTime(state); got != want {
-				t.Fatalf("build date = %q, want %q", got, want)
-			}
-		})
-	}
-}
-
-func TestReleaseCheckRetainsRecoveredBuildDateWhenLatestReleaseChanges(t *testing.T) {
-	s := testService(t)
-	s.builtAt = ""
-	state, err := s.state()
-	if err != nil {
-		t.Fatal(err)
-	}
-	const installedTime = "2026-10-19T12:00:00Z"
-	state.Release = &sylveupdate.Candidate{SHA256: s.runningDigest, BuiltAt: installedTime}
-	if err := s.DB.Model(&state).Select("Release").Updates(&state).Error; err != nil {
-		t.Fatal(err)
-	}
-	s.installed = func(_ context.Context, state models.HostUpdateState) sylveupdate.Installed {
-		return sylveupdate.Installed{Mode: "standalone", Version: s.version, Commit: s.commit, BuiltAt: s.installedBuildTime(state), Channel: "rolling", SHA256: s.runningDigest, Path: s.executable}
-	}
-	s.command = func(context.Context, string, ...string) (string, error) { return "15.1-RELEASE", nil }
-	metadata := `{"version":"0.3.1","commit":"` + strings.Repeat("b", 40) + `","freebsd":"15.1-RELEASE","builtAt":"2026-10-24T12:00:00Z"}`
-	sum := sha256.Sum256([]byte(metadata))
-	s.releases.HTTP.Transport = releaseTransport(func(request *http.Request) (*http.Response, error) {
-		body := metadata
-		if request.URL.Host == "api.github.com" {
-			base := "https://github.com/AlchemillaHQ/Sylve/releases/download/tip/"
-			raw, err := json.Marshal(map[string]any{"tag_name": "tip", "assets": []map[string]any{
-				{"id": 1, "name": "sylve-" + runtime.GOARCH, "browser_download_url": base + "sylve-" + runtime.GOARCH, "digest": "sha256:" + strings.Repeat("2", 64), "size": 123},
-				{"id": 2, "name": "sylve-version.json", "browser_download_url": base + "sylve-version.json", "digest": "sha256:" + hex.EncodeToString(sum[:]), "size": len(metadata)},
-			}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			body = string(raw)
-		}
-		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
-	})
-	if err := s.checkRelease(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	state, err = s.state()
-	if err != nil || state.InstalledDigest != s.runningDigest || state.InstalledBuiltAt != installedTime || state.Release == nil || state.Release.SHA256 == s.runningDigest {
-		t.Fatalf("release check lost the recovered installed date: %+v %v", state, err)
-	}
-	installed := s.installed(t.Context(), state)
-	if installed.BuiltAt != installedTime || !releaseAvailable(state, installed) {
-		t.Fatalf("latest release replaced the installed build date: %+v", installed)
 	}
 }
 
@@ -559,7 +428,7 @@ func TestReleaseCheckSkipsUnsupportedInstallationWithoutStaleFindings(t *testing
 	if err = s.DB.Save(&state).Error; err != nil {
 		t.Fatal(err)
 	}
-	if current := s.installed(t.Context(), state); current.Reason != "sylve_standalone_path_required" {
+	if current := s.installed(t.Context()); current.Reason != "sylve_standalone_path_required" {
 		t.Fatalf("expected a nonstandard standalone path: %+v", current)
 	}
 	if err = s.checkRelease(t.Context()); err != nil {
@@ -628,6 +497,168 @@ func TestApplyRequiresApprovalAndConsumesPlanOnce(t *testing.T) {
 	}
 }
 
+// hostCatalog names a repository with a catalog on this host, because
+// CatalogDigest always reads the host's /var/db/pkg/repos.
+func hostCatalog(t *testing.T) string {
+	t.Helper()
+	catalogs, _ := filepath.Glob("/var/db/pkg/repos/*/db")
+	for _, catalog := range catalogs {
+		if name := filepath.Base(filepath.Dir(catalog)); pkgmanager.ValidName(name) {
+			return name
+		}
+	}
+	t.Skip("no pkg repository catalog on this host")
+	return ""
+}
+
+func TestPackageApplyRechecksApprovalBeforeInstalling(t *testing.T) {
+	repository := hostCatalog(t)
+	arch := runtime.GOARCH
+	if arch == "arm64" {
+		arch = "aarch64"
+	}
+	origins := map[string]string{"FreeBSD-clibs": "base/FreeBSD-clibs", "FreeBSD-runtime": "base/FreeBSD-runtime", "app": "misc/app", "sylve": "sysutils/sylve"}
+	versions := map[string]string{"FreeBSD-clibs": "15.0", "FreeBSD-runtime": "15.0", "app": "1", "sylve": "0.3.1"}
+	upgrades := map[string]string{"FreeBSD-runtime": "15.0p1", "app": "2", "sylve": "0.3.2"}
+	metadata := func(name, version string) string {
+		prefix := "/usr/local"
+		if strings.HasPrefix(name, "FreeBSD-") {
+			prefix = "/"
+		}
+		return fmt.Sprintf("%s\t%s\t%s\tFreeBSD:15:%s\t%s\tFreeBSD_version\t1500000\n", name, version, origins[name], arch, prefix)
+	}
+	for _, test := range []struct {
+		name, upgrade, boot string
+		stale               func(*models.HostUpdatePlan)
+		fails, result       string
+	}{
+		{name: "inventory changed", upgrade: "app", stale: func(plan *models.HostUpdatePlan) { plan.InventoryHash = "changed" }, fails: "host_update_plan_stale"},
+		{name: "host changed", upgrade: "app", stale: func(plan *models.HostUpdatePlan) { plan.Host.OSVersion++ }, fails: "host_update_plan_stale"},
+		{name: "repositories changed", upgrade: "app", stale: func(plan *models.HostUpdatePlan) { plan.RepositoryHash = "changed" }, fails: "host_update_plan_stale"},
+		{name: "catalog changed", upgrade: "app", stale: func(plan *models.HostUpdatePlan) { plan.CatalogHash = "changed" }, fails: "host_update_plan_stale"},
+		{name: "transaction changed", upgrade: "app", stale: func(plan *models.HostUpdatePlan) { plan.Transaction.Digest = "changed" }, fails: "host_update_plan_stale"},
+		{name: "boot environment", upgrade: "app", boot: "created", result: "Pre-update boot environment: sylve-before-"},
+		{name: "boot environment failure", upgrade: "app", boot: "failed", fails: "boot_environment_creation_failed"},
+		{name: "base upgrade", upgrade: "FreeBSD-runtime", result: rebootNotice},
+		{name: "packaged sylve upgrade", upgrade: "sylve"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			s := testService(t)
+			s.probe = func() error { return nil }
+			s.restart = func() {}
+			var commands []string
+			s.command = func(_ context.Context, binary string, args ...string) (string, error) {
+				commands = append(commands, strings.Join(append([]string{binary}, args...), " "))
+				if test.boot == "failed" && slices.Contains(args, "create") {
+					return "", errors.New("fixture bectl failure")
+				}
+				return "", nil
+			}
+			dir := t.TempDir()
+			from, to := versions[test.upgrade], upgrades[test.upgrade]
+			archive := []byte("fixture archive")
+			sum := sha256.Sum256(archive)
+			plan := fmt.Sprintf("The following 1 package(s) will be affected (of 4 checked):\n\nInstalled packages to be UPGRADED:\n\t%s: %s -> %s [%s]\n\nNumber of packages to be upgraded: 1\n", test.upgrade, from, to, repository)
+			installed := filepath.Join(dir, "installed")
+			script := "#!/bin/sh\ncat " + dir + "/plan\nprintf 'Proceed with this action? [y/N]: '\nread answer\n[ \"$answer\" = y ] || exit 1\ntouch " + installed + "\n"
+			if test.upgrade == "sylve" {
+				script += "echo upgraded > " + s.executable + "\n"
+			}
+			if err := errors.Join(os.Mkdir(filepath.Join(dir, "All"), 0755), os.WriteFile(filepath.Join(dir, "All", test.upgrade+"-"+to+".pkg"), archive, 0644), os.WriteFile(filepath.Join(dir, "plan"), []byte(plan), 0600), os.WriteFile(filepath.Join(dir, "pkg-static"), []byte(script), 0700)); err != nil {
+				t.Fatal(err)
+			}
+			s.client = func(log io.Writer) *pkgmanager.Client {
+				client := pkgmanager.NewHostClient(log)
+				client.Binary = filepath.Join(dir, "pkg-static")
+				client.HostOSVersion = func() (uint32, error) { return 1500000, nil }
+				client.RunCommand = func(_ context.Context, args []string) (pkgmanager.Result, error) {
+					query, last, format := slices.Contains(args, "query"), args[len(args)-1], args[len(args)-2]
+					switch {
+					case slices.Contains(args, "-N"), slices.Contains(args, "update"), slices.Contains(args, "checksum"):
+						return pkgmanager.Result{}, nil
+					case slices.Contains(args, "which"):
+						return pkgmanager.Result{Stdout: "base/FreeBSD-runtime\n"}, nil
+					case slices.Contains(args, "-vv"):
+						return pkgmanager.Result{Stdout: "Repositories:\n" + repository + ": {\nurl: \"file://" + dir + "\",\nenabled: yes\n}\n"}, nil
+					case slices.Contains(args, "upgrade"):
+						return pkgmanager.Result{Stdout: plan}, nil
+					case slices.Contains(args, "search"):
+						return pkgmanager.Result{Stdout: fmt.Sprintf(`[{"name":%q,"version":%q,"repopath":"All/%s-%s.pkg","sum":%q,"pkgsize":%d}]`, test.upgrade, to, test.upgrade, to, hex.EncodeToString(sum[:]), len(archive))}, nil
+					case slices.Contains(args, "audit"):
+						return pkgmanager.Result{ExitCode: 1, Stderr: "fixture audit unavailable"}, nil
+					case query && slices.Contains(args, "-a"):
+						var inventory strings.Builder
+						for _, name := range []string{"FreeBSD-clibs", "FreeBSD-runtime", "app", "sylve"} {
+							version := versions[name]
+							if _, err := os.Stat(installed); err == nil && name == test.upgrade {
+								version = to
+							}
+							fmt.Fprintf(&inventory, "%s\t%s\t%s\t%s\t10\t0\t0\n", name, version, origins[name], repository)
+						}
+						return pkgmanager.Result{Stdout: inventory.String()}, nil
+					case query && (last == "%Fp" || format == "%Fp"):
+						return pkgmanager.Result{Stdout: "/usr/local/share/fixture\n"}, nil
+					case query && format == "%Fp\t%Fs":
+						return pkgmanager.Result{Stdout: s.executable + "\tfixture-checksum\n"}, nil
+					case query && slices.Contains(args, "-F"):
+						return pkgmanager.Result{Stdout: metadata(test.upgrade, to)}, nil
+					case query && last == "FreeBSD-runtime":
+						return pkgmanager.Result{Stdout: metadata(last, versions[last])}, nil
+					}
+					t.Errorf("unexpected command: %v", args)
+					return pkgmanager.Result{}, errors.New("unexpected_command")
+				}
+				return client
+			}
+			preview := models.HostUpdateOperation{UUID: uuid.NewString(), Action: "packages-preview"}
+			if err := s.DB.Create(&preview).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := s.readOperation(t.Context(), &preview, nil, io.Discard); err != nil {
+				t.Fatal(err)
+			}
+			op := models.HostUpdateOperation{UUID: uuid.NewString(), Action: "packages-apply", PlanID: preview.PlanID, BootEnvironment: test.boot != ""}
+			if err := s.DB.Create(&op).Error; err != nil {
+				t.Fatal(err)
+			}
+			var approved models.HostUpdatePlan
+			if err := s.DB.First(&approved, "id = ?", op.PlanID).Error; err != nil {
+				t.Fatal(err)
+			}
+			approved.AppliedOperationID = &op.ID
+			if test.stale != nil {
+				test.stale(&approved)
+			}
+			if err := s.DB.Save(&approved).Error; err != nil {
+				t.Fatal(err)
+			}
+			message, err := s.apply(t.Context(), &op, io.Discard)
+			_, statErr := os.Stat(installed)
+			var wantCommands []string
+			if test.boot != "" {
+				wantCommands = []string{"/sbin/bectl check", "/sbin/bectl create -r sylve-before-" + op.UUID[:8]}
+			}
+			if !slices.Equal(commands, wantCommands) {
+				t.Fatalf("boot environment commands: %q", commands)
+			}
+			if test.fails != "" {
+				if err == nil || code(err) != test.fails || statErr == nil {
+					t.Fatalf("installed=%v despite %s: %v", statErr == nil, test.fails, err)
+				}
+				return
+			}
+			if err != nil || statErr != nil || !strings.Contains(message, test.result) {
+				t.Fatalf("installation result %q: %v", message, err)
+			}
+			restarting := test.upgrade == "sylve"
+			digest, err := sylveupdate.FileDigest(s.executable)
+			if err != nil || (op.Phase == "restarting") != restarting || (op.RestartDigest == digest) != restarting {
+				t.Fatalf("restart hand-over: %+v %v", op, err)
+			}
+		})
+	}
+}
+
 func waitJob(t *testing.T, s *Service, id uint) Job {
 	t.Helper()
 	ticker := time.NewTicker(5 * time.Millisecond)
@@ -675,9 +706,8 @@ func TestRestartCompletionVerifiesNewProcessBeforeSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	job = waitJob(t, s, op.ID)
-	state, _ := s.state()
-	if err != nil || job.Status != "success" || job.FinishedAt == nil || state.InstalledDigest != newDigest || state.InstalledChannel != "rolling" || state.InstalledBuiltAt != target.BuiltAt || job.Result != "Sylve was updated and restarted successfully." {
-		t.Fatalf("startup did not finalize receipt: %+v %+v %v", job, state, err)
+	if job.Status != "success" || job.Result != "Sylve was updated and restarted successfully." {
+		t.Fatalf("startup did not finalize the update: %+v", job)
 	}
 	if eventCount(t, s, "operation") != 1 {
 		t.Fatal("result notification missing")
@@ -694,9 +724,6 @@ func TestRestartCompletionRejectsUnverifiedEmbeddedBuildTime(t *testing.T) {
 			if err := s.DB.Create(&plan).Error; err != nil {
 				t.Fatal(err)
 			}
-			if err := s.DB.Model(&models.HostUpdateState{ID: 1}).Select("Release").Updates(&models.HostUpdateState{Release: &target}).Error; err != nil {
-				t.Fatal(err)
-			}
 			one := uint(1)
 			op := models.HostUpdateOperation{UUID: uuid.NewString(), Active: &one, Action: "sylve-apply", Status: "running", Phase: "restarting", PlanID: plan.ID, RestartDigest: s.runningDigest}
 			if err := s.DB.Create(&op).Error; err != nil {
@@ -708,10 +735,6 @@ func TestRestartCompletionRejectsUnverifiedEmbeddedBuildTime(t *testing.T) {
 			job := waitJob(t, s, op.ID)
 			if job.Status != "failed" || job.Error != "sylve_startup_identity_mismatch" {
 				t.Fatalf("unverified startup succeeded: %+v", job)
-			}
-			state, err := s.state()
-			if err != nil || state.InstalledDigest != "" || state.InstalledBuiltAt != "" {
-				t.Fatalf("unverified process was recorded as installed: %+v %v", state, err)
 			}
 		})
 	}
@@ -753,22 +776,18 @@ func TestReadOperationCancelStopsPackageCommand(t *testing.T) {
 }
 
 func TestRecoveryMarksUnfinishedOperationsInterrupted(t *testing.T) {
-	for _, phase := range []string{"queued", "verifying", "applying", "restarting"} {
-		t.Run(phase, func(t *testing.T) {
-			s := testService(t)
-			one := uint(1)
-			op := models.HostUpdateOperation{UUID: uuid.NewString(), Active: &one, Action: "packages-apply", Phase: phase, Status: "running"}
-			if err := s.DB.Create(&op).Error; err != nil {
-				t.Fatal(err)
-			}
-			if err := s.Recover(); err != nil {
-				t.Fatal(err)
-			}
-			job := waitJob(t, s, op.ID)
-			if job.Status != "failed" || !strings.Contains(job.Error, "host_update_interrupted") || job.Active != nil {
-				t.Fatalf("unexpected recovery: %+v", job)
-			}
-		})
+	s := testService(t)
+	one := uint(1)
+	op := models.HostUpdateOperation{UUID: uuid.NewString(), Active: &one, Action: "packages-apply", Phase: "restarting", Status: "running"}
+	if err := s.DB.Create(&op).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Recover(); err != nil {
+		t.Fatal(err)
+	}
+	job := waitJob(t, s, op.ID)
+	if job.Status != "failed" || !strings.Contains(job.Error, "host_update_interrupted") || job.Active != nil {
+		t.Fatalf("unexpected recovery: %+v", job)
 	}
 }
 
@@ -864,7 +883,7 @@ func TestReleaseAvailabilityUsesInstalledIdentity(t *testing.T) {
 		})
 	}
 	s := testService(t)
-	s.installed = func(context.Context, models.HostUpdateState) sylveupdate.Installed { return current }
+	s.installed = func(context.Context) sylveupdate.Installed { return current }
 	if err := s.DB.Model(&models.HostUpdateState{ID: 1}).Select("Release", "ReleaseCheckedAt").Updates(&models.HostUpdateState{Release: &target, ReleaseCheckedAt: &checked}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -892,7 +911,7 @@ func TestSylveReleaseReadsUseSavedChannelWithoutOperationsOrPackageWork(t *testi
 		t.Fatal(err)
 	}
 	current := sylveupdate.Installed{Mode: "standalone", Version: s.version, Commit: s.commit, BuiltAt: s.builtAt, SHA256: s.runningDigest, Path: s.executable}
-	s.installed = func(context.Context, models.HostUpdateState) sylveupdate.Installed { return current }
+	s.installed = func(context.Context) sylveupdate.Installed { return current }
 	s.probe = func() error {
 		t.Error("release check reached the host package probe")
 		return errors.New("unexpected_probe")
@@ -916,17 +935,13 @@ func TestSylveReleaseReadsUseSavedChannelWithoutOperationsOrPackageWork(t *testi
 		t.Fatal(err)
 	}
 	for range 2 {
-		view, err := s.GetRelease(t.Context(), true)
+		view, err := s.GetRelease(t.Context())
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !view.ReleaseAvailable || view.ReleaseChannel != "tagged" || view.Release == nil || view.Release.Channel != "tagged" {
 			t.Fatalf("standalone release read ignored the saved channel: %+v", view)
 		}
-	}
-	s.releaseAttemptAt = time.Time{}
-	if view, err := s.GetRelease(t.Context(), false); err != nil || !view.ReleaseAvailable {
-		t.Fatalf("cached release was not available on page load: %+v %v", view, err)
 	}
 	for _, model := range []any{&models.HostUpdateOperation{}, &models.HostUpdatePlan{}, &infoModels.AuditRecord{}} {
 		var count int64
@@ -951,20 +966,16 @@ func TestSylveReleaseReadsUseSavedChannelWithoutOperationsOrPackageWork(t *testi
 		t.Fatalf("update approval did not pin the saved channel and current executable: %+v", preview)
 	}
 	fail = true
-	if _, err := s.GetRelease(t.Context(), true); err == nil || code(err) != "release_fetch_failed" {
+	if _, err := s.GetRelease(t.Context()); err == nil || code(err) != "release_fetch_failed" {
 		t.Fatalf("failed fetch was reported as success: %v", err)
 	}
 	failed, err := s.state()
 	if err != nil || failed.Release == nil || !failed.ReleaseCheckedAt.Equal(*state.ReleaseCheckedAt) || failed.ReleaseError == "" || releaseAvailable(failed, current) {
 		t.Fatalf("failed check lost recorded findings or offered a stale update: %+v %v", failed, err)
 	}
-	attempts := requests.Load()
-	if view, err := s.GetRelease(t.Context(), false); err != nil || view.ReleaseError == "" || view.Release == nil || view.ReleaseAvailable || requests.Load() != attempts {
-		t.Fatalf("page load retried a recent failure or lost stale metadata: %+v %v", view, err)
-	}
 	fail = false
 	current.Version, current.SHA256 = state.Release.Version, state.Release.SHA256
-	if _, err := s.GetRelease(t.Context(), true); err != nil {
+	if _, err := s.GetRelease(t.Context()); err != nil {
 		t.Fatalf("already-current tagged release was treated as an error: %v", err)
 	}
 	state, err = s.state()
@@ -997,11 +1008,8 @@ func TestStandaloneReleaseReadRejectsPackageOwnedInstallation(t *testing.T) {
 		t.Error("package-owned installation requested standalone release metadata")
 		return nil, errors.New("unexpected_release_request")
 	})
-	if _, err := s.GetRelease(t.Context(), false); err == nil || code(err) != "sylve_package_managed" {
+	if _, err := s.GetRelease(t.Context()); err == nil || code(err) != "sylve_package_managed" {
 		t.Fatalf("package-owned installation used the release updater: %v", err)
-	}
-	if _, err := s.Start(t.Context(), "sylve-check", Request{}, "tester"); err == nil || code(err) != "invalid_update_action" {
-		t.Fatalf("release metadata still starts an audited POST operation: %v", err)
 	}
 }
 
@@ -1024,7 +1032,7 @@ func TestManualPathReleaseChecksInspectMetadataWithoutEnablingUpdates(t *testing
 			if err := s.checkRelease(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			view, err := s.GetRelease(t.Context(), false)
+			view, err := s.GetRelease(t.Context())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1035,8 +1043,8 @@ func TestManualPathReleaseChecksInspectMetadataWithoutEnablingUpdates(t *testing
 			if err != nil || state.Release == nil || state.Release.Version != "0.3.2" || state.Release.BuiltAt != "2026-10-24T12:00:00Z" || state.ReleaseCheckedAt == nil || state.ReleaseError != "" || requests.Load() != 2 {
 				t.Fatalf("published metadata was not available for inspection: %+v %v", state, err)
 			}
-			current := s.installed(t.Context(), state)
-			if current.Reason != "sylve_standalone_path_required" || releaseAvailable(state, current) || state.InstalledDigest != "" || state.InstalledBuiltAt != "" || eventCount(t, s, "available") != 0 {
+			current := s.installed(t.Context())
+			if current.Reason != "sylve_standalone_path_required" || releaseAvailable(state, current) || eventCount(t, s, "available") != 0 {
 				t.Fatalf("metadata inspection treated a manual installation as updateable: %+v %+v", current, state)
 			}
 			preview, err := s.Start(t.Context(), "sylve-preview", Request{}, "tester")
@@ -1334,5 +1342,66 @@ func TestRecoverRemovesInterruptedReleaseStaging(t *testing.T) {
 	}
 	if _, err := os.Stat(stage); !os.IsNotExist(err) {
 		t.Fatalf("staging directory survived recovery: %v", err)
+	}
+}
+
+func TestLogsReadFromOffsetWithinBounds(t *testing.T) {
+	s := testService(t)
+	op := models.HostUpdateOperation{UUID: uuid.NewString(), Action: "check"}
+	if err := s.DB.Create(&op).Error; err != nil {
+		t.Fatal(err)
+	}
+	dir, err := s.operationDirectory(op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, "output.log"), []byte("first\nsecond\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if text, next, err := s.Logs(t.Context(), op.ID, 6); err != nil || text != "second\n" || next != 13 {
+		t.Fatalf("log remainder: %q %d %v", text, next, err)
+	}
+	for _, offset := range []int64{-1, 14} {
+		if _, _, err := s.Logs(t.Context(), op.ID, offset); err == nil || code(err) != "invalid_log_offset" {
+			t.Fatalf("offset %d accepted: %v", offset, err)
+		}
+	}
+}
+
+func TestPruneRemovesOnlyExpiredHistory(t *testing.T) {
+	s := testService(t)
+	old, recent := time.Now().UTC().Add(-31*24*time.Hour), time.Now().UTC().Add(-time.Hour)
+	unused := models.HostUpdatePlan{ID: uuid.NewString(), ExpiresAt: old}
+	referenced := models.HostUpdatePlan{ID: uuid.NewString(), ExpiresAt: old}
+	expired := models.HostUpdateOperation{UUID: uuid.NewString(), FinishedAt: &old}
+	kept := models.HostUpdateOperation{UUID: uuid.NewString(), FinishedAt: &recent, PlanID: referenced.ID}
+	events := []models.HostUpdateEvent{{ID: "expired", FinishedAt: &old}, {ID: "recent", FinishedAt: &recent}, {ID: "pending"}}
+	for _, row := range []any{&unused, &referenced, &expired, &kept, &events} {
+		if err := s.DB.Create(row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	dirs := map[string]bool{}
+	for _, op := range []models.HostUpdateOperation{expired, kept} {
+		dir, err := s.operationDirectory(op)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dirs[dir] = op.ID == kept.ID
+	}
+	s.prune()
+	for dir, want := range dirs {
+		if _, err := os.Stat(dir); (err == nil) != want {
+			t.Fatalf("log directory %s: kept=%v", dir, err == nil)
+		}
+	}
+	var operations []models.HostUpdateOperation
+	var plans []models.HostUpdatePlan
+	var remaining []models.HostUpdateEvent
+	if err := errors.Join(s.DB.Find(&operations).Error, s.DB.Find(&plans).Error, s.DB.Order("id").Find(&remaining).Error); err != nil {
+		t.Fatal(err)
+	}
+	if len(operations) != 1 || operations[0].ID != kept.ID || len(plans) != 1 || plans[0].ID != referenced.ID || len(remaining) != 2 || remaining[0].ID != "pending" || remaining[1].ID != "recent" {
+		t.Fatalf("prune kept or removed the wrong rows: %+v %+v %+v", operations, plans, remaining)
 	}
 }

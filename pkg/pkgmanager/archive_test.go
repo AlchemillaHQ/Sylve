@@ -119,31 +119,22 @@ func TestCandidateArchiveRejectsInvalidRepositoryMetadata(t *testing.T) {
 	}
 	for _, output := range outputs {
 		t.Run(output, func(t *testing.T) {
-			client := Client{Target: Target{JID: 1, Name: "fixture", Root: t.TempDir()}, RunCommand: func(_ context.Context, args []string) (Result, error) {
+			var log bytes.Buffer
+			client := Client{Target: Target{JID: 1, Name: "fixture", Root: t.TempDir()}, Log: &log, RunCommand: func(_ context.Context, args []string) (Result, error) {
 				if !slices.Contains(args, "search") {
 					t.Fatalf("downloaded an archive with unverified metadata: %v", args)
 				}
 				return Result{Stdout: output}, nil
 			}}
 			plan := Plan{Changes: []Change{{Action: "upgrade", Name: "app", From: "1", To: "2", Repository: "ports"}}}
-			if err := client.VerifyCandidates(t.Context(), plan, []Repository{{Name: "ports"}}); err == nil || !strings.Contains(err.Error(), "package_archive_path_unavailable") {
+			err := client.VerifyCandidates(t.Context(), plan, []Repository{{Name: "ports"}})
+			if err == nil || !strings.Contains(err.Error(), "package_archive_path_unavailable") {
 				t.Fatalf("accepted invalid archive metadata %q: %v", output, err)
 			}
+			if log.String() != "Archive path verification failed for app: "+err.Error()+"\n" {
+				t.Fatalf("archive rejection lost its diagnostic: %q", log.String())
+			}
 		})
-	}
-}
-
-func TestCandidateArchiveFailureLogsReason(t *testing.T) {
-	var log bytes.Buffer
-	client := Client{Target: Target{JID: 1, Name: "fixture", Root: t.TempDir()}, Log: &log, RunCommand: func(_ context.Context, args []string) (Result, error) {
-		if !slices.Contains(args, "search") {
-			t.Fatalf("attempted to fetch an unsafe archive: %v", args)
-		}
-		return Result{Stdout: `[{"name":"app","version":"2","repopath":"./../outside.pkg"}]`}, nil
-	}}
-	plan := Plan{Changes: []Change{{Action: "upgrade", Name: "app", From: "1", To: "2", Repository: "ports"}}}
-	if err := client.VerifyCandidates(t.Context(), plan, []Repository{{Name: "ports"}}); err == nil || !strings.Contains(log.String(), "unsafe repository path") || !strings.Contains(log.String(), "./../outside.pkg") {
-		t.Fatalf("archive rejection lost its diagnostic: %v, log=%q", err, log.String())
 	}
 }
 

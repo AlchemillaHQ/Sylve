@@ -75,7 +75,6 @@ function initial(node: string): DemoState {
 			version: '0.3.1',
 			commit: 'a'.repeat(40),
 			builtAt: '2026-10-19T12:00:00Z',
-			channel: packaged ? 'package' : 'rolling',
 			sha256: '1'.repeat(64),
 			path: '/usr/local/sbin/sylve'
 		},
@@ -195,7 +194,6 @@ function settle(node: string, view: DemoState) {
 			version: target.version,
 			commit: target.commit,
 			builtAt: target.builtAt,
-			channel: target.channel,
 			sha256: target.sha256
 		};
 		view.releaseAvailable = false;
@@ -349,7 +347,6 @@ export function demoHostUpdates(
 		phase: action.endsWith('-apply') ? 'applying' : 'solving',
 		planId: plan?.id ?? '',
 		plan,
-		channel: action.startsWith('sylve-') ? view.releaseChannel : '',
 		actor: 'demo-admin',
 		error: '',
 		result: '',

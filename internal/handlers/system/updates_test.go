@@ -22,23 +22,18 @@ import (
 )
 
 type updateStub struct {
-	request      hostupdates.Request
-	action       string
-	actor        string
-	monitoring   hostupdates.Monitoring
-	channel      string
-	refresh      bool
-	releaseCalls int
-	logCalls     int
+	request  hostupdates.Request
+	action   string
+	actor    string
+	channel  string
+	logCalls int
 }
 
 func (*updateStub) Get(context.Context) (hostupdates.View, error) { return hostupdates.View{}, nil }
 func (*updateStub) History(context.Context, int, int, string, string) (hostupdates.HistoryPage, error) {
 	return hostupdates.HistoryPage{}, nil
 }
-func (s *updateStub) GetRelease(_ context.Context, refresh bool) (hostupdates.ReleaseView, error) {
-	s.refresh = refresh
-	s.releaseCalls++
+func (*updateStub) GetRelease(context.Context) (hostupdates.ReleaseView, error) {
 	return hostupdates.ReleaseView{ReleaseChannel: "rolling"}, nil
 }
 func (s *updateStub) Start(_ context.Context, action string, request hostupdates.Request, actor string) (hostupdates.Job, error) {
@@ -53,8 +48,7 @@ func (s *updateStub) Logs(context.Context, uint, int64) (string, int64, error) {
 	s.logCalls++
 	return "output", 6, nil
 }
-func (s *updateStub) SetMonitoring(_ context.Context, input hostupdates.Monitoring) (models.HostUpdateState, error) {
-	s.monitoring = input
+func (*updateStub) SetMonitoring(context.Context, hostupdates.Monitoring) (models.HostUpdateState, error) {
 	return models.HostUpdateState{}, nil
 }
 
@@ -63,106 +57,42 @@ func (s *updateStub) SetReleaseChannel(_ context.Context, channel string) (model
 	return models.HostUpdateState{ReleaseChannel: channel}, nil
 }
 
-func TestHostUpdateMonitoringPreservesCustomCron(t *testing.T) {
+func TestSylveReleaseReadIsNotCached(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	stub := &updateStub{}
 	router := gin.New()
-	router.PUT("/monitoring", SetHostUpdateMonitoring(stub))
+	router.GET("/sylve/release", GetSylveRelease(&updateStub{}))
 	response := httptest.NewRecorder()
-	request := httptest.NewRequest("PUT", "/monitoring", strings.NewReader(`{"enabled":true,"cronExpr":"0 3 * * 0"}`))
-	request.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || !stub.monitoring.Enabled || stub.monitoring.CronExpr != "0 3 * * 0" {
-		t.Fatalf("custom schedule changed at the API boundary: %+v %d %s", stub.monitoring, response.Code, response.Body)
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/sylve/release", nil))
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "private, no-store" || !strings.Contains(response.Body.String(), `"releaseChannel":"rolling"`) {
+		t.Fatalf("release read: %d %v %s", response.Code, response.Header(), response.Body)
 	}
 }
 
-func TestSylveReleaseChannelHandler(t *testing.T) {
+func TestHostUpdateInputValidation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	stub := &updateStub{}
 	router := gin.New()
-	router.PUT("/sylve/channel", SetSylveReleaseChannel(stub))
-	request := httptest.NewRequest(http.MethodPut, "/sylve/channel", strings.NewReader(`{"channel":"tagged"}`))
-	request.Header.Set("Content-Type", "application/json")
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || stub.channel != "tagged" || !strings.Contains(response.Body.String(), `"releaseChannel":"tagged"`) {
-		t.Fatalf("channel was not saved: %d %s", response.Code, response.Body)
-	}
-	stub.channel = ""
-	request = httptest.NewRequest(http.MethodPut, "/sylve/channel", strings.NewReader(`{"channel":true}`))
-	request.Header.Set("Content-Type", "application/json")
-	response = httptest.NewRecorder()
-	router.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest || stub.channel != "" {
-		t.Fatalf("malformed channel reached service: %d %s", response.Code, response.Body)
-	}
-}
-
-func TestSylveReleaseReadUsesGETWithoutAsyncAuditIdentity(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	stub := &updateStub{}
-	router := gin.New()
-	router.Use(func(c *gin.Context) {
-		c.Next()
-		if _, ok := c.Get("AuditAsyncJobID"); ok || c.GetString("AuditAsyncJobType") != "" {
-			t.Error("release read was bound to an audited operation")
-		}
-	})
-	router.GET("/sylve/release", GetSylveRelease(stub))
-	router.GET("/unavailable", GetSylveRelease(nil))
-	for _, test := range []struct {
-		method, path string
-		status       int
-		refresh      bool
-	}{
-		{http.MethodGet, "/sylve/release", http.StatusOK, false},
-		{http.MethodGet, "/sylve/release?refresh=true", http.StatusOK, true},
-		{http.MethodGet, "/sylve/release?refresh=false", http.StatusOK, false},
-		{http.MethodGet, "/sylve/release?refresh=invalid", http.StatusBadRequest, false},
-		{http.MethodGet, "/unavailable", http.StatusServiceUnavailable, false},
-		{http.MethodPost, "/sylve/release", http.StatusNotFound, false},
-	} {
-		response := httptest.NewRecorder()
-		router.ServeHTTP(response, httptest.NewRequest(test.method, test.path, nil))
-		if response.Code != test.status {
-			t.Fatalf("%s %s: %d %s", test.method, test.path, response.Code, response.Body)
-		}
-		if test.status == http.StatusOK && (stub.refresh != test.refresh || !strings.Contains(response.Body.String(), `"releaseChannel":"rolling"`) || response.Header().Get("Cache-Control") != "private, no-store") {
-			t.Fatalf("incorrect release read: %+v %s", stub, response.Body)
-		}
-	}
-	if stub.releaseCalls != 3 || stub.action != "" {
-		t.Fatalf("invalid read reached the service or started an operation: %+v", stub)
-	}
-}
-
-func TestHostUpdateUnavailableAndInputValidation(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	stub := &updateStub{}
-	router := gin.New()
-	router.GET("/unavailable", GetHostUpdates(nil))
 	router.POST("/actions/:action", StartHostUpdate(stub))
+	router.PUT("/sylve/channel", SetSylveReleaseChannel(stub))
 	router.GET("/jobs/:id/logs", GetHostUpdateJob(stub, true))
 	for _, test := range []struct {
 		method, path, body string
-		status             int
 	}{
-		{"GET", "/unavailable", "", 503},
-		{"POST", "/actions/check", "{", 400},
-		{"GET", "/jobs/1/logs?offset=-1", "", 400},
-		{"GET", "/jobs/1/logs?offset=NaN", "", 400},
+		{"POST", "/actions/check", "{"},
+		{"PUT", "/sylve/channel", `{"channel":true}`},
+		{"GET", "/jobs/1/logs?offset=-1", ""},
+		{"GET", "/jobs/1/logs?offset=NaN", ""},
 	} {
 		response := httptest.NewRecorder()
 		request := httptest.NewRequest(test.method, test.path, strings.NewReader(test.body))
 		request.Header.Set("Content-Type", "application/json")
 		router.ServeHTTP(response, request)
-		if response.Code != test.status {
+		if response.Code != http.StatusBadRequest {
 			t.Fatalf("%s: %d %s", test.path, response.Code, response.Body)
 		}
 	}
-	if stub.logCalls != 0 {
-		t.Fatal("invalid offset reached log service")
+	if stub.action != "" || stub.channel != "" || stub.logCalls != 0 {
+		t.Fatalf("invalid input reached the service: %+v", stub)
 	}
 }
 

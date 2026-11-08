@@ -21,10 +21,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const (
-	releaseCacheTTL    = 5 * time.Minute
-	releaseReadTimeout = 20 * time.Second
-)
+const releaseReadTimeout = 20 * time.Second
 
 type ReleaseView struct {
 	Sylve            sylveupdate.Installed  `json:"sylve"`
@@ -40,7 +37,7 @@ func releaseAvailable(state models.HostUpdateState, installed sylveupdate.Instal
 		state.Release.Channel == state.ReleaseChannel && sylveupdate.Allowed(installed, *state.Release) == nil
 }
 
-func (s *Service) GetRelease(ctx context.Context, refresh bool) (ReleaseView, error) {
+func (s *Service) GetRelease(ctx context.Context) (ReleaseView, error) {
 	ctx, cancel := context.WithTimeout(ctx, releaseReadTimeout)
 	defer cancel()
 	s.releaseMu.Lock()
@@ -52,27 +49,16 @@ func (s *Service) GetRelease(ctx context.Context, refresh bool) (ReleaseView, er
 	if err != nil {
 		return ReleaseView{}, err
 	}
-	current := s.installed(ctx, state)
-	metadataOnly := current.Mode != "standalone" && current.Mode != "package" && current.Path != "" && current.Path != "/usr/local/sbin/sylve"
+	current := s.installed(ctx)
+	metadataOnly := current.Mode != "standalone" && current.Mode != "package" && current.Path != "" && current.Path != s.standalonePath
 	if current.Mode != "standalone" && !metadataOnly {
 		return ReleaseView{}, errors.New(current.Reason)
 	}
-	checkedAt := s.releaseAttemptAt
-	if state.ReleaseCheckedAt != nil && state.ReleaseCheckedAt.After(checkedAt) {
-		checkedAt = *state.ReleaseCheckedAt
+	if err = s.refreshRelease(ctx, state, current, metadataOnly); err != nil {
+		return ReleaseView{}, err
 	}
-	age := time.Since(checkedAt)
-	fresh := !checkedAt.IsZero() && age >= 0 && age < releaseCacheTTL &&
-		(state.ReleaseCheckedAt != nil || state.ReleaseError != "") &&
-		(state.Release == nil || state.Release.Channel == state.ReleaseChannel)
-	if refresh || !fresh {
-		if err := s.refreshRelease(ctx, state, current, metadataOnly); err != nil {
-			return ReleaseView{}, err
-		}
-		state, err = s.state()
-		if err != nil {
-			return ReleaseView{}, err
-		}
+	if state, err = s.state(); err != nil {
+		return ReleaseView{}, err
 	}
 	return ReleaseView{
 		Sylve:            current,
@@ -96,16 +82,12 @@ func (s *Service) checkRelease(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return s.refreshRelease(ctx, state, s.installed(ctx, state), false)
+	return s.refreshRelease(ctx, state, s.installed(ctx), false)
 }
 
 func (s *Service) refreshRelease(ctx context.Context, state models.HostUpdateState, current sylveupdate.Installed, metadataOnly bool) (err error) {
 	defer func() {
-		if errors.Is(err, context.Canceled) {
-			return
-		}
-		s.releaseAttemptAt = time.Now().UTC()
-		if err != nil {
+		if err != nil && !errors.Is(err, context.Canceled) {
 			_ = s.DB.Model(&state).Update("release_error", pkgmanager.Redact(err.Error())).Error
 		}
 	}()
@@ -114,11 +96,6 @@ func (s *Service) refreshRelease(ctx context.Context, state models.HostUpdateSta
 	}
 	if current.Mode != "standalone" && !metadataOnly {
 		return errors.New(current.Reason)
-	}
-	if !metadataOnly && current.BuiltAt != "" && (state.InstalledDigest != current.SHA256 || state.InstalledBuiltAt != current.BuiltAt) {
-		if err = s.DB.Model(&state).Updates(map[string]any{"installed_channel": current.Channel, "installed_digest": current.SHA256, "installed_built_at": current.BuiltAt}).Error; err != nil {
-			return err
-		}
 	}
 	currentVersion := current.Version
 	if metadataOnly {
@@ -170,7 +147,7 @@ func (s *Service) releasePreview(ctx context.Context, op *models.HostUpdateOpera
 	if err := s.phase(op, "checking_release"); err != nil {
 		return err
 	}
-	current := s.installed(ctx, state)
+	current := s.installed(ctx)
 	if current.Mode != "standalone" {
 		return errors.New(current.Reason)
 	}

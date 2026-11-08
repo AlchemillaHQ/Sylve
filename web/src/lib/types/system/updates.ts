@@ -45,7 +45,6 @@ export const HostUpdateOperationSchema = z.object({
 	status: z.string(),
 	phase: z.string(),
 	planId: z.string(),
-	channel: z.string(),
 	actor: z.string(),
 	error: z.string(),
 	result: z.string(),
@@ -89,7 +88,6 @@ export const HostUpdatesSchema = HostUpdateMonitoringSchema.extend({
 		version: z.string(),
 		commit: z.string(),
 		builtAt: z.string().default(''),
-		channel: z.string(),
 		sha256: z.string(),
 		path: z.string()
 	}),
@@ -136,7 +134,6 @@ export const hostUpdateActionLabels: Record<string, string> = {
 	audit: 'Package Audit',
 	'packages-preview': 'Package Upgrade Preview',
 	'packages-apply': 'Upgrade Packages',
-	'sylve-check': 'Check Sylve Updates',
 	'sylve-preview': 'Update Sylve',
 	'sylve-apply': 'Update Sylve'
 };
@@ -163,7 +160,6 @@ export function hostUpdateReason(reason = ''): string {
 			'This preview belongs to a different update type. Request a new preview.',
 		invalid_package_selection:
 			'A selected package is locked, duplicated or no longer installed. Refresh and try again.',
-		no_package_changes: 'This preview has no package changes to install.',
 		sylve_restart_unavailable:
 			'The executable was updated, but Sylve cannot restart itself. Restart Sylve manually.',
 		sylve_startup_identity_mismatch:
@@ -261,7 +257,6 @@ export function hostUpdateReason(reason = ''): string {
 		release_binary_identity_mismatch:
 			'The downloaded binary does not match the expected build identity.',
 		pkg_version_unsupported: 'Host updates require pkg 2.8.4 or newer in the 2.x series.',
-		host_update_service_unavailable: 'Host update management is unavailable on this node.',
 		boot_environment_unavailable: 'A ZFS boot environment cannot be created on this installation.',
 		boot_environment_creation_failed:
 			'The pre-update boot environment could not be created. No packages were installed.'

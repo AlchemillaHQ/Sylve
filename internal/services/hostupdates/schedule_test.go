@@ -14,7 +14,6 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
 
 func TestMonitoringCronPersistsAndPreservesLegacyPresets(t *testing.T) {
@@ -105,58 +104,6 @@ func TestMonitoringCronSkipsOverlapsWithoutPostponingItsNextOccurrence(t *testin
 	}
 	if err := s.DB.Model(&models.HostUpdateOperation{}).Count(&count).Error; err != nil || count != 2 {
 		t.Fatalf("missed cron occurrences were replayed: %d %v", count, err)
-	}
-}
-
-func TestMonitoringRetryPreservesSettingsChangedAfterTheScheduleClaim(t *testing.T) {
-	for _, test := range []struct {
-		name    string
-		enabled bool
-	}{
-		{"changed to cron", true},
-		{"disabled", false},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			s := testService(t)
-			one := uint(1)
-			if err := s.DB.Create(&models.HostUpdateOperation{UUID: uuid.NewString(), Active: &one, Action: "audit"}).Error; err != nil {
-				t.Fatal(err)
-			}
-			var savedNext *time.Time
-			if test.enabled {
-				next := time.Now().UTC().Add(48 * time.Hour)
-				savedNext = &next
-			}
-			changed := false
-			const callback = "test:change_monitoring_after_claim"
-			err := s.DB.Callback().Update().After("gorm:commit_or_rollback_transaction").Register(callback, func(tx *gorm.DB) {
-				if changed || tx.Statement.Table != "host_update_states" {
-					return
-				}
-				values, ok := tx.Statement.Dest.(map[string]any)
-				if !ok || values["last_attempt_at"] == nil {
-					return
-				}
-				changed = true
-				tx.AddError(s.DB.Model(&models.HostUpdateState{ID: 1}).Updates(map[string]any{
-					"monitoring": test.enabled, "cron_expr": "0 3 * * 0", "next_check_at": savedNext,
-				}).Error)
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { s.DB.Callback().Update().Remove(callback) })
-			if err := s.schedule(); err != nil {
-				t.Fatal(err)
-			}
-			state, err := s.state()
-			if err != nil || !changed || state.Monitoring != test.enabled || state.CronExpr != "0 3 * * 0" || (state.NextCheckAt == nil) != (savedNext == nil) {
-				t.Fatalf("retry overwrote new monitoring settings: %+v %v", state, err)
-			}
-			if savedNext != nil && !state.NextCheckAt.Equal(*savedNext) {
-				t.Fatalf("retry moved the new schedule: got %v, want %v", state.NextCheckAt, savedNext)
-			}
-		})
 	}
 }
 

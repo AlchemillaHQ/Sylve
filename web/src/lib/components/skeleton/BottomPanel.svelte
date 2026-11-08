@@ -423,7 +423,6 @@
 			'/api/system/updates/actions/audit': 'Host Updates - Audit',
 			'/api/system/updates/actions/packages-preview': 'Host Updates - Package Preview',
 			'/api/system/updates/actions/packages-apply': 'Host Updates - Install Packages',
-			'/api/system/updates/actions/sylve-check': 'Host Updates - Check Sylve',
 			'/api/system/updates/actions/sylve-preview': 'Host Updates - Sylve Preview',
 			'/api/system/updates/actions/sylve-apply': 'Host Updates - Install Sylve',
 			'/api/vm/:id/storage/from-image': 'VM Storage - Create From Image',

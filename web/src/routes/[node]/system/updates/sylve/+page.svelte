@@ -37,7 +37,7 @@
 		checking = true;
 		checkError = '';
 		try {
-			const result = await getSylveRelease(true, { hostname: target, signal: controller.signal });
+			const result = await getSylveRelease({ hostname: target, signal: controller.signal });
 			if (controller.signal.aborted || target !== updates.node) return;
 			if (isAPIResponse(result)) {
 				checkError = result.message || 'release_fetch_failed';

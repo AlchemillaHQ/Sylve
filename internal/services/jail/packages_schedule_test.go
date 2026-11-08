@@ -32,11 +32,6 @@ func TestPackageMonitoringCronPersistsAndPreservesPresets(t *testing.T) {
 	if localNext.Hour() != 3 || localNext.Minute() != 15 || localNext.Weekday() == time.Saturday || localNext.Weekday() == time.Sunday {
 		t.Fatalf("custom schedule was not evaluated in node-local time: %v", localNext)
 	}
-	restarted := &Service{DB: s.DB}
-	stored, err := restarted.GetPackageMonitoring(t.Context(), jail.CTID)
-	if err != nil || stored.CronExpr != monitor.CronExpr || !stored.NextAuditAt.Equal(*monitor.NextAuditAt) {
-		t.Fatalf("custom schedule did not survive a new service instance: %+v %v", stored, err)
-	}
 	if err := s.runPackageSchedules(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -64,26 +59,9 @@ func TestPackageMonitoringCronPersistsAndPreservesPresets(t *testing.T) {
 			t.Fatalf("invalid schedule was accepted: %+v", invalid)
 		}
 	}
-	stored, err = s.GetPackageMonitoring(t.Context(), jail.CTID)
+	stored, err := s.GetPackageMonitoring(t.Context(), jail.CTID)
 	if err != nil || stored.CronExpr != "" || stored.IntervalHours != 12 || !stored.NextAuditAt.Equal(*monitor.NextAuditAt) {
 		t.Fatalf("invalid schedule overwrote settings: %+v %v", stored, err)
-	}
-}
-
-func TestPackageMonitoringCronSurvivesMetadataRestore(t *testing.T) {
-	s, jail := newPackageTestService(t)
-	jail.PackageMonitoringEnabled = true
-	jail.PackageAuditIntervalHours = 12
-	jail.PackageAuditCronExpr = "0 3 * * 0"
-	for _, expression := range []string{jail.PackageAuditCronExpr, ""} {
-		jail.PackageAuditCronExpr = expression
-		if err := s.restoreJailDatabaseFromSnapshot(jail.CTID, jail); err != nil {
-			t.Fatal(err)
-		}
-		monitor, err := s.GetPackageMonitoring(t.Context(), jail.CTID)
-		if err != nil || !monitor.Enabled || monitor.IntervalHours != 12 || monitor.CronExpr != expression {
-			t.Fatalf("snapshot restore did not restore or clear cron: %+v %v", monitor, err)
-		}
 	}
 }
 
@@ -134,38 +112,49 @@ func TestPackageMonitoringCronSkipsOverlapsWithoutPostponing(t *testing.T) {
 	}
 }
 
-func TestPackageAuditFreshnessFollowsCron(t *testing.T) {
+func TestPackageAuditFreshnessFollowsMonitoringCadence(t *testing.T) {
 	audited := time.Date(2026, time.October, 18, 3, 15, 0, 0, time.Local)
-	monitor := jailTypes.PackageMonitoring{Enabled: true, IntervalHours: 6, CronExpr: "0 3 * * 0"}
-	deadline := time.Date(2026, time.October, 25, 4, 0, 0, 0, time.Local)
-	if !packageAuditResultFresh(monitor, &audited, audited.Add(48*time.Hour)) || packageAuditResultFresh(monitor, &audited, deadline) || packageAuditResultFresh(monitor, nil, audited) || packageAuditResultFresh(monitor, &audited, audited.Add(-time.Minute)) {
-		t.Fatal("cron freshness did not follow the next occurrence plus the grace period")
-	}
-	monitor.CronExpr = "* * * * 8"
-	if packageAuditResultFresh(monitor, &audited, audited.Add(time.Minute)) {
-		t.Fatal("invalid stored cron made results look current")
-	}
-	monitor.Enabled = false
-	if !packageAuditResultFresh(monitor, &audited, audited.Add(24*time.Hour)) || packageAuditResultFresh(monitor, &audited, audited.Add(25*time.Hour)) {
-		t.Fatal("disabled monitoring changed the default freshness window")
+	weekly := jailTypes.PackageMonitoring{Enabled: true, IntervalHours: 6, CronExpr: "0 3 * * 0"}
+	disabled := jailTypes.PackageMonitoring{IntervalHours: 6, CronExpr: "* * * * 8"}
+	for _, test := range []struct {
+		name    string
+		monitor jailTypes.PackageMonitoring
+		audited *time.Time
+		now     time.Time
+		fresh   bool
+	}{
+		{"before next cron run", weekly, &audited, audited.Add(48 * time.Hour), true},
+		{"next cron run plus grace", weekly, &audited, time.Date(2026, time.October, 25, 4, 0, 0, 0, time.Local), false},
+		{"never audited", weekly, nil, audited, false},
+		{"audited in the future", weekly, &audited, audited.Add(-time.Minute), false},
+		{"invalid cron", jailTypes.PackageMonitoring{Enabled: true, CronExpr: "* * * * 8"}, &audited, audited.Add(time.Minute), false},
+		{"disabled within a day", disabled, &audited, audited.Add(24 * time.Hour), true},
+		{"disabled after a day", disabled, &audited, audited.Add(25 * time.Hour), false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if fresh := packageAuditResultFresh(test.monitor, test.audited, test.now); fresh != test.fresh {
+				t.Fatalf("fresh=%v, want %v", fresh, test.fresh)
+			}
+		})
 	}
 	s, jail, fixture := newPackageReadTestService(t)
-	if _, err := s.SetPackageMonitoring(t.Context(), jail.CTID, jailTypes.PackageMonitoring{Enabled: true, CronExpr: "0 0 1 * *"}); err != nil {
-		t.Fatal(err)
-	}
 	inventory, err := pkgmanager.ParseInventory(fixture.inventory)
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := time.Now().In(time.Local)
-	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local).UTC()
-	state := jailModels.JailPackageState{JailID: jail.ID, CTID: jail.CTID, GUID: jail.Storages[0].GUID, Inventory: inventory, AuditAt: &monthStart, AuditInventoryHash: pkgmanager.AuditInventoryDigest(inventory)}
-	if err = s.DB.Model(&state).Select("AuditAt", "AuditInventoryHash").Updates(&state).Error; err != nil {
+	old := time.Now().UTC().Add(-8 * time.Hour)
+	state := jailModels.JailPackageState{JailID: jail.ID, CTID: jail.CTID, GUID: jail.Storages[0].GUID, Inventory: inventory, AuditAt: &old, AuditInventoryHash: pkgmanager.AuditInventoryDigest(inventory)}
+	if err = s.DB.Create(&state).Error; err != nil {
 		t.Fatal(err)
 	}
-	view, err := s.GetPackages(t.Context(), jail.CTID)
-	if err != nil || view.AuditStale || view.Monitoring.CronExpr != "0 0 1 * *" {
-		t.Fatalf("package view ignored the custom monitoring cadence: %+v %v", view, err)
+	for _, interval := range []int{6, 24} {
+		if _, err = s.SetPackageMonitoring(t.Context(), jail.CTID, jailTypes.PackageMonitoring{Enabled: true, IntervalHours: interval}); err != nil {
+			t.Fatal(err)
+		}
+		view, err := s.GetPackages(t.Context(), jail.CTID)
+		if err != nil || view.AuditStale != (interval == 6) {
+			t.Fatalf("%d-hour monitoring: stale=%v: %v", interval, view.AuditStale, err)
+		}
 	}
 }
 

@@ -28,7 +28,7 @@ import (
 type hostUpdateService interface {
 	Get(context.Context) (hostupdates.View, error)
 	History(context.Context, int, int, string, string) (hostupdates.HistoryPage, error)
-	GetRelease(context.Context, bool) (hostupdates.ReleaseView, error)
+	GetRelease(context.Context) (hostupdates.ReleaseView, error)
 	Start(context.Context, string, hostupdates.Request, string) (hostupdates.Job, error)
 	Job(context.Context, uint) (hostupdates.Job, error)
 	Logs(context.Context, uint, int64) (string, int64, error)
@@ -38,19 +38,15 @@ type hostUpdateService interface {
 }
 
 func RegisterHostUpdateRoutes(group *gin.RouterGroup, service *hostupdates.Service) {
-	var api hostUpdateService
-	if service != nil {
-		api = service
-	}
-	group.GET("", GetHostUpdates(api))
-	group.GET("/history", GetHostUpdateHistory(api))
-	group.GET("/sylve/release", GetSylveRelease(api))
-	group.POST("/actions/:action", StartHostUpdate(api))
-	group.GET("/jobs/:id", GetHostUpdateJob(api, false))
-	group.GET("/jobs/:id/logs", GetHostUpdateJob(api, true))
-	group.POST("/jobs/:id/cancel", CancelHostUpdate(api))
-	group.PUT("/monitoring", SetHostUpdateMonitoring(api))
-	group.PUT("/sylve/channel", SetSylveReleaseChannel(api))
+	group.GET("", GetHostUpdates(service))
+	group.GET("/history", GetHostUpdateHistory(service))
+	group.GET("/sylve/release", GetSylveRelease(service))
+	group.POST("/actions/:action", StartHostUpdate(service))
+	group.GET("/jobs/:id", GetHostUpdateJob(service, false))
+	group.GET("/jobs/:id/logs", GetHostUpdateJob(service, true))
+	group.POST("/jobs/:id/cancel", CancelHostUpdate(service))
+	group.PUT("/monitoring", SetHostUpdateMonitoring(service))
+	group.PUT("/sylve/channel", SetSylveReleaseChannel(service))
 }
 
 func updateResponse(c *gin.Context, value any, err error, status int) {
@@ -64,13 +60,13 @@ func updateResponse(c *gin.Context, value any, err error, status int) {
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		status = http.StatusGatewayTimeout
-	case code == "host_update_service_unavailable" || strings.HasPrefix(code, "pkg_"):
+	case strings.HasPrefix(code, "pkg_"):
 		status = http.StatusServiceUnavailable
 	case errors.Is(err, gorm.ErrRecordNotFound) || strings.HasSuffix(code, "_not_found"):
 		status = http.StatusNotFound
 	case strings.HasPrefix(code, "invalid") || code == "too_many_packages":
 		status = http.StatusBadRequest
-	case strings.HasPrefix(code, "host_") || strings.HasPrefix(code, "sylve_") || strings.HasPrefix(code, "release_") || strings.HasPrefix(code, "package_") || strings.HasPrefix(code, "standalone_") || strings.HasPrefix(code, "boot_environment_") || code == "no_package_changes":
+	case strings.HasPrefix(code, "host_") || strings.HasPrefix(code, "sylve_") || strings.HasPrefix(code, "release_") || strings.HasPrefix(code, "package_") || strings.HasPrefix(code, "standalone_") || strings.HasPrefix(code, "boot_environment_"):
 		status = http.StatusConflict
 	}
 	c.JSON(status, internal.APIResponse[any]{Status: "error", Message: code, Error: pkgmanager.Redact(err.Error())})
@@ -78,10 +74,6 @@ func updateResponse(c *gin.Context, value any, err error, status int) {
 
 func GetHostUpdates(service hostUpdateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if service == nil {
-			updateResponse(c, nil, errors.New("host_update_service_unavailable"), 0)
-			return
-		}
 		value, err := service.Get(c.Request.Context())
 		updateResponse(c, value, err, http.StatusOK)
 	}
@@ -89,10 +81,6 @@ func GetHostUpdates(service hostUpdateService) gin.HandlerFunc {
 
 func GetHostUpdateHistory(service hostUpdateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if service == nil {
-			updateResponse(c, nil, errors.New("host_update_service_unavailable"), 0)
-			return
-		}
 		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 		size, _ := strconv.Atoi(c.DefaultQuery("size", "100"))
 		value, err := service.History(c.Request.Context(), page, size, c.Query("sort[0][field]"), c.Query("sort[0][dir]"))
@@ -103,26 +91,13 @@ func GetHostUpdateHistory(service hostUpdateService) gin.HandlerFunc {
 func GetSylveRelease(service hostUpdateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Cache-Control", "private, no-store")
-		if service == nil {
-			updateResponse(c, nil, errors.New("host_update_service_unavailable"), 0)
-			return
-		}
-		refresh, err := strconv.ParseBool(c.DefaultQuery("refresh", "false"))
-		if err != nil {
-			updateResponse(c, nil, errors.New("invalid_host_update_request"), 0)
-			return
-		}
-		value, err := service.GetRelease(c.Request.Context(), refresh)
+		value, err := service.GetRelease(c.Request.Context())
 		updateResponse(c, value, err, http.StatusOK)
 	}
 }
 
 func StartHostUpdate(service hostUpdateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if service == nil {
-			updateResponse(c, nil, errors.New("host_update_service_unavailable"), 0)
-			return
-		}
 		var request hostupdates.Request
 		if err := c.ShouldBindJSON(&request); err != nil {
 			var limit *http.MaxBytesError
@@ -145,10 +120,6 @@ func StartHostUpdate(service hostUpdateService) gin.HandlerFunc {
 
 func GetHostUpdateJob(service hostUpdateService, logs bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if service == nil {
-			updateResponse(c, nil, errors.New("host_update_service_unavailable"), 0)
-			return
-		}
 		id, err := utils.ParamUint(c, "id")
 		if err != nil {
 			updateResponse(c, nil, err, 0)
@@ -171,10 +142,6 @@ func GetHostUpdateJob(service hostUpdateService, logs bool) gin.HandlerFunc {
 
 func CancelHostUpdate(service hostUpdateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if service == nil {
-			updateResponse(c, nil, errors.New("host_update_service_unavailable"), 0)
-			return
-		}
 		id, err := utils.ParamUint(c, "id")
 		if err != nil {
 			updateResponse(c, nil, err, 0)
@@ -187,10 +154,6 @@ func CancelHostUpdate(service hostUpdateService) gin.HandlerFunc {
 
 func SetHostUpdateMonitoring(service hostUpdateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if service == nil {
-			updateResponse(c, nil, errors.New("host_update_service_unavailable"), 0)
-			return
-		}
 		var request hostupdates.Monitoring
 		if c.ShouldBindJSON(&request) != nil {
 			updateResponse(c, nil, errors.New("invalid_host_update_request"), 0)
@@ -203,10 +166,6 @@ func SetHostUpdateMonitoring(service hostUpdateService) gin.HandlerFunc {
 
 func SetSylveReleaseChannel(service hostUpdateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if service == nil {
-			updateResponse(c, nil, errors.New("host_update_service_unavailable"), 0)
-			return
-		}
 		var request struct {
 			Channel string `json:"channel"`
 		}
