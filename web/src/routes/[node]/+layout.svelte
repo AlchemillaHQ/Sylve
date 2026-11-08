@@ -540,17 +540,21 @@
 	>
 		<Resizable.Pane defaultSize={15}>
 			<div class="h-full px-1.5">
-				<div class="h-full overflow-y-auto">
-					<nav aria-label="Difuse-sidebar" class="menu thin-scrollbar w-full">
-						<ul>
-							<ScrollArea orientation="both" class="h-full w-full">
-								{#each nodeItems as item (item.href ?? item.icon)}
-									<TreeView {item} />
-								{/each}
-							</ScrollArea>
-						</ul>
-					</nav>
-				</div>
+				<nav aria-label="Difuse-sidebar" class="menu thin-scrollbar h-full min-h-0 w-full">
+					<ul class="h-full min-h-0">
+						<ScrollArea
+							orientation="both"
+							class="h-full w-full"
+							scrollbarXClasses="hidden"
+							scrollbarYClasses="hidden"
+							fade
+						>
+							{#each nodeItems as item (item.href ?? item.icon)}
+								<TreeView {item} />
+							{/each}
+						</ScrollArea>
+					</ul>
+				</nav>
 			</div>
 		</Resizable.Pane>
 		<Resizable.Handle withHandle gripPreferenceKey="main-navigation" />
