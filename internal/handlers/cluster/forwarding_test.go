@@ -110,6 +110,7 @@ func TestForwardToPassesTheRequestAndTheAnswerThrough(t *testing.T) {
 				fmt.Sprintf("/api/cluster/test?case=%d&hash=browser-hash&auth=00", index),
 				`{"request":true}`,
 				map[string]string{
+					"Accept-Encoding":            "gzip, deflate, br",
 					"Idempotency-Key":            "operation-1",
 					"X-Correlation-ID":           "correlation-1",
 					"Authorization":              "Bearer browser-token",
@@ -147,7 +148,7 @@ func TestForwardToPassesTheRequestAndTheAnswerThrough(t *testing.T) {
 	if got := seen.Header.Get(authService.ProxyUserHeader); got != want {
 		t.Fatalf("forwarded for %q, want the signed-in admin %q", got, want)
 	}
-	for _, name := range []string{"Authorization", "Cookie", authService.ClusterKeyHeader, cluster.JoinerPinHeader} {
+	for _, name := range []string{"Authorization", "Cookie", authService.ClusterKeyHeader, cluster.JoinerPinHeader, "Accept-Encoding"} {
 		if got := seen.Header.Get(name); got != "" {
 			t.Fatalf("the client's %s went along: %q", name, got)
 		}

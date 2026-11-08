@@ -6,6 +6,7 @@ package zelta
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"reflect"
 	"strings"
@@ -298,5 +299,51 @@ func TestDestroyProvenBackupSnapshotsKeepsArchiveOriginsQuietly(t *testing.T) {
 	)
 	if err != nil || destroyed != 1 || calls[len(calls)-1] != "zfs destroy t/r@g2" {
 		t.Fatalf("destroyed=%d err=%v calls=%v", destroyed, err, calls)
+	}
+}
+
+func TestDestroyArchivedGenerationPromotesDependentsFirst(t *testing.T) {
+	t.Parallel()
+
+	job := &clusterModels.BackupJob{ID: 1}
+	archive := "t/active_gen-a"
+	promoted := false
+	var calls []string
+	run := func(_ context.Context, argv ...string) (string, error) {
+		calls = append(calls, strings.Join(argv, " "))
+		switch argv[1] {
+		case "get":
+			return "1\n", nil
+		case "list":
+			if promoted {
+				return archive + "@bk_j1_c1_b\t-\n", nil
+			}
+			return archive + "@bk_j1_c1_a\tt/active\n" + archive + "@bk_j1_c1_b\t-\n", nil
+		case "promote":
+			promoted = true
+		}
+		return "", nil
+	}
+	if err := (&Service{}).destroyArchivedGeneration(context.Background(), job, run, archive); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"zfs promote t/active", "zfs destroy -r " + archive}; !reflect.DeepEqual(
+		[]string{calls[2], calls[4]}, want,
+	) {
+		t.Fatalf("calls = %v", calls)
+	}
+
+	foreign := func(_ context.Context, argv ...string) (string, error) {
+		if argv[1] == "get" {
+			return "1\n", nil
+		}
+		if argv[1] == "list" {
+			return archive + "@manual\t-\n", nil
+		}
+		t.Fatalf("unexpected %v", argv)
+		return "", nil
+	}
+	if err := (&Service{}).destroyArchivedGeneration(context.Background(), job, foreign, archive); !errors.Is(err, errBackupGenerationKept) {
+		t.Fatalf("an archive holding a foreign snapshot must be kept, got %v", err)
 	}
 }

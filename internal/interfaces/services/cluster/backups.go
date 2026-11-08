@@ -22,17 +22,18 @@ type BackupTargetReq struct {
 }
 
 type BackupJobReq struct {
-	Name             string `json:"name" binding:"required,min=2"`
-	TargetID         uint   `json:"targetId" binding:"required"`
-	RunnerNodeID     string `json:"runnerNodeId"`
-	Mode             string `json:"mode" binding:"required"`
-	SourceDataset    string `json:"sourceDataset"`
-	JailRootDataset  string `json:"jailRootDataset"`
-	PruneKeepLast    int    `json:"pruneKeepLast"`
-	PruneTarget      bool   `json:"pruneTarget"`
-	StopBeforeBackup bool   `json:"stopBeforeBackup"`
-	Recursive        bool   `json:"recursive"`
-	Encrypted        *bool  `json:"encrypted,omitempty"`
-	CronExpr         string `json:"cronExpr"`
-	Enabled          *bool  `json:"enabled"`
+	Name                 string `json:"name" binding:"required,min=2"`
+	TargetID             uint   `json:"targetId" binding:"required"`
+	RunnerNodeID         string `json:"runnerNodeId"`
+	Mode                 string `json:"mode" binding:"required"`
+	SourceDataset        string `json:"sourceDataset"`
+	JailRootDataset      string `json:"jailRootDataset"`
+	PruneKeepLast        int    `json:"pruneKeepLast"`
+	PruneKeepGenerations int    `json:"pruneKeepGenerations"`
+	PruneTarget          bool   `json:"pruneTarget"`
+	StopBeforeBackup     bool   `json:"stopBeforeBackup"`
+	Recursive            bool   `json:"recursive"`
+	Encrypted            *bool  `json:"encrypted,omitempty"`
+	CronExpr             string `json:"cronExpr"`
+	Enabled              *bool  `json:"enabled"`
 }

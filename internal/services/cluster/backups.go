@@ -627,26 +627,30 @@ func (s *Service) buildBackupJob(
 	}
 
 	job := &clusterModels.BackupJob{
-		ID:               id,
-		Name:             strings.TrimSpace(input.Name),
-		TargetID:         input.TargetID,
-		RunnerNodeID:     runnerNodeID,
-		Mode:             mode,
-		SourceDataset:    normalizeManagedGuestDatasetPath(input.SourceDataset),
-		JailRootDataset:  normalizeManagedGuestDatasetPath(input.JailRootDataset),
-		PruneKeepLast:    input.PruneKeepLast,
-		PruneTarget:      input.PruneTarget,
-		StopBeforeBackup: input.StopBeforeBackup,
-		Recursive:        input.Recursive,
-		CronExpr:         cronExpr,
-		Enabled:          enabled,
-		ScheduleRevision: 1,
+		ID:                   id,
+		Name:                 strings.TrimSpace(input.Name),
+		TargetID:             input.TargetID,
+		RunnerNodeID:         runnerNodeID,
+		Mode:                 mode,
+		SourceDataset:        normalizeManagedGuestDatasetPath(input.SourceDataset),
+		JailRootDataset:      normalizeManagedGuestDatasetPath(input.JailRootDataset),
+		PruneKeepLast:        input.PruneKeepLast,
+		PruneKeepGenerations: input.PruneKeepGenerations,
+		PruneTarget:          input.PruneTarget,
+		StopBeforeBackup:     input.StopBeforeBackup,
+		Recursive:            input.Recursive,
+		CronExpr:             cronExpr,
+		Enabled:              enabled,
+		ScheduleRevision:     1,
 	}
 	if input.Encrypted != nil {
 		job.Encrypted = *input.Encrypted
 	}
 	if job.PruneKeepLast < 0 {
 		return nil, nil, fmt.Errorf("invalid_prune_keep_last")
+	}
+	if job.PruneKeepGenerations < 0 {
+		return nil, nil, fmt.Errorf("invalid_prune_keep_generations")
 	}
 
 	switch mode {

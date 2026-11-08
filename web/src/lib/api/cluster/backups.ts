@@ -44,6 +44,7 @@ export type BackupJobInput = {
 	sourceDataset?: string;
 	jailRootDataset?: string;
 	pruneKeepLast: number;
+	pruneKeepGenerations: number;
 	pruneTarget: boolean;
 	stopBeforeBackup: boolean;
 	recursive: boolean;

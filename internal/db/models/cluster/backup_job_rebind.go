@@ -118,21 +118,23 @@ type BackupJobRunnerRebindAbort struct {
 }
 
 type backupJobFingerprintPayload struct {
-	ID               uint   `json:"id"`
-	Name             string `json:"name"`
-	TargetID         uint   `json:"targetId"`
-	RunnerNodeID     string `json:"runnerNodeId"`
-	Mode             string `json:"mode"`
-	SourceDataset    string `json:"sourceDataset"`
-	JailRootDataset  string `json:"jailRootDataset"`
-	DestSuffix       string `json:"destSuffix"`
-	PruneKeepLast    int    `json:"pruneKeepLast"`
-	PruneTarget      bool   `json:"pruneTarget"`
-	StopBeforeBackup bool   `json:"stopBeforeBackup"`
-	Recursive        bool   `json:"recursive"`
-	Encrypted        bool   `json:"encrypted"`
-	CronExpr         string `json:"cronExpr"`
-	Enabled          bool   `json:"enabled"`
+	ID              uint   `json:"id"`
+	Name            string `json:"name"`
+	TargetID        uint   `json:"targetId"`
+	RunnerNodeID    string `json:"runnerNodeId"`
+	Mode            string `json:"mode"`
+	SourceDataset   string `json:"sourceDataset"`
+	JailRootDataset string `json:"jailRootDataset"`
+	DestSuffix      string `json:"destSuffix"`
+	PruneKeepLast   int    `json:"pruneKeepLast"`
+	// omitempty keeps fingerprints of jobs without archive retention unchanged.
+	PruneKeepGenerations int    `json:"pruneKeepGenerations,omitempty"`
+	PruneTarget          bool   `json:"pruneTarget"`
+	StopBeforeBackup     bool   `json:"stopBeforeBackup"`
+	Recursive            bool   `json:"recursive"`
+	Encrypted            bool   `json:"encrypted"`
+	CronExpr             string `json:"cronExpr"`
+	Enabled              bool   `json:"enabled"`
 }
 
 // BackupJobConfigurationFingerprint excludes local/runtime fields so scheduler
@@ -142,21 +144,22 @@ func BackupJobConfigurationFingerprint(job *BackupJob) string {
 		return ""
 	}
 	payload := backupJobFingerprintPayload{
-		ID:               job.ID,
-		Name:             strings.TrimSpace(job.Name),
-		TargetID:         job.TargetID,
-		RunnerNodeID:     strings.TrimSpace(job.RunnerNodeID),
-		Mode:             strings.ToLower(strings.TrimSpace(job.Mode)),
-		SourceDataset:    strings.TrimSpace(job.SourceDataset),
-		JailRootDataset:  strings.TrimSpace(job.JailRootDataset),
-		DestSuffix:       strings.TrimSpace(job.DestSuffix),
-		PruneKeepLast:    job.PruneKeepLast,
-		PruneTarget:      job.PruneTarget,
-		StopBeforeBackup: job.StopBeforeBackup,
-		Recursive:        job.Recursive,
-		Encrypted:        job.Encrypted,
-		CronExpr:         strings.TrimSpace(job.CronExpr),
-		Enabled:          job.Enabled,
+		ID:                   job.ID,
+		Name:                 strings.TrimSpace(job.Name),
+		TargetID:             job.TargetID,
+		RunnerNodeID:         strings.TrimSpace(job.RunnerNodeID),
+		Mode:                 strings.ToLower(strings.TrimSpace(job.Mode)),
+		SourceDataset:        strings.TrimSpace(job.SourceDataset),
+		JailRootDataset:      strings.TrimSpace(job.JailRootDataset),
+		DestSuffix:           strings.TrimSpace(job.DestSuffix),
+		PruneKeepLast:        job.PruneKeepLast,
+		PruneKeepGenerations: job.PruneKeepGenerations,
+		PruneTarget:          job.PruneTarget,
+		StopBeforeBackup:     job.StopBeforeBackup,
+		Recursive:            job.Recursive,
+		Encrypted:            job.Encrypted,
+		CronExpr:             strings.TrimSpace(job.CronExpr),
+		Enabled:              job.Enabled,
 	}
 	raw, _ := json.Marshal(payload)
 	sum := sha256.Sum256(raw)

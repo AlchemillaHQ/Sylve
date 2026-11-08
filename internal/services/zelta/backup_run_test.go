@@ -216,3 +216,50 @@ func TestIntegrationRunRestoreJobCopiesLocalSnapshot(t *testing.T) {
 		t.Fatalf("restore kept the later point %s", points[1])
 	}
 }
+
+func TestIntegrationRunBackupJobPrunesOldArchivedGenerations(t *testing.T) {
+	f := newBackupRunFixture(t, "gens")
+	f.run()
+	changeDataset(t, f.source)
+	f.run()
+	first := ""
+	for _, snapshot := range listZFSSnapshots(t, f.source) {
+		if strings.HasPrefix(snapshot, f.source+"@") {
+			first = snapshot[strings.Index(snapshot, "@"):]
+			break
+		}
+	}
+	diverge := func() {
+		for _, dataset := range []string{f.source, f.source + "/child"} {
+			if output, err := exec.Command("zfs", "rollback", "-r", dataset+first).CombinedOutput(); err != nil {
+				t.Fatalf("rollback %s: %v: %s", dataset, err, output)
+			}
+		}
+		changeDataset(t, f.source)
+		f.run()
+		changeDataset(t, f.source)
+		f.run()
+	}
+	diverge()
+	diverge()
+	archives := listActiveGenerations(t, f.active)
+	if len(archives) != 2 {
+		t.Fatalf("expected 2 archived generations, got %v", archives)
+	}
+
+	if err := f.svc.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", f.job.ID).
+		Update("prune_keep_generations", 1).Error; err != nil {
+		t.Fatal(err)
+	}
+	event := f.run()
+	if !strings.Contains(event.Output, "backup_generation_pruned: "+archives[0]) {
+		t.Fatalf("oldest archive was not pruned: %q", event.Output)
+	}
+	if remaining := listActiveGenerations(t, f.active); len(remaining) != 1 || remaining[0] != archives[1] {
+		t.Fatalf("remaining archives = %v, want [%s]", remaining, archives[1])
+	}
+	changeDataset(t, f.source)
+	if event := f.run(); event.Status != "success" {
+		t.Fatalf("backup after pruning an archive: %s %q", event.Status, event.Error)
+	}
+}

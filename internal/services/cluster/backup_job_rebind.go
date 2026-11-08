@@ -374,6 +374,9 @@ func validateBackupJobRunnerRebindConfiguration(db *gorm.DB, job *clusterModels.
 	if job.PruneKeepLast < 0 {
 		return permanentBackupJobRebindFailure("invalid_prune_keep_last")
 	}
+	if job.PruneKeepGenerations < 0 {
+		return permanentBackupJobRebindFailure("invalid_prune_keep_generations")
+	}
 	if cronExpr := strings.TrimSpace(job.CronExpr); cronExpr != "" {
 		if _, err := cron.ParseStandard(cronExpr); err != nil {
 			return permanentBackupJobRebindFailure("invalid_cron_expr")

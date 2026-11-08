@@ -120,6 +120,7 @@ type BackupJob struct {
 	FriendlySrc            string                           `gorm:"column:friendly_src" json:"friendlySrc"`
 	DestSuffix             string                           `gorm:"column:dest_suffix" json:"destSuffix"` // appended to target's BackupRoot
 	PruneKeepLast          int                              `gorm:"column:prune_keep_last;default:0" json:"pruneKeepLast"`
+	PruneKeepGenerations   int                              `gorm:"column:prune_keep_generations;default:0" json:"pruneKeepGenerations"`
 	PruneTarget            bool                             `gorm:"column:prune_target;default:false" json:"pruneTarget"`
 	StopBeforeBackup       bool                             `gorm:"column:stop_before_backup;default:false" json:"stopBeforeBackup"`
 	Recursive              bool                             `gorm:"column:recursive;default:false" json:"recursive"`
@@ -190,6 +191,7 @@ func upsertBackupJob(db *gorm.DB, job *BackupJob) error {
 			"friendly_src",
 			"dest_suffix",
 			"prune_keep_last",
+			"prune_keep_generations",
 			"prune_target",
 			"stop_before_backup",
 			"recursive",
@@ -213,23 +215,24 @@ func ApplyBackupJobUpdateTxn(db *gorm.DB, job *BackupJob) error {
 	}
 
 	result := db.Model(&BackupJob{}).Where("id = ?", job.ID).Updates(map[string]any{
-		"name":               job.Name,
-		"target_id":          job.TargetID,
-		"runner_node_id":     job.RunnerNodeID,
-		"mode":               job.Mode,
-		"source_dataset":     job.SourceDataset,
-		"jail_root_dataset":  job.JailRootDataset,
-		"friendly_src":       job.FriendlySrc,
-		"dest_suffix":        job.DestSuffix,
-		"prune_keep_last":    job.PruneKeepLast,
-		"prune_target":       job.PruneTarget,
-		"stop_before_backup": job.StopBeforeBackup,
-		"recursive":          job.Recursive,
-		"encrypted":          job.Encrypted,
-		"cron_expr":          job.CronExpr,
-		"enabled":            job.Enabled,
-		"next_run_at":        job.NextRunAt,
-		"schedule_revision":  gorm.Expr("schedule_revision + ?", 1),
+		"name":                   job.Name,
+		"target_id":              job.TargetID,
+		"runner_node_id":         job.RunnerNodeID,
+		"mode":                   job.Mode,
+		"source_dataset":         job.SourceDataset,
+		"jail_root_dataset":      job.JailRootDataset,
+		"friendly_src":           job.FriendlySrc,
+		"dest_suffix":            job.DestSuffix,
+		"prune_keep_last":        job.PruneKeepLast,
+		"prune_keep_generations": job.PruneKeepGenerations,
+		"prune_target":           job.PruneTarget,
+		"stop_before_backup":     job.StopBeforeBackup,
+		"recursive":              job.Recursive,
+		"encrypted":              job.Encrypted,
+		"cron_expr":              job.CronExpr,
+		"enabled":                job.Enabled,
+		"next_run_at":            job.NextRunAt,
+		"schedule_revision":      gorm.Expr("schedule_revision + ?", 1),
 	})
 	if result.Error != nil {
 		return result.Error

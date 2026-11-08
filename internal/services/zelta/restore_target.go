@@ -2128,35 +2128,34 @@ func (s *Service) remoteDatasetChildCount(ctx context.Context, target *clusterMo
 }
 
 func (s *Service) listRemoteSnapshotsForDataset(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]SnapshotInfo, error) {
-	return s.listRemoteSnapshots(ctx, target, remoteDataset, false)
+	return s.listRemoteSnapshots(ctx, target, []string{remoteDataset}, false)
 }
 
 func (s *Service) listRemoteSnapshotsForDatasetRecursive(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]SnapshotInfo, error) {
-	return s.listRemoteSnapshots(ctx, target, remoteDataset, true)
+	return s.listRemoteSnapshots(ctx, target, []string{remoteDataset}, true)
 }
 
-func (s *Service) listRemoteSnapshots(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string, recursive bool) ([]SnapshotInfo, error) {
+func (s *Service) listRemoteSnapshots(ctx context.Context, target *clusterModels.BackupTarget, remoteDatasets []string, recursive bool) ([]SnapshotInfo, error) {
 	_, root, err := canonicalizeBackupTarget(target)
 	if err != nil {
 		return nil, err
 	}
-	parsedRemoteDataset, err := remoteexec.ParseZFSDataset(remoteDataset)
-	if err != nil || !parsedRemoteDataset.Within(root) {
-		if err == nil {
-			err = fmt.Errorf("dataset_outside_backup_root")
-		}
-		return nil, fmt.Errorf("remote_dataset_invalid: %w", err)
-	}
-	remoteDataset = parsedRemoteDataset.String()
 	argv := []string{"zfs", "list", "-t", "snapshot", "-Hp"}
 	if recursive {
 		argv = append(argv, "-r")
 	}
-	argv = append(argv,
-		"-o", "name,creation,used,refer,guid,encryption",
-		"-s", "creation",
-		remoteDataset,
-	)
+	argv = append(argv, "-o", "name,creation,used,refer,guid,encryption", "-s", "creation")
+	for _, remoteDataset := range remoteDatasets {
+		parsedRemoteDataset, err := remoteexec.ParseZFSDataset(remoteDataset)
+		if err != nil || !parsedRemoteDataset.Within(root) {
+			if err == nil {
+				err = fmt.Errorf("dataset_outside_backup_root")
+			}
+			return nil, fmt.Errorf("remote_dataset_invalid: %w", err)
+		}
+		argv = append(argv, parsedRemoteDataset.String())
+	}
+	remoteDataset := strings.Join(remoteDatasets, ",")
 
 	var output string
 	err = nil
@@ -2194,38 +2193,42 @@ func (s *Service) listRemoteSnapshotsWithLineage(ctx context.Context, target *cl
 		return nil, err
 	}
 
-	combined := make([]SnapshotInfo, 0)
-	seen := make(map[string]struct{})
-
-	for i, dataset := range lineageDatasets {
-		snapshots, snapErr := s.listRemoteSnapshotsForDataset(ctx, target, dataset)
-		if snapErr != nil {
-			if i == 0 {
-				return nil, snapErr
+	snapshots, err := s.listRemoteSnapshots(ctx, target, lineageDatasets, false)
+	if err != nil {
+		// A generation renamed or destroyed mid-listing fails the whole batch.
+		snapshots = nil
+		for i, dataset := range lineageDatasets {
+			part, snapErr := s.listRemoteSnapshotsForDataset(ctx, target, dataset)
+			if snapErr != nil {
+				if i == 0 {
+					return nil, snapErr
+				}
+				logger.L.Warn().
+					Err(snapErr).
+					Str("dataset", dataset).
+					Str("base_dataset", remoteDataset).
+					Msg("failed_to_list_lineage_snapshots_for_sibling_dataset")
+				continue
 			}
+			snapshots = append(snapshots, part...)
+		}
+	}
 
-			logger.L.Warn().
-				Err(snapErr).
-				Str("dataset", dataset).
-				Str("base_dataset", remoteDataset).
-				Msg("failed_to_list_lineage_snapshots_for_sibling_dataset")
+	combined := make([]SnapshotInfo, 0, len(snapshots))
+	seen := make(map[string]struct{})
+	for _, snapshot := range snapshots {
+		key := strings.TrimSpace(snapshot.Name)
+		if key == "" {
 			continue
 		}
-
-		for _, snapshot := range snapshots {
-			key := strings.TrimSpace(snapshot.Name)
-			if key == "" {
-				continue
-			}
-			lineage, outOfBand, _ := classifyDatasetLineage(relativeDatasetSuffix(target.BackupRoot, dataset))
-			snapshot.Lineage = lineage
-			snapshot.OutOfBand = outOfBand
-			if _, exists := seen[key]; exists {
-				continue
-			}
-			seen[key] = struct{}{}
-			combined = append(combined, snapshot)
+		lineage, outOfBand, _ := classifyDatasetLineage(relativeDatasetSuffix(target.BackupRoot, snapshotDatasetName(key)))
+		snapshot.Lineage = lineage
+		snapshot.OutOfBand = outOfBand
+		if _, exists := seen[key]; exists {
+			continue
 		}
+		seen[key] = struct{}{}
+		combined = append(combined, snapshot)
 	}
 
 	sort.Slice(combined, func(i, j int) bool {

@@ -392,6 +392,11 @@ func (s *Service) runBackupJobCore(
 			}
 			runErr = pruneErr
 		}
+		generationOutput, generationErr := s.pruneArchivedGenerations(ctx, job, backupScopes)
+		for _, line := range generationOutput {
+			note(line)
+		}
+		runErr = errors.Join(runErr, generationErr)
 		return runErr
 	}
 
@@ -557,6 +562,11 @@ func (s *Service) runBackupJobCore(
 		}
 		runErr = pruneErr
 	}
+	generationOutput, generationErr := s.pruneArchivedGenerations(ctx, job, backupScopes)
+	for _, line := range generationOutput {
+		note(line)
+	}
+	runErr = errors.Join(runErr, generationErr)
 	return runErr
 }
 

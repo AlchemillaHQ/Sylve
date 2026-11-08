@@ -514,6 +514,7 @@
 							label="Encryption Passphrase (Optional)"
 							placeholder="Required only when the key is not already registered"
 							type="password"
+							autocomplete="new-password"
 							bind:value={encryptionKey}
 							classes="space-y-1"
 						/>

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"maps"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -426,4 +427,127 @@ func (s *Service) pruneBackupJob(
 		Int64("duration_ms", time.Since(started).Milliseconds()).
 		Msg("backup_prune_pass_completed")
 	return output, pruneErr
+}
+
+// errBackupGenerationKept marks an archive that is not provably this job's; it is kept, not an error.
+var errBackupGenerationKept = errors.New("backup_generation_not_provably_owned")
+
+func archivedGenerationTime(name string) (int64, int) {
+	token := name[strings.LastIndex(name, "_gen-")+len("_gen-"):]
+	attempt := 0
+	if base, suffix, ok := strings.Cut(token, "-"); ok {
+		token = base
+		attempt, _ = strconv.Atoi(suffix)
+	}
+	ms, err := strconv.ParseInt(token, 36, 64)
+	if err != nil {
+		return 0, attempt
+	}
+	return ms, attempt
+}
+
+// pruneArchivedGenerations keeps the newest job.PruneKeepGenerations archived
+// generations of each target dataset and destroys the older ones.
+func (s *Service) pruneArchivedGenerations(
+	ctx context.Context,
+	job *clusterModels.BackupJob,
+	scopes []backupScope,
+) ([]string, error) {
+	if job.PruneKeepGenerations <= 0 {
+		return nil, nil
+	}
+	var output []string
+	var pruneErr error
+	run := s.targetZFS(&job.Target)
+	for _, scope := range scopes {
+		active := remoteActiveDatasetForSuffix(job.Target.BackupRoot, scope.destSuffix)
+		parent := active[:strings.LastIndex(active, "/")]
+		listing, err := run(ctx, "zfs", "list", "-H", "-o", "name", "-t", "filesystem,volume", "-d", "1", parent)
+		if err != nil {
+			pruneErr = errors.Join(pruneErr, fmt.Errorf("backup_generation_list_failed: %s: %w", active, err))
+			continue
+		}
+		var archives []string
+		for _, name := range strings.Fields(listing) {
+			if strings.HasPrefix(name, active+"_gen-") {
+				archives = append(archives, name)
+			}
+		}
+		sort.Slice(archives, func(i, j int) bool {
+			ti, ai := archivedGenerationTime(archives[i])
+			tj, aj := archivedGenerationTime(archives[j])
+			if ti != tj {
+				return ti > tj
+			}
+			return ai > aj
+		})
+		for _, archive := range archives[min(job.PruneKeepGenerations, len(archives)):] {
+			err := s.destroyArchivedGeneration(ctx, job, run, archive)
+			if errors.Is(err, errBackupGenerationKept) {
+				output = append(output, fmt.Sprintf("backup_generation_kept: %s: %v", archive, err))
+				continue
+			}
+			if err != nil {
+				err = fmt.Errorf("backup_generation_prune_failed: %s: %w", archive, err)
+				output = append(output, err.Error())
+				pruneErr = errors.Join(pruneErr, err)
+				continue
+			}
+			output = append(output, "backup_generation_pruned: "+archive)
+		}
+	}
+	return output, pruneErr
+}
+
+// destroyArchivedGeneration removes one archive of this job. Datasets cloned
+// from it are promoted first: that moves the shared history into them, so only
+// the archive's own snapshots are destroyed.
+func (s *Service) destroyArchivedGeneration(
+	ctx context.Context,
+	job *clusterModels.BackupJob,
+	run zfsCommand,
+	archive string,
+) error {
+	owner, err := run(ctx, "zfs", "get", "-H", "-o", "value", "-s", "local", "sylve:backup_job_id", archive)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(owner) != strconv.FormatUint(uint64(job.ID), 10) {
+		return fmt.Errorf("%w: not_owned", errBackupGenerationKept)
+	}
+	jobPrefix := backupSnapshotPrefixForJob(job.ID)
+	for attempt := 0; ; attempt++ {
+		listing, err := run(ctx, "zfs", "list", "-H", "-p", "-t", "snapshot", "-o", "name,clones", "-s", "createtxg", "-r", archive)
+		if err != nil {
+			return err
+		}
+		// Promote the clone of the newest dependent snapshot; one promote can
+		// free several older ones, so list again afterwards.
+		dependent := ""
+		for _, line := range strings.Split(strings.TrimSpace(listing), "\n") {
+			name, clones, _ := strings.Cut(line, "\t")
+			if name == "" {
+				continue
+			}
+			if !isBKSnapshotShortName(strings.TrimPrefix(name[strings.LastIndex(name, "@"):], "@"), jobPrefix) {
+				return fmt.Errorf("%w: foreign_snapshot %s", errBackupGenerationKept, name)
+			}
+			for _, clone := range strings.Split(clones, ",") {
+				if clone != "" && clone != "-" && !datasetWithinRoot(archive, clone) {
+					dependent = clone
+				}
+			}
+		}
+		if dependent == "" {
+			break
+		}
+		if attempt >= 64 {
+			return fmt.Errorf("backup_generation_dependents_remain")
+		}
+		if _, err := run(ctx, "zfs", "promote", dependent); err != nil {
+			return err
+		}
+	}
+	_, err = run(ctx, "zfs", "destroy", "-r", archive)
+	return err
 }

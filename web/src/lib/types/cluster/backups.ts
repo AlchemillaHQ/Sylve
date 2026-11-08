@@ -48,6 +48,7 @@ export const BackupJobSchema = z.object({
 	friendlySrc: z.string().optional().default(''),
 	destSuffix: z.string().optional().default(''),
 	pruneKeepLast: z.number().int().nonnegative().default(0),
+	pruneKeepGenerations: z.number().int().nonnegative().default(0),
 	pruneTarget: z.boolean().default(false),
 	stopBeforeBackup: z.boolean().default(false),
 	recursive: z.boolean().default(false),

@@ -164,6 +164,7 @@ type DemoBackupJob = {
 	friendlySrc: string;
 	destSuffix: string;
 	pruneKeepLast: number;
+	pruneKeepGenerations?: number;
 	pruneTarget: boolean;
 	stopBeforeBackup: boolean;
 	recursive: boolean;
@@ -1373,6 +1374,7 @@ function createDemoBackupJob(config: DemoRequestConfig): DemoClientResponse {
 			.replace(/[^a-z0-9]+/g, '-')
 			.replace(/^-|-$/g, '')}`,
 		pruneKeepLast: Math.max(0, Math.trunc(numberField(payload, 'pruneKeepLast'))),
+		pruneKeepGenerations: Math.max(0, Math.trunc(numberField(payload, 'pruneKeepGenerations'))),
 		pruneTarget: booleanField(payload, 'pruneTarget'),
 		stopBeforeBackup: booleanField(payload, 'stopBeforeBackup'),
 		recursive: booleanField(payload, 'recursive'),
@@ -1413,6 +1415,7 @@ function updateDemoBackupJob(id: number, config: DemoRequestConfig): DemoClientR
 	job.sourceDataset = stringField(payload, 'sourceDataset').trim();
 	job.jailRootDataset = stringField(payload, 'jailRootDataset').trim();
 	job.pruneKeepLast = Math.max(0, Math.trunc(numberField(payload, 'pruneKeepLast')));
+	job.pruneKeepGenerations = Math.max(0, Math.trunc(numberField(payload, 'pruneKeepGenerations')));
 	job.pruneTarget = booleanField(payload, 'pruneTarget');
 	job.stopBeforeBackup = booleanField(payload, 'stopBeforeBackup');
 	job.recursive = booleanField(payload, 'recursive');
