@@ -120,18 +120,6 @@ export const BackupTargetDatasetInfoSchema = z.object({
 	vmRid: z.number().int().nonnegative().optional()
 });
 
-export const BackupJailMetadataInfoSchema = z.object({
-	ctId: z.number().int().nonnegative(),
-	name: z.string().default(''),
-	basePool: z.string().default('')
-});
-
-export const BackupVMMetadataInfoSchema = z.object({
-	rid: z.number().int().nonnegative(),
-	name: z.string().default(''),
-	pools: z.array(z.string()).default([])
-});
-
 export type BackupTargetNodeReadiness = z.infer<typeof BackupTargetNodeReadinessSchema>;
 export type BackupTarget = z.infer<typeof BackupTargetSchema>;
 export type BackupJob = z.infer<typeof BackupJobSchema>;
@@ -140,8 +128,6 @@ export type BackupEventProgress = z.infer<typeof BackupEventProgressSchema>;
 export type SnapshotInfo = z.infer<typeof SnapshotInfoSchema>;
 export type SnapshotPage = z.infer<typeof SnapshotPageSchema>;
 export type BackupTargetDatasetInfo = z.infer<typeof BackupTargetDatasetInfoSchema>;
-export type BackupJailMetadataInfo = z.infer<typeof BackupJailMetadataInfoSchema>;
-export type BackupVMMetadataInfo = z.infer<typeof BackupVMMetadataInfoSchema>;
 export type BackupJobMode = BackupJob['mode'];
 export type BackupGuestKind = 'dataset' | 'jail' | 'vm';
 export type BackupScopedGuestKind = Exclude<BackupGuestKind, 'dataset'>;

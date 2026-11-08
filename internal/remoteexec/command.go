@@ -218,7 +218,9 @@ func SSHHostKeyOptions(trust SSHHostTrust, path, loginKey string, fresh, learnin
 	if len(socket) >= 104 {
 		return nil, errors.New("ssh_control_path_too_long")
 	}
-	return append(args, "-o", "ControlMaster=auto", "-o", "ControlPath="+socket, "-o", "ControlPersist=60"), nil
+	// A reconnect costs several round trips to a distant target, so the
+	// connection outlives a pause in the restore dialog.
+	return append(args, "-o", "ControlMaster=auto", "-o", "ControlPath="+socket, "-o", "ControlPersist=300"), nil
 }
 
 func ReadLearnedSSHHostKey(path string, trust SSHHostTrust) (string, error) {

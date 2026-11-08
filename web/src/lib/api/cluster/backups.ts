@@ -1,13 +1,9 @@
 import {
-	BackupJailMetadataInfoSchema,
-	BackupVMMetadataInfoSchema,
 	BackupEventProgressSchema,
 	BackupJobSchema,
 	BackupTargetDatasetInfoSchema,
 	BackupTargetSchema,
 	SnapshotPageSchema,
-	type BackupJailMetadataInfo,
-	type BackupVMMetadataInfo,
 	type BackupEventProgress,
 	type BackupGuestFilter,
 	type BackupJob,
@@ -251,32 +247,6 @@ export async function listBackupTargetDatasetSnapshots(
 	return await apiRequestData(
 		`/cluster/backups/targets/${targetId}/datasets/snapshots?${params.toString()}`,
 		SnapshotPageSchema,
-		'GET'
-	);
-}
-
-export async function getBackupTargetJailMetadata(
-	targetId: number,
-	dataset: string
-): Promise<BackupJailMetadataInfo | null> {
-	const params = new URLSearchParams();
-	params.set('dataset', dataset);
-	return await apiRequestData(
-		`/cluster/backups/targets/${targetId}/datasets/jail-metadata?${params.toString()}`,
-		BackupJailMetadataInfoSchema.nullable(),
-		'GET'
-	);
-}
-
-export async function getBackupTargetVMMetadata(
-	targetId: number,
-	dataset: string
-): Promise<BackupVMMetadataInfo | null> {
-	const params = new URLSearchParams();
-	params.set('dataset', dataset);
-	return await apiRequestData(
-		`/cluster/backups/targets/${targetId}/datasets/vm-metadata?${params.toString()}`,
-		BackupVMMetadataInfoSchema.nullable(),
 		'GET'
 	);
 }

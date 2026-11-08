@@ -10,9 +10,9 @@ package zelta
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -51,18 +51,6 @@ type BackupTargetDatasetInfo struct {
 	Kind               string `json:"kind"` // "dataset" | "jail" | "vm"
 	JailCTID           uint   `json:"jailCtId,omitempty"`
 	VMRID              uint   `json:"vmRid,omitempty"`
-}
-
-type BackupJailMetadataInfo struct {
-	CTID     uint   `json:"ctId"`
-	Name     string `json:"name"`
-	BasePool string `json:"basePool"`
-}
-
-type BackupVMMetadataInfo struct {
-	RID   uint     `json:"rid"`
-	Name  string   `json:"name"`
-	Pools []string `json:"pools"`
 }
 
 type oobGuestRestoreDestination struct {
@@ -106,6 +94,11 @@ func resolveOOBGuestRestoreDestination(
 	sourceIsGuest := sourceKind == clusterModels.BackupJobModeVM || sourceKind == clusterModels.BackupJobModeJail
 	destinationIsGuest := destinationKind == clusterModels.BackupJobModeVM || destinationKind == clusterModels.BackupJobModeJail
 	if !sourceIsGuest && !destinationIsGuest {
+		// Everything under <pool>/sylve belongs to a subsystem with its own
+		// records, which a plain dataset restore can't recreate.
+		if parts := strings.Split(destinationDataset, "/"); len(parts) > 1 && parts[1] == "sylve" {
+			return nil, fmt.Errorf("restore_destination_sylve_managed: destination=%s", destinationDataset)
+		}
 		return nil, nil
 	}
 	if !sourceIsGuest || !destinationIsGuest || sourceKind != destinationKind {
@@ -482,66 +475,6 @@ func (s *Service) ListRemoteTargetDatasetSnapshotsPage(
 		Int64("duration_ms", time.Since(started).Milliseconds()).
 		Msg("backup_target_snapshot_page_listed")
 	return page, nil
-}
-
-func (s *Service) GetRemoteTargetJailMetadata(ctx context.Context, targetID uint, remoteDataset string) (*BackupJailMetadataInfo, error) {
-	parsedRemoteDataset, err := requiredRemoteDataset(remoteDataset)
-	if err != nil {
-		return nil, err
-	}
-	remoteDataset = parsedRemoteDataset.String()
-	target, rootDataset, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
-	if err != nil {
-		return nil, err
-	}
-	defer releaseTargetKey()
-
-	if !parsedRemoteDataset.Within(rootDataset) {
-		return nil, fmt.Errorf("remote_dataset_outside_backup_root")
-	}
-
-	suffix := relativeDatasetSuffix(target.BackupRoot, remoteDataset)
-	kind, fallbackCTID := inferRestoreDatasetKind(suffix)
-	if kind != clusterModels.BackupJobModeJail {
-		return nil, nil
-	}
-
-	info, err := s.readRemoteJailMetadata(ctx, &target, remoteDataset, fallbackCTID)
-	if err != nil {
-		return nil, err
-	}
-
-	return info, nil
-}
-
-func (s *Service) GetRemoteTargetVMMetadata(ctx context.Context, targetID uint, remoteDataset string) (*BackupVMMetadataInfo, error) {
-	parsedRemoteDataset, err := requiredRemoteDataset(remoteDataset)
-	if err != nil {
-		return nil, err
-	}
-	remoteDataset = parsedRemoteDataset.String()
-	target, rootDataset, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
-	if err != nil {
-		return nil, err
-	}
-	defer releaseTargetKey()
-
-	if !parsedRemoteDataset.Within(rootDataset) {
-		return nil, fmt.Errorf("remote_dataset_outside_backup_root")
-	}
-
-	suffix := relativeDatasetSuffix(target.BackupRoot, remoteDataset)
-	kind, fallbackRID := inferRestoreDatasetKind(suffix)
-	if kind != clusterModels.BackupJobModeVM {
-		return nil, nil
-	}
-
-	info, err := s.readRemoteVMMetadata(ctx, &target, remoteDataset, fallbackRID)
-	if err != nil {
-		return nil, err
-	}
-
-	return info, nil
 }
 
 func requiredRemoteDataset(raw string) (remoteexec.ZFSDataset, error) {
@@ -1510,29 +1443,11 @@ func (s *Service) listRemoteSnapshots(ctx context.Context, target *clusterModels
 }
 
 func (s *Service) listRemoteSnapshotsWithLineage(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]SnapshotInfo, error) {
-	lineageDatasets, err := s.listRemoteLineageDatasets(ctx, target, remoteDataset)
+	snapshots, err := s.listJobLineageSnapshots(ctx, target, remoteDataset)
 	if err != nil {
-		return nil, err
-	}
-
-	snapshots, err := s.listRemoteSnapshots(ctx, target, lineageDatasets, false)
-	if err != nil {
-		// A generation renamed or destroyed mid-listing fails the whole batch.
-		snapshots = nil
-		for i, dataset := range lineageDatasets {
-			part, snapErr := s.listRemoteSnapshotsForDataset(ctx, target, dataset)
-			if snapErr != nil {
-				if i == 0 {
-					return nil, snapErr
-				}
-				logger.L.Warn().
-					Err(snapErr).
-					Str("dataset", dataset).
-					Str("base_dataset", remoteDataset).
-					Msg("failed_to_list_lineage_snapshots_for_sibling_dataset")
-				continue
-			}
-			snapshots = append(snapshots, part...)
+		snapshots, err = s.listLineageSnapshotsByDataset(ctx, target, remoteDataset)
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -1566,6 +1481,63 @@ func (s *Service) listRemoteSnapshotsWithLineage(ctx context.Context, target *cl
 	})
 
 	return combined, nil
+}
+
+// A job's folder holds only its active dataset and the archived generations,
+// so one listing two levels down covers the lineage in a single round trip.
+// Other layouts, or a failed listing, take the per-dataset path.
+func (s *Service) listJobLineageSnapshots(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]SnapshotInfo, error) {
+	suffix := relativeDatasetSuffix(target.BackupRoot, remoteDataset)
+	if !isConventionalBackupLineageDataset(suffix) || strings.Contains(path.Base(suffix), ".pre_") {
+		return nil, fmt.Errorf("not_a_job_lineage_dataset")
+	}
+	parent := path.Dir(normalizeDatasetPath(remoteDataset))
+	output, err := s.runTargetDatasetSSH(
+		ctx, target, parent,
+		"zfs", "list", "-t", "snapshot", "-Hp", "-d", "2",
+		"-o", "name,creation,used,refer,guid,encryption", "-s", "creation", parent,
+	)
+	if err != nil {
+		return nil, err
+	}
+	snapshots := make([]SnapshotInfo, 0)
+	for _, snapshot := range parseSnapshotInfoOutput(output) {
+		leaf := strings.TrimPrefix(snapshotDatasetName(snapshot.Name), parent+"/")
+		if leaf == "active" || strings.HasPrefix(leaf, "active_gen-") {
+			snapshots = append(snapshots, snapshot)
+		}
+	}
+	return snapshots, nil
+}
+
+func (s *Service) listLineageSnapshotsByDataset(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]SnapshotInfo, error) {
+	lineageDatasets, err := s.listRemoteLineageDatasets(ctx, target, remoteDataset)
+	if err != nil {
+		return nil, err
+	}
+
+	snapshots, err := s.listRemoteSnapshots(ctx, target, lineageDatasets, false)
+	if err != nil {
+		// A generation renamed or destroyed mid-listing fails the whole batch.
+		snapshots = nil
+		for i, dataset := range lineageDatasets {
+			part, snapErr := s.listRemoteSnapshotsForDataset(ctx, target, dataset)
+			if snapErr != nil {
+				if i == 0 {
+					return nil, snapErr
+				}
+				logger.L.Warn().
+					Err(snapErr).
+					Str("dataset", dataset).
+					Str("base_dataset", remoteDataset).
+					Msg("failed_to_list_lineage_snapshots_for_sibling_dataset")
+				continue
+			}
+			snapshots = append(snapshots, part...)
+		}
+	}
+
+	return snapshots, nil
 }
 
 func parseSnapshotCreationTime(raw string) (time.Time, bool) {
@@ -1882,206 +1854,6 @@ func parseSnapshotInfoOutput(output string) []SnapshotInfo {
 	}
 
 	return snapshots
-}
-
-func (s *Service) readRemoteJailMetadata(ctx context.Context, target *clusterModels.BackupTarget, dataset string, fallbackCTID uint) (*BackupJailMetadataInfo, error) {
-	parsedDataset, err := canonicalTargetDataset(target, dataset)
-	if err != nil {
-		return nil, fmt.Errorf("remote_jail_metadata_dataset_invalid: %w", err)
-	}
-	dataset = parsedDataset.String()
-	mountedOut, err := s.runTargetSSH(ctx, target, "zfs", "get", "-H", "-o", "value", "mounted", dataset)
-	if err != nil {
-		return nil, fmt.Errorf("failed_to_read_dataset_mounted_property: %w", err)
-	}
-	mountpointOut, err := s.runTargetSSH(ctx, target, "zfs", "get", "-H", "-o", "value", "mountpoint", dataset)
-	if err != nil {
-		return nil, fmt.Errorf("failed_to_read_dataset_mountpoint_property: %w", err)
-	}
-
-	mounted := strings.EqualFold(strings.TrimSpace(mountedOut), "yes")
-	mountpoint := strings.TrimSpace(mountpointOut)
-	if mountpoint == "" || mountpoint == "-" || mountpoint == "none" || mountpoint == "legacy" {
-		return nil, nil
-	}
-
-	mountedByUs := false
-	if !mounted {
-		if _, err := s.runTargetSSH(ctx, target, "zfs", "mount", dataset); err != nil {
-			return nil, fmt.Errorf("failed_to_mount_remote_dataset_for_metadata: %w", err)
-		}
-		mountedByUs = true
-	}
-	if mountedByUs {
-		defer func() {
-			_, _ = s.runTargetSSH(context.Background(), target, "zfs", "unmount", dataset)
-		}()
-	}
-
-	metaPath := strings.TrimSuffix(mountpoint, "/") + "/.sylve/jail.json"
-	metaRaw, err := s.runTargetDatasetSSH(ctx, target, dataset, "cat", metaPath)
-	if err != nil {
-		lower := strings.ToLower(strings.TrimSpace(metaRaw) + " " + err.Error())
-		if strings.Contains(lower, "no such file") || strings.Contains(lower, "not found") {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed_to_read_remote_jail_metadata: %w", err)
-	}
-
-	var payload struct {
-		CTID     uint   `json:"ctId"`
-		Name     string `json:"name"`
-		Storages []struct {
-			Pool   string `json:"pool"`
-			IsBase bool   `json:"isBase"`
-		} `json:"storages"`
-	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(metaRaw)), &payload); err != nil {
-		return nil, fmt.Errorf("invalid_remote_jail_metadata_json: %w", err)
-	}
-
-	basePool := ""
-	for _, storage := range payload.Storages {
-		pool := strings.TrimSpace(storage.Pool)
-		if pool == "" {
-			continue
-		}
-		if storage.IsBase {
-			basePool = pool
-			break
-		}
-		if basePool == "" {
-			basePool = pool
-		}
-	}
-
-	ctid := payload.CTID
-	if ctid == 0 {
-		ctid = fallbackCTID
-	}
-
-	if ctid == 0 && strings.TrimSpace(payload.Name) == "" && basePool == "" {
-		return nil, nil
-	}
-
-	return &BackupJailMetadataInfo{
-		CTID:     ctid,
-		Name:     strings.TrimSpace(payload.Name),
-		BasePool: basePool,
-	}, nil
-}
-
-func (s *Service) readRemoteVMMetadata(
-	ctx context.Context,
-	target *clusterModels.BackupTarget,
-	dataset string,
-	fallbackRID uint,
-) (*BackupVMMetadataInfo, error) {
-	candidates := vmMetadataCandidateDatasets(dataset)
-	for _, candidate := range candidates {
-		metaRaw, err := s.readRemoteDatasetMetadataFile(ctx, target, candidate, ".sylve/vm.json")
-		if err != nil {
-			return nil, fmt.Errorf("failed_to_read_remote_vm_metadata: %w", err)
-		}
-		if strings.TrimSpace(metaRaw) == "" {
-			continue
-		}
-
-		var payload struct {
-			RID      uint   `json:"rid"`
-			Name     string `json:"name"`
-			Storages []struct {
-				Pool string `json:"pool"`
-			} `json:"storages"`
-		}
-		if err := json.Unmarshal([]byte(strings.TrimSpace(metaRaw)), &payload); err != nil {
-			return nil, fmt.Errorf("invalid_remote_vm_metadata_json: %w", err)
-		}
-
-		rid := payload.RID
-		if rid == 0 {
-			rid = fallbackRID
-		}
-
-		seenPools := make(map[string]struct{})
-		pools := make([]string, 0, len(payload.Storages))
-		for _, storage := range payload.Storages {
-			pool := strings.TrimSpace(storage.Pool)
-			if pool == "" {
-				continue
-			}
-			if _, ok := seenPools[pool]; ok {
-				continue
-			}
-			seenPools[pool] = struct{}{}
-			pools = append(pools, pool)
-		}
-		sort.Strings(pools)
-
-		if rid == 0 && strings.TrimSpace(payload.Name) == "" && len(pools) == 0 {
-			continue
-		}
-
-		return &BackupVMMetadataInfo{
-			RID:   rid,
-			Name:  strings.TrimSpace(payload.Name),
-			Pools: pools,
-		}, nil
-	}
-
-	return nil, nil
-}
-
-func (s *Service) readRemoteDatasetMetadataFile(
-	ctx context.Context,
-	target *clusterModels.BackupTarget,
-	dataset string,
-	relativeMetaPath string,
-) (string, error) {
-	parsedDataset, err := canonicalTargetDataset(target, dataset)
-	if err != nil {
-		return "", fmt.Errorf("remote_metadata_dataset_invalid: %w", err)
-	}
-	dataset = parsedDataset.String()
-	mountedOut, err := s.runTargetSSH(ctx, target, "zfs", "get", "-H", "-o", "value", "mounted", dataset)
-	if err != nil {
-		return "", fmt.Errorf("failed_to_read_dataset_mounted_property: %w", err)
-	}
-	mountpointOut, err := s.runTargetSSH(ctx, target, "zfs", "get", "-H", "-o", "value", "mountpoint", dataset)
-	if err != nil {
-		return "", fmt.Errorf("failed_to_read_dataset_mountpoint_property: %w", err)
-	}
-
-	mounted := strings.EqualFold(strings.TrimSpace(mountedOut), "yes")
-	mountpoint := strings.TrimSpace(mountpointOut)
-	if mountpoint == "" || mountpoint == "-" || mountpoint == "none" || mountpoint == "legacy" {
-		return "", nil
-	}
-
-	mountedByUs := false
-	if !mounted {
-		if _, err := s.runTargetSSH(ctx, target, "zfs", "mount", dataset); err != nil {
-			return "", fmt.Errorf("failed_to_mount_remote_dataset_for_metadata: %w", err)
-		}
-		mountedByUs = true
-	}
-	if mountedByUs {
-		defer func() {
-			_, _ = s.runTargetSSH(context.Background(), target, "zfs", "unmount", dataset)
-		}()
-	}
-
-	metaPath := strings.TrimSuffix(mountpoint, "/") + "/" + strings.TrimLeft(relativeMetaPath, "/")
-	metaRaw, err := s.runTargetDatasetSSH(ctx, target, dataset, "cat", metaPath)
-	if err != nil {
-		lower := strings.ToLower(strings.TrimSpace(metaRaw) + " " + err.Error())
-		if strings.Contains(lower, "no such file") || strings.Contains(lower, "not found") {
-			return "", nil
-		}
-		return "", err
-	}
-
-	return strings.TrimSpace(metaRaw), nil
 }
 
 func vmMetadataCandidateDatasets(dataset string) []string {

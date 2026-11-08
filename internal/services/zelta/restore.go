@@ -115,6 +115,10 @@ func (s *Service) ListRemoteSnapshotsPage(
 	}
 	defer releaseTargetKey()
 
+	// Its own remote listing, so it runs alongside the snapshot one.
+	childCount := make(chan int, 1)
+	go func() { childCount <- s.remoteDatasetChildCount(ctx, &target, remoteDataset) }()
+
 	candidates, err := s.listBackupJobSnapshotCandidates(ctx, job, &target, remoteDataset)
 	if err != nil {
 		return SnapshotPage{}, err
@@ -131,9 +135,9 @@ func (s *Service) ListRemoteSnapshotsPage(
 		return SnapshotPage{}, fmt.Errorf("failed_to_validate_backup_restore_points: %w", err)
 	}
 
-	childCount := s.remoteDatasetChildCount(ctx, &target, remoteDataset)
+	count := <-childCount
 	for i := range items {
-		items[i].ChildCount = childCount
+		items[i].ChildCount = count
 	}
 	page := SnapshotPage{Items: items, NextCursor: nextCursor, HasMore: hasMore}
 	logger.L.Debug().

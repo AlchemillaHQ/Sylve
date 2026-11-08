@@ -488,7 +488,13 @@
 />
 
 <Restore bind:open={restoreModalOpen} bind:reload {selectedJob} {nodes} />
-<OOBRestore bind:open={restoreTargetModalOpen} bind:reload targets={targets.current} {nodes} />
+<OOBRestore
+	bind:open={restoreTargetModalOpen}
+	bind:reload
+	targets={targets.current}
+	jobs={jobs.current}
+	{nodes}
+/>
 
 <AlertDialog
 	open={deleteModalOpen}

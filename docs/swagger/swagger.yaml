@@ -2017,28 +2017,6 @@ definitions:
       status:
         type: string
     type: object
-  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_BackupJailMetadataInfo:
-    properties:
-      data:
-        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.BackupJailMetadataInfo'
-      error:
-        type: string
-      message:
-        type: string
-      status:
-        type: string
-    type: object
-  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_BackupVMMetadataInfo:
-    properties:
-      data:
-        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.BackupVMMetadataInfo'
-      error:
-        type: string
-      message:
-        type: string
-      status:
-        type: string
-    type: object
   ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_ReplicationEventProgress
   : properties:
       data:
@@ -2164,6 +2142,17 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/internal_handlers_auth.UserPreferences'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_basic_InitializeHostState:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers_basic.InitializeHostState'
       error:
         type: string
       message:
@@ -2771,6 +2760,8 @@ definitions:
         type: string
       nextRunAt:
         type: string
+      pruneKeepGenerations:
+        type: integer
       pruneKeepLast:
         type: integer
       pruneTarget:
@@ -5249,6 +5240,8 @@ definitions:
       name:
         minLength: 2
         type: string
+      pruneKeepGenerations:
+        type: integer
       pruneKeepLast:
         type: integer
       pruneTarget:
@@ -5479,6 +5472,11 @@ definitions:
         additionalProperties:
           type: string
         type: object
+      stack:
+        description: |-
+          Stack names a stack app's install in place of the app's ID, so it can be
+          installed more than once.
+        type: string
       values:
         additionalProperties:
           type: string
@@ -5498,6 +5496,8 @@ definitions:
         items:
           type: string
         type: array
+      stack:
+        type: string
       variables:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.CatalogVariable'
@@ -5509,6 +5509,10 @@ definitions:
         type: boolean
       default:
         type: string
+      folders:
+        items:
+          type: string
+        type: array
       hint:
         type: string
       label:
@@ -5518,6 +5522,8 @@ definitions:
       optional:
         type: boolean
       owner:
+        type: string
+      placeholder:
         type: string
       protocol:
         type: string
@@ -5584,6 +5590,9 @@ definitions:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Mount'
         type: array
       name:
+        description: |-
+          Name renames the container on update: its hostname and the name its
+          network knows it by. CreateRequest's own Name shadows it on create.
         type: string
       network:
         type: string
@@ -5603,9 +5612,19 @@ definitions:
         type: string
       restartRetries:
         type: integer
+      secrets:
+        additionalProperties:
+          type: string
+        description: Secrets are the catalog secrets the request was rendered with,
+          by setting.
+        type: object
+      service:
+        type: string
       shmSize:
         type: string
       stack:
+        type: string
+      stackTitle:
         type: string
       startAfterCreate:
         type: boolean
@@ -5615,6 +5634,8 @@ definitions:
         type: integer
       stopTimeout:
         type: integer
+      title:
+        type: string
       user:
         type: string
       webHttps:
@@ -5702,9 +5723,13 @@ definitions:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.State'
       runtimeId:
         type: string
+      service:
+        type: string
       shmSize:
         type: string
       stack:
+        type: string
+      stackTitle:
         type: string
       startAtBoot:
         type: boolean
@@ -5712,6 +5737,8 @@ definitions:
         type: integer
       stopTimeout:
         type: integer
+      title:
+        type: string
       updatedAt:
         type: string
       user:
@@ -5733,6 +5760,8 @@ definitions:
         items:
           type: string
         type: array
+      previous:
+        type: string
       size:
         type: integer
     type: object
@@ -5829,9 +5858,13 @@ definitions:
         type: integer
       runtimeId:
         type: string
+      service:
+        type: string
       shmSize:
         type: string
       stack:
+        type: string
+      stackTitle:
         type: string
       startAtBoot:
         type: boolean
@@ -5841,6 +5874,8 @@ definitions:
         type: string
       stopTimeout:
         type: integer
+      title:
+        type: string
       updatedAt:
         type: string
       user:
@@ -5877,12 +5912,12 @@ definitions:
         type: string
       memory:
         type: integer
-      name:
-        type: string
       startAtBoot:
         type: boolean
       startOrder:
         type: integer
+      title:
+        type: string
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_container.RegistryCredentialRequest:
     properties:
@@ -5905,7 +5940,11 @@ definitions:
         type: integer
       stack:
         type: string
+      stackTitle:
+        type: string
       state:
+        type: string
+      title:
         type: string
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_container.Spec:
@@ -5940,6 +5979,11 @@ definitions:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Mount'
         type: array
+      name:
+        description: |-
+          Name renames the container on update: its hostname and the name its
+          network knows it by. CreateRequest's own Name shadows it on create.
+        type: string
       network:
         type: string
       os:
@@ -5982,6 +6026,11 @@ definitions:
     - ocId
     - pool
     - stack
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_container.StackTitleRequest:
+    properties:
+      title:
+        type: string
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_container.State:
     properties:
@@ -7306,7 +7355,15 @@ definitions:
     properties:
       allowed:
         type: boolean
+      guestPools:
+        items:
+          type: string
+        type: array
       reasons:
+        items:
+          type: string
+        type: array
+      targetNodePools:
         items:
           type: string
         type: array
@@ -7697,6 +7754,22 @@ definitions:
         type: integer
     required:
     - dhcpRangeId
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.PFHostState:
+    properties:
+      backupExists:
+        type: boolean
+      conf:
+        description: missing, managed or unmanaged
+        type: string
+      enabledInRcConf:
+        type: boolean
+      natRules:
+        type: integer
+      rules:
+        type: integer
+      running:
+        type: boolean
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_network.RenderedConfigResponse:
     properties:
@@ -9688,15 +9761,6 @@ definitions:
       last_page:
         type: integer
     type: object
-  github_com_alchemillahq_sylve_internal_services_zelta.BackupJailMetadataInfo:
-    properties:
-      basePool:
-        type: string
-      ctId:
-        type: integer
-      name:
-        type: string
-    type: object
   github_com_alchemillahq_sylve_internal_services_zelta.BackupTargetDatasetInfo:
     properties:
       baseSuffix:
@@ -9723,17 +9787,6 @@ definitions:
       suffix:
         type: string
       vmRid:
-        type: integer
-    type: object
-  github_com_alchemillahq_sylve_internal_services_zelta.BackupVMMetadataInfo:
-    properties:
-      name:
-        type: string
-      pools:
-        items:
-          type: string
-        type: array
-      rid:
         type: integer
     type: object
   github_com_alchemillahq_sylve_internal_services_zelta.ReplicationEventProgress:
@@ -10811,6 +10864,15 @@ definitions:
       confirmGuestActions:
         type: boolean
     type: object
+  internal_handlers_basic.InitializeHostState:
+    properties:
+      dhcpConfigCustom:
+        type: boolean
+      pf:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.PFHostState'
+      racctLoaderChange:
+        type: boolean
+    type: object
   internal_handlers_cluster.AcceptJoinRequest:
     properties:
       inventory:
@@ -11335,6 +11397,10 @@ definitions:
     properties:
       targetNodeUuid:
         type: string
+      targetPools:
+        additionalProperties:
+          type: string
+        type: object
     type: object
   internal_handlers_migration.MigrationTaskResponse:
     properties:
@@ -13335,6 +13401,30 @@ paths:
       summary: Initialize Sylve
       tags:
       - Basic
+  /basic/initialize/host-state:
+    get:
+      description: Report existing host configuration that initializing Sylve would
+        replace or edit
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_basic_InitializeHostState'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get Initialization Host State
+      tags:
+      - Basic
   /basic/settings:
     get:
       description: Retrieve the basic settings of Sylve
@@ -14847,70 +14937,6 @@ paths:
       summary: List Backup Target Datasets
       tags:
       - Cluster Backups
-  /cluster/backups/targets/{id}/datasets/jail-metadata:
-    get:
-      consumes:
-      - application/json
-      description: Read jail metadata for a dataset on a backup target
-      parameters:
-      - description: Backup Target ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: Remote jail dataset
-        in: query
-        name: dataset
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Success
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_BackupJailMetadataInfo'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "404":
-          description: Backup Target Not Found
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "409":
-          description: Backup Target Disabled
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "502":
-          description: Remote Target Failure
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "503":
-          description: Local Key Unavailable
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "504":
-          description: Remote Target Timeout
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-      security:
-      - BearerAuth: []
-      summary: Get Backup Jail Metadata
-      tags:
-      - Cluster Backups
   /cluster/backups/targets/{id}/datasets/snapshots:
     get:
       consumes:
@@ -14984,70 +15010,6 @@ paths:
       security:
       - BearerAuth: []
       summary: List Backup Target Dataset Snapshots
-      tags:
-      - Cluster Backups
-  /cluster/backups/targets/{id}/datasets/vm-metadata:
-    get:
-      consumes:
-      - application/json
-      description: Read virtual machine metadata for a dataset on a backup target
-      parameters:
-      - description: Backup Target ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: Remote virtual machine dataset
-        in: query
-        name: dataset
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Success
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_BackupVMMetadataInfo'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "404":
-          description: Backup Target Not Found
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "409":
-          description: Backup Target Disabled
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "502":
-          description: Remote Target Failure
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "503":
-          description: Local Key Unavailable
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "504":
-          description: Remote Target Timeout
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-      security:
-      - BearerAuth: []
-      summary: Get Backup VM Metadata
       tags:
       - Cluster Backups
   /cluster/backups/targets/{id}/readiness:
@@ -17134,6 +17096,36 @@ paths:
       security:
       - BearerAuth: []
       summary: Create a catalog app's stack
+      tags:
+      - Container
+  /container/stack/{stack}:
+    patch:
+      consumes:
+      - application/json
+      description: Change the name a stack is shown under; empty shows its own name
+        again
+      parameters:
+      - description: Stack
+        in: path
+        name: stack
+        required: true
+        type: string
+      - description: Title
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.StackTitleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Rename a container stack
       tags:
       - Container
   /directory-services/active-directory:
@@ -27394,6 +27386,10 @@ paths:
         name: targetNodeUuid
         required: true
         type: string
+      - description: Source pool to target pool, as targetPools[source]=target
+        in: query
+        name: targetPools
+        type: object
       produces:
       - application/json
       responses:

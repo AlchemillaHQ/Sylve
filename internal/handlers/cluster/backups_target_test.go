@@ -1052,6 +1052,12 @@ func TestRestoreFromTargetEnqueueError(t *testing.T) {
 			wantMessage: "restore_guest_destination_conflict",
 		},
 		{
+			name:        "destination inside the sylve tree",
+			err:         errors.New("restore_destination_sylve_managed: destination=tank/sylve/stacks/x"),
+			wantStatus:  http.StatusBadRequest,
+			wantMessage: "restore_destination_sylve_managed",
+		},
+		{
 			name:        "join in progress",
 			err:         errors.New("guest_identity_cluster_formation_in_progress"),
 			wantStatus:  http.StatusServiceUnavailable,

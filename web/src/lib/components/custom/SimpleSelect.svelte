@@ -16,7 +16,13 @@ under sponsorship from the FreeBSD Foundation.
 		label?: string;
 		icon?: string;
 		placeholder?: string;
-		options: Array<{ value: string; label: string; disabled?: boolean }>;
+		options: Array<{
+			value: string;
+			label: string;
+			disabled?: boolean;
+			icon?: string;
+			detail?: string;
+		}>;
 		value: string;
 		classes?: { parent?: string; label?: string; trigger?: string };
 		onChange: (value: string) => void;
@@ -45,7 +51,9 @@ under sponsorship from the FreeBSD Foundation.
 		single: _single
 	}: Props = $props();
 
-	let sLabel = $derived(options.find((o) => o.value === value)?.label ?? placeholder);
+	let selected = $derived(options.find((o) => o.value === value));
+	let sLabel = $derived(selected?.label ?? placeholder);
+	let triggerIcon = $derived(selected?.icon || icon);
 </script>
 
 <div class={`${classes.parent} min-w-0`}>
@@ -57,11 +65,13 @@ under sponsorship from the FreeBSD Foundation.
 
 	<Select.Root type="single" bind:value onValueChange={() => onChange(value)} {disabled}>
 		<Select.Trigger {size} class={classes.trigger} title={title || sLabel || placeholder}>
-			{#if icon}
-				<span class={icon + ' mt-0.5 h-4 w-4'}></span>
-			{/if}
-			<span class="block truncate">
-				{sLabel || placeholder}
+			<span class="flex min-w-0 items-center gap-2">
+				{#if triggerIcon}
+					<span class={triggerIcon + ' h-4 w-4 shrink-0'}></span>
+				{/if}
+				<span class="block truncate">
+					{sLabel || placeholder}
+				</span>
 			</span>
 		</Select.Trigger>
 
@@ -73,7 +83,13 @@ under sponsorship from the FreeBSD Foundation.
 					title={option.label}
 					disabled={option.disabled}
 				>
-					{option.label}
+					{#if option.icon}
+						<span class={option.icon + ' h-4 w-4 shrink-0'}></span>
+					{/if}
+					<span class="truncate">{option.label}</span>
+					{#if option.detail}
+						<span class="ml-auto shrink-0 pl-3 text-xs text-muted-foreground">{option.detail}</span>
+					{/if}
 				</Select.Item>
 			{/each}
 		</Select.Content>

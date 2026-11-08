@@ -1067,8 +1067,6 @@ func RegisterRoutes(r *gin.Engine,
 			targets.GET("/:id/readiness", leaderOnly, clusterHandlers.BackupTargetReadiness(clusterService))
 			targets.GET("/:id/datasets", clusterHandlers.BackupTargetDatasets(zeltaService))
 			targets.GET("/:id/datasets/snapshots", clusterHandlers.BackupTargetDatasetSnapshots(zeltaService))
-			targets.GET("/:id/datasets/jail-metadata", clusterHandlers.BackupTargetDatasetJailMetadata(zeltaService))
-			targets.GET("/:id/datasets/vm-metadata", clusterHandlers.BackupTargetDatasetVMMetadata(zeltaService))
 			targets.GET("/:id/running-jobs", leaderOnly, clusterHandlers.BackupTargetRunningJobIDs(clusterService))
 			targets.POST("/:id/restore", clusterHandlers.RestoreBackupTargetDataset(clusterService, zeltaService))
 		}

@@ -740,126 +740,6 @@ func BackupTargetDatasetSnapshots(zS *zelta.Service) gin.HandlerFunc {
 	}
 }
 
-// @Summary Get Backup Jail Metadata
-// @Description Read jail metadata for a dataset on a backup target
-// @Tags Cluster Backups
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param id path int true "Backup Target ID"
-// @Param dataset query string true "Remote jail dataset"
-// @Success 200 {object} internal.APIResponse[zelta.BackupJailMetadataInfo] "Success"
-// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
-// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
-// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
-// @Failure 404 {object} internal.APIResponse[any] "Backup Target Not Found"
-// @Failure 409 {object} internal.APIResponse[any] "Backup Target Disabled"
-// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Failure 502 {object} internal.APIResponse[any] "Remote Target Failure"
-// @Failure 503 {object} internal.APIResponse[any] "Local Key Unavailable"
-// @Failure 504 {object} internal.APIResponse[any] "Remote Target Timeout"
-// @Router /cluster/backups/targets/{id}/datasets/jail-metadata [get]
-func BackupTargetDatasetJailMetadata(zS *zelta.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
-		if err != nil || id64 == 0 {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_target_id",
-				Error:   "invalid_target_id",
-				Data:    nil,
-			})
-			return
-		}
-
-		dataset := strings.TrimSpace(c.Query("dataset"))
-		if dataset == "" {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "remote_dataset_required",
-				Error:   "dataset query parameter is required",
-				Data:    nil,
-			})
-			return
-		}
-
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
-		defer cancel()
-
-		meta, err := zS.GetRemoteTargetJailMetadata(ctx, uint(id64), dataset)
-		if err != nil {
-			writeBackupTargetRemoteReadError(c, "read_jail_metadata_failed", err)
-			return
-		}
-
-		c.JSON(http.StatusOK, internal.APIResponse[*zelta.BackupJailMetadataInfo]{
-			Status:  "success",
-			Message: "jail_metadata_read",
-			Data:    meta,
-		})
-	}
-}
-
-// @Summary Get Backup VM Metadata
-// @Description Read virtual machine metadata for a dataset on a backup target
-// @Tags Cluster Backups
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param id path int true "Backup Target ID"
-// @Param dataset query string true "Remote virtual machine dataset"
-// @Success 200 {object} internal.APIResponse[zelta.BackupVMMetadataInfo] "Success"
-// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
-// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
-// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
-// @Failure 404 {object} internal.APIResponse[any] "Backup Target Not Found"
-// @Failure 409 {object} internal.APIResponse[any] "Backup Target Disabled"
-// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Failure 502 {object} internal.APIResponse[any] "Remote Target Failure"
-// @Failure 503 {object} internal.APIResponse[any] "Local Key Unavailable"
-// @Failure 504 {object} internal.APIResponse[any] "Remote Target Timeout"
-// @Router /cluster/backups/targets/{id}/datasets/vm-metadata [get]
-func BackupTargetDatasetVMMetadata(zS *zelta.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
-		if err != nil || id64 == 0 {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_target_id",
-				Error:   "invalid_target_id",
-				Data:    nil,
-			})
-			return
-		}
-
-		dataset := strings.TrimSpace(c.Query("dataset"))
-		if dataset == "" {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "remote_dataset_required",
-				Error:   "dataset query parameter is required",
-				Data:    nil,
-			})
-			return
-		}
-
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
-		defer cancel()
-
-		meta, err := zS.GetRemoteTargetVMMetadata(ctx, uint(id64), dataset)
-		if err != nil {
-			writeBackupTargetRemoteReadError(c, "read_vm_metadata_failed", err)
-			return
-		}
-
-		c.JSON(http.StatusOK, internal.APIResponse[*zelta.BackupVMMetadataInfo]{
-			Status:  "success",
-			Message: "vm_metadata_read",
-			Data:    meta,
-		})
-	}
-}
-
 func restoreFromTargetEnqueueError(err error) (int, string) {
 	if err == nil {
 		return http.StatusBadRequest, "restore_enqueue_failed"
@@ -902,6 +782,8 @@ func restoreFromTargetEnqueueError(err error) (int, string) {
 	case strings.Contains(message, "guest_identity_inventory_scan_failed"),
 		strings.Contains(message, "restore_destination_dataset_check_failed"):
 		return http.StatusInternalServerError, "restore_precheck_failed"
+	case strings.Contains(message, "restore_destination_sylve_managed"):
+		return http.StatusBadRequest, "restore_destination_sylve_managed"
 	case strings.Contains(message, "restore_guest_destination_kind_mismatch"),
 		strings.Contains(message, "restore_guest_destination_must_be_canonical_root"),
 		strings.Contains(message, "invalid_guest_id"):

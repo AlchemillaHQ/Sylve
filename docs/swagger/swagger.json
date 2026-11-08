@@ -1647,6 +1647,43 @@
                 }
             }
         },
+        "/basic/initialize/host-state": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Report existing host configuration that initializing Sylve would replace or edit",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Basic"
+                ],
+                "summary": "Get Initialization Host State",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_basic_InitializeHostState"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/basic/settings": {
             "get": {
                 "security": [
@@ -3971,104 +4008,6 @@
                 }
             }
         },
-        "/cluster/backups/targets/{id}/datasets/jail-metadata": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Read jail metadata for a dataset on a backup target",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Cluster Backups"
-                ],
-                "summary": "Get Backup Jail Metadata",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Backup Target ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Remote jail dataset",
-                        "name": "dataset",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_BackupJailMetadataInfo"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "404": {
-                        "description": "Backup Target Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "409": {
-                        "description": "Backup Target Disabled",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "502": {
-                        "description": "Remote Target Failure",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "503": {
-                        "description": "Local Key Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "504": {
-                        "description": "Remote Target Timeout",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    }
-                }
-            }
-        },
         "/cluster/backups/targets/{id}/datasets/snapshots": {
             "get": {
                 "security": [
@@ -4123,104 +4062,6 @@
                         "description": "Success",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_SnapshotPage"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "404": {
-                        "description": "Backup Target Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "409": {
-                        "description": "Backup Target Disabled",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "502": {
-                        "description": "Remote Target Failure",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "503": {
-                        "description": "Local Key Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "504": {
-                        "description": "Remote Target Timeout",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    }
-                }
-            }
-        },
-        "/cluster/backups/targets/{id}/datasets/vm-metadata": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Read virtual machine metadata for a dataset on a backup target",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Cluster Backups"
-                ],
-                "summary": "Get Backup VM Metadata",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Backup Target ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Remote virtual machine dataset",
-                        "name": "dataset",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_BackupVMMetadataInfo"
                         }
                     },
                     "400": {
@@ -7112,6 +6953,52 @@
                         "description": "Accepted",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_container_StackResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/container/stack/{stack}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Change the name a stack is shown under; empty shows its own name again",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Rename a container stack",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Stack",
+                        "name": "stack",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Title",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_container.StackTitleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
                     }
                 }
@@ -23175,6 +23062,12 @@
                         "name": "targetNodeUuid",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "type": "object",
+                        "description": "Source pool to target pool, as targetPools[source]=target",
+                        "name": "targetPools",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -33965,40 +33858,6 @@
                 }
             }
         },
-        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_BackupJailMetadataInfo": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.BackupJailMetadataInfo"
-                },
-                "error": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_BackupVMMetadataInfo": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.BackupVMMetadataInfo"
-                },
-                "error": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
         "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_ReplicationEventProgress": {
             "type": "object",
             "properties": {
@@ -34191,6 +34050,23 @@
             "properties": {
                 "data": {
                     "$ref": "#/definitions/internal_handlers_auth.UserPreferences"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_basic_InitializeHostState": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers_basic.InitializeHostState"
                 },
                 "error": {
                     "type": "string"
@@ -35094,6 +34970,9 @@
                 },
                 "nextRunAt": {
                     "type": "string"
+                },
+                "pruneKeepGenerations": {
+                    "type": "integer"
                 },
                 "pruneKeepLast": {
                     "type": "integer"
@@ -38802,6 +38681,9 @@
                     "type": "string",
                     "minLength": 2
                 },
+                "pruneKeepGenerations": {
+                    "type": "integer"
+                },
                 "pruneKeepLast": {
                     "type": "integer"
                 },
@@ -39142,6 +39024,10 @@
                         "type": "string"
                     }
                 },
+                "stack": {
+                    "description": "Stack names a stack app's install in place of the app's ID, so it can be\ninstalled more than once.",
+                    "type": "string"
+                },
                 "values": {
                     "type": "object",
                     "additionalProperties": {
@@ -39171,6 +39057,9 @@
                         "type": "string"
                     }
                 },
+                "stack": {
+                    "type": "string"
+                },
                 "variables": {
                     "type": "array",
                     "items": {
@@ -39188,6 +39077,12 @@
                 "default": {
                     "type": "string"
                 },
+                "folders": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "hint": {
                     "type": "string"
                 },
@@ -39201,6 +39096,9 @@
                     "type": "boolean"
                 },
                 "owner": {
+                    "type": "string"
+                },
+                "placeholder": {
                     "type": "string"
                 },
                 "protocol": {
@@ -39306,6 +39204,7 @@
                     }
                 },
                 "name": {
+                    "description": "Name renames the container on update: its hostname and the name its\nnetwork knows it by. CreateRequest's own Name shadows it on create.",
                     "type": "string"
                 },
                 "network": {
@@ -39335,10 +39234,23 @@
                 "restartRetries": {
                     "type": "integer"
                 },
+                "secrets": {
+                    "description": "Secrets are the catalog secrets the request was rendered with, by setting.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "service": {
+                    "type": "string"
+                },
                 "shmSize": {
                     "type": "string"
                 },
                 "stack": {
+                    "type": "string"
+                },
+                "stackTitle": {
                     "type": "string"
                 },
                 "startAfterCreate": {
@@ -39352,6 +39264,9 @@
                 },
                 "stopTimeout": {
                     "type": "integer"
+                },
+                "title": {
+                    "type": "string"
                 },
                 "user": {
                     "type": "string"
@@ -39478,10 +39393,16 @@
                 "runtimeId": {
                     "type": "string"
                 },
+                "service": {
+                    "type": "string"
+                },
                 "shmSize": {
                     "type": "string"
                 },
                 "stack": {
+                    "type": "string"
+                },
+                "stackTitle": {
                     "type": "string"
                 },
                 "startAtBoot": {
@@ -39492,6 +39413,9 @@
                 },
                 "stopTimeout": {
                     "type": "integer"
+                },
+                "title": {
+                    "type": "string"
                 },
                 "updatedAt": {
                     "type": "string"
@@ -39524,6 +39448,9 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "previous": {
+                    "type": "string"
                 },
                 "size": {
                     "type": "integer"
@@ -39670,10 +39597,16 @@
                 "runtimeId": {
                     "type": "string"
                 },
+                "service": {
+                    "type": "string"
+                },
                 "shmSize": {
                     "type": "string"
                 },
                 "stack": {
+                    "type": "string"
+                },
+                "stackTitle": {
                     "type": "string"
                 },
                 "startAtBoot": {
@@ -39687,6 +39620,9 @@
                 },
                 "stopTimeout": {
                     "type": "integer"
+                },
+                "title": {
+                    "type": "string"
                 },
                 "updatedAt": {
                     "type": "string"
@@ -39743,14 +39679,14 @@
                 "memory": {
                     "type": "integer"
                 },
-                "name": {
-                    "type": "string"
-                },
                 "startAtBoot": {
                     "type": "boolean"
                 },
                 "startOrder": {
                     "type": "integer"
+                },
+                "title": {
+                    "type": "string"
                 }
             }
         },
@@ -39785,7 +39721,13 @@
                 "stack": {
                     "type": "string"
                 },
+                "stackTitle": {
+                    "type": "string"
+                },
                 "state": {
+                    "type": "string"
+                },
+                "title": {
                     "type": "string"
                 }
             }
@@ -39837,6 +39779,10 @@
                     "items": {
                         "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_container.Mount"
                     }
+                },
+                "name": {
+                    "description": "Name renames the container on update: its hostname and the name its\nnetwork knows it by. CreateRequest's own Name shadows it on create.",
+                    "type": "string"
                 },
                 "network": {
                     "type": "string"
@@ -39899,6 +39845,14 @@
                 },
                 "startAtBoot": {
                     "type": "boolean"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_container.StackTitleRequest": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string"
                 }
             }
         },
@@ -41891,7 +41845,19 @@
                 "allowed": {
                     "type": "boolean"
                 },
+                "guestPools": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "targetNodePools": {
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -42477,6 +42443,30 @@
                 },
                 "macId": {
                     "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_network.PFHostState": {
+            "type": "object",
+            "properties": {
+                "backupExists": {
+                    "type": "boolean"
+                },
+                "conf": {
+                    "description": "missing, managed or unmanaged",
+                    "type": "string"
+                },
+                "enabledInRcConf": {
+                    "type": "boolean"
+                },
+                "natRules": {
+                    "type": "integer"
+                },
+                "rules": {
+                    "type": "integer"
+                },
+                "running": {
+                    "type": "boolean"
                 }
             }
         },
@@ -45444,20 +45434,6 @@
                 }
             }
         },
-        "github_com_alchemillahq_sylve_internal_services_zelta.BackupJailMetadataInfo": {
-            "type": "object",
-            "properties": {
-                "basePool": {
-                    "type": "string"
-                },
-                "ctId": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                }
-            }
-        },
         "github_com_alchemillahq_sylve_internal_services_zelta.BackupTargetDatasetInfo": {
             "type": "object",
             "properties": {
@@ -45495,23 +45471,6 @@
                     "type": "string"
                 },
                 "vmRid": {
-                    "type": "integer"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_internal_services_zelta.BackupVMMetadataInfo": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string"
-                },
-                "pools": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "rid": {
                     "type": "integer"
                 }
             }
@@ -47119,6 +47078,20 @@
                 }
             }
         },
+        "internal_handlers_basic.InitializeHostState": {
+            "type": "object",
+            "properties": {
+                "dhcpConfigCustom": {
+                    "type": "boolean"
+                },
+                "pf": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.PFHostState"
+                },
+                "racctLoaderChange": {
+                    "type": "boolean"
+                }
+            }
+        },
         "internal_handlers_cluster.AcceptJoinRequest": {
             "type": "object",
             "required": [
@@ -47914,6 +47887,12 @@
             "properties": {
                 "targetNodeUuid": {
                     "type": "string"
+                },
+                "targetPools": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 }
             }
         },

@@ -11,7 +11,6 @@
 import type {
 	BackupRestoreGenerationOption,
 	BackupSnapshotLineageMarker,
-	BackupTarget,
 	BackupTargetDatasetInfo,
 	SnapshotInfo
 } from '$lib/types/cluster/backups';
@@ -107,41 +106,6 @@ export function formatRestoreSnapshotDate(snapshot: SnapshotInfo): string {
 		return snapshot.creation;
 	}
 	return date.toLocaleString();
-}
-
-export function inferJailDestinationDataset(
-	target: BackupTarget | undefined,
-	dataset: string
-): string {
-	if (!target) return '';
-	const jailMatch = dataset.match(/(?:^|\/)jails\/(\d+)(?:$|\/)/);
-	if (!jailMatch) return '';
-	const ctid = jailMatch[1];
-	const pool = target.backupRoot.split('/')[0] || '';
-	if (!pool) return '';
-	return `${pool}/sylve/jails/${ctid}`;
-}
-
-export function inferVMDestinationDataset(
-	target: BackupTarget | undefined,
-	dataset: string
-): string {
-	if (!target) return '';
-	const vmMatch = dataset.match(/(?:^|\/)virtual-machines\/(\d+)(?:$|\/)/);
-	if (!vmMatch) return '';
-	const rid = vmMatch[1];
-
-	let pool = '';
-	const datasetPoolMatch = dataset.match(/(?:^|\/)([^/]+)\/sylve\/virtual-machines\/\d+(?:$|\/)/);
-	if (datasetPoolMatch) {
-		pool = datasetPoolMatch[1];
-	}
-	if (!pool) {
-		pool = target.backupRoot.split('/')[0] || '';
-	}
-	if (!pool) return '';
-
-	return `${pool}/sylve/virtual-machines/${rid}`;
 }
 
 // ---------------------------------------------------------------------------

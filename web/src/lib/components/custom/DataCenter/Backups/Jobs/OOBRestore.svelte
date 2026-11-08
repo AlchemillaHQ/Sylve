@@ -1,8 +1,6 @@
 <script lang="ts">
 	import { getDetails } from '$lib/api/cluster/cluster';
 	import {
-		getBackupTargetJailMetadata,
-		getBackupTargetVMMetadata,
 		getTargetRunningJobIds,
 		listBackupTargetDatasets,
 		listBackupTargetDatasetSnapshots,
@@ -16,23 +14,23 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { ClusterDetails, ClusterNode } from '$lib/types/cluster/cluster';
 	import type {
-		BackupJailMetadataInfo,
+		BackupGuestKind,
+		BackupJob,
 		BackupTarget,
 		BackupTargetDatasetInfo,
-		BackupVMMetadataInfo,
 		RestoreTargetDatasetGroup,
 		SnapshotInfo
 	} from '$lib/types/cluster/backups';
-	import { parseGuestFromDatasetPath } from '$lib/utils/backup-jobs-page-state';
+	import { getPools } from '$lib/api/zfs/pool';
+	import { sleep } from '$lib/utils';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
+	import { getNextGuestId } from '$lib/utils/vm/vm';
 	import {
 		buildGenerationAliasMap,
 		buildGenerationOptions,
 		filterSnapshotsByGeneration,
 		formatRestoreSnapshotDate,
 		generationLabelFromKey,
-		inferJailDestinationDataset,
-		inferVMDestinationDataset,
 		pickRepresentativeDataset,
 		snapshotGenerationKey,
 		snapshotGenerationTag,
@@ -46,11 +44,19 @@
 	interface Props {
 		open: boolean;
 		targets: BackupTarget[];
+		jobs: BackupJob[];
 		nodes: ClusterNode[];
 		reload: boolean;
 	}
 
-	let { open = $bindable(), targets, nodes, reload = $bindable() }: Props = $props();
+	let { open = $bindable(), targets, jobs, nodes, reload = $bindable() }: Props = $props();
+
+	const kindIcons: Record<BackupGuestKind, string> = {
+		jail: 'icon-[hugeicons--prison]',
+		vm: 'icon-[material-symbols--monitor-outline-rounded]',
+		dataset: 'icon-[mdi--database-outline]'
+	};
+	const kindOrder: Record<BackupGuestKind, number> = { jail: 0, vm: 1, dataset: 2 };
 
 	let loadingDatasets = $state(false);
 	let loadingSnapshots = $state(false);
@@ -67,11 +73,15 @@
 	let selectedGeneration = $state('');
 	let snapshot = $state('');
 	let destinationDataset = $state('');
+	let destinationPool = $state('');
+	let destinationGuestId = $state<string | number>('');
+	let restorePools = $state<string[]>([]);
+	let loadingPools = $state(false);
+	let poolLoadRevision = 0;
 	let restoreNetwork = $state(true);
 	let encryptionKey = $state('');
 	let restoreOperationId = $state('');
 	let restoreOperationRequestKey = $state('');
-	let showActiveOnly = $state(true);
 
 	let datasets = $state<BackupTargetDatasetInfo[]>([]);
 	let snapshots = $state<SnapshotInfo[]>([]);
@@ -80,8 +90,6 @@
 	let loadingOlderSnapshots = $state(false);
 	let olderSnapshotsError = $state('');
 	let snapshotLoadRevision = 0;
-	let jailMetadata = $state<BackupJailMetadataInfo | null>(null);
-	let vmMetadata = $state<BackupVMMetadataInfo | null>(null);
 	let error = $state('');
 	let clusterDetails = $state<ClusterDetails | null>(null);
 
@@ -106,10 +114,22 @@
 		return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
 	}
 
-	function formatRestoreTargetDatasetLabel(group: RestoreTargetDatasetGroup): string {
-		const label = group.jobLabel ? `${group.label} · ${group.jobLabel}` : group.label;
-		if (!group.snapshotCountKnown) return label;
-		return `${label} (${formatSnapshotCount(group.totalSnapshots)})`;
+	// Names come from the job that made the backup: the guest's name, or the
+	// source dataset.
+	function restoreTargetDatasetLabel(
+		kind: BackupGuestKind,
+		guestId: number,
+		baseSuffix: string,
+		job: BackupJob | undefined
+	): string {
+		if (kind !== 'dataset' && guestId > 0) {
+			return `${job?.friendlySrc || (kind === 'jail' ? 'Jail' : 'VM')} · ${guestId}`;
+		}
+		return (
+			job?.friendlySrc ||
+			job?.sourceDataset ||
+			baseSuffix.replace(/\/(?:job-[0-9]+|j-[0-9a-z]+)(?:\/.*)?$/i, '')
+		);
 	}
 
 	let targetOptions = $derived(
@@ -185,12 +205,10 @@
 			const representative = pickRepresentativeDataset(entry.datasets);
 			if (!representative) continue;
 
-			const displayBase =
-				entry.kind === 'jail' && entry.jailCtId > 0
-					? `jails/${entry.jailCtId}`
-					: entry.kind === 'vm' && entry.vmRid > 0
-						? `virtual-machines/${entry.vmRid}`
-						: entry.baseSuffix;
+			const jobLabel = extractJobLabel(entry.baseSuffix);
+			const jobId = jobIdFromLabel(jobLabel);
+			const job = jobs.find((candidate) => candidate.id === jobId);
+			const guestId = entry.kind === 'jail' ? entry.jailCtId : entry.vmRid;
 
 			const totalSnapshots =
 				entry.kind === 'vm'
@@ -199,8 +217,8 @@
 
 			out.push({
 				baseSuffix: entry.baseSuffix,
-				label: displayBase,
-				jobLabel: extractJobLabel(entry.baseSuffix),
+				label: restoreTargetDatasetLabel(entry.kind, guestId, entry.baseSuffix, job),
+				jobLabel,
 				representativeDataset: representative.name,
 				kind: entry.kind,
 				jailCtId: entry.jailCtId,
@@ -211,25 +229,18 @@
 			});
 		}
 
-		return out.sort((left, right) => left.baseSuffix.localeCompare(right.baseSuffix));
+		return out.sort(
+			(left, right) =>
+				kindOrder[left.kind] - kindOrder[right.kind] || left.label.localeCompare(right.label)
+		);
 	});
 
-	let filteredDatasetGroups = $derived(
-		showActiveOnly
-			? restoreTargetDatasetGroups.filter((g) => {
-					// Include groups that contain at least one active-lineage dataset.
-					const groupDatasets = datasets.filter(
-						(d) => (d.baseSuffix || d.suffix || d.name) === g.baseSuffix
-					);
-					return groupDatasets.some((d) => d.lineage === 'active');
-				})
-			: restoreTargetDatasetGroups
-	);
-
 	let restoreTargetDatasetOptions = $derived(
-		filteredDatasetGroups.map((entry) => ({
+		restoreTargetDatasetGroups.map((entry) => ({
 			value: entry.representativeDataset,
-			label: formatRestoreTargetDatasetLabel(entry)
+			label: entry.label,
+			icon: kindIcons[entry.kind],
+			detail: entry.snapshotCountKnown ? formatSnapshotCount(entry.totalSnapshots) : ''
 		}))
 	);
 
@@ -245,6 +256,15 @@
 	let restoreTargetSupportsNetworkRestore = $derived(
 		selectedRestoreTargetDatasetKind === 'jail' || selectedRestoreTargetDatasetKind === 'vm'
 	);
+	let guestIdLabel = $derived(selectedRestoreTargetDatasetKind === 'vm' ? 'VM ID' : 'Jail ID');
+	let poolOptions = $derived(restorePools.map((pool) => ({ value: pool, label: pool })));
+
+	// A guest always comes back at <pool>/sylve/<kind>/<id>, as a new guest.
+	let restoreDestination = $derived.by(() => {
+		if (!restoreTargetSupportsNetworkRestore) return destinationDataset.trim();
+		const namespace = selectedRestoreTargetDatasetKind === 'vm' ? 'virtual-machines' : 'jails';
+		return `${destinationPool}/sylve/${namespace}/${String(destinationGuestId ?? '').trim()}`;
+	});
 
 	let jobRunning = $derived.by(() => {
 		if (!runningJobStatusAvailable || runningJobIds.size === 0) return false;
@@ -329,22 +349,74 @@
 		selectedGeneration = '';
 		snapshot = '';
 		destinationDataset = '';
+		destinationPool = '';
+		destinationGuestId = '';
+		poolLoadRevision += 1;
+		restorePools = [];
+		loadingPools = false;
 		restoreNetwork = true;
 		encryptionKey = '';
 		restoreOperationId = '';
 		restoreOperationRequestKey = '';
-		showActiveOnly = true;
 		datasets = [];
 		snapshots = [];
 		nextSnapshotCursor = '';
 		hasMoreSnapshots = false;
 		loadingOlderSnapshots = false;
 		olderSnapshotsError = '';
-		jailMetadata = null;
-		vmMetadata = null;
 		error = '';
 		clusterDetails = null;
 		if (close) open = false;
+	}
+
+	function guestIdInUse(id: number): ClusterNode | undefined {
+		return nodes.find((node) => node.guestIDs?.includes(id));
+	}
+
+	// Keeps the chosen pool when the restore node has it, else the backup's own
+	// pool, else the node's first pool.
+	function pickDestinationPool(preferred: string) {
+		if (restorePools.includes(destinationPool)) return;
+		destinationPool = restorePools.includes(preferred) ? preferred : restorePools[0] || '';
+	}
+
+	// minDelay keeps a node switch from flashing the pool list.
+	async function loadRestorePools(minDelay = 0) {
+		const revision = ++poolLoadRevision;
+		const hostname = nodeNameById[restoreNodeId];
+		restorePools = [];
+		if (!hostname) return;
+		loadingPools = true;
+		try {
+			const [pools] = await Promise.all([getPools(false, hostname), sleep(minDelay)]);
+			if (revision !== poolLoadRevision) return;
+			restorePools = pools.map((pool) => pool.name);
+			pickDestinationPool(guestSourcePool());
+		} catch (e: unknown) {
+			if (revision === poolLoadRevision) {
+				toast.error((e as { message?: string })?.message || 'Failed to load pools', {
+					position: 'bottom-center'
+				});
+			}
+		} finally {
+			if (revision === poolLoadRevision) loadingPools = false;
+		}
+	}
+
+	// A guest's backup path carries the pool it came from: .../<pool>/sylve/jails/<id>/...
+	function guestSourcePool(): string {
+		return (
+			dataset.match(/(?:^|\/)([^/]+)\/sylve\/(?:jails|virtual-machines)\/\d+(?:$|\/)/)?.[1] || ''
+		);
+	}
+
+	// The backup's own ID while it's free, otherwise the next free one.
+	function prefillGuestDestination() {
+		const group = selectedRestoreTargetDatasetGroup;
+		const sourceId = group?.jailCtId || group?.vmRid || 0;
+		destinationGuestId = sourceId > 0 && !guestIdInUse(sourceId) ? sourceId : getNextGuestId(nodes);
+		destinationPool = '';
+		pickDestinationPool(guestSourcePool());
 	}
 
 	async function initializeModal() {
@@ -358,23 +430,23 @@
 		selectedGeneration = '';
 		snapshot = '';
 		destinationDataset = '';
+		destinationPool = '';
+		destinationGuestId = '';
 		restoreNetwork = true;
 		encryptionKey = '';
 		restoreOperationId = '';
 		restoreOperationRequestKey = '';
-		showActiveOnly = true;
 		datasets = [];
 		snapshots = [];
 		nextSnapshotCursor = '';
 		hasMoreSnapshots = false;
 		loadingOlderSnapshots = false;
 		olderSnapshotsError = '';
-		jailMetadata = null;
-		vmMetadata = null;
 		clusterDetails = null;
 
 		const details = await loadRestoreClusterDetails();
 		restoreNodeId = details?.nodeId || nodes[0]?.nodeUUID || '';
+		void loadRestorePools();
 
 		if (!targetId) {
 			checkingRunningJobStatus = false;
@@ -410,8 +482,6 @@
 		hasMoreSnapshots = false;
 		loadingOlderSnapshots = false;
 		olderSnapshotsError = '';
-		jailMetadata = null;
-		vmMetadata = null;
 
 		try {
 			const runningStatus = getTargetRunningJobIds(parsedTargetId).catch(() => null);
@@ -427,29 +497,8 @@
 				runningJobStatusAvailable = true;
 			}
 
-			const groupedByBase = new SvelteMap<string, BackupTargetDatasetInfo[]>();
-			for (const entry of targetDatasets) {
-				const key = entry.baseSuffix || entry.suffix || entry.name;
-				if (!groupedByBase.has(key)) groupedByBase.set(key, []);
-				groupedByBase.get(key)?.push(entry);
-			}
-
-			const representatives: BackupTargetDatasetInfo[] = [];
-			for (const group of groupedByBase.values()) {
-				const representative = pickRepresentativeDataset(group);
-				if (representative) representatives.push(representative);
-			}
-
-			representatives.sort((left, right) => {
-				const lk = left.baseSuffix || left.suffix || left.name;
-				const rk = right.baseSuffix || right.suffix || right.name;
-				return lk.localeCompare(rk);
-			});
-
-			if (representatives.length > 0) {
-				dataset = representatives[0].name;
-				await onDatasetChange();
-			}
+			dataset = restoreTargetDatasetGroups[0]?.representativeDataset || '';
+			if (dataset) await onDatasetChange();
 		} catch (e: unknown) {
 			if (loadRevision === targetLoadRevision) {
 				error = (e as { message?: string })?.message || 'Failed to load target datasets';
@@ -487,25 +536,12 @@
 		selectedGeneration = '';
 		snapshot = '';
 		snapshots = [];
-		jailMetadata = null;
-		vmMetadata = null;
 
-		const selectedTarget = targets.find((entry) => entry.id === parsedTargetId);
-		const parsedSourceGuest = parseGuestFromDatasetPath(selectedDataset);
-		if (parsedSourceGuest.kind === 'jail') {
-			destinationDataset = inferJailDestinationDataset(selectedTarget, selectedDataset);
-		} else if (parsedSourceGuest.kind === 'vm') {
-			destinationDataset = inferVMDestinationDataset(selectedTarget, selectedDataset);
-		} else {
-			destinationDataset = '';
-		}
+		destinationDataset = '';
+		if (selectedGroup?.kind === 'jail' || selectedGroup?.kind === 'vm') prefillGuestDestination();
 
 		try {
-			const [snapshotPage, jailMetadataInfo, vmMetadataInfo] = await Promise.all([
-				listBackupTargetDatasetSnapshots(parsedTargetId, selectedDataset),
-				getBackupTargetJailMetadata(parsedTargetId, selectedDataset),
-				getBackupTargetVMMetadata(parsedTargetId, selectedDataset)
-			]);
+			const snapshotPage = await listBackupTargetDatasetSnapshots(parsedTargetId, selectedDataset);
 			if (
 				targetRevision !== targetLoadRevision ||
 				snapshotRevision !== snapshotLoadRevision ||
@@ -524,15 +560,6 @@
 			} else {
 				selectedGeneration = '';
 				snapshot = '';
-			}
-			jailMetadata = jailMetadataInfo;
-			vmMetadata = vmMetadataInfo;
-			if (jailMetadataInfo?.basePool && jailMetadataInfo?.ctId) {
-				destinationDataset = `${jailMetadataInfo.basePool}/sylve/jails/${jailMetadataInfo.ctId}`;
-			}
-			if (vmMetadataInfo?.rid) {
-				const pool = vmMetadataInfo.pools?.[0] || selectedTarget?.backupRoot.split('/')[0] || '';
-				if (pool) destinationDataset = `${pool}/sylve/virtual-machines/${vmMetadataInfo.rid}`;
 			}
 		} catch (e: unknown) {
 			if (targetRevision === targetLoadRevision && snapshotRevision === snapshotLoadRevision) {
@@ -635,12 +662,11 @@
 		) {
 			return 'Could not safely validate the restore destination. Check server logs and retry';
 		}
-		if (
-			text.includes('restore_guest_destination_kind_mismatch') ||
-			text.includes('restore_guest_destination_must_be_canonical_root') ||
-			text.includes('restore_guest_destination_invalid')
-		) {
-			return 'Guest restores require an exact destination such as pool/sylve/virtual-machines/108 or pool/sylve/jails/108';
+		if (text.includes('restore_destination_sylve_managed')) {
+			return sylveManagedDestinationMessage(restoreDestination);
+		}
+		if (text.includes('restore_guest_destination_invalid')) {
+			return 'The guest ID or destination pool is not valid for this restore';
 		}
 		if (
 			text.includes('backup_job_already_running') ||
@@ -659,21 +685,42 @@
 		return error || 'Failed to start restore';
 	}
 
+	function sylveManagedDestinationMessage(destination: string): string {
+		const pool = destination.split('/')[0] || 'pool';
+		return `${pool}/sylve is managed by Sylve. Choose a destination outside it`;
+	}
+
+	function destinationProblem(): string {
+		if (restoreTargetSupportsNetworkRestore) {
+			const rawId = String(destinationGuestId ?? '').trim();
+			if (!/^\d+$/.test(rawId)) return `${guestIdLabel} must be a number`;
+			const id = Number(rawId);
+			if (id < 1 || id > 9999) return `${guestIdLabel} must be between 1 and 9999`;
+			const owner = guestIdInUse(id);
+			if (owner) return `ID ${id} is already used by a guest on ${owner.hostname}`;
+			if (!destinationPool) return 'Select a destination pool';
+			return '';
+		}
+		const destination = destinationDataset.trim();
+		if (!destination) return 'Destination dataset is required';
+		const parts = destination.split('/');
+		if (parts.length < 2 || parts.some((part) => part === '')) {
+			return 'Destination dataset must be fully qualified (for example: zroot/restored)';
+		}
+		if (parts[1] === 'sylve') return sylveManagedDestinationMessage(destination);
+		return '';
+	}
+
 	async function triggerRestoreFromTarget() {
 		const parsedTargetId = Number.parseInt(targetId || '0', 10);
 		if (!parsedTargetId || !dataset || !snapshot) return;
-		if (!destinationDataset.trim()) {
-			toast.error('Destination dataset is required', { position: 'bottom-center' });
-			return;
-		}
-		if (!destinationDataset.trim().includes('/')) {
-			toast.error('Destination dataset must be fully qualified (for example: zroot/yyy)', {
-				position: 'bottom-center'
-			});
-			return;
-		}
 		if (!restoreNodeId.trim()) {
 			toast.error('Restore node is required', { position: 'bottom-center' });
+			return;
+		}
+		const problem = destinationProblem();
+		if (problem) {
+			toast.error(problem, { position: 'bottom-center' });
 			return;
 		}
 
@@ -716,7 +763,7 @@
 			targetId: parsedTargetId,
 			remoteDataset: dataset,
 			snapshot,
-			destinationDataset: destinationDataset.trim(),
+			destinationDataset: restoreDestination,
 			restoreNodeId: restoreNodeId.trim(),
 			restoreNetwork
 		});
@@ -731,7 +778,7 @@
 			const response = await restoreBackupFromTarget(parsedTargetId, {
 				remoteDataset: dataset,
 				snapshot,
-				destinationDataset: destinationDataset.trim(),
+				destinationDataset: restoreDestination,
 				restoreNodeId: restoreNodeId.trim(),
 				restoreNetwork,
 				operationId: restoreOperationId,
@@ -806,7 +853,7 @@
 							: 'Select restore node'}
 					options={restoreNodeOptions}
 					bind:value={restoreNodeId}
-					onChange={() => {}}
+					onChange={() => void loadRestorePools(1000)}
 					disabled={loadingCluster || restoreNodeOptions.length === 0}
 				/>
 
@@ -814,21 +861,15 @@
 					label="Dataset on Target"
 					placeholder={loadingDatasets
 						? 'Loading datasets...'
-						: filteredDatasetGroups.length === 0
+						: restoreTargetDatasetGroups.length === 0
 							? 'No restorable datasets found'
 							: 'Select dataset'}
 					options={restoreTargetDatasetOptions}
 					bind:value={dataset}
 					onChange={onDatasetChange}
-					disabled={loadingDatasets || filteredDatasetGroups.length === 0}
+					disabled={loadingDatasets || restoreTargetDatasetGroups.length === 0}
 				/>
 			</div>
-
-			<CustomCheckbox
-				label="Show only active lineage"
-				bind:checked={showActiveOnly}
-				classes="flex items-center gap-2"
-			/>
 
 			{#if runningJobStatusUnavailable}
 				<div
@@ -941,16 +982,43 @@
 				</div>
 			{/if}
 
-			<CustomValueInput
-				label="Destination Dataset"
-				placeholder={selectedRestoreTargetDatasetKind === 'vm'
-					? 'zroot/sylve/virtual-machines/104'
-					: selectedRestoreTargetDatasetKind === 'jail'
-						? 'zroot/sylve/jails/105'
-						: 'pool/path'}
-				bind:value={destinationDataset}
-				classes="space-y-1"
-			/>
+			{#if restoreTargetSupportsNetworkRestore}
+				<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+					<SimpleSelect
+						label="Destination Pool"
+						placeholder={loadingPools
+							? 'Loading pools...'
+							: poolOptions.length === 0
+								? 'No pools on this node'
+								: 'Select pool'}
+						options={poolOptions}
+						bind:value={destinationPool}
+						onChange={() => {}}
+						disabled={loadingPools || poolOptions.length === 0}
+						classes={{
+							parent: 'flex-1 space-y-1',
+							label: 'flex h-7 items-center whitespace-nowrap text-sm',
+							trigger:
+								'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+						}}
+					/>
+
+					<CustomValueInput
+						label={guestIdLabel}
+						placeholder="100"
+						type="number"
+						bind:value={destinationGuestId}
+						classes="space-y-1"
+					/>
+				</div>
+			{:else}
+				<CustomValueInput
+					label="Destination Dataset"
+					placeholder="pool/path"
+					bind:value={destinationDataset}
+					classes="space-y-1"
+				/>
+			{/if}
 
 			{#if selectedSnapshotInfo?.encrypted || selectedRestoreTargetDatasetGroup?.encrypted}
 				<div class="space-y-1">
@@ -978,45 +1046,6 @@
 				/>
 			{/if}
 
-			{#if jailMetadata && jailMetadata.ctId > 0}
-				<div class="rounded-md border bg-muted/40 p-3 text-sm">
-					<p class="font-medium">Detected Jail Metadata</p>
-					<div class="mt-2 grid grid-cols-1 gap-1 text-muted-foreground md:grid-cols-3">
-						<div>
-							Name: <code class="rounded bg-background px-1">{jailMetadata.name || '-'}</code>
-						</div>
-						<div>
-							CT ID: <code class="rounded bg-background px-1">{jailMetadata.ctId}</code>
-						</div>
-						<div>
-							Base Pool: <code class="rounded bg-background px-1"
-								>{jailMetadata.basePool || '-'}</code
-							>
-						</div>
-					</div>
-				</div>
-			{/if}
-
-			{#if vmMetadata && vmMetadata.rid > 0}
-				<div class="rounded-md border bg-muted/40 p-3 text-sm">
-					<p class="font-medium">Detected VM Metadata</p>
-					<div class="mt-2 grid grid-cols-1 gap-1 text-muted-foreground md:grid-cols-3">
-						<div>
-							Name: <code class="rounded bg-background px-1">{vmMetadata.name || '-'}</code>
-						</div>
-						<div>
-							RID: <code class="rounded bg-background px-1">{vmMetadata.rid}</code>
-						</div>
-						<div>
-							Pools:
-							<code class="rounded bg-background px-1"
-								>{vmMetadata.pools?.length ? vmMetadata.pools.join(', ') : '-'}</code
-							>
-						</div>
-					</div>
-				</div>
-			{/if}
-
 			{#if error}
 				<div class="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">
 					{error}
@@ -1031,17 +1060,20 @@
 				<ul class="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
 					{#if selectedRestoreTargetDatasetKind === 'vm' || selectedRestoreTargetDatasetKind === 'jail'}
 						<li>
-							Guest restores are create-only. The RID/CTID and canonical destination dataset must
-							not already exist.
+							The backup is restored as a new guest, so its ID must not be in use anywhere in the
+							cluster.
 						</li>
 						{#if selectedRestoreTargetDatasetKind === 'vm'}
 							<li>
-								The selected VM root uses the destination pool. Any additional VM storage pools keep
-								their original pool names and must exist on the restore node.
+								The VM's main disk goes to the selected pool. Disks on other pools keep their
+								original pool names, which must exist on the restore node.
 							</li>
 						{/if}
 					{:else}
 						<li>The destination dataset will be replaced if it already exists.</li>
+						<li>
+							Datasets under <code class="rounded bg-background px-1">pool/sylve</code> can't be used.
+						</li>
 					{/if}
 					{#if selectedSnapshotInfo}
 						<li>
@@ -1082,7 +1114,6 @@
 					!restoreNodeId ||
 					!dataset ||
 					!snapshot ||
-					!destinationDataset.trim() ||
 					legacyVMRestoreBlocked}
 				title={restoreDisabledTitle}
 				variant="destructive"

@@ -61,6 +61,23 @@ func TestResolveOOBGuestRestoreDestinationIdentity(t *testing.T) {
 			destination: "tank/data/restored",
 		},
 		{
+			name:        "dataset cannot replace the sylve tree",
+			remote:      "backup/root/data/source",
+			destination: "tank/sylve",
+			wantError:   "restore_destination_sylve_managed",
+		},
+		{
+			name:        "dataset cannot land inside the sylve tree",
+			remote:      "backup/root/data/source",
+			destination: "tank/sylve/jails/restored",
+			wantError:   "restore_destination_sylve_managed",
+		},
+		{
+			name:        "a similarly named dataset is not the sylve tree",
+			remote:      "backup/root/data/source",
+			destination: "tank/sylve-data/restored",
+		},
+		{
 			name:        "VM cannot become jail",
 			remote:      "backup/root/virtual-machines/107",
 			destination: "tank/sylve/jails/108",

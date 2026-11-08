@@ -446,6 +446,7 @@ msgstr "Jail - Update Description"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
@@ -4193,6 +4194,7 @@ msgstr "Jail Name"
 msgid "Postgres"
 msgstr "Postgres"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 msgid "Jail ID"
 msgstr "Jail ID"
@@ -6608,7 +6610,6 @@ msgid "Jail <0/> will be backed up"
 msgstr "Jail <0/> will be backed up"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 msgid "CT ID: <0/>"
 msgstr "CT ID: <0/>"
 
@@ -6617,7 +6618,6 @@ msgid "VM <0/> will be backed up"
 msgstr "VM <0/> will be backed up"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 msgid "RID: <0/>"
 msgstr "RID: <0/>"
 
@@ -6679,10 +6679,6 @@ msgstr "Failed to load dataset details"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 msgid "Destination dataset is required"
 msgstr "Destination dataset is required"
-
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-msgid "Destination dataset must be fully qualified (for example: zroot/yyy)"
-msgstr "Destination dataset must be fully qualified (for example: zroot/yyy)"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 msgid "Restore node is required"
@@ -6783,27 +6779,6 @@ msgstr "Restore VM Network Config"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 msgid "Restore Jail Network Config"
 msgstr "Restore Jail Network Config"
-
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-msgid "Detected Jail Metadata"
-msgstr "Detected Jail Metadata"
-
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-msgid "Name: <0/>"
-msgstr "Name: <0/>"
-
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-msgid "Base Pool: <0/>"
-msgstr "Base Pool: <0/>"
-
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-msgid "Detected VM Metadata"
-msgstr "Detected VM Metadata"
-
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-msgid "Pools: <0/>"
-msgstr "Pools: <0/>"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
@@ -8326,6 +8301,7 @@ msgstr "Storage Pool Mapping"
 msgid "Storage #{0} ({1})"
 msgstr "Storage #{0} ({1})"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
 #: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
@@ -11409,10 +11385,6 @@ msgstr "Leave blank to keep current"
 msgid "Encrypted"
 msgstr "Encrypted"
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-msgid "Show only active lineage"
-msgstr "Show only active lineage"
-
 #. 0: selectedSnapshotInfo.childCount
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 msgid "{0} child dataset(s) on target will be restored recursively."
@@ -13255,18 +13227,6 @@ msgstr "Could not verify the guest ID on every cluster node. Check node health a
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 msgid "Could not safely validate the restore destination. Check server logs and retry"
 msgstr "Could not safely validate the restore destination. Check server logs and retry"
-
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-msgid "Guest restores require an exact destination such as pool/sylve/virtual-machines/108 or pool/sylve/jails/108"
-msgstr "Guest restores require an exact destination such as pool/sylve/virtual-machines/108 or pool/sylve/jails/108"
-
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-msgid "Guest restores are create-only. The RID/CTID and canonical destination dataset must not already exist."
-msgstr "Guest restores are create-only. The RID/CTID and canonical destination dataset must not already exist."
-
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-msgid "The selected VM root uses the destination pool. Any additional VM storage pools keep their original pool names and must exist on the restore node."
-msgstr "The selected VM root uses the destination pool. Any additional VM storage pools keep their original pool names and must exist on the restore node."
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 msgid "This restore point predates manifest commits. Legacy VM restore is blocked because the complete disk-root set cannot be verified."
@@ -23573,3 +23533,48 @@ msgstr "Keep all"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Archived generations: <0/>"
 msgstr "Archived generations: <0/>"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Failed to load pools"
+msgstr "Failed to load pools"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "The guest ID or destination pool is not valid for this restore"
+msgstr "The guest ID or destination pool is not valid for this restore"
+
+#. 0: id; 1: owner.hostname
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "ID {0} is already used by a guest on {1}"
+msgstr "ID {0} is already used by a guest on {1}"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Select a destination pool"
+msgstr "Select a destination pool"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Destination dataset must be fully qualified (for example: zroot/restored)"
+msgstr "Destination dataset must be fully qualified (for example: zroot/restored)"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Destination Pool"
+msgstr "Destination Pool"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Loading pools..."
+msgstr "Loading pools..."
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "No pools on this node"
+msgstr "No pools on this node"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "The backup is restored as a new guest, so its ID must not be in use anywhere in the cluster."
+msgstr "The backup is restored as a new guest, so its ID must not be in use anywhere in the cluster."
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "The VM's main disk goes to the selected pool. Disks on other pools keep their original pool names, which must exist on the restore node."
+msgstr "The VM's main disk goes to the selected pool. Disks on other pools keep their original pool names, which must exist on the restore node."
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Datasets under <0/> can't be used."
+msgstr "Datasets under <0/> can't be used."
