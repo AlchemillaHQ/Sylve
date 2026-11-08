@@ -2195,26 +2195,27 @@
 					<Table.Body class="pb-32">
 						{#each records as record, i (i)}
 							<Table.Row>
-								<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.started)}</Table.Cell>
-								<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.ended)}</Table.Cell>
-								<Table.Cell class="text-wrap px-4 py-2">{record.node}</Table.Cell>
-								<Table.Cell class="text-wrap px-4 py-2"
+								<Table.Cell class="px-4 py-2">{convertDbTime(record.started)}</Table.Cell>
+								<Table.Cell class="px-4 py-2">{convertDbTime(record.ended)}</Table.Cell>
+								<Table.Cell class="px-4 py-2">{record.node}</Table.Cell>
+								<Table.Cell class="px-4 py-2"
 									>{`${record.user}@${record.authType || 'cluster'}`}</Table.Cell
 								>
-								<Table.Cell class="p-0">
+								<Table.Cell class="w-full max-w-0 p-0">
 									<button
 										type="button"
-										class="hover:bg-muted/40 focus-visible:ring-ring flex min-h-10 w-full items-center px-4 py-2 text-left text-wrap transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
+										class="hover:bg-muted/40 focus-visible:ring-ring flex min-h-10 w-full items-center px-4 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
+										title={record.resolvedAction}
 										aria-label={`View request details for ${record.resolvedAction}`}
 										onclick={() => openAuditDetails(record, 'request')}
 									>
-										{record.resolvedAction}
+										<span class="truncate">{record.resolvedAction}</span>
 									</button>
 								</Table.Cell>
 								<Table.Cell class="p-0">
 									<button
 										type="button"
-										class="hover:bg-muted/40 focus-visible:ring-ring flex min-h-10 w-full items-center px-4 py-2 text-left text-wrap transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
+										class="hover:bg-muted/40 focus-visible:ring-ring flex min-h-10 w-full items-center px-4 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
 										aria-label={`View response details for ${record.resolvedAction}`}
 										onclick={() => openAuditDetails(record, 'response')}
 									>
