@@ -27,7 +27,7 @@ import (
 	"github.com/dustin/go-humanize"
 )
 
-var Actions = []string{"create", "create-stack", "start", "stop", "restart", "kill", "update", "delete"}
+var Actions = []string{"create", "create-stack", "start", "stop", "restart", "kill", "update", "upgrade", "upgrade-stack", "delete"}
 
 func (s *Service) ValidateTask(ctx context.Context, ocid uint, action, payload string) error {
 	switch action {
@@ -96,6 +96,10 @@ func (s *Service) ExecuteTask(ctx context.Context, ocid uint, action, payload st
 			return fmt.Errorf("invalid_container_update_payload: %w", err)
 		}
 		return s.Update(ctx, ocid, spec)
+	case "upgrade":
+		return s.updateImage(ctx, ocid)
+	case "upgrade-stack":
+		return s.upgradeStack(ctx, ocid)
 	case "delete":
 		var req containerServiceInterfaces.DeleteRequest
 		if payload != "" {
@@ -414,6 +418,9 @@ func (s *Service) Update(ctx context.Context, ocid uint, spec containerServiceIn
 	}
 	updated := previous
 	applySpec(&updated, spec, network)
+	if spec.PullImage {
+		updated.UpdateDigest = ""
+	}
 	if err := s.ensurePool(ctx, updated.Pool); err != nil {
 		return err
 	}

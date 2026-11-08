@@ -5320,6 +5320,7 @@ msgstr "സേവ് ചെയ്ത് സോക്കറ്റുകളില�
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/lib/components/custom/Dialog/GuestAction.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -5329,6 +5330,7 @@ msgstr "സേവ് ചെയ്ത് സോക്കറ്റുകളില�
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/container/[ocid]/+layout.svelte
 #: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/directory-services/kerberos/settings/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
@@ -23618,4 +23620,46 @@ msgstr ""
 
 #: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "Connection interrupted. Reconnecting…"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "<0/> Update"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/GuestAction.svelte
+msgid "Pulls the newer image and recreates it, keeping its data. Its running workloads are restarted."
+msgstr ""
+
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "Update Image"
+msgstr ""
+
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "Update Stack"
+msgstr ""
+
+#. 0: current.image
+#: src/routes/[node]/container/[ocid]/+layout.svelte
+msgid "A newer {0} is available"
+msgstr ""
+
+#: src/routes/[node]/containers/images/+page.svelte
+msgid "Checked for container image updates"
+msgstr ""
+
+#: src/routes/[node]/containers/images/+page.svelte
+msgid "Check for Updates"
+msgstr ""
+
+#: src/routes/[node]/container/[ocid]/summary/+page.svelte
+msgid "Creating Stack"
+msgstr ""
+
+#: src/routes/[node]/container/[ocid]/summary/+page.svelte
+msgid "Updating Image"
+msgstr ""
+
+#: src/routes/[node]/container/[ocid]/summary/+page.svelte
+msgid "Updating Stack"
 msgstr ""

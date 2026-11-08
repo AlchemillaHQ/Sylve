@@ -423,6 +423,59 @@ func TestReinstallsReuseTheSecretsKeptWithTheirData(t *testing.T) {
 	}
 }
 
+func TestImagesNameTheirRegistryRepositoryAndTag(t *testing.T) {
+	for image, want := range map[string][3]string{
+		"redis":                           {"docker.io", "library/redis", "latest"},
+		"nginx:1.27":                      {"docker.io", "library/nginx", "1.27"},
+		"docker.io/library/busybox:1.36":  {"docker.io", "library/busybox", "1.36"},
+		"ghcr.io/daemonless/postgres:16":  {"ghcr.io", "daemonless/postgres", "16"},
+		"localhost:5000/team/app":         {"localhost:5000", "team/app", "latest"},
+		"daemonless/redis:pkg-latest":     {"docker.io", "daemonless/redis", "pkg-latest"},
+		"registry.example.com:8443/a/b:c": {"registry.example.com:8443", "a/b", "c"},
+	} {
+		if registry, repository, tag, ok := registryReference(image); !ok || [3]string{registry, repository, tag} != want {
+			t.Errorf("registryReference(%q) = %s %s %s %v, want %v", image, registry, repository, tag, ok, want)
+		}
+	}
+	if _, _, _, ok := registryReference("ghcr.io/daemonless/redis@sha256:abc"); ok {
+		t.Error("an image pinned to a digest never updates")
+	}
+}
+
+func TestRegistryDigestAnswersTheTokenChallenge(t *testing.T) {
+	const digest = "sha256:f50c5936d39b627ff4621afaaf2bcbb0d526da660ae0f424711a25db16798127"
+	var server *httptest.Server
+	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/token" && r.URL.Query().Get("scope") == "repository:daemonless/redis:pull":
+			_, _ = w.Write([]byte(`{"token":"t"}`))
+		case r.URL.Path == "/v2/daemonless/redis/manifests/latest" && r.Header.Get("Authorization") == "Bearer t":
+			if !strings.Contains(r.Header.Get("Accept"), "application/vnd.oci.image.index.v1+json") {
+				t.Error("an index is asked for, so the digest matches what a tag pull records")
+			}
+			w.Header().Set("Docker-Content-Digest", digest)
+		case strings.HasPrefix(r.URL.Path, "/v2/"):
+			w.Header().Set("WWW-Authenticate", `Bearer realm="`+server.URL+`/token",service="test",scope="repository:daemonless/redis:pull"`)
+			w.WriteHeader(http.StatusUnauthorized)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	client := registryClient
+	registryClient = server.Client()
+	defer func() { registryClient = client }()
+
+	service := newTestService(t)
+	host := strings.TrimPrefix(server.URL, "https://")
+	if got, err := service.registryDigest(t.Context(), host+"/daemonless/redis:latest"); err != nil || got != digest {
+		t.Fatal("the tag's digest is asked for with the token the registry hands out", got, err)
+	}
+	if _, err := service.registryDigest(t.Context(), host+"/daemonless/missing:latest"); err == nil {
+		t.Fatal("a registry that won't say leaves the update unknown")
+	}
+}
+
 func TestStacksInstallAgainUnderANameOfTheirOwn(t *testing.T) {
 	service := newCatalogService(t)
 	template, err := service.CatalogTemplate(t.Context(), "daemonless", "immich")

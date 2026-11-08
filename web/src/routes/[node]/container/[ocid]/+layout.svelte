@@ -21,6 +21,7 @@
 	import { confirmGuestAction } from '$lib/stores/guest-actions.svelte';
 	import type { GFSStep } from '$lib/types/common';
 	import {
+		containerActionLabel,
 		containerTitle,
 		type ContainerAction,
 		type ContainerContext,
@@ -159,7 +160,7 @@
 				guestId: current.ocId,
 				name: containerTitle(current),
 				hostname: data.node,
-				action
+				action: action === 'upgrade' || action === 'upgrade-stack' ? 'update' : action
 			}))
 		)
 			return;
@@ -221,7 +222,7 @@
 			{#if pendingAction}
 				<Badge variant="outline" class="px-1.5 text-xs">
 					<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
-					{pendingAction.charAt(0).toUpperCase() + pendingAction.slice(1)}
+					{containerActionLabel(pendingAction)}
 				</Badge>
 			{:else if running}
 				{#each [['restart', 'icon-[mdi--restart]', 'Restart'], ['stop', 'icon-[mdi--stop]', 'Stop'], ['kill', 'icon-[mdi--skull-outline]', 'Kill']] as [action, icon, title] (action)}
@@ -270,6 +271,22 @@
 							size="h-4 w-4"
 							gap="gap-1"
 							title="Open Web UI"
+						/>
+					</Button>
+				{/if}
+				{#if current.updateDigest && !pendingAction}
+					<Button
+						onclick={() => act('upgrade')}
+						disabled={inFlight}
+						size="sm"
+						title="A newer {current.image} is available"
+						class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-blue-600 dark:text-white"
+					>
+						<SpanWithIcon
+							icon="icon-[mdi--arrow-up-circle-outline]"
+							size="h-4 w-4"
+							gap="gap-1"
+							title="Update"
 						/>
 					</Button>
 				{/if}

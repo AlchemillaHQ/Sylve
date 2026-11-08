@@ -237,6 +237,7 @@
 				label: `${containerLabel(container)} (${container.ocId})`,
 				stack: container.stack,
 				stackTitle: container.stackTitle,
+				update: container.update,
 				icon: 'lucide--container',
 				href: `/${node}/container/${container.ocId}/summary`,
 				state: (container.state === 'running' ? 'active' : 'inactive') as 'active' | 'inactive'

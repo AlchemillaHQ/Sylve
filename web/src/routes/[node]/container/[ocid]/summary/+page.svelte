@@ -112,6 +112,9 @@
 	}
 	const pendingLabels: Record<string, string> = {
 		create: 'Creating',
+		'create-stack': 'Creating Stack',
+		upgrade: 'Updating Image',
+		'upgrade-stack': 'Updating Stack',
 		start: 'Starting',
 		stop: 'Stopping',
 		restart: 'Restarting',

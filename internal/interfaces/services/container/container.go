@@ -153,6 +153,7 @@ type SimpleList struct {
 	Stack      string `json:"stack"`
 	StackTitle string `json:"stackTitle"`
 	State      string `json:"state"`
+	Update     bool   `json:"update"`
 }
 
 type Detail struct {
@@ -264,6 +265,7 @@ type ContainerServiceInterface interface {
 	Console(ctx context.Context, ocid uint, shell string, rows, cols uint16) (Console, error)
 	UpdateOptions(ctx context.Context, ocid uint, req OptionsRequest) error
 	RenameStack(ctx context.Context, stack, title string) error
+	CheckImageUpdates(ctx context.Context) error
 
 	UsedPorts(ctx context.Context, exceptOCID uint) ([]UsedPort, error)
 

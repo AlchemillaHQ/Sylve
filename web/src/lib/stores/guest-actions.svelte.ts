@@ -8,7 +8,7 @@ export interface GuestActionConfirmation {
 	guestId: number;
 	name: string;
 	hostname: string;
-	action: 'start' | 'stop' | 'force-stop' | 'shutdown' | 'reboot' | 'restart' | 'kill';
+	action: 'start' | 'stop' | 'force-stop' | 'shutdown' | 'reboot' | 'restart' | 'kill' | 'update';
 }
 
 export const guestActionConfirmation = $state({

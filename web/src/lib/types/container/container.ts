@@ -87,6 +87,7 @@ export const ContainerSchema = z.object({
 	stack: z.string().catch(''),
 	stackTitle: z.string().catch(''),
 	service: z.string().catch(''),
+	updateDigest: z.string().catch(''),
 	runtimeId: z.string(),
 	creationPending: z.boolean()
 });
@@ -99,7 +100,8 @@ export const SimpleContainerSchema = z.object({
 	title: z.string().catch(''),
 	stack: z.string().catch(''),
 	stackTitle: z.string().catch(''),
-	state: z.string()
+	state: z.string(),
+	update: z.boolean().catch(false)
 });
 
 // containerTitle is the name a container is shown under: its title, or else
@@ -188,7 +190,14 @@ export type ContainerImage = z.infer<typeof ContainerImageSchema>;
 export type ContainerImageInfo = z.infer<typeof ContainerImageInfoSchema>;
 export type RegistryCredential = z.infer<typeof RegistryCredentialSchema>;
 export type UsedPort = z.infer<typeof UsedPortSchema>;
-export type ContainerAction = 'start' | 'stop' | 'restart' | 'kill';
+export type ContainerAction = 'start' | 'stop' | 'restart' | 'kill' | 'upgrade' | 'upgrade-stack';
+
+export const containerActionLabel = (action: string): string =>
+	({ upgrade: 'Update Image', 'upgrade-stack': 'Update Stack' })[action] ??
+	action
+		.split('-')
+		.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+		.join(' ');
 
 export const restartLabels: Record<ContainerRestart, string> = {
 	no: 'Never',

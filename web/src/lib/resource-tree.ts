@@ -52,6 +52,7 @@ export interface ResourceTreeItem {
 	meta?: string;
 	stack?: string;
 	stackTitle?: string;
+	update?: boolean;
 	count?: number;
 	children?: ResourceTreeItem[];
 }
@@ -237,6 +238,7 @@ function stacked(
 			meta: first.meta,
 			stack: first.stack,
 			stackTitle: first.stackTitle,
+			update: members.some((member) => member.update),
 			state: running === members.length ? 'active' : running > 0 ? 'partial' : 'inactive',
 			children: members
 				.map((member) => ({ ...member, meta: undefined }))

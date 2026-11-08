@@ -15,7 +15,8 @@
 		shutdown: 'Shut Down',
 		reboot: 'Reboot',
 		restart: 'Restart',
-		kill: 'Kill'
+		kill: 'Kill',
+		update: 'Update'
 	};
 	let target = $derived(guestActionConfirmation.pending);
 
@@ -27,9 +28,11 @@
 	<AlertDialog
 		open={true}
 		title={`${labels[target.action]} ${target.guestType === 'vm' ? 'VM' : target.guestType}?`}
-		description={['stop', 'force-stop', 'kill'].includes(target.action)
-			? 'Running workloads will be interrupted. Unsaved data may be lost.'
-			: 'This will interrupt the guest’s running workloads.'}
+		description={target.action === 'update'
+			? 'Pulls the newer image and recreates it, keeping its data. Its running workloads are restarted.'
+			: ['stop', 'force-stop', 'kill'].includes(target.action)
+				? 'Running workloads will be interrupted. Unsaved data may be lost.'
+				: 'This will interrupt the guest’s running workloads.'}
 		confirmLabel={labels[target.action]}
 		onOpenChange={(open) => {
 			if (!open) finishGuestActionConfirmation(false);

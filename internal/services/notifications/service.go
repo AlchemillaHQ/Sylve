@@ -30,6 +30,7 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	hub "github.com/alchemillahq/sylve/internal/events"
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
@@ -73,6 +74,7 @@ const (
 
 	RuleTemplateJailPackageVulnerabilities = "jail.packages.vulnerabilities"
 	RuleTemplateJailPackageHealth          = "jail.packages.health"
+	RuleTemplateContainerImageUpdates      = "container.images.updates"
 
 	diskSmartConfigTemperatureWarningCelsius  = "warningCelsius"
 	diskSmartConfigTemperatureCriticalCelsius = "criticalCelsius"
@@ -1255,6 +1257,8 @@ func defaultTestConditionForTemplate(templateKey string) string {
 		return "vulnerabilities_changed"
 	case RuleTemplateJailPackageHealth:
 		return "audit_unavailable"
+	case RuleTemplateContainerImageUpdates:
+		return "container_image_update_available"
 	case RuleTemplateDiskSmartTemperature:
 		return "temperature_warning"
 	case RuleTemplateDiskSmartWearout:
@@ -2073,6 +2077,14 @@ func (s *Service) loadRuleTemplateDefinitions(tx *gorm.DB, storageDefinitions []
 		return nil, nil, err
 	}
 	definitions = append(definitions, packageDefinitions...)
+	if tx.Migrator().HasTable(&containerModels.Container{}) {
+		definitions = append(definitions, &ruleTemplateDefinition{
+			View: RuleTemplateView{Key: RuleTemplateContainerImageUpdates, Label: "Container Image Updates",
+				Description: "Newer images found in their registries for this host's containers.",
+				TargetType:  "host", Targets: []RuleTemplateTargetView{{Key: "host", Label: "This host"}}},
+			AutoCreateRules: true, ActiveTargets: map[string]struct{}{"host": {}},
+		})
+	}
 
 	definitionsByKey := make(map[string]*ruleTemplateDefinition, len(definitions))
 	for _, definition := range definitions {
@@ -3652,6 +3664,9 @@ func resolveTemplateTargetFromKind(kind string) (string, string, bool) {
 	if template, target, ok := notifier.JailPackageKind(kind); ok {
 		return template, target, true
 	}
+	if kind == notifier.ContainerImageUpdatesKind {
+		return RuleTemplateContainerImageUpdates, "host", true
+	}
 	if guid, ok := notifier.PoolGUIDFromZFSScrubKind(kind); ok {
 		return RuleTemplateZFSScrub, guid, true
 	}
@@ -3700,6 +3715,11 @@ func ruleKindForTemplateTarget(templateKey, targetKey string) (string, error) {
 		return notifier.JailPackageVulnerabilitiesKindPrefix + targetKey, nil
 	case RuleTemplateJailPackageHealth:
 		return notifier.JailPackageHealthKindPrefix + targetKey, nil
+	case RuleTemplateContainerImageUpdates:
+		if targetKey != "host" {
+			return "", fmt.Errorf("notification_rule_target_required")
+		}
+		return notifier.ContainerImageUpdatesKind, nil
 	case RuleTemplateZFSPoolState:
 		return notifier.KindForZFSPoolState(targetKey), nil
 	case RuleTemplateDiskSmartTemperature:

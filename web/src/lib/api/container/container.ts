@@ -142,6 +142,12 @@ export async function containerAction(
 	);
 }
 
+export async function checkContainerUpdates(hostname?: string): Promise<APIResponse> {
+	return await apiRequestResult('/container/updates/check', APIResponseSchema, 'POST', undefined, {
+		hostname
+	});
+}
+
 export async function updateContainerOptions(
 	ocId: number,
 	options: ContainerOptions,

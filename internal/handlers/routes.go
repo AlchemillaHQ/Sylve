@@ -206,6 +206,7 @@ func RegisterRoutes(r *gin.Engine,
 			containers.POST("", containerHandlers.CreateContainer(lifecycleService))
 			containers.POST("/stack", containerHandlers.CreateStack(lifecycleService))
 			containers.PATCH("/stack/:stack", containerHandlers.RenameContainerStack(containerService))
+			containers.POST("/updates/check", containerHandlers.CheckContainerUpdates(containerService))
 			containers.GET("/ports", containerHandlers.ListUsedPorts(containerService))
 			containers.GET("/networks", containerHandlers.ListNetworks(containerService))
 			containers.POST("/networks", containerHandlers.CreateNetwork(containerService))

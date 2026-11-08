@@ -4,6 +4,7 @@
 		getContainerImages,
 		pruneContainerImages
 	} from '$lib/api/container/resources';
+	import { checkContainerUpdates } from '$lib/api/container/container';
 	import PullImage from '$lib/components/custom/Container/PullImage.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
@@ -11,6 +12,7 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import { reload } from '$lib/stores/api.svelte';
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { ContainerImage } from '$lib/types/container/container';
 	import { formatBytesBinary } from '$lib/utils/bytes';
@@ -104,6 +106,19 @@
 		toast.success('Unused images pruned', { position: 'bottom-center' });
 		await images.refetch();
 	}
+
+	let checking = $state(false);
+	async function checkUpdates() {
+		checking = true;
+		const result = await checkContainerUpdates(data.node);
+		checking = false;
+		if (result.status === 'error') {
+			toastContainerError(result);
+			return;
+		}
+		toast.success('Checked for container image updates', { position: 'bottom-center' });
+		reload.leftPanel = true;
+	}
 </script>
 
 <div class="flex h-full w-full flex-col">
@@ -128,6 +143,14 @@
 			onclick={() => (modals.prune = true)}
 		>
 			<SpanWithIcon icon="icon-[mdi--broom]" size="h-4 w-4" gap="gap-2" title="Prune" />
+		</Button>
+		<Button size="sm" variant="outline" class="h-6.5" disabled={checking} onclick={checkUpdates}>
+			<SpanWithIcon
+				icon={checking ? 'icon-[mdi--loading] animate-spin' : 'icon-[mdi--update]'}
+				size="h-4 w-4"
+				gap="gap-2"
+				title="Check for Updates"
+			/>
 		</Button>
 		{#if selected}
 			<Button size="sm" variant="outline" class="h-6.5" onclick={() => (modals.delete = true)}>

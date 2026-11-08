@@ -135,6 +135,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 func (s *Service) Startup(ctx context.Context) error {
 	s.StartStatsMonitoring(ctx)
 	go s.watchEvents(ctx)
+	go s.watchImageUpdates(ctx)
 	if enabled, err := s.enabled(ctx); err != nil || !enabled {
 		return err
 	}

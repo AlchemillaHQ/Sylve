@@ -134,7 +134,7 @@ func ListContainersSimple(service containerServiceInterfaces.ContainerServiceInt
 		simple := make([]containerServiceInterfaces.SimpleList, len(items))
 		for i, item := range items {
 			simple[i] = containerServiceInterfaces.SimpleList{OCID: item.OCID, Name: item.Name, Title: item.Title,
-				Stack: item.Stack, StackTitle: item.StackTitle, State: item.State}
+				Stack: item.Stack, StackTitle: item.StackTitle, State: item.State, Update: item.UpdateDigest != ""}
 		}
 		respond(c, http.StatusOK, "containers_listed", simple)
 	}
@@ -271,8 +271,8 @@ func ContainerAction(lifecycleService lifecycleRequester) gin.HandlerFunc {
 			return
 		}
 		action := strings.ToLower(c.Param("action"))
-		if !slices.Contains([]string{"start", "stop", "restart", "kill"}, action) {
-			fail(c, http.StatusBadRequest, "invalid_action", fmt.Errorf("action must be one of start, stop, restart, or kill"))
+		if !slices.Contains([]string{"start", "stop", "restart", "kill", "upgrade", "upgrade-stack"}, action) {
+			fail(c, http.StatusBadRequest, "invalid_action", fmt.Errorf("action must be one of start, stop, restart, kill, upgrade, or upgrade-stack"))
 			return
 		}
 		queueTask(c, lifecycleService, ocid, action, nil)
@@ -305,6 +305,23 @@ func UpdateContainerOptions(service containerServiceInterfaces.ContainerServiceI
 			return
 		}
 		respond(c, http.StatusOK, "container_options_updated", nil)
+	}
+}
+
+// @Summary Check for container image updates
+// @Description Ask each image's registry for its tag's digest now, instead of at the next scheduled check
+// @Tags Container
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Router /container/updates/check [post]
+func CheckContainerUpdates(service containerServiceInterfaces.ContainerServiceInterface) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := service.CheckImageUpdates(c.Request.Context()); err != nil {
+			failService(c, "failed_to_check_container_updates", err)
+			return
+		}
+		respond(c, http.StatusOK, "container_updates_checked", nil)
 	}
 }
 

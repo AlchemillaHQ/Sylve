@@ -331,6 +331,8 @@
 
 	function lifecycleActionLabel(task: LifecycleTask): string {
 		if (task.action === 'convert') return 'Create Template';
+		if (task.action === 'upgrade') return 'Update Image';
+		if (task.action === 'upgrade-stack') return 'Update Stack';
 		if (task.action === 'create' && task.guestType.endsWith('-template')) {
 			return 'Create from Template';
 		}

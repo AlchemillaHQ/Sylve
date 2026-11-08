@@ -86,6 +86,9 @@ type Container struct {
 	Stack      string `json:"stack" gorm:"index"`
 	StackTitle string `json:"stackTitle"`
 	Service    string `json:"service"`
+	// UpdateDigest is the newer digest the image's tag points at in its
+	// registry, found by the update check; empty when it's current or unknown.
+	UpdateDigest string `json:"updateDigest"`
 
 	RuntimeID       string    `json:"runtimeId"`
 	CreationPending bool      `json:"creationPending" gorm:"not null;default:false"`

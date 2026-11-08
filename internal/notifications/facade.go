@@ -24,6 +24,8 @@ const ZFSScrubKindPrefix = "system.zfs.scrub."
 const JailPackageVulnerabilitiesKindPrefix = "jail.packages.vulnerabilities."
 const JailPackageHealthKindPrefix = "jail.packages.health."
 
+const ContainerImageUpdatesKind = "container.images.updates.host"
+
 func HostUpdateKind(kind string) (string, string, bool) {
 	for _, category := range []string{"available", "vulnerabilities", "health", "operation"} {
 		template := "system.updates." + category

@@ -40,7 +40,7 @@
 	import type { ActiveLifecycleGuest } from '$lib/types/task/lifecycle';
 	import { removeStaleCacheByRID } from '$lib/utils/vm/vm';
 
-	type GuestAction = 'start' | 'reboot' | 'shutdown' | 'stop' | 'restart' | 'kill';
+	type GuestAction = 'start' | 'reboot' | 'shutdown' | 'stop' | 'restart' | 'kill' | 'update';
 
 	interface Props {
 		item: ResourceTreeItem;
@@ -171,6 +171,30 @@
 	let deleteStackOpen = $state(false);
 	let deleteStackVolumes = $state(false);
 
+	const handleStackUpdate = async () => {
+		const member = item.children?.find((child) => child.resourceId !== undefined);
+		if (actionInFlight || member?.resourceId === undefined || !item.nodeHostname) return;
+		actionInFlight = true;
+		try {
+			const confirmed = await confirmGuestAction({
+				guestType: 'container',
+				guestId: member.resourceId,
+				name: item.label,
+				hostname: item.nodeHostname,
+				action: 'update'
+			});
+			if (!confirmed) return;
+			const result = await containerAction(member.resourceId, 'upgrade-stack', item.nodeHostname);
+			if (isAPIResponse(result)) {
+				toastContainerError(result);
+				return;
+			}
+			reload.leftPanel = true;
+		} finally {
+			actionInFlight = false;
+		}
+	};
+
 	const handleDeleteStack = async () => {
 		const hostname = item.nodeHostname;
 		if (!hostname) return;
@@ -266,17 +290,25 @@
 				| Awaited<ReturnType<typeof jailAction>>
 				| Awaited<ReturnType<typeof containerAction>>;
 			if (resourceType === 'container') {
-				if (action !== 'start' && action !== 'stop' && action !== 'restart' && action !== 'kill') {
+				if (action === 'update') {
+					result = await containerAction(resourceId, 'upgrade', hostname);
+				} else if (
+					action !== 'start' &&
+					action !== 'stop' &&
+					action !== 'restart' &&
+					action !== 'kill'
+				) {
 					return;
+				} else {
+					result = await containerAction(resourceId, action, hostname);
 				}
-				result = await containerAction(resourceId, action, hostname);
 			} else if (resourceType === 'jail') {
 				if (action !== 'start' && action !== 'stop' && action !== 'restart') {
 					return;
 				}
 				result = await jailAction(resourceId, action, hostname);
 			} else {
-				if (action === 'restart' || action === 'kill') return;
+				if (action === 'restart' || action === 'kill' || action === 'update') return;
 				result = await actionVm(resourceId, action, hostname);
 			}
 
@@ -675,7 +707,28 @@
 							Start
 						</ContextMenu.Item>
 					{/if}
+					{#if item.update}
+						<ContextMenu.Separator />
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight || lifecycleActive}
+							onSelect={() => void handleActionClick('update')}
+						>
+							<span class="icon-[mdi--arrow-up-circle-outline] h-4 w-4"></span>
+							Update
+						</ContextMenu.Item>
+					{/if}
 				{:else if isStack}
+					{#if item.update}
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight}
+							onSelect={() => void handleStackUpdate()}
+						>
+							<span class="icon-[mdi--arrow-up-circle-outline] h-4 w-4"></span>
+							Update
+						</ContextMenu.Item>
+					{/if}
 					<ContextMenu.Item
 						class="gap-2"
 						onclick={() => {
