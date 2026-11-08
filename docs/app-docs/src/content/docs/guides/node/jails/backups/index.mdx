@@ -33,7 +33,7 @@ Select **New**. Because the page is scoped to a jail, Sylve fixes the mode and s
 | **Enabled** | Enables scheduled execution. Clear it to save the policy without running it on the schedule. |
 | **Recursive backup** | Includes descendant datasets below the jail's canonical root dataset. |
 | **Prune on target** | Applies the retention count to job-owned recovery points on the remote target. |
-| **Stop before backup** | Stops a running jail before transfer and starts it again after the attempt finishes. |
+| **Stop before backup** | Stops a running jail while the backup snapshot is taken and starts it again right away, before the transfer. |
 
 <img
   src={createBackup.src}
@@ -62,7 +62,7 @@ Changing recursive scope on an existing job can archive the current target gener
 
 With **Stop before backup** disabled, the job transfers a ZFS recovery point while the jail continues running. This avoids planned downtime but produces crash-consistent application data. Databases and other write-heavy applications should flush or quiesce themselves if they require stronger consistency.
 
-With **Stop before backup** enabled, Sylve checks whether the jail is running and stops it before the transfer. A jail that was stopped beforehand remains stopped. If the job stopped the jail, it attempts to start it again after success or failure. A restart failure is recorded as part of the failed backup event.
+With **Stop before backup** enabled, Sylve checks whether the jail is running, stops it, takes the backup snapshot, and starts it again immediately. The transfer to the target then runs while the jail is back in service, so downtime covers only the stop, the snapshot, and the start. A jail that was stopped beforehand remains stopped. If the job stopped the jail but the run fails before the snapshot, Sylve still starts it again. A restart failure is recorded in the backup event.
 
 ## Run and monitor a job
 
@@ -82,6 +82,8 @@ The table reports whether the job is enabled, the result of its most recent run,
 />
 
 Use [Backup Events](/guides/data-center/backups/events/) to follow live transfer output, inspect progress, and review the full history. Only one conflicting workload operation can run at a time, and the node must own the jail's replication lease when a backup starts.
+
+When nothing in the jail has changed since its last backup, a run takes no new snapshot and transfers nothing; see [Unchanged sources](/guides/data-center/backups/jobs/#unchanged-sources).
 
 Jobs marked **Runner rebind pending** or **Repair required** cannot run or restore until their placement state is repaired. A supported migration or failover updates the runner to follow the jail's current owner. Do not create a duplicate job solely because ownership moved.
 
@@ -107,7 +109,7 @@ An in-place restore performs these high-level steps:
 1. Verifies job ownership, target data, the selected generation, and the backup manifest.
 2. Acquires a restore fence so other guest operations cannot modify the jail concurrently.
 3. Stops the jail if it is running and waits for its dataset to become safe to replace.
-4. Receives the selected recovery point into a temporary staging dataset.
+4. Receives the selected recovery point into a temporary staging dataset. If that recovery point is still on the local pool with identical contents, Sylve copies it locally instead of pulling it from the target.
 5. Verifies the staged data, replaces the current jail dataset in place, and removes local snapshots of the replaced dataset.
 6. Reconciles the jail's saved metadata and managed configuration from the restored dataset.
 7. Activates the restored target generation and records the result in Backup Events.
@@ -121,5 +123,7 @@ If the job is recursive, descendant datasets recorded in the verified generation
 :::note[Final jail state]
 A successful in-place jail restore leaves the jail stopped. Review its restored network, storage, hooks, and options, inspect the restore event for warnings, then start it manually from the [Summary](/guides/node/jails/summary/) page. If a restore fails before cutover and Sylve can safely retain the original dataset, it makes a best effort to restore the jail's previous running state.
 :::
+
+After you restore an older recovery point, the target holds recovery points newer than the jail. The next backup keeps them as an archived generation and continues from the restored point, sending only the changes made since then. See [Rollbacks and older restores](/guides/data-center/backups/jobs/#rollbacks-and-older-restores).
 
 For recovery to another node, dataset path, or alternate target location, use **OOB Restore** from [Data Center Backups Jobs](/guides/data-center/backups/jobs/). The jail-scoped page intentionally provides only in-place restore.

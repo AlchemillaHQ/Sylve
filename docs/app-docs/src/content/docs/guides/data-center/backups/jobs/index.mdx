@@ -23,7 +23,7 @@ Select **New** and choose a target, runner, and backup mode.
 | **Enabled** | Saves a job without scheduling it when unchecked. |
 | **Recursive backup** | Includes descendant datasets. It is required for VM backups because a VM can have child disk datasets. |
 | **Prune on target** | Applies the configured retention count to copies stored on the remote target. |
-| **Stop before backup** | Stops a jail or VM before its backup. It does not apply to dataset jobs. |
+| **Stop before backup** | Stops a running jail or VM while the backup snapshot is taken and starts it again right away, before the transfer. It does not apply to dataset jobs. |
 
 ### Dataset job
 
@@ -43,11 +43,33 @@ Select **New** and choose a target, runner, and backup mode.
 
 Sylve does not impose a fixed maximum on backup recovery points. The restore selector loads the newest 100 points first; choose **Load older** to continue through the history without making one request validate and return every snapshot.
 
-Retention still matters for capacity and routine maintenance. Each successful backup pass selects at most 64 expired generations and applies the budget at generation boundaries, so every eligible snapshot object for a selected generation enters the same pass. Safety-protected incremental bases can remain. If a larger backlog exists, the backup event includes `backup_prune_deferred` and later successful runs continue draining it.
+Retention still matters for capacity and routine maintenance. Each successful backup pass selects at most 64 expired generations and applies the budget at generation boundaries, so every eligible snapshot object for a selected generation enters the same pass. Safety-protected incremental bases can remain, as can the recovery point an archived generation branches from (see below). A generation with a held snapshot is kept whole and reported in the backup event. If a larger backlog exists, the backup event includes `backup_prune_deferred` and later successful runs continue draining it.
 
 With **Keep Last Snapshots** set to `0`, count-based cleanup is disabled on both the source and target. With a positive value and **Prune on target** disabled, the source follows the keep-last value while target recovery points continue accumulating.
 
 The out-of-band target browser discovers dataset roots without counting every snapshot first. Snapshot counts are therefore omitted until a dataset is selected, when its recovery points are fetched in the same paged form.
+
+### Unchanged sources
+
+Before taking a snapshot, a run checks whether anything in the source has been written since the job's last committed backup, and whether the target still holds that backup intact. If so, the run finishes without a new snapshot or transfer and its event records `backup_unchanged_since: <snapshot>`. A target that has lost or changed that backup gets a normal run.
+
+Skipped runs add no snapshots, so **Keep Last Snapshots** retains that many different recovery points rather than repeated copies of the same state.
+
+Some activity counts as a change even when the files look the same:
+
+- On a dataset with `atime=on`, reading a file updates its access time. Set `atime=off` on datasets that should be skipped while idle.
+- A running guest usually writes something, so its runs rarely skip.
+- The first run after Sylve restarts can send one small incremental for a jail or VM while it rechecks the guest's saved metadata.
+
+### Rollbacks and older restores
+
+Rolling a guest back to a snapshot older than its last backup, or restoring an older recovery point, leaves the target with recovery points newer than the source. On the next run, Sylve keeps those as an archived generation and rebuilds the active target dataset as a ZFS clone of the newest recovery point both sides still share, so only the changes made since that point are sent. The archived generation stays available in the restore dialog.
+
+If no shared recovery point exists, or the target account cannot create clones, Sylve archives the target and sends the source in full instead. A non-root target account needs the `clone` and `promote` permissions (`zfs allow`) for the incremental path.
+
+:::caution
+Archived generations are never deleted automatically. The active target dataset and its archives can depend on each other as clones, so `zfs destroy` refuses to remove one that another depends on. Run `zfs promote` on the dependent dataset first. Never use `zfs destroy -R` on a backup generation: it also destroys every dataset that depends on it, which can include the active backup.
+:::
 
 ### Encrypted sources
 

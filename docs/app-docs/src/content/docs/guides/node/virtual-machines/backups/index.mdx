@@ -23,7 +23,7 @@ Select **New**. Because you opened the tab from a VM, Sylve fixes the source to 
 | **Enabled** | Saves the policy without scheduling it when unchecked. |
 | **Recursive backup** | Required for VM jobs. It includes every child disk dataset belonging to the VM. |
 | **Prune on target** | Applies the retention count to backup copies stored on the target. |
-| **Stop before backup** | Stops the VM before the backup and starts it again afterward. |
+| **Stop before backup** | Stops a running VM while the backup snapshot is taken and starts it again right away, before the transfer. |
 
 ![VM-scoped backup job form with the current VM selected, target, schedule, retention, and Stop before backup](./vm-backup-create.png)
 
@@ -31,13 +31,15 @@ Select **New**. Because you opened the tab from a VM, Sylve fixes the source to 
 
 With **Stop before backup** disabled, the backup captures the running guest's ZFS state without quiescing applications. This avoids backup downtime but applications inside the VM should be able to recover from a crash-consistent copy.
 
-Enable **Stop before backup** when you need an offline, application-consistent backup and the planned downtime is acceptable. For database or other write-heavy workloads, this is often the simpler and safer choice unless the guest handles its own backup consistency.
+Enable **Stop before backup** when you need an offline, application-consistent backup and the planned downtime is acceptable. For database or other write-heavy workloads, this is often the simpler and safer choice unless the guest handles its own backup consistency. Downtime covers only the stop, the snapshot, and the start: Sylve restarts the VM as soon as the snapshot exists and transfers it to the target while the VM runs. A VM that was already stopped remains stopped.
+
+When nothing in the VM has changed since its last backup, a run takes no new snapshot and transfers nothing; see [Unchanged sources](/guides/data-center/backups/jobs/#unchanged-sources). A running VM backed up with **Stop before backup** always transfers, because its UEFI firmware updates its variable store on every boot, including the restart after the snapshot.
 
 ## What a VM job protects
 
 Sylve discovers every managed ZFS storage root belonging to the VM, including storage on different pools, and commits them as one backup generation. Child disk datasets are included automatically, which is why recursive backup is mandatory for VM jobs.
 
-The backup does not flatten a multi-pool VM into one dataset. A complete generation is restorable only when every recorded VM storage root is present on the target.
+The backup does not flatten a multi-pool VM into one dataset. A complete generation is restorable only when every recorded VM storage root is present on the target. Sylve snapshots all of the VM's storage roots before transferring any of them: atomically within each pool and milliseconds apart across pools.
 
 :::note
 The VM's **name** and **RID** are its identity in the policy. If the VM moves to another node through a supported migration or failover workflow, Sylve updates its runner through that workflow. Do not create a second policy merely because its owner changed.
@@ -61,13 +63,15 @@ Jobs with **Runner rebind pending** or **Repair required** need their ownership 
 
 ## Restore this VM
 
-Select a job, choose **Restore**, then select the desired generation and snapshot. Encrypted sources require the relevant encryption passphrase during restore.
+Select a job, choose **Restore**, then select the desired generation and snapshot. Encrypted sources require the relevant encryption passphrase during restore. If the selected recovery point is still on the VM's local pools with identical contents, Sylve copies it locally instead of pulling it from the target.
 
 For a VM with storage on more than one pool, Sylve preflights every destination before changing data and restores the complete root set as a coordinated operation. If a later root or VM metadata reconciliation fails, it rolls back roots already restored where possible.
 
 :::caution
 When restoring a multi-pool VM as a new VM, the selected root moves to the chosen destination pool, but additional storage roots retain their original pool names. Those pools must exist on the restore node. Sylve does not currently consolidate every disk into the selected destination pool.
 :::
+
+After you restore an older recovery point, the target holds recovery points newer than the VM. The next backup keeps them as an archived generation and continues from the restored point, sending only the changes made since then. See [Rollbacks and older restores](/guides/data-center/backups/jobs/#rollbacks-and-older-restores).
 
 For recovery onto another node, dataset, or target path, use **OOB Restore** from [Data Center → Backups → Jobs](/guides/data-center/backups/jobs/).
 
