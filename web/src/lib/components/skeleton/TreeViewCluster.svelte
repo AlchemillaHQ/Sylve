@@ -872,7 +872,7 @@
 
 			<CustomValueInput
 				label="Name"
-				placeholder={item.stack}
+				placeholder={item.stack ?? ''}
 				bind:value={renameStackTitle}
 				disabled={renameStackLoading}
 				classes="space-y-2"
