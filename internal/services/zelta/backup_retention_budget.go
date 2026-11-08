@@ -24,8 +24,6 @@ type backupRetentionCleanupStats struct {
 	CandidateGenerations int
 	SelectedGenerations  int
 	DeferredGenerations  int
-	CandidateSnapshots   int
-	SelectedSnapshots    int
 }
 
 func buildBackupRetentionCleanupPlan(
@@ -42,21 +40,14 @@ func buildBackupRetentionCleanupPlan(
 		remoteSnapshots := filterBackupSnapshotsByProof(inventory.remoteSnapshots, proofs.Target)
 		localSnapshots := filterBackupSnapshotsByProof(inventory.localSnapshots, proofs.Source)
 		plan := backupRetentionCleanupScope{inventory: inventory}
-		if inventory.localSnapshotErr == nil {
-			protect := localRetentionProtectSetFromSnapshots(
-				inventory.sourceRoot,
-				inventory.remoteRoot,
-				snapPrefix,
-				inventory.localSnapshots,
-				inventory.remoteSnapshots,
-			)
-			plan.localCandidates = buildRetentionPruneCandidates(
-				localSnapshots,
-				job.PruneKeepLast,
-				protect,
-				snapPrefix,
-			)
-		}
+		protect := localRetentionProtectSetFromSnapshots(
+			inventory.sourceRoot,
+			inventory.remoteRoot,
+			snapPrefix,
+			inventory.localSnapshots,
+			inventory.remoteSnapshots,
+		)
+		plan.localCandidates = buildRetentionPruneCandidates(localSnapshots, job.PruneKeepLast, protect, snapPrefix)
 		if job.PruneTarget {
 			plan.targetCandidates = buildRetentionPruneCandidates(remoteSnapshots, job.PruneKeepLast, nil, snapPrefix)
 		}
@@ -128,7 +119,6 @@ func limitBackupRetentionCleanupPlan(
 	firstSeen := 0
 	for _, plan := range plans {
 		for _, candidates := range [][]string{plan.localCandidates, plan.targetCandidates} {
-			stats.CandidateSnapshots += len(candidates)
 			for _, candidate := range candidates {
 				generation := backupRetentionGeneration(candidate)
 				if generation == "" {
@@ -179,7 +169,6 @@ func limitBackupRetentionCleanupPlan(
 	for _, plan := range plans {
 		plan.localCandidates = filterBackupRetentionCandidatesByGeneration(plan.localCandidates, selected)
 		plan.targetCandidates = filterBackupRetentionCandidatesByGeneration(plan.targetCandidates, selected)
-		stats.SelectedSnapshots += len(plan.localCandidates) + len(plan.targetCandidates)
 		limited = append(limited, plan)
 	}
 	return limited, stats

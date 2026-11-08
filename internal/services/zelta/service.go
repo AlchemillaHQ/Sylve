@@ -409,10 +409,6 @@ func (s *Service) backupWithEventProgressSnapshotNameRecursive(
 	if err != nil {
 		return "", err
 	}
-	snapshotName = strings.TrimSpace(snapshotName)
-	if snapshotName == "" {
-		snapshotName = zeltaSnapshotName("bk")
-	}
 	parsedSnapshot, err := remoteexec.ParseZFSSnapshotName(snapshotName)
 	if err != nil {
 		return "", fmt.Errorf("invalid_backup_snapshot_name: %w", err)
@@ -1217,10 +1213,6 @@ func datasetWithinAnyRoot(dataset string, roots []string) bool {
 	return false
 }
 
-func (s *Service) stopVMIfPresent(rid uint) error {
-	return s.stopVMIfPresentContext(context.Background(), rid)
-}
-
 func (s *Service) stopVMIfPresentContext(ctx context.Context, rid uint) error {
 	return s.stopVMIfPresentForTransitionContext(ctx, rid, "")
 }
@@ -1850,16 +1842,6 @@ func (s *Service) beginJob(jobID uint) bool {
 		return false
 	}
 	delete(s.queuedJobs, jobID)
-	s.runningJobs[jobID] = struct{}{}
-	return true
-}
-
-func (s *Service) acquireJob(jobID uint) bool {
-	s.jobMu.Lock()
-	defer s.jobMu.Unlock()
-	if _, exists := s.runningJobs[jobID]; exists {
-		return false
-	}
 	s.runningJobs[jobID] = struct{}{}
 	return true
 }

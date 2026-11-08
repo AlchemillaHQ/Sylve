@@ -83,7 +83,7 @@ func TestCleanupStaleEventsSkipsActiveAndRecentlyHeartbeatingEvents(t *testing.T
 		t.Fatalf("failed to set stale event timestamps: %v", err)
 	}
 
-	service.acquireJob(jobActive)
+	service.runningJobs[jobActive] = struct{}{}
 	defer service.releaseJob(jobActive)
 
 	if err := service.CleanupStaleEvents(context.Background(), 15*time.Minute); err != nil {

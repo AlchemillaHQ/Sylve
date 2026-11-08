@@ -60,9 +60,6 @@ func latestCommonBackupSnapshotsByDataset(
 			continue
 		}
 		dataset := snapshotDatasetName(snapshot.Name)
-		if dataset == "" {
-			dataset = normalizeDatasetPath(snapshot.Dataset)
-		}
 		if !datasetWithinRoot(remoteRoot, dataset) {
 			continue
 		}
@@ -86,9 +83,6 @@ func latestCommonBackupSnapshotsByDataset(
 			continue
 		}
 		dataset := snapshotDatasetName(snapshot.Name)
-		if dataset == "" {
-			dataset = normalizeDatasetPath(snapshot.Dataset)
-		}
 		if !datasetWithinRoot(localRoot, dataset) {
 			continue
 		}
@@ -119,9 +113,6 @@ func foreignTargetSnapshots(
 	sourceBySuffixAndGUID := make(map[string]struct{})
 	for _, snapshot := range local {
 		dataset := snapshotDatasetName(snapshot.Name)
-		if dataset == "" {
-			dataset = normalizeDatasetPath(snapshot.Dataset)
-		}
 		guid := strings.TrimSpace(snapshot.Guid)
 		if guid == "" || !datasetWithinRoot(sourceRoot, dataset) {
 			continue
@@ -134,9 +125,6 @@ func foreignTargetSnapshots(
 	for _, snapshot := range remote {
 		name := strings.TrimSpace(snapshot.Name)
 		dataset := snapshotDatasetName(name)
-		if dataset == "" {
-			dataset = normalizeDatasetPath(snapshot.Dataset)
-		}
 		guid := strings.TrimSpace(snapshot.Guid)
 		owned := false
 		if guid != "" && datasetWithinRoot(targetRoot, dataset) {
@@ -239,9 +227,6 @@ func buildRetentionPruneCandidates(snapshots []SnapshotInfo, keepCount int, prot
 			continue
 		}
 		dataset := snapshotDatasetName(name)
-		if dataset == "" {
-			dataset = normalizeDatasetPath(snapshot.Dataset)
-		}
 		grouped[dataset] = append(grouped[dataset], name)
 	}
 
@@ -333,7 +318,6 @@ func (s *Service) findForeignTargetSnapshots(
 		activeDataset,
 		unmatched,
 		scopes,
-		activeDataset,
 		remoteSnaps,
 	)
 	if err != nil {

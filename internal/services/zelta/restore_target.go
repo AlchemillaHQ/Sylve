@@ -38,7 +38,6 @@ type restoreFromTargetPayload struct {
 	HolderNodeID       string `json:"holder_node_id,omitempty"`
 	EventID            uint   `json:"event_id,omitempty"`
 	AuditRecordID      uint   `json:"audit_record_id,omitempty"`
-	AuditOperationID   string `json:"audit_operation_id,omitempty"`
 }
 
 type BackupTargetDatasetInfo struct {
@@ -667,7 +666,6 @@ func (s *Service) EnqueueRestoreFromTarget(
 	payload.HolderNodeID = handle.HolderNodeID
 	payload.EventID = execution.EventID
 	payload.AuditRecordID = execution.Audit.RecordID
-	payload.AuditOperationID = execution.Audit.OperationID
 	if err := s.enqueueRestoreFromTargetOperation(ctx, payload); err != nil {
 		abortCtx, abortCancel := context.WithTimeout(context.Background(), replicationControlDefaultTimeout)
 		defer abortCancel()
@@ -948,14 +946,6 @@ func (s *Service) runRestoreFromTargetVM(
 		}
 	}
 
-	remoteEndpoint := strings.TrimSpace(remoteDataset)
-	if host := strings.TrimSpace(target.SSHHost); host != "" {
-		remoteEndpoint = host + ":" + remoteEndpoint
-	}
-	if snapshot != "" {
-		remoteEndpoint = remoteEndpoint + snapshot
-	}
-
 	var event clusterModels.BackupEvent
 	execution, managedEvent := restoreExecutionFromContext(ctx)
 	if managedEvent {
@@ -1091,7 +1081,6 @@ func (s *Service) runRestoreFromTargetVM(
 			target,
 			plan.remote,
 			snapshot,
-			true,
 		)
 		if err != nil {
 			return fmt.Errorf("restore_vm_root_preflight_failed: dataset=%s: %w", plan.remote, err)
@@ -1213,22 +1202,8 @@ func (s *Service) runRestoreFromTargetVM(
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_existing_vm_before_restore: %w", err)
 	}
-	if existingVM != nil {
-		if strictAsNew {
-			return fmt.Errorf("guest_id_already_in_use: guest_id=%d guest_type=vm", destRID)
-		}
-		vmRuntimeGuard, err := s.prepareInPlaceVMRestoreContext(ctx, destRID, primaryDestination)
-		if err != nil {
-			return err
-		}
-		// The VM is deliberately left stopped after a successful restore. If
-		// anything after this point fails (including another root, metadata
-		// reconciliation, or remote generation activation), put a VM stopped by
-		// this attempt back into its original running state. This defer runs
-		// before the event finalizer above, so a restart failure is recorded too.
-		defer func() {
-			retErr, _ = vmRuntimeGuard.restoreAfterFailure(retErr)
-		}()
+	if existingVM != nil && strictAsNew {
+		return fmt.Errorf("guest_id_already_in_use: guest_id=%d guest_type=vm", destRID)
 	}
 
 	appliedBackups := make([]restoredDatasetBackup, 0, len(rootPlans))
@@ -1240,13 +1215,7 @@ func (s *Service) runRestoreFromTargetVM(
 		runPayload := payload
 		runPayload.RemoteDataset = plan.remote
 		runPayload.DestinationDataset = plan.destination
-		disableNetworkRestore := false
-		runPayload.RestoreNetwork = &disableNetworkRestore
-
-		prepared, ok := preparedRootPlans[plan.remote]
-		if !ok {
-			return fmt.Errorf("prepared_vm_restore_plan_missing: dataset=%s", plan.remote)
-		}
+		prepared := preparedRootPlans[plan.remote]
 
 		backupDataset, err := s.runRestoreFromTargetSingleDataset(
 			ctx,
@@ -1475,7 +1444,6 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 			target,
 			preferredRemoteDataset,
 			snapshot,
-			true,
 		)
 		if err != nil {
 			return "", err
@@ -1580,7 +1548,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 			return
 		}
 		appendEventOutput(fmt.Sprintf(
-			"vm_dataset_restore_failed: %s -> %s: %v",
+			"dataset_restore_failed: %s -> %s: %v",
 			remoteEndpoint,
 			destinationDataset,
 			err,
@@ -1620,7 +1588,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	}
 
 	if !ownsEvent {
-		appendEventOutput(fmt.Sprintf("vm_dataset_restore_start: %s -> %s", remoteEndpoint, destinationDataset))
+		appendEventOutput(fmt.Sprintf("dataset_restore_start: %s -> %s", remoteEndpoint, destinationDataset))
 	}
 
 	logger.L.Info().
@@ -1663,7 +1631,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		if ownsEvent {
 			s.finalizeRestoreEvent(&event, restoreErr, output)
 		} else {
-			appendEventOutput(fmt.Sprintf("vm_dataset_restore_failed: %s -> %s: %v", remoteEndpoint, destinationDataset, restoreErr))
+			appendEventOutput(fmt.Sprintf("dataset_restore_failed: %s -> %s: %v", remoteEndpoint, destinationDataset, restoreErr))
 		}
 		return "", restoreErr
 	}
@@ -1678,11 +1646,11 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		if ownsEvent {
 			s.finalizeRestoreEvent(&event, restoreErr, output)
 		} else {
-			appendEventOutput(fmt.Sprintf("vm_dataset_restore_failed: %s -> %s: %v", remoteEndpoint, destinationDataset, restoreErr))
+			appendEventOutput(fmt.Sprintf("dataset_restore_failed: %s -> %s: %v", remoteEndpoint, destinationDataset, restoreErr))
 		}
 		return "", restoreErr
 	}
-	if err := s.verifyRecursiveRestoreManifest(ctx, restorePath, snapshot, expectedManifest); err != nil {
+	if err := s.verifyRestoreManifest(ctx, restorePath, snapshot, expectedManifest, true); err != nil {
 		restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, err)
 		recordRestoreFailure(restoreErr)
 		return "", restoreErr
@@ -1703,7 +1671,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		if ownsEvent {
 			s.finalizeRestoreEvent(&event, restoreErr, output)
 		} else {
-			appendEventOutput(fmt.Sprintf("vm_dataset_restore_failed: %s -> %s: %v", remoteEndpoint, destinationDataset, restoreErr))
+			appendEventOutput(fmt.Sprintf("dataset_restore_failed: %s -> %s: %v", remoteEndpoint, destinationDataset, restoreErr))
 		}
 		return "", restoreErr
 	}
@@ -1831,7 +1799,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	if ownsEvent {
 		s.finalizeRestoreEvent(&event, nil, output)
 	} else {
-		appendEventOutput(fmt.Sprintf("vm_dataset_restore_complete: %s -> %s", remoteEndpoint, destinationDataset))
+		appendEventOutput(fmt.Sprintf("dataset_restore_complete: %s -> %s", remoteEndpoint, destinationDataset))
 	}
 
 	logger.L.Info().

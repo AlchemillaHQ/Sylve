@@ -106,33 +106,13 @@ func (s *Service) applyBackupTargetRestoreOperation(
 	}
 	action = strings.ToLower(strings.TrimSpace(action))
 	request := cluster.BackupTargetRestoreOperationRequest{Action: action, Acquire: acquire, Transition: transition}
-	var lastErr error
-	for attempt := 0; attempt < replicationControlForwardAttempts; attempt++ {
-		if err := ctx.Err(); err != nil {
+	return retryCall(ctx, replicationControlDefaultTimeout, backupTargetRestoreOperationApplicationError,
+		func(ctx context.Context) error {
+			_, err := cluster.CallLeader[cluster.BackupTargetRestoreOperationRequest, struct{}](
+				ctx, s.Cluster, "backup-target-restore-operation", request,
+			)
 			return err
-		}
-		callCtx, cancel := context.WithTimeout(ctx, replicationControlDefaultTimeout)
-		_, lastErr = cluster.CallLeader[cluster.BackupTargetRestoreOperationRequest, struct{}](
-			callCtx, s.Cluster, "backup-target-restore-operation", request,
-		)
-		cancel()
-		if lastErr == nil {
-			return nil
-		}
-		if backupTargetRestoreOperationApplicationError(lastErr) {
-			return lastErr
-		}
-		if attempt < replicationControlForwardAttempts-1 {
-			timer := time.NewTimer(replicationControlForwardBackoff * time.Duration(attempt+1))
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return ctx.Err()
-			case <-timer.C:
-			}
-		}
-	}
-	return lastErr
+		})
 }
 
 func backupTargetRestoreOperationApplicationError(err error) bool {
@@ -601,7 +581,6 @@ func (s *Service) ReconcileBackupTargetRestoreOperations(ctx context.Context) er
 		}
 		normalizedPayload.EventID = execution.EventID
 		normalizedPayload.AuditRecordID = execution.Audit.RecordID
-		normalizedPayload.AuditOperationID = execution.OperationID
 		if err := s.enqueueRestoreFromTargetOperation(ctx, normalizedPayload); err != nil {
 			result = errors.Join(result, err)
 		}

@@ -6912,24 +6912,12 @@ func (s *Service) applyGuestMigrationInterlock(
 	transition clusterModels.ReplicationGuestOperationTransition,
 ) error {
 	request := clusterService.ReplicationGuestOperationRequest{Action: action, Acquire: acquire, Transition: transition}
-	var lastErr error
-	for attempt := 0; attempt < replicationControlForwardAttempts; attempt++ {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		callCtx, cancel := context.WithTimeout(ctx, replicationControlDefaultTimeout)
-		_, lastErr = clusterService.CallLeader[clusterService.ReplicationGuestOperationRequest, struct{}](
-			callCtx, s.Cluster, "replication-guest-operation", request,
+	return retryCall(ctx, replicationControlDefaultTimeout, nil, func(ctx context.Context) error {
+		_, err := clusterService.CallLeader[clusterService.ReplicationGuestOperationRequest, struct{}](
+			ctx, s.Cluster, "replication-guest-operation", request,
 		)
-		cancel()
-		if lastErr == nil {
-			return nil
-		}
-		if attempt < replicationControlForwardAttempts-1 {
-			time.Sleep(replicationControlForwardBackoff * time.Duration(attempt+1))
-		}
-	}
-	return lastErr
+		return err
+	})
 }
 
 func (s *Service) reassignDisabledReplicationPolicyOwner(

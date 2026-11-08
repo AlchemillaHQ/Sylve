@@ -506,3 +506,29 @@ func TestBackupJobRunnerRebindPlanRejectsIncompleteManifest(t *testing.T) {
 		t.Fatalf("incomplete manifest error = %v", err)
 	}
 }
+
+func TestBackupJobDatasetGuestIdentity(t *testing.T) {
+	tests := []struct {
+		name     string
+		dataset  string
+		wantMode string
+		wantID   uint
+	}{
+		{"empty", "", "", 0},
+		{"generic", "tank/data/db", "", 0},
+		{"jail", "zroot/jails/42", "jail", 42},
+		{"vm", "zroot/virtual-machines/7", "vm", 7},
+		{"jail subtype", "zroot/jails/42_data", "jail", 42},
+		{"vm subtype", "zroot/virtual-machines/7_disk0", "vm", 7},
+		{"jail deep", "zroot/jails/deep/42", "", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mode, id := backupJobDatasetGuestIdentity(tt.dataset)
+			if mode != tt.wantMode || id != tt.wantID {
+				t.Fatalf("backupJobDatasetGuestIdentity(%q) = (%q, %d), want (%q, %d)",
+					tt.dataset, mode, id, tt.wantMode, tt.wantID)
+			}
+		})
+	}
+}

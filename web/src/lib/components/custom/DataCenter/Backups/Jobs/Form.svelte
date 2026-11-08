@@ -12,12 +12,12 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 	import type {
-		BackupGuestRef,
 		BackupGuestScope,
 		BackupJob,
 		BackupJobMode,
 		BackupTarget
 	} from '$lib/types/cluster/backups';
+	import { parseGuestFromDatasetPath } from '$lib/utils/backup-jobs-page-state';
 	import type { Jail } from '$lib/types/jail/jail';
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
@@ -196,26 +196,6 @@
 	let selectedVM = $derived.by(
 		() => vms.find((vm) => vm.id === Number.parseInt(form.selectedVmId || '0', 10)) || null
 	);
-
-	function parseGuestFromDatasetPath(dataset: string): BackupGuestRef {
-		const jailMatch = dataset.match(/(?:^|\/)jails\/(\d+)(?:$|[/.])/);
-		if (jailMatch) {
-			const parsed = Number.parseInt(jailMatch[1], 10);
-			if (!Number.isNaN(parsed) && parsed > 0) {
-				return { kind: 'jail', id: parsed };
-			}
-		}
-
-		const vmMatch = dataset.match(/(?:^|\/)virtual-machines\/(\d+)(?:$|[/.])/);
-		if (vmMatch) {
-			const parsed = Number.parseInt(vmMatch[1], 10);
-			if (!Number.isNaN(parsed) && parsed > 0) {
-				return { kind: 'vm', id: parsed };
-			}
-		}
-
-		return { kind: 'dataset', id: 0 };
-	}
 
 	function invalidateSourceEncryptionCheck(state: SourceEncryptionState = 'idle') {
 		srcEncryptionGeneration += 1;

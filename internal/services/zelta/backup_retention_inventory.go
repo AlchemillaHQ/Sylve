@@ -17,7 +17,6 @@ type backupRetentionScopeInventory struct {
 	sourceRoot        string
 	remoteRoot        string
 	localSnapshots    []SnapshotInfo
-	localSnapshotErr  error
 	remoteSnapshots   []SnapshotInfo
 	manifestInventory remoteBackupManifestInventory
 }
@@ -67,12 +66,14 @@ func (s *Service) loadBackupRetentionScopeInventories(
 				err,
 			)
 		}
-		localSnapshots, localErr := s.listLocalSnapshotsForDataset(ctx, sourceRoot)
+		localSnapshots, err := s.listLocalSnapshotsForDataset(ctx, sourceRoot)
+		if err != nil {
+			return nil, fmt.Errorf("backup_prune_local_snapshot_list_failed: source=%s: %w", sourceRoot, err)
+		}
 		inventories = append(inventories, backupRetentionScopeInventory{
 			sourceRoot:        sourceRoot,
 			remoteRoot:        remoteRoot,
 			localSnapshots:    localSnapshots,
-			localSnapshotErr:  localErr,
 			remoteSnapshots:   remoteSnapshots,
 			manifestInventory: manifestInventory,
 		})
@@ -174,7 +175,7 @@ func (s *Service) backupRetentionEligibleSnapshotProofsFromInventories(
 			)
 		}
 		metadata := result.Metadata
-		if err := validateBackupRestoreCommit(metadata, job, shortName); err != nil {
+		if err := validateBackupRestoreCommit(metadata, job.ID, shortName); err != nil {
 			return proofs, fmt.Errorf(
 				"backup_retention_commit_state_unavailable: snapshot=%s: %w",
 				shortName,
@@ -221,9 +222,6 @@ func localRetentionProtectSetFromSnapshots(
 			continue
 		}
 		dataset := snapshotDatasetName(snap.Name)
-		if dataset == "" {
-			dataset = normalizeDatasetPath(snap.Dataset)
-		}
 		newestPerDataset[dataset] = snap
 	}
 	for _, snap := range newestPerDataset {

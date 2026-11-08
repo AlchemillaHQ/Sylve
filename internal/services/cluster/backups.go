@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -159,39 +158,6 @@ func (s *Service) GetBackupTargetByID(id uint) (*clusterModels.BackupTarget, err
 	return &target, nil
 }
 
-func (s *Service) ProposeBackupTargetCreate(input clusterServiceInterfaces.BackupTargetReq, hostKey string) error {
-	resolvedSSHKey, err := resolveSSHKeyMaterial(input.SSHKey, input.SSHKeyPath)
-	if err != nil {
-		return err
-	}
-	input.SSHKey = resolvedSSHKey
-	candidate, err := s.BuildBackupTargetCreateCandidate(input)
-	if err != nil {
-		return err
-	}
-	candidate.SSHHostKey = hostKey
-	_, err = s.ProposeBackupTargetCreateCandidate(candidate)
-	return err
-}
-
-func (s *Service) ProposeBackupTargetUpdate(input clusterServiceInterfaces.BackupTargetReq) error {
-	if input.ID == 0 {
-		return fmt.Errorf("invalid_target_id")
-	}
-	if !s.Standalone() && s.Raft() == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-	existing, err := s.GetBackupTargetByID(input.ID)
-	if err != nil {
-		return err
-	}
-	plan, err := s.BuildBackupTargetUpdatePlan(existing, input)
-	if err != nil {
-		return err
-	}
-	return s.ProposeBackupTargetUpdatePlan(plan)
-}
-
 func (s *Service) ProposeBackupTargetDelete(id uint) error {
 	if id == 0 {
 		return fmt.Errorf("invalid_target_id")
@@ -232,31 +198,17 @@ func (s *Service) ListBackupJobsForGuest(targetID uint, guestType string, guestI
 	}
 
 	filtered := make([]clusterModels.BackupJob, 0)
-	for _, job := range jobs {
-		switch guestType {
-		case clusterModels.ReplicationGuestTypeVM:
-			if job.Mode != clusterModels.BackupJobModeVM {
-				continue
-			}
-			rid, ok := parseVMRIDFromDataset(job.SourceDataset)
-			if ok && rid == guestID {
-				filtered = append(filtered, job)
-			}
-		case clusterModels.ReplicationGuestTypeJail:
-			if job.Mode != clusterModels.BackupJobModeJail {
-				continue
-			}
-			ctID, ok := parseJailCTIDFromDataset(job.JailRootDataset)
-			if !ok {
-				ctID, ok = parseJailCTIDFromDataset(job.SourceDataset)
-			}
-			if ok && ctID == guestID {
-				filtered = append(filtered, job)
-			}
+	for i := range jobs {
+		if backupJobBelongsToGuest(&jobs[i], guestType, guestID) {
+			filtered = append(filtered, jobs[i])
 		}
 	}
-
 	return filtered, nil
+}
+
+func backupJobBelongsToGuest(job *clusterModels.BackupJob, guestType string, guestID uint) bool {
+	_, id := clusterModels.BackupJobGuestIdentity(job)
+	return job.Mode == guestType && id == guestID
 }
 
 // RunningJobIDsForTarget returns the IDs of jobs belonging to targetID that
@@ -379,53 +331,21 @@ func (s *Service) SyncBackupJobFriendlySourceByGuestClusterWide(update BackupJob
 }
 
 func (s *Service) matchBackupJobIDsForGuest(guestType string, guestID uint) ([]uint, error) {
-	type jobRow struct {
-		ID              uint
-		SourceDataset   string
-		JailRootDataset string
-	}
-
-	rows := []jobRow{}
-	query := s.DB.Model(&clusterModels.BackupJob{}).
-		Select("id", "source_dataset", "jail_root_dataset")
-
-	switch guestType {
-	case clusterModels.ReplicationGuestTypeVM:
-		query = query.Where("mode = ?", clusterModels.BackupJobModeVM)
-	case clusterModels.ReplicationGuestTypeJail:
-		query = query.Where("mode = ?", clusterModels.BackupJobModeJail)
-	default:
+	if guestType != clusterModels.ReplicationGuestTypeVM && guestType != clusterModels.ReplicationGuestTypeJail {
 		return nil, fmt.Errorf("invalid_guest_type")
 	}
-
-	if err := query.Find(&rows).Error; err != nil {
+	var jobs []clusterModels.BackupJob
+	if err := s.DB.Select("id", "mode", "source_dataset", "jail_root_dataset").
+		Where("mode = ?", guestType).Find(&jobs).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_list_backup_jobs_for_guest: %w", err)
 	}
-
-	jobIDs := make([]uint, 0, len(rows))
-	for _, row := range rows {
-		switch guestType {
-		case clusterModels.ReplicationGuestTypeVM:
-			rid, ok := parseVMRIDFromDataset(row.SourceDataset)
-			if ok && rid == guestID {
-				jobIDs = append(jobIDs, row.ID)
-			}
-		case clusterModels.ReplicationGuestTypeJail:
-			ctid, ok := parseJailCTIDFromDataset(row.JailRootDataset)
-			if (!ok || ctid == 0) && strings.TrimSpace(row.SourceDataset) != "" {
-				ctid, ok = parseJailCTIDFromDataset(row.SourceDataset)
-			}
-			if ok && ctid == guestID {
-				jobIDs = append(jobIDs, row.ID)
-			}
+	jobIDs := make([]uint, 0, len(jobs))
+	for i := range jobs {
+		if backupJobBelongsToGuest(&jobs[i], guestType, guestID) {
+			jobIDs = append(jobIDs, jobs[i].ID)
 		}
 	}
-
 	return jobIDs, nil
-}
-
-func (s *Service) ProposeBackupJobCreate(input clusterServiceInterfaces.BackupJobReq) error {
-	return s.ProposeBackupJobCreateContext(context.Background(), input)
 }
 
 func (s *Service) ProposeBackupJobCreateContext(
@@ -456,12 +376,6 @@ func (s *Service) ProposeBackupJobCreateContext(
 		PlacementFence:  fence,
 		TargetReadiness: targetReadiness,
 	})
-}
-
-func (s *Service) ProposeBackupJobUpdate(id uint, input clusterServiceInterfaces.BackupJobReq) error {
-	return s.ProposeBackupJobUpdateContext(
-		context.Background(), id, input, BackupJobPlacementAuthorization{},
-	)
 }
 
 func (s *Service) ProposeBackupJobUpdateContext(
@@ -763,61 +677,6 @@ func normalizeBackupDatasetPath(dataset string) string {
 	return dataset
 }
 
-func parseJailCTIDFromDataset(dataset string) (uint, bool) {
-	dataset = strings.TrimSpace(dataset)
-	if dataset == "" {
-		return 0, false
-	}
-
-	idx := strings.LastIndex(dataset, "/")
-	if idx < 0 || idx == len(dataset)-1 {
-		return 0, false
-	}
-
-	ctIDRaw := strings.TrimSpace(dataset[idx+1:])
-	ctID, err := strconv.ParseUint(ctIDRaw, 10, 64)
-	if err != nil {
-		return 0, false
-	}
-
-	return uint(ctID), true
-}
-
-func parseVMRIDFromDataset(dataset string) (uint, bool) {
-	dataset = strings.TrimSpace(dataset)
-	if dataset == "" {
-		return 0, false
-	}
-
-	parts := strings.Split(strings.Trim(dataset, "/"), "/")
-	for idx := 0; idx+1 < len(parts); idx++ {
-		if parts[idx] != "virtual-machines" {
-			continue
-		}
-
-		ridRaw := strings.TrimSpace(parts[idx+1])
-		if ridRaw == "" {
-			continue
-		}
-
-		cutAt := len(ridRaw)
-		if split := strings.IndexAny(ridRaw, "._"); split > 0 && split < cutAt {
-			cutAt = split
-		}
-		ridRaw = strings.TrimSpace(ridRaw[:cutAt])
-		if ridRaw == "" {
-			continue
-		}
-
-		rid, err := strconv.ParseUint(ridRaw, 10, 64)
-		if err == nil && rid > 0 {
-			return uint(rid), true
-		}
-	}
-
-	return 0, false
-}
-
 func canonicalBackupTargetInput(
 	input clusterServiceInterfaces.BackupTargetReq,
 ) (remoteexec.SSHDestination, remoteexec.ZFSDataset, error) {
@@ -870,17 +729,12 @@ func (s *Service) backupRunnerNodeExists(nodeID string) bool {
 	return detail != nil && strings.TrimSpace(detail.NodeID) == nodeID
 }
 
-func (s *Service) newRaftObjectID(table string) (uint, error) {
-	idRangeMax := raftObjectIDRangeForTable(table)
-	n, err := rand.Int(rand.Reader, idRangeMax)
+func (s *Service) newRaftObjectID() (uint, error) {
+	n, err := rand.Int(rand.Reader, maxSafeJSInt)
 	if err != nil {
 		return 0, err
 	}
 	return uint(n.Uint64() + 1), nil
-}
-
-func raftObjectIDRangeForTable(_ string) *big.Int {
-	return maxSafeJSInt
 }
 
 func (s *Service) newAvailableBackupJobID(ctx context.Context) (uint, error) {
@@ -899,7 +753,7 @@ func (s *Service) newAvailableBackupJobID(ctx context.Context) (uint, error) {
 		if s.backupJobIDGenerator != nil {
 			id, err = s.backupJobIDGenerator()
 		} else {
-			id, err = s.newRaftObjectID("backup_jobs")
+			id, err = s.newRaftObjectID()
 		}
 		if err != nil {
 			return 0, err
@@ -919,23 +773,4 @@ func (s *Service) newAvailableBackupJobID(ctx context.Context) (uint, error) {
 	}
 
 	return 0, fmt.Errorf("backup_job_id_conflict")
-}
-
-func resolveSSHKeyMaterial(sshKey, sshKeyPath string) (string, error) {
-	trimmedKey := strings.TrimSpace(sshKey)
-	if trimmedKey != "" {
-		return trimmedKey, nil
-	}
-
-	trimmedPath := strings.TrimSpace(sshKeyPath)
-	if trimmedPath == "" {
-		return "", nil
-	}
-
-	raw, err := os.ReadFile(trimmedPath)
-	if err != nil {
-		return "", fmt.Errorf("ssh_key_file_not_found: %s: %w", trimmedPath, err)
-	}
-
-	return strings.TrimSpace(string(raw)), nil
 }

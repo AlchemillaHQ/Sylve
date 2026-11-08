@@ -119,16 +119,10 @@ func (s *Service) callNode(ctx context.Context, nodeID, name string, req any, ti
 
 // Only for calls that are safe to repeat.
 func (s *Service) callNodeWithRetry(ctx context.Context, nodeID, name string, req any, timeout time.Duration) error {
-	var err error
-	for attempt := 0; attempt < replicationControlForwardAttempts; attempt++ {
-		if err = s.callNode(ctx, nodeID, name, req, timeout); err == nil || ctx.Err() != nil {
-			return err
-		}
-		if attempt < replicationControlForwardAttempts-1 {
-			time.Sleep(replicationControlForwardBackoff * time.Duration(attempt+1))
-		}
-	}
-	return err
+	return retryCall(ctx, timeout, nil, func(ctx context.Context) error {
+		_, err := cluster.CallNode[any, struct{}](ctx, s.Cluster, nodeID, name, req)
+		return err
+	})
 }
 
 func (s *Service) callLeader(ctx context.Context, name string, req any) error {
@@ -140,13 +134,40 @@ func (s *Service) callLeader(ctx context.Context, name string, req any) error {
 
 // Only for calls that are safe to repeat.
 func (s *Service) callLeaderWithRetry(ctx context.Context, name string, req any) error {
+	answered := func(err error) bool { return !leaderCallUnanswered(err) }
+	return retryCall(ctx, replicationControlDefaultTimeout, answered, func(ctx context.Context) error {
+		_, err := cluster.CallLeader[any, struct{}](ctx, s.Cluster, name, req)
+		return err
+	})
+}
+
+// retryCall repeats a call that is safe to repeat until it succeeds, ctx ends,
+// or final reports an answer that another attempt won't change.
+func retryCall(
+	ctx context.Context,
+	timeout time.Duration,
+	final func(error) bool,
+	call func(context.Context) error,
+) error {
 	var err error
 	for attempt := 0; attempt < replicationControlForwardAttempts; attempt++ {
-		if err = s.callLeader(ctx, name, req); err == nil || !leaderCallUnanswered(err) {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		callCtx, cancel := context.WithTimeout(ctx, timeout)
+		err = call(callCtx)
+		cancel()
+		if err == nil || (final != nil && final(err)) {
 			return err
 		}
 		if attempt < replicationControlForwardAttempts-1 {
-			time.Sleep(replicationControlForwardBackoff * time.Duration(attempt+1))
+			timer := time.NewTimer(replicationControlForwardBackoff * time.Duration(attempt+1))
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
 		}
 	}
 	return err

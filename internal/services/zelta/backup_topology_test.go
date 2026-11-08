@@ -9,6 +9,7 @@
 package zelta
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -29,7 +30,7 @@ func TestBackupTopologyDetectsAddedRemovedAndRetypedDatasets(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := backupTopologiesEqual(base, tt.other); got != tt.want {
+			if got := slices.Equal(base, tt.other); got != tt.want {
 				t.Fatalf("got %t want %t", got, tt.want)
 			}
 		})
@@ -51,7 +52,7 @@ func TestBackupTopologyEntriesMapRenamedTargetToStableSuffixes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !backupTopologiesEqual(source, target) {
+	if !slices.Equal(source, target) {
 		t.Fatalf("renamed equivalent topology mismatch: source=%v target=%v", source, target)
 	}
 }

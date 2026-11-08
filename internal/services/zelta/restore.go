@@ -48,14 +48,13 @@ const restoreJobQueueName = "zelta-restore-run"
 
 // restoreJobPayload is the goqite queue payload for a restore job.
 type restoreJobPayload struct {
-	JobID            uint   `json:"job_id"`
-	Snapshot         string `json:"snapshot"` // e.g. "@zelta_2026-02-18_12.00.00"
-	RemoteDataset    string `json:"remote_dataset,omitempty"`
-	OperationToken   string `json:"operation_token,omitempty"`
-	HolderNodeID     string `json:"holder_node_id,omitempty"`
-	EventID          uint   `json:"event_id,omitempty"`
-	AuditRecordID    uint   `json:"audit_record_id,omitempty"`
-	AuditOperationID string `json:"audit_operation_id,omitempty"`
+	JobID          uint   `json:"job_id"`
+	Snapshot       string `json:"snapshot"` // e.g. "@zelta_2026-02-18_12.00.00"
+	RemoteDataset  string `json:"remote_dataset,omitempty"`
+	OperationToken string `json:"operation_token,omitempty"`
+	HolderNodeID   string `json:"holder_node_id,omitempty"`
+	EventID        uint   `json:"event_id,omitempty"`
+	AuditRecordID  uint   `json:"audit_record_id,omitempty"`
 }
 
 func backupJobSnapshotTarget(job *clusterModels.BackupJob) (clusterModels.BackupTarget, string, error) {
@@ -227,7 +226,6 @@ func (s *Service) EnqueueRestoreJob(ctx context.Context, jobID uint, snapshot st
 		JobID: jobID, Snapshot: normalizedSnapshot, RemoteDataset: remoteDataset,
 		OperationToken: handle.Token, HolderNodeID: handle.HolderNodeID,
 		EventID: execution.EventID, AuditRecordID: execution.Audit.RecordID,
-		AuditOperationID: execution.Audit.OperationID,
 	}
 	enqueueErr := error(nil)
 	if s.backupOperationEnqueue != nil {
@@ -555,7 +553,7 @@ func (s *Service) runRestoreJob(
 	backupDataset := ""
 	var promoteErr error
 	if job.Mode == clusterModels.BackupJobModeJail && destinationExisted {
-		jailRuntimeGuard, quiesceErr := s.prepareInPlaceJailRestore(ctx, sourceDataset)
+		jailRuntimeGuard, quiesceErr := s.prepareInPlaceJailRestore(ctx, jailRestoreFence.guestID, sourceDataset)
 		if quiesceErr != nil {
 			restoreErr = s.cleanupOwnedRestoreStagingAfterError(
 				restorePath,
@@ -932,15 +930,6 @@ type restoreDatasetManifestEntry struct {
 	Suffix       string
 	Type         string
 	SnapshotGUID string
-}
-
-func (s *Service) verifyRecursiveRestoreManifest(
-	ctx context.Context,
-	restoreRoot string,
-	snapshot string,
-	expected []restoreDatasetManifestEntry,
-) error {
-	return s.verifyRestoreManifest(ctx, restoreRoot, snapshot, expected, true)
 }
 
 func (s *Service) verifyRestoreManifest(

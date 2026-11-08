@@ -34,34 +34,28 @@ var ErrSwitchNotFound = networkAttachment.ErrSwitchNotFound
 
 var resolveRestoredJailNetworkAttachment = jailService.ResolveDesiredTargetNetworkAttachment
 
-func lockRestoredJailNetworkLifecycle(
+func lockRestoredNetworkLifecycle[N any](
 	db *gorm.DB,
-	networks []jailModels.Network,
+	guestType string,
+	networks []N,
+	attachment func(N) (networkAttachment.Contract, error),
 ) (func(), error) {
 	resolver := networkAttachment.NewResolver(db)
 	bridges := make([]string, 0, len(networks))
 	for idx, network := range networks {
-		expected, err := jailService.NetworkAttachmentFromMetadata(network)
+		expected, err := attachment(network)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"restored_jail_network_source_attachment_invalid: network=%d: %w",
-				idx+1,
-				err,
+				"restored_%s_network_source_attachment_invalid: network=%d: %w", guestType, idx+1, err,
 			)
 		}
 		target, err := resolver.ResolveIdentityByName(expected.SwitchType, expected.SwitchName)
+		if errors.Is(err, ErrSwitchNotFound) {
+			return nil, fmt.Errorf("restored_network_switch_not_found: network=%d: %w", idx+1, err)
+		}
 		if err != nil {
-			if errors.Is(err, ErrSwitchNotFound) {
-				return nil, fmt.Errorf(
-					"restored_network_switch_not_found: network=%d: %w",
-					idx+1,
-					err,
-				)
-			}
 			return nil, fmt.Errorf(
-				"restored_jail_network_attachment_incompatible: network=%d: %w",
-				idx+1,
-				err,
+				"restored_%s_network_attachment_incompatible: network=%d: %w", guestType, idx+1, err,
 			)
 		}
 		if target.Type == "standard" {
@@ -77,10 +71,6 @@ type jailConfigBuilder interface {
 
 type jailDevfsCleaner interface {
 	RemoveDevfsRulesForCTID(ctid uint) error
-}
-
-type jailMetadataWriter interface {
-	WriteJailJSON(ctid uint) error
 }
 
 type jailHardwareNormalizer interface {
@@ -155,11 +145,7 @@ func (s *Service) reconcileRestoredJailFromDatasetMode(
 		return err
 	}
 	if strictAsNew {
-		writer, ok := s.Jail.(jailMetadataWriter)
-		if !ok {
-			return fmt.Errorf("restored_jail_metadata_writer_unavailable")
-		}
-		if err := writer.WriteJailJSON(reconciled.CTID); err != nil {
+		if err := s.Jail.WriteJailJSON(reconciled.CTID); err != nil {
 			return fmt.Errorf("failed_to_refresh_restored_jail_metadata: %w", err)
 		}
 	}
@@ -290,7 +276,9 @@ func (s *Service) upsertRestoredJailState(
 	}
 
 	if restoreNetwork {
-		unlockNetworkLifecycle, lockErr := lockRestoredJailNetworkLifecycle(s.DB, restored.Networks)
+		unlockNetworkLifecycle, lockErr := lockRestoredNetworkLifecycle(
+			s.DB, "jail", restored.Networks, jailService.NetworkAttachmentFromMetadata,
+		)
 		if lockErr != nil {
 			return nil, lockErr
 		}

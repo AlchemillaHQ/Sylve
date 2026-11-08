@@ -14,10 +14,11 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import type { BackupGuestRef, BackupGuestScope } from '$lib/types/cluster/backups';
+	import type { BackupGuestScope } from '$lib/types/cluster/backups';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import {
 		backupJobsUnavailableSources,
+		parseGuestFromDatasetPath,
 		type BackupJobsPageData
 	} from '$lib/utils/backup-jobs-page-state';
 	import { backupJobsCacheKey } from '$lib/utils/backup-jobs-page';
@@ -119,26 +120,6 @@
 		selectedJob?.lastStatus === 'runner_rebind_pending' ||
 			selectedJob?.lastStatus === 'repair_required'
 	);
-
-	function parseGuestFromDatasetPath(dataset: string): BackupGuestRef {
-		const jailMatch = dataset.match(/(?:^|\/)jails\/(\d+)(?:$|[/.])/);
-		if (jailMatch) {
-			const parsed = Number.parseInt(jailMatch[1], 10);
-			if (!Number.isNaN(parsed) && parsed > 0) {
-				return { kind: 'jail', id: parsed };
-			}
-		}
-
-		const vmMatch = dataset.match(/(?:^|\/)virtual-machines\/(\d+)(?:$|[/.])/);
-		if (vmMatch) {
-			const parsed = Number.parseInt(vmMatch[1], 10);
-			if (!Number.isNaN(parsed) && parsed > 0) {
-				return { kind: 'vm', id: parsed };
-			}
-		}
-
-		return { kind: 'dataset', id: 0 };
-	}
 
 	let nodeNameById = $derived.by(() => {
 		const out: Record<string, string> = {};

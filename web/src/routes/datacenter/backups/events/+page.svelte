@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getBackupEventProgress, listBackupJobs } from '$lib/api/cluster/backups';
+	import { getBackupEventProgress, listBackupJobsResult } from '$lib/api/cluster/backups';
 	import { getDetails, getNodesResult } from '$lib/api/cluster/cluster';
 	import TreeTable from '$lib/components/custom/TreeTableRemote.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
@@ -28,8 +28,8 @@
 	let jobs = resource(
 		() => 'backup-jobs-for-filter',
 		async () => {
-			const res = await listBackupJobs();
-			return res;
+			const res = await listBackupJobsResult();
+			return isAPIResponse(res) ? [] : res;
 		},
 		{ initialValue: [] as BackupJob[] }
 	);

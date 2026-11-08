@@ -103,13 +103,14 @@ exec "$SYLVE_OVERLAP_REAL_ZFS" "$@"
 	sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	zeltaDone := false
 	go func() {
-		output, runErr := runZeltaWithEnv(
+		output, runErr := runZeltaWithEnvStreaming(
 			sendCtx,
 			[]string{
 				"SYLVE_OVERLAP_REAL_ZFS=" + realZFS,
 				"SYLVE_OVERLAP_MARKER=" + marker,
 				"SYLVE_OVERLAP_GATE=" + gate,
 			},
+			nil,
 			"backup", "--json", "--no-snapshot",
 			activeDataset+"@selected", receiveDataset,
 		)

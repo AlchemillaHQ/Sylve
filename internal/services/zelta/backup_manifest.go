@@ -278,7 +278,8 @@ func backupManifestRootsValue(roots []string) (string, error) {
 }
 
 func parseBackupManifestRootsValue(value string) ([]string, error) {
-	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(value))
+	value = strings.TrimSpace(value)
+	raw, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
 		return nil, fmt.Errorf("invalid_backup_commit_roots: %w", err)
 	}
@@ -286,28 +287,14 @@ func parseBackupManifestRootsValue(value string) ([]string, error) {
 	if err := json.Unmarshal(raw, &roots); err != nil {
 		return nil, fmt.Errorf("invalid_backup_commit_roots: %w", err)
 	}
-	normalized := make([]string, 0, len(roots))
-	seen := make(map[string]struct{}, len(roots))
-	for _, root := range roots {
-		root = normalizeDatasetPath(root)
-		if root == "" {
-			return nil, fmt.Errorf("backup_manifest_root_required")
-		}
-		if _, exists := seen[root]; exists {
-			continue
-		}
-		seen[root] = struct{}{}
-		normalized = append(normalized, root)
-	}
-	sort.Strings(normalized)
-	encoded, err := backupManifestRootsValue(normalized)
+	encoded, err := backupManifestRootsValue(roots)
 	if err != nil {
 		return nil, err
 	}
-	if encoded != strings.TrimSpace(value) {
+	if encoded != value {
 		return nil, fmt.Errorf("noncanonical_backup_commit_roots")
 	}
-	return normalized, nil
+	return roots, nil
 }
 
 func backupDatasetListArgs(root string, recursive bool) []string {
@@ -504,30 +491,23 @@ func (s *Service) commitBackupSnapshot(
 	job *clusterModels.BackupJob,
 	snapshotName string,
 	scopes []backupScope,
-) (backupCommitMetadata, error) {
-	if job == nil {
-		return backupCommitMetadata{}, fmt.Errorf("backup_job_required")
-	}
-	snapshotName, err := normalizeBackupSnapshotName(snapshotName)
-	if err != nil {
-		return backupCommitMetadata{}, err
-	}
+) error {
 	expected, err := s.buildLocalBackupManifest(ctx, job.ID, snapshotName, job.Recursive, scopes)
 	if err != nil {
-		return backupCommitMetadata{}, fmt.Errorf("build_backup_source_manifest_failed: %w", err)
+		return fmt.Errorf("build_backup_source_manifest_failed: %w", err)
 	}
 	actual, err := s.buildRemoteBackupManifest(ctx, job, snapshotName, scopes)
 	if err != nil {
-		return backupCommitMetadata{}, fmt.Errorf("build_backup_target_manifest_failed: %w", err)
+		return fmt.Errorf("build_backup_target_manifest_failed: %w", err)
 	}
 	if err := compareBackupManifests(expected, actual); err != nil {
-		return backupCommitMetadata{}, err
+		return err
 	}
 
 	metadata := newBackupCommitMetadata(expected)
 	coordinator, err := backupCommitCoordinatorScope(job, scopes)
 	if err != nil {
-		return backupCommitMetadata{}, err
+		return err
 	}
 	order := make([]int, 0, len(scopes))
 	for i := range scopes {
@@ -540,10 +520,10 @@ func (s *Service) commitBackupSnapshot(
 		remoteRoot := remoteActiveDatasetForSuffix(job.Target.BackupRoot, scopes[i].destSuffix)
 		remoteSnapshot := remoteRoot + "@" + snapshotName
 		if err := s.setRemoteBackupCommitMetadata(ctx, &job.Target, remoteSnapshot, metadata); err != nil {
-			return backupCommitMetadata{}, err
+			return err
 		}
 	}
-	return metadata, nil
+	return nil
 }
 
 func backupCommitPropertyNames() []string {
@@ -665,14 +645,7 @@ func (s *Service) getRemoteBackupCommitMetadata(
 	return parseBackupCommitMetadata(output)
 }
 
-func validateBackupCommitForJob(
-	metadata backupCommitMetadata,
-	job *clusterModels.BackupJob,
-	snapshotName string,
-) error {
-	if job == nil {
-		return fmt.Errorf("backup_job_required")
-	}
+func validateBackupCommitForJob(metadata backupCommitMetadata, jobID uint, snapshotName string) error {
 	snapshotName, err := normalizeBackupSnapshotName(snapshotName)
 	if err != nil {
 		return err
@@ -680,7 +653,7 @@ func validateBackupCommitForJob(
 	if err := metadata.validate(); err != nil {
 		return err
 	}
-	if metadata.JobID != job.ID {
+	if metadata.JobID != jobID {
 		return fmt.Errorf("backup_commit_job_mismatch")
 	}
 	if metadata.SnapshotName != snapshotName {

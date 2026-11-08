@@ -71,22 +71,19 @@ func (s *Service) runBackupJobCore(
 		localNodeID := s.localNodeID()
 		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, jobGuestType, jobGuestID, localNodeID)
 		if leaseErr != nil {
-			runErr := fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
-			return runErr
+			return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
 		}
 		if !allowed {
-			runErr := fmt.Errorf("replication_lease_not_owned")
-			return runErr
+			return fmt.Errorf("replication_lease_not_owned")
 		}
 	}
 	if ok, holder := s.acquireWorkloadOperation(jobGuestType, jobGuestID, fmt.Sprintf("backup_job:%d", job.ID)); !ok {
-		runErr := fmt.Errorf(
+		return fmt.Errorf(
 			"workload_operation_conflict_with_%s guest_type=%s guest_id=%d",
 			holder,
 			jobGuestType,
 			jobGuestID,
 		)
-		return runErr
 	}
 	defer s.releaseWorkloadOperation(jobGuestType, jobGuestID)
 
@@ -95,13 +92,11 @@ func (s *Service) runBackupJobCore(
 	}
 
 	if !job.Target.Enabled {
-		runErr := fmt.Errorf("backup_target_disabled")
-		return runErr
+		return fmt.Errorf("backup_target_disabled")
 	}
 	_, targetRoot, err := canonicalizeBackupTarget(&job.Target)
 	if err != nil {
-		runErr := err
-		return runErr
+		return err
 	}
 
 	event := clusterModels.BackupEvent{
@@ -111,63 +106,40 @@ func (s *Service) runBackupJobCore(
 		StartedAt: time.Now().UTC(),
 	}
 
-	var sourceDataset string
+	sourceDataset, missingSource := strings.TrimSpace(job.SourceDataset), "source_dataset_required"
 	switch job.Mode {
-	case clusterModels.BackupJobModeDataset:
-		sourceDataset = strings.TrimSpace(job.SourceDataset)
-		if sourceDataset == "" {
-			runErr := fmt.Errorf("source_dataset_required")
-			return runErr
-		}
+	case clusterModels.BackupJobModeDataset, clusterModels.BackupJobModeVM:
 	case clusterModels.BackupJobModeJail:
-		sourceDataset = strings.TrimSpace(job.JailRootDataset)
-		if sourceDataset == "" {
-			runErr := fmt.Errorf("jail_root_dataset_required")
-			return runErr
-		}
-	case clusterModels.BackupJobModeVM:
-		sourceDataset = strings.TrimSpace(job.SourceDataset)
-		if sourceDataset == "" {
-			runErr := fmt.Errorf("source_dataset_required")
-			return runErr
-		}
+		sourceDataset, missingSource = strings.TrimSpace(job.JailRootDataset), "jail_root_dataset_required"
 	default:
-		runErr := fmt.Errorf("invalid_backup_job_mode")
-		return runErr
+		return fmt.Errorf("invalid_backup_job_mode")
+	}
+	if sourceDataset == "" {
+		return errors.New(missingSource)
 	}
 	parsedSource, err := remoteexec.ParseZFSDataset(sourceDataset)
 	if err != nil {
-		runErr := fmt.Errorf("invalid_backup_source_dataset: %w", err)
-		return runErr
+		return fmt.Errorf("invalid_backup_source_dataset: %w", err)
 	}
 	sourceDataset = parsedSource.String()
 	if err := cluster.ValidateBackupJobSafetyWithDB(ctx, s.DB, job); err != nil {
-		runErr := fmt.Errorf("backup_job_safety_validation_failed: %w", err)
-		return runErr
+		return fmt.Errorf("backup_job_safety_validation_failed: %w", err)
 	}
-
-	event.SourceDataset = sourceDataset
 
 	vmRID := uint(0)
 	vmSourceDatasets := []string{}
 	if job.Mode == clusterModels.BackupJobModeVM {
-		_, parsedRID := inferRestoreDatasetKind(sourceDataset)
-		vmRID = parsedRID
+		_, vmRID = inferRestoreDatasetKind(sourceDataset)
 		if vmRID == 0 {
-			runErr := fmt.Errorf("invalid_vm_source_dataset")
-			return runErr
+			return fmt.Errorf("invalid_vm_source_dataset")
 		}
 
 		sources, err := s.resolveVMBackupSourceDatasets(ctx, vmRID, sourceDataset)
 		if err != nil {
-			runErr := fmt.Errorf("resolve_vm_backup_sources_failed: %w", err)
-			return runErr
+			return fmt.Errorf("resolve_vm_backup_sources_failed: %w", err)
 		}
-		vmSourceDatasets = sources
 
-		preferredVMSource := normalizeDatasetPath(sourceDataset)
-		validatedSources := make([]string, 0, len(vmSourceDatasets))
-		for _, vmSource := range vmSourceDatasets {
+		for _, vmSource := range sources {
 			parsedVMSource, err := remoteexec.ParseZFSDataset(vmSource)
 			if err != nil {
 				return fmt.Errorf("invalid_vm_backup_source_dataset: %w", err)
@@ -176,11 +148,10 @@ func (s *Service) runBackupJobCore(
 
 			exists, err := s.localDatasetExists(ctx, vmSource)
 			if err != nil {
-				runErr := fmt.Errorf("failed_to_check_vm_backup_source_dataset_%s: %w", vmSource, err)
-				return runErr
+				return fmt.Errorf("failed_to_check_vm_backup_source_dataset_%s: %w", vmSource, err)
 			}
 			if !exists {
-				if preferredVMSource != "" && vmSource == preferredVMSource {
+				if vmSource == sourceDataset {
 					logger.L.Warn().
 						Uint("job_id", job.ID).
 						Uint("vm_rid", vmRID).
@@ -192,54 +163,38 @@ func (s *Service) runBackupJobCore(
 				return fmt.Errorf("vm_backup_source_dataset_not_found: %s", vmSource)
 			}
 
-			validatedSources = append(validatedSources, vmSource)
+			vmSourceDatasets = append(vmSourceDatasets, vmSource)
 		}
 
-		if len(validatedSources) == 0 {
+		if len(vmSourceDatasets) == 0 {
 			return fmt.Errorf("vm_source_datasets_not_found")
 		}
-
-		vmSourceDatasets = validatedSources
-		if preferredVMSource != "" && preferredVMSource != vmSourceDatasets[0] {
-			foundPreferred := false
-			for _, vmSource := range vmSourceDatasets {
-				if vmSource == preferredVMSource {
-					foundPreferred = true
-					break
-				}
-			}
-			if !foundPreferred {
-				logger.L.Info().
-					Uint("job_id", job.ID).
-					Uint("vm_rid", vmRID).
-					Str("missing_source", preferredVMSource).
-					Str("fallback_source", vmSourceDatasets[0]).
-					Msg("vm_backup_source_fallback_selected")
-				sourceDataset = vmSourceDatasets[0]
-			}
+		if !slices.Contains(vmSourceDatasets, sourceDataset) {
+			logger.L.Info().
+				Uint("job_id", job.ID).
+				Uint("vm_rid", vmRID).
+				Str("missing_source", sourceDataset).
+				Str("fallback_source", vmSourceDatasets[0]).
+				Msg("vm_backup_source_fallback_selected")
+			sourceDataset = vmSourceDatasets[0]
 		}
 	}
 
+	guestID, guestSources := jobGuestID, []string{sourceDataset}
+	if job.Mode == clusterModels.BackupJobModeVM {
+		guestID, guestSources = vmRID, vmSourceDatasets
+	}
 	if job.Mode == clusterModels.BackupJobModeVM || job.Mode == clusterModels.BackupJobModeJail {
-		metadataGuestID := jobGuestID
-		if job.Mode == clusterModels.BackupJobModeVM {
-			metadataGuestID = vmRID
-		}
-		if err := s.refreshGuestMetadata(job.Mode, metadataGuestID); err != nil {
-			runErr := fmt.Errorf("backup_%s_metadata_refresh_failed: %w", job.Mode, err)
-			return runErr
+		if err := s.refreshGuestMetadata(job.Mode, guestID); err != nil {
+			return fmt.Errorf("backup_%s_metadata_refresh_failed: %w", job.Mode, err)
 		}
 	}
 
 	event.SourceDataset = sourceDataset
 
-	encryptionSources := []string{sourceDataset}
-	if job.Mode == clusterModels.BackupJobModeVM {
-		encryptionSources = vmSourceDatasets
-	}
 	encrypted, encryptionErr := s.detectBackupSourcesEncryption(
 		ctx,
-		encryptionSources,
+		guestSources,
 		job.Recursive,
 	)
 	if encryptionErr != nil {
@@ -254,7 +209,7 @@ func (s *Service) runBackupJobCore(
 	// Verify encryption keys are loaded before starting the backup.
 	// Without this check the zelta send would fail with a cryptic ZFS error.
 	if encrypted {
-		for _, encryptionSource := range encryptionSources {
+		for _, encryptionSource := range guestSources {
 			ds, dsErr := s.getLocalDataset(ctx, encryptionSource)
 			if dsErr != nil || ds == nil || !ds.IsEncrypted() {
 				continue
@@ -364,20 +319,31 @@ func (s *Service) runBackupJobCore(
 	// to rename it. Otherwise an unowned snapshot could be moved into a
 	// generation dataset, disappear from this check, and later be mistaken
 	// for job-owned cleanup state.
-	if strings.TrimSpace(job.Target.SSHHost) != "" {
-		for _, sc := range backupScopes {
-			activeDataset := remoteActiveDatasetForSuffix(job.Target.BackupRoot, sc.destSuffix)
-			if activeDataset == "" {
-				continue
-			}
-			foreign, listErr := s.findForeignTargetSnapshots(ctx, job, sc.sourceDataset, activeDataset, backupScopes)
-			if listErr != nil {
-				return fail(fmt.Errorf("pre_backup_foreign_snapshot_check_failed_%s: %w", activeDataset, listErr))
-			}
-			if len(foreign) > 0 {
-				return fail(fmt.Errorf("backup_target_foreign_snapshots_present:%s", strings.Join(foreign, ",")))
+	for _, sc := range backupScopes {
+		activeDataset := remoteActiveDatasetForSuffix(job.Target.BackupRoot, sc.destSuffix)
+		foreign, listErr := s.findForeignTargetSnapshots(ctx, job, sc.sourceDataset, activeDataset, backupScopes)
+		if listErr != nil {
+			return fail(fmt.Errorf("pre_backup_foreign_snapshot_check_failed_%s: %w", activeDataset, listErr))
+		}
+		if len(foreign) > 0 {
+			return fail(fmt.Errorf("backup_target_foreign_snapshots_present:%s", strings.Join(foreign, ",")))
+		}
+	}
+
+	prune := func(keepLast bool) error {
+		var pruneErr error
+		if keepLast {
+			var lines []string
+			lines, pruneErr = s.pruneBackupJob(ctx, job, backupScopes)
+			for _, line := range lines {
+				note(line)
 			}
 		}
+		lines, generationErr := s.pruneArchivedGenerations(ctx, job, backupScopes)
+		for _, line := range lines {
+			note(line)
+		}
+		return errors.Join(pruneErr, generationErr)
 	}
 
 	if since, localPoints, err := s.backupUnchangedSince(ctx, job, backupScopes); err != nil {
@@ -385,34 +351,28 @@ func (s *Service) runBackupJobCore(
 	} else if since != "" {
 		note("backup_unchanged_since: " + since)
 		logger.L.Info().Uint("job_id", job.ID).Str("snapshot", since).Msg("backup_skipped_unchanged")
-		if job.PruneKeepLast > 0 && localPoints > job.PruneKeepLast {
-			pruneOutput, pruneErr := s.pruneBackupJob(ctx, job, backupScopes)
-			for _, line := range pruneOutput {
-				note(line)
-			}
-			runErr = pruneErr
-		}
-		generationOutput, generationErr := s.pruneArchivedGenerations(ctx, job, backupScopes)
-		for _, line := range generationOutput {
-			note(line)
-		}
-		runErr = errors.Join(runErr, generationErr)
+		runErr = prune(job.PruneKeepLast > 0 && localPoints > job.PruneKeepLast)
 		return runErr
 	}
 
-	// Re-verify the replication lease immediately before the
-	// transfer starts. The lease may have expired or been
-	// transferred to another node since the initial check.
-	if jobGuestType != "" && jobGuestID > 0 {
+	// The lease can change hands while a guest stops, so it's checked before
+	// stopping and again at the transfer boundary.
+	leaseHeld := func() error {
+		if jobGuestType == "" || jobGuestID == 0 {
+			return nil
+		}
 		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, jobGuestType, jobGuestID, s.localNodeID())
 		if leaseErr != nil {
-			runErr = fmt.Errorf("pre_transfer_lease_check_failed: %w", leaseErr)
-			return runErr
+			return fmt.Errorf("pre_transfer_lease_check_failed: %w", leaseErr)
 		}
 		if !allowed {
-			runErr = fmt.Errorf("lease_lost_before_transfer: ownership transferred to another node")
-			return runErr
+			return fmt.Errorf("lease_lost_before_transfer: ownership transferred to another node")
 		}
+		return nil
+	}
+	if err := leaseHeld(); err != nil {
+		runErr = err
+		return runErr
 	}
 
 	guestRestore, guestStoppedByBackup, quiesceErr := s.quiesceBackupGuestContext(ctx, job, vmRID)
@@ -449,28 +409,16 @@ func (s *Service) runBackupJobCore(
 		s.rollbackBackupTopologyArchives(rollbackCtx, &job.Target, topologyArchives)
 	}()
 
-	if strings.TrimSpace(job.Target.SSHHost) != "" {
-		archives, archiveErr := s.archiveChangedBackupTopologies(ctx, job, backupScopes)
-		if archiveErr != nil {
-			return fail(fmt.Errorf("backup_topology_preflight_failed: %w", archiveErr))
-		}
-		topologyArchives = archives
-		for _, archive := range archives {
-			note(fmt.Sprintf("backup_topology_rotated: %s -> %s", archive.Active, archive.Archived))
-		}
+	topologyArchives, archiveErr := s.archiveChangedBackupTopologies(ctx, job, backupScopes)
+	if archiveErr != nil {
+		return fail(fmt.Errorf("backup_topology_preflight_failed: %w", archiveErr))
+	}
+	for _, archive := range topologyArchives {
+		note(fmt.Sprintf("backup_topology_rotated: %s -> %s", archive.Active, archive.Archived))
 	}
 
-	// Stopping a guest can take long enough for an HA lease to change hands.
-	// Check once more at the actual transfer boundary and let the restart defer
-	// restore the original running state on failure.
-	if jobGuestType != "" && jobGuestID > 0 {
-		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, jobGuestType, jobGuestID, s.localNodeID())
-		if leaseErr != nil {
-			return fail(fmt.Errorf("pre_transfer_lease_check_failed: %w", leaseErr))
-		}
-		if !allowed {
-			return fail(fmt.Errorf("lease_lost_before_transfer: ownership transferred to another node"))
-		}
+	if err := leaseHeld(); err != nil {
+		return fail(err)
 	}
 
 	snapshotName := backupSnapshotNameForJob(job.ID)
@@ -525,17 +473,11 @@ func (s *Service) runBackupJobCore(
 	}
 
 	if job.Mode == clusterModels.BackupJobModeVM || job.Mode == clusterModels.BackupJobModeJail {
-		metadataGuestID := jobGuestID
-		metadataSources := []string{sourceDataset}
-		if job.Mode == clusterModels.BackupJobModeVM {
-			metadataGuestID = vmRID
-			metadataSources = vmSourceDatasets
-		}
 		if metadataErr := s.validateBackupSnapshotNetworkMetadata(
 			ctx,
 			job.Mode,
-			metadataGuestID,
-			metadataSources,
+			guestID,
+			guestSources,
 			snapshotName,
 		); metadataErr != nil {
 			cleanupErr := s.cleanupRejectedBackupSnapshot(ctx, job, snapshotName, backupScopes)
@@ -545,7 +487,7 @@ func (s *Service) runBackupJobCore(
 			return fail(errors.Join(metadataErr, cleanupErr))
 		}
 	}
-	if _, commitErr := s.commitBackupSnapshot(ctx, job, snapshotName, backupScopes); commitErr != nil {
+	if commitErr := s.commitBackupSnapshot(ctx, job, snapshotName, backupScopes); commitErr != nil {
 		return fail(fmt.Errorf("backup_commit_failed: %w", commitErr))
 	}
 
@@ -555,18 +497,7 @@ func (s *Service) runBackupJobCore(
 		}
 	}
 
-	if job.PruneKeepLast > 0 {
-		pruneOutput, pruneErr := s.pruneBackupJob(ctx, job, backupScopes)
-		for _, line := range pruneOutput {
-			note(line)
-		}
-		runErr = pruneErr
-	}
-	generationOutput, generationErr := s.pruneArchivedGenerations(ctx, job, backupScopes)
-	for _, line := range generationOutput {
-		note(line)
-	}
-	runErr = errors.Join(runErr, generationErr)
+	runErr = prune(job.PruneKeepLast > 0)
 	return runErr
 }
 
@@ -640,7 +571,7 @@ func (s *Service) backupUnchangedSince(
 	if err != nil {
 		return "", points, err
 	}
-	if err := validateBackupCommitForJob(metadata, job, last); err != nil {
+	if err := validateBackupCommitForJob(metadata, job.ID, last); err != nil {
 		return "", points, err
 	}
 	if metadata.ManifestHash != backupManifestHash(expected) {
@@ -701,7 +632,7 @@ func (s *Service) sendBackupScopes(
 		)
 		note(output)
 		if err == nil {
-			if code := classifyBackupOutput(output).errorCode(); code != "" {
+			if code := backupOutputErrorCode(output); code != "" {
 				err = errors.New(code)
 			}
 		}

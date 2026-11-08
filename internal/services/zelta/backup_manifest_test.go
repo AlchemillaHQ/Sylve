@@ -247,7 +247,7 @@ func TestValidateBackupCommitForJobRejectsOtherJob(t *testing.T) {
 	}
 	metadata := newBackupCommitMetadata(manifest)
 	job := &clusterModels.BackupJob{ID: 18, Recursive: true}
-	if err := validateBackupCommitForJob(metadata, job, "bk_jh_run"); err == nil || !strings.Contains(err.Error(), "job_mismatch") {
+	if err := validateBackupCommitForJob(metadata, job.ID, "bk_jh_run"); err == nil || !strings.Contains(err.Error(), "job_mismatch") {
 		t.Fatalf("expected job mismatch, got %v", err)
 	}
 }

@@ -50,33 +50,13 @@ func (s *Service) applyBackupJobOperation(
 	}
 	action = strings.ToLower(strings.TrimSpace(action))
 	request := cluster.BackupJobOperationRequest{Action: action, Acquire: acquire, Transition: transition}
-	var lastErr error
-	for attempt := 0; attempt < replicationControlForwardAttempts; attempt++ {
-		if err := ctx.Err(); err != nil {
+	return retryCall(ctx, replicationControlDefaultTimeout, backupJobOperationApplicationError,
+		func(ctx context.Context) error {
+			_, err := cluster.CallLeader[cluster.BackupJobOperationRequest, struct{}](
+				ctx, s.Cluster, "backup-job-operation", request,
+			)
 			return err
-		}
-		callCtx, cancel := context.WithTimeout(ctx, replicationControlDefaultTimeout)
-		_, lastErr = cluster.CallLeader[cluster.BackupJobOperationRequest, struct{}](
-			callCtx, s.Cluster, "backup-job-operation", request,
-		)
-		cancel()
-		if lastErr == nil {
-			return nil
-		}
-		if backupJobOperationApplicationError(lastErr) {
-			return lastErr
-		}
-		if attempt < replicationControlForwardAttempts-1 {
-			timer := time.NewTimer(replicationControlForwardBackoff * time.Duration(attempt+1))
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return ctx.Err()
-			case <-timer.C:
-			}
-		}
-	}
-	return lastErr
+		})
 }
 
 func backupJobOperationApplicationError(err error) bool {
@@ -378,7 +358,6 @@ func (s *Service) reconcileBackupJobOperations(ctx context.Context, queuedOnly b
 					JobID: operation.JobID, Snapshot: request.Snapshot, RemoteDataset: request.RemoteDataset,
 					OperationToken: operation.Token, HolderNodeID: operation.HolderNodeID,
 					EventID: execution.EventID, AuditRecordID: execution.Audit.RecordID,
-					AuditOperationID: execution.OperationID,
 				})
 			}
 		default:

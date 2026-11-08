@@ -28,7 +28,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
-	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"gorm.io/gorm"
 )
 
@@ -36,43 +35,6 @@ var (
 	resolveRestoredVMNetworkAttachment = libvirt.ResolveDesiredTargetVMNetworkAttachment
 	resolveRestoredVMNetworkIdentity   = libvirt.ResolveTargetVMNetworkIdentity
 )
-
-func lockRestoredVMNetworkLifecycle(
-	db *gorm.DB,
-	networks []vmModels.Network,
-) (func(), error) {
-	resolver := networkAttachment.NewResolver(db)
-	bridges := make([]string, 0, len(networks))
-	for idx, network := range networks {
-		expected, err := libvirt.VMNetworkAttachmentFromMetadata(network)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"restored_vm_network_source_attachment_invalid: network=%d: %w",
-				idx+1,
-				err,
-			)
-		}
-		target, err := resolver.ResolveIdentityByName(expected.SwitchType, expected.SwitchName)
-		if err != nil {
-			if errors.Is(err, ErrSwitchNotFound) {
-				return nil, fmt.Errorf(
-					"restored_network_switch_not_found: network=%d: %w",
-					idx+1,
-					err,
-				)
-			}
-			return nil, fmt.Errorf(
-				"restored_vm_network_attachment_incompatible: network=%d: %w",
-				idx+1,
-				err,
-			)
-		}
-		if target.Type == "standard" {
-			bridges = append(bridges, target.Bridge)
-		}
-	}
-	return bridgevlan.LockStandardSwitchLifecycle(bridges...), nil
-}
 
 func normalizeRestoredVMBootROM(value vmModels.VMBootROM) vmModels.VMBootROM {
 	switch strings.TrimSpace(strings.ToLower(string(value))) {
@@ -202,7 +164,9 @@ func (s *Service) reconcileRestoredVMFromDataset(
 
 	var unlockNetworkLifecycle func()
 	if restoreNetwork {
-		unlockNetworkLifecycle, err = lockRestoredVMNetworkLifecycle(s.DB, restored.Networks)
+		unlockNetworkLifecycle, err = lockRestoredNetworkLifecycle(
+			s.DB, "vm", restored.Networks, libvirt.VMNetworkAttachmentFromMetadata,
+		)
 		if err != nil {
 			return err
 		}

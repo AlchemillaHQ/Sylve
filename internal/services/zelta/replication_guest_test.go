@@ -170,7 +170,7 @@ func TestDemoteReplicationPolicyUsesAuthorizedVMTransitionAction(t *testing.T) {
 	}
 
 	vmRuntime.running = true
-	if err := service.stopVMIfPresent(policy.GuestID); err != nil {
+	if err := service.stopVMIfPresentContext(context.Background(), policy.GuestID); err != nil {
 		t.Fatalf("ordinary VM stop: %v", err)
 	}
 	if vmRuntime.ordinaryActions != 1 || vmRuntime.ordinaryAction != "stop" {

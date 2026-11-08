@@ -11,6 +11,7 @@ package zelta
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -46,18 +47,6 @@ func backupTopologyEntries(datasets map[string]string, root string) ([]backupTop
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Suffix < entries[j].Suffix })
 	return entries, nil
-}
-
-func backupTopologiesEqual(left, right []backupTopologyEntry) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for i := range left {
-		if left[i] != right[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func (s *Service) backupScopeTopologyChanged(
@@ -108,7 +97,7 @@ func (s *Service) backupScopeTopologyChanged(
 	if err != nil {
 		return false, err
 	}
-	return !backupTopologiesEqual(localTopology, remoteTopology), nil
+	return !slices.Equal(localTopology, remoteTopology), nil
 }
 
 func (s *Service) archiveChangedBackupTopologies(

@@ -474,16 +474,14 @@ func (s *Service) ReconcileRestoreObservabilityAfterRestart() error {
 
 	var result error
 	var events []clusterModels.BackupEvent
-	if err := s.DB.Where("mode = ? AND operation_id IS NOT NULL", "restore").
+	// Finished events' audits are settled by the pending-audit pass below.
+	if err := s.DB.Where("mode = ? AND operation_id IS NOT NULL AND status NOT IN ?",
+		"restore", []string{"success", "failed", "interrupted"}).
 		Order("id ASC").Find(&events).Error; err != nil {
 		return err
 	}
 	for i := range events {
 		event := &events[i]
-		if restoreEventTerminal(event.Status) {
-			s.finalizeRestoreAuditForEvent(event)
-			continue
-		}
 		operationID := ""
 		if event.OperationID != nil {
 			operationID = strings.TrimSpace(*event.OperationID)

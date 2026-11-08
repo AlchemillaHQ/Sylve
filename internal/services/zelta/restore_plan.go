@@ -333,7 +333,6 @@ func (s *Service) prepareTargetRestoreDatasetPlan(
 	target *clusterModels.BackupTarget,
 	preferredRemoteDataset string,
 	snapshot string,
-	restoreRecursive bool,
 ) (remoteRestoreDatasetPlan, error) {
 	snapshot, err := normalizeSnapshotName(snapshot)
 	if err != nil {
@@ -357,7 +356,7 @@ func (s *Service) prepareTargetRestoreDatasetPlan(
 		target,
 		resolved,
 		snapshot,
-		restoreRecursive,
+		true,
 	)
 	if err != nil {
 		return remoteRestoreDatasetPlan{}, fmt.Errorf("restore_preflight_recursive_snapshot_failed: %w", err)
@@ -367,7 +366,7 @@ func (s *Service) prepareTargetRestoreDatasetPlan(
 			return remoteRestoreDatasetPlan{}, err
 		}
 	}
-	expected, err := inventory.restoreManifest(snapshot, restoreRecursive)
+	expected, err := inventory.restoreManifest(snapshot, true)
 	if err != nil {
 		return remoteRestoreDatasetPlan{}, fmt.Errorf("restore_preflight_recursive_snapshot_failed: %w", err)
 	}
@@ -376,7 +375,7 @@ func (s *Service) prepareTargetRestoreDatasetPlan(
 		resolvedRemoteDataset:  resolved,
 		snapshot:               snapshot,
 		commitMetadata:         metadata,
-		restoreRecursive:       restoreRecursive,
+		restoreRecursive:       true,
 		expectedManifest:       expected,
 		manifestInventory:      inventory,
 	}, nil

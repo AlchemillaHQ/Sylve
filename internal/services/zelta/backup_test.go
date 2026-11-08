@@ -17,51 +17,30 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
 
-func TestClassifyBackupOutput(t *testing.T) {
+func TestBackupOutputErrorCode(t *testing.T) {
 	tests := []struct {
 		name   string
 		output string
-		want   backupOutputKind
+		want   string
 	}{
-		{"up to date", "source and target: up-to-date", backupOutputUpToDate},
-		{"up to date alt", "No datasets to backup, source and target are up-to-date", backupOutputUpToDate},
-		{"no source", "error: No source: tank/data does not exist", backupOutputBlockedNoSource},
-		{"no source snapshot", "error: No source snapshot found", backupOutputBlockedNoSourceSnapshot},
-		{"target diverged", "error: Target has diverged from source", backupOutputBlockedTargetDiverged},
-		{"target diverged alt", "Target diverged after last sync", backupOutputBlockedTargetDiverged},
-		{"target local writes", "error: Target has local writes preventing sync", backupOutputBlockedTargetLocalWrites},
-		{"no snapshot diverged", "No snapshot; target diverged", backupOutputBlockedNoSnapshotDiverged},
-		{"no common snapshot", "No common snapshot (diverged)", backupOutputBlockedNoCommonSnapshot},
-		{"unknown", "something completely unexpected happened", backupOutputUnknown},
-		{"empty", "", backupOutputUnknown},
+		{"up to date", "source and target: up-to-date", ""},
+		{"up to date alt", "No datasets to backup, source and target are up-to-date", ""},
+		{"no source", "error: No source: tank/data does not exist", backupErrorSourceMissing},
+		{"no source snapshot", "error: No source snapshot found", backupErrorSourceSnapshotMissing},
+		{"target diverged", "error: Target has diverged from source", backupErrorTargetDiverged},
+		{"target diverged alt", "Target diverged after last sync", backupErrorTargetDiverged},
+		{"target local writes", "error: Target has local writes preventing sync", backupErrorTargetLocalWrites},
+		{"no snapshot diverged", "No snapshot; target diverged", backupErrorTargetDiverged},
+		{"no common snapshot", "No common snapshot (diverged)", backupErrorTargetDiverged},
+		{"unknown", "something completely unexpected happened", ""},
+		{"empty", "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := classifyBackupOutput(tt.output); got != tt.want {
-				t.Fatalf("classifyBackupOutput(%q) = %q, want %q", tt.output, got, tt.want)
+			if got := backupOutputErrorCode(tt.output); got != tt.want {
+				t.Fatalf("backupOutputErrorCode(%q) = %q, want %q", tt.output, got, tt.want)
 			}
 		})
-	}
-}
-
-func TestBackupOutputKindErrorCode(t *testing.T) {
-	tests := []struct {
-		kind backupOutputKind
-		want string
-	}{
-		{backupOutputBlockedNoSource, backupErrorSourceMissing},
-		{backupOutputBlockedNoSourceSnapshot, backupErrorSourceSnapshotMissing},
-		{backupOutputBlockedTargetLocalWrites, backupErrorTargetLocalWrites},
-		{backupOutputBlockedTargetDiverged, backupErrorTargetDiverged},
-		{backupOutputBlockedNoSnapshotDiverged, backupErrorTargetDiverged},
-		{backupOutputBlockedNoCommonSnapshot, backupErrorTargetDiverged},
-		{backupOutputUpToDate, ""},
-		{backupOutputUnknown, ""},
-	}
-	for _, tt := range tests {
-		if got := tt.kind.errorCode(); got != tt.want {
-			t.Fatalf("%q.errorCode() = %q, want %q", tt.kind, got, tt.want)
-		}
 	}
 }
 

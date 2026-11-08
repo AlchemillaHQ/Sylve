@@ -9,8 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
-	"github.com/alchemillahq/sylve/internal/logger"
 )
 
 const (
@@ -19,136 +17,53 @@ const (
 )
 
 type restoreRuntimeGuard struct {
-	guestType        string
-	guestID          uint
-	dataset          string
-	restart          func() error
-	remount          func() error
-	restartAttempted bool
+	guestID   uint
+	dataset   string
+	remount   func() error
+	remounted bool
 }
 
+// restoreAfterFailure mounts the jail's original dataset back once, so the
+// restore fence can restart the jail.
 func (g *restoreRuntimeGuard) restoreAfterFailure(primary error) (error, error) {
-	if g == nil || primary == nil || g.restartAttempted {
+	if g == nil || primary == nil || g.remounted {
 		return primary, nil
 	}
-	g.restartAttempted = true
-	if g.remount != nil {
-		if err := g.remount(); err != nil {
-			remountErr := fmt.Errorf(
-				"restore_%s_remount_failed: guest_id=%d dataset=%s: %w",
-				g.guestType,
-				g.guestID,
-				g.dataset,
-				err,
-			)
-			return errors.Join(primary, remountErr), remountErr
-		}
-	}
-	if g.restart == nil {
-		return primary, nil
-	}
-	logger.L.Info().
-		Str("guest_type", g.guestType).
-		Uint("guest_id", g.guestID).
-		Str("dataset", g.dataset).
-		Msg("restoring_guest_running_state_after_failed_restore")
-	if err := g.restart(); err != nil {
-		restartErr := fmt.Errorf(
-			"restore_%s_restart_failed: guest_id=%d dataset=%s: %w",
-			g.guestType,
+	g.remounted = true
+	if err := g.remount(); err != nil {
+		remountErr := fmt.Errorf(
+			"restore_jail_remount_failed: guest_id=%d dataset=%s: %w",
 			g.guestID,
 			g.dataset,
 			err,
 		)
-		return errors.Join(primary, restartErr), restartErr
+		return errors.Join(primary, remountErr), remountErr
 	}
 	return primary, nil
 }
 
-func (s *Service) prepareInPlaceJailRestore(ctx context.Context, dataset string) (*restoreRuntimeGuard, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
+// The jail restore fence has already stopped the jail; its dataset still has to
+// be unmounted before the promotion renames it.
+func (s *Service) prepareInPlaceJailRestore(
+	ctx context.Context,
+	ctID uint,
+	dataset string,
+) (*restoreRuntimeGuard, error) {
 	dataset = normalizeRestoreDestinationDataset(dataset)
-	if dataset == "" {
-		return nil, fmt.Errorf("restore_jail_dataset_required")
-	}
-	if s == nil || s.Jail == nil {
-		return nil, fmt.Errorf("restore_jail_service_unavailable: dataset=%s", dataset)
-	}
-
-	ctID, err := s.Jail.GetJailCTIDFromDataset(dataset)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"restore_jail_identity_lookup_failed: dataset=%s: %w",
-			dataset,
-			err,
-		)
-	}
-	if ctID == 0 {
-		return nil, fmt.Errorf("restore_jail_identity_invalid: dataset=%s", dataset)
-	}
-
-	wasRunning, err := s.Jail.IsJailRunning(ctID)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"restore_jail_state_check_failed: dataset=%s ct_id=%d: %w",
-			dataset,
-			ctID,
-			err,
-		)
-	}
-
-	guard := &restoreRuntimeGuard{
-		guestType: "jail",
-		guestID:   ctID,
-		dataset:   dataset,
-	}
 	quiesceCtx, cancel := context.WithTimeout(ctx, restoreJailQuiesceTimeout)
 	defer cancel()
-	if !wasRunning {
-		if err := s.waitForJailRestoreDatasetUnmount(quiesceCtx, ctID, dataset); err != nil {
-			return nil, err
-		}
-		guard.remount = func() error {
+	if err := s.waitForJailRestoreDatasetUnmount(quiesceCtx, ctID, dataset); err != nil {
+		return nil, err
+	}
+	return &restoreRuntimeGuard{
+		guestID: ctID,
+		dataset: dataset,
+		remount: func() error {
 			recoveryCtx, cancel := restoreRecoveryContext()
 			defer cancel()
 			return s.mountLocalDataset(recoveryCtx, dataset)
-		}
-		return guard, nil
-	}
-
-	logger.L.Info().
-		Uint("ct_id", ctID).
-		Str("dataset", dataset).
-		Msg("stopping_jail_before_restore_cutover")
-	if err := s.jailActionContext(ctx, int(ctID), "stop"); err != nil {
-		return nil, fmt.Errorf(
-			"restore_jail_stop_failed: dataset=%s ct_id=%d: %w",
-			dataset,
-			ctID,
-			err,
-		)
-	}
-	guard.restart = func() error {
-		recoveryCtx, cancel := guestStateRecoveryContext(ctx)
-		defer cancel()
-		return s.jailActionContext(recoveryCtx, int(ctID), "start")
-	}
-	if err := s.waitForJailRestoreStopped(quiesceCtx, ctID); err != nil {
-		primary, _ := guard.restoreAfterFailure(err)
-		return nil, primary
-	}
-	if err := s.waitForJailRestoreDatasetUnmount(quiesceCtx, ctID, dataset); err != nil {
-		primary, _ := guard.restoreAfterFailure(err)
-		return nil, primary
-	}
-	guard.remount = func() error {
-		recoveryCtx, cancel := restoreRecoveryContext()
-		defer cancel()
-		return s.mountLocalDataset(recoveryCtx, dataset)
-	}
-	return guard, nil
+		},
+	}, nil
 }
 
 func (s *Service) waitForJailRestoreStopped(ctx context.Context, ctID uint) error {
@@ -198,39 +113,4 @@ func waitForRestoreJailRetry(ctx context.Context) bool {
 	case <-time.After(restoreJailQuiesceRetryInterval):
 		return true
 	}
-}
-
-func (s *Service) prepareInPlaceVMRestoreContext(
-	ctx context.Context,
-	vmID uint,
-	dataset string,
-) (*restoreRuntimeGuard, error) {
-	dataset = normalizeRestoreDestinationDataset(dataset)
-	if vmID == 0 {
-		return nil, fmt.Errorf("restore_vm_identity_invalid")
-	}
-	if s == nil || s.VM == nil {
-		return nil, fmt.Errorf("restore_vm_service_unavailable: guest_id=%d", vmID)
-	}
-
-	wasShutOff, err := s.VM.IsDomainShutOff(vmID)
-	if err != nil {
-		if isVMDomainNotFoundError(err) {
-			return &restoreRuntimeGuard{guestType: "vm", guestID: vmID, dataset: dataset}, nil
-		}
-		return nil, fmt.Errorf("restore_vm_state_check_failed: guest_id=%d: %w", vmID, err)
-	}
-	guard := &restoreRuntimeGuard{guestType: "vm", guestID: vmID, dataset: dataset}
-	if wasShutOff {
-		return guard, nil
-	}
-	if err := s.stopVMIfPresentContext(ctx, vmID); err != nil {
-		return nil, fmt.Errorf("restore_vm_stop_failed: guest_id=%d: %w", vmID, err)
-	}
-	guard.restart = func() error {
-		recoveryCtx, cancel := guestStateRecoveryContext(ctx)
-		defer cancel()
-		return s.startVMIfPresentContext(recoveryCtx, vmID)
-	}
-	return guard, nil
 }

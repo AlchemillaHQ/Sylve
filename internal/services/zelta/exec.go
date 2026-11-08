@@ -32,14 +32,6 @@ var zeltaFS = assets.ZeltaFiles
 
 var ZeltaInstallDir string
 
-func zeltaSnapshotName(prefix string) string {
-	prefix = strings.TrimSpace(prefix)
-	if prefix == "" {
-		prefix = "zl"
-	}
-	return fmt.Sprintf("%s_%s", prefix, compactNowToken())
-}
-
 func GetZeltaInstallDir() (string, error) {
 	if ZeltaInstallDir != "" {
 		return ZeltaInstallDir, nil
@@ -145,10 +137,6 @@ func zeltaShareDir() string {
 	return filepath.Join(zeltaInstallDir, "share", "zelta")
 }
 
-func runZeltaWithEnv(ctx context.Context, extraEnv []string, args ...string) (string, error) {
-	return runZeltaWithEnvStreaming(ctx, extraEnv, nil, args...)
-}
-
 func runZeltaWithEnvStreaming(
 	ctx context.Context,
 	extraEnv []string,
@@ -188,10 +176,7 @@ func runZeltaWithEnvStreaming(
 
 	commandKind := "zelta"
 	if len(args) > 0 {
-		switch args[0] {
-		case "backup", "prune", "restore", "match", "report":
-			commandKind += "." + args[0]
-		}
+		commandKind += "." + args[0]
 	}
 	logger.L.Debug().Str("command_kind", commandKind).Msg("exec_zelta_with_env")
 

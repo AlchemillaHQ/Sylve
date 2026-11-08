@@ -337,15 +337,6 @@ func (s *Service) pruneBackupJob(
 	if err != nil {
 		return fail(fmt.Errorf("backup_prune_commit_inventory_failed: %w", err))
 	}
-	for _, inventory := range inventories {
-		if inventory.localSnapshotErr != nil {
-			return fail(fmt.Errorf(
-				"backup_prune_local_snapshot_list_failed: source=%s: %w",
-				inventory.sourceRoot,
-				inventory.localSnapshotErr,
-			))
-		}
-	}
 	commitRoot := remoteActiveDatasetForSuffix(job.Target.BackupRoot, scopes[coordinator].destSuffix)
 	commitSnapshots, ok := backupRetentionSnapshotsForRoot(inventories, commitRoot)
 	if !ok {

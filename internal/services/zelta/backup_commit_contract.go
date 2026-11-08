@@ -7,6 +7,7 @@ package zelta
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -60,33 +61,21 @@ func backupCommitJobIDFromSnapshot(snapshotName string) (uint, bool, error) {
 	return uint(jobID), true, nil
 }
 
-func validateBackupRestoreCommit(
-	metadata backupCommitMetadata,
-	job *clusterModels.BackupJob,
-	snapshotName string,
-) error {
-	if err := validateBackupCommitForJob(metadata, job, snapshotName); err != nil {
+func validateBackupRestoreCommit(metadata backupCommitMetadata, jobID uint, snapshotName string) error {
+	if err := validateBackupCommitForJob(metadata, jobID, snapshotName); err != nil {
 		return fmt.Errorf("restore_backup_commit_invalid: %w", err)
 	}
 	return nil
 }
 
 func backupCommitMetadataEquivalent(left, right backupCommitMetadata) bool {
-	if left.Version != right.Version ||
-		left.JobID != right.JobID ||
-		left.SnapshotName != right.SnapshotName ||
-		left.ManifestHash != right.ManifestHash ||
-		left.EntryCount != right.EntryCount ||
-		left.Recursive != right.Recursive ||
-		len(left.Roots) != len(right.Roots) {
-		return false
-	}
-	for i := range left.Roots {
-		if left.Roots[i] != right.Roots[i] {
-			return false
-		}
-	}
-	return true
+	return left.Version == right.Version &&
+		left.JobID == right.JobID &&
+		left.SnapshotName == right.SnapshotName &&
+		left.ManifestHash == right.ManifestHash &&
+		left.EntryCount == right.EntryCount &&
+		left.Recursive == right.Recursive &&
+		slices.Equal(left.Roots, right.Roots)
 }
 
 func (s *Service) requireRemoteBackupRestoreCommit(
@@ -95,31 +84,12 @@ func (s *Service) requireRemoteBackupRestoreCommit(
 	remoteDataset string,
 	snapshotName string,
 ) (backupCommitMetadata, error) {
-	if job == nil {
-		return backupCommitMetadata{}, fmt.Errorf("backup_job_required")
-	}
 	if !backupSnapshotRequiresCommit(job.ID, snapshotName) {
 		// Restore points created before the commit protocol remain usable. New
 		// snapshots carry the c1 token and can never take this compatibility path.
 		return backupCommitMetadata{}, nil
 	}
-	remoteDataset = normalizeDatasetPath(remoteDataset)
-	if remoteDataset == "" {
-		return backupCommitMetadata{}, fmt.Errorf("restore_remote_dataset_required")
-	}
-	snapshotName = strings.TrimPrefix(strings.TrimSpace(snapshotName), "@")
-	metadata, err := s.getRemoteBackupCommitMetadata(
-		ctx,
-		&job.Target,
-		remoteDataset+"@"+snapshotName,
-	)
-	if err != nil {
-		return backupCommitMetadata{}, fmt.Errorf("restore_backup_snapshot_not_committed: %w", err)
-	}
-	if err := validateBackupRestoreCommit(metadata, job, snapshotName); err != nil {
-		return backupCommitMetadata{}, err
-	}
-	return metadata, nil
+	return s.requireRemoteBackupCommitForJob(ctx, &job.Target, job.ID, remoteDataset, snapshotName)
 }
 
 func (s *Service) requireRemoteBackupRestoreCommitBySnapshot(
@@ -129,36 +99,30 @@ func (s *Service) requireRemoteBackupRestoreCommitBySnapshot(
 	snapshotName string,
 ) (backupCommitMetadata, error) {
 	jobID, required, err := backupCommitJobIDFromSnapshot(snapshotName)
-	if err != nil {
+	if err != nil || !required {
 		return backupCommitMetadata{}, err
 	}
-	if !required {
-		return backupCommitMetadata{}, nil
-	}
-	if target == nil {
-		return backupCommitMetadata{}, fmt.Errorf("backup_target_required")
-	}
+	return s.requireRemoteBackupCommitForJob(ctx, target, jobID, remoteDataset, snapshotName)
+}
+
+func (s *Service) requireRemoteBackupCommitForJob(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	jobID uint,
+	remoteDataset string,
+	snapshotName string,
+) (backupCommitMetadata, error) {
 	remoteDataset = normalizeDatasetPath(remoteDataset)
 	if remoteDataset == "" {
 		return backupCommitMetadata{}, fmt.Errorf("restore_remote_dataset_required")
 	}
 	snapshotName = strings.TrimPrefix(strings.TrimSpace(snapshotName), "@")
-	metadata, err := s.getRemoteBackupCommitMetadata(
-		ctx,
-		target,
-		remoteDataset+"@"+snapshotName,
-	)
+	metadata, err := s.getRemoteBackupCommitMetadata(ctx, target, remoteDataset+"@"+snapshotName)
 	if err != nil {
 		return backupCommitMetadata{}, fmt.Errorf("restore_backup_snapshot_not_committed: %w", err)
 	}
-	if err := metadata.validate(); err != nil {
-		return backupCommitMetadata{}, fmt.Errorf("restore_backup_commit_invalid: %w", err)
-	}
-	if metadata.JobID != jobID {
-		return backupCommitMetadata{}, fmt.Errorf("restore_backup_commit_job_mismatch")
-	}
-	if metadata.SnapshotName != snapshotName {
-		return backupCommitMetadata{}, fmt.Errorf("restore_backup_commit_snapshot_mismatch")
+	if err := validateBackupRestoreCommit(metadata, jobID, snapshotName); err != nil {
+		return backupCommitMetadata{}, err
 	}
 	return metadata, nil
 }

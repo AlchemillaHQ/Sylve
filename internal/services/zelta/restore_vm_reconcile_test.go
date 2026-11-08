@@ -26,6 +26,7 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
+	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 )
@@ -385,7 +386,7 @@ func TestNormalizeRestoredVMNetworksRestoresSlirp(t *testing.T) {
 		Enable: true, SwitchType: networkAttachment.SwitchTypeSlirp, Attachment: &attachment, Emulation: "virtio",
 	}}
 
-	unlock, err := lockRestoredVMNetworkLifecycle(db, networks)
+	unlock, err := lockRestoredNetworkLifecycle(db, "vm", networks, libvirt.VMNetworkAttachmentFromMetadata)
 	if err != nil {
 		t.Fatalf("lock restored SLIRP network: %v", err)
 	}

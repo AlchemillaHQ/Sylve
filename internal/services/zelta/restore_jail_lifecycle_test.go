@@ -7,7 +7,6 @@ package zelta
 import (
 	"context"
 	"errors"
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -124,207 +123,50 @@ func TestJailRestoreFenceStopsAndBlocksMutations(t *testing.T) {
 	}
 }
 
-func TestRunInPlaceJailRestoreCutoverBlocksUnsafeLifecycleStates(t *testing.T) {
+func TestJailRestoreRuntimeGuardRemountsOnce(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name      string
-		stub      *restoreJailLifecycleStub
-		wantError string
-		wantSteps []string
-	}{
-		{
-			name:      "identity lookup fails",
-			stub:      &restoreJailLifecycleStub{lookupErr: errors.New("identity unavailable")},
-			wantError: "restore_jail_identity_lookup_failed",
-			wantSteps: []string{"lookup"},
-		},
-		{
-			name:      "identity is invalid",
-			stub:      &restoreJailLifecycleStub{},
-			wantError: "restore_jail_identity_invalid",
-			wantSteps: []string{"lookup"},
-		},
-		{
-			name:      "runtime state lookup fails",
-			stub:      &restoreJailLifecycleStub{ctID: 42, stateErr: errors.New("state unavailable")},
-			wantError: "restore_jail_state_check_failed",
-			wantSteps: []string{"lookup", "state"},
-		},
-		{
-			name:      "stop fails",
-			stub:      &restoreJailLifecycleStub{ctID: 42, running: true, stopErr: errors.New("stop failed")},
-			wantError: "restore_jail_stop_failed",
-			wantSteps: []string{"lookup", "state", "stop"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cutoverCalls := 0
-			_, err := newRestoreJailLifecycleService(tt.stub).runInPlaceJailRestoreCutover(
-				"tank/sylve/jails/42",
-				func() (string, error) {
-					cutoverCalls++
-					return "tank/sylve/jails/42.old", nil
-				},
-			)
-			if err == nil || !strings.Contains(err.Error(), tt.wantError) {
-				t.Fatalf("error = %v, want %q", err, tt.wantError)
-			}
-			if cutoverCalls != 0 {
-				t.Fatalf("unsafe lifecycle state reached cutover: calls=%d", cutoverCalls)
-			}
-			if !reflect.DeepEqual(tt.stub.steps, tt.wantSteps) {
-				t.Fatalf("steps = %v, want %v", tt.stub.steps, tt.wantSteps)
-			}
-		})
-	}
-}
-
-func TestRunInPlaceJailRestoreCutoverPreservesOriginalRunningStateOnFailure(t *testing.T) {
-	t.Parallel()
-
-	t.Run("initially stopped remains stopped", func(t *testing.T) {
-		stub := &restoreJailLifecycleStub{ctID: 42}
-		primary := errors.New("cutover failed")
-		_, err := newRestoreJailLifecycleService(stub).runInPlaceJailRestoreCutover(
-			"tank/sylve/jails/42",
-			func() (string, error) {
-				stub.steps = append(stub.steps, "cutover")
-				return "", primary
-			},
-		)
-		if !errors.Is(err, primary) {
-			t.Fatalf("cutover error was not preserved: %v", err)
-		}
-		want := []string{"lookup", "state", "cutover"}
-		if !reflect.DeepEqual(stub.steps, want) {
-			t.Fatalf("steps = %v, want %v", stub.steps, want)
-		}
-	})
-
-	t.Run("running jail is restarted", func(t *testing.T) {
-		stub := &restoreJailLifecycleStub{ctID: 42, running: true}
-		primary := errors.New("cutover failed")
-		_, err := newRestoreJailLifecycleService(stub).runInPlaceJailRestoreCutover(
-			"tank/sylve/jails/42",
-			func() (string, error) {
-				stub.steps = append(stub.steps, "cutover")
-				return "", primary
-			},
-		)
-		if !errors.Is(err, primary) {
-			t.Fatalf("cutover error was not preserved: %v", err)
-		}
-		want := []string{"lookup", "state", "stop", "state", "cutover", "start"}
-		if !reflect.DeepEqual(stub.steps, want) {
-			t.Fatalf("steps = %v, want %v", stub.steps, want)
-		}
-	})
-
-	t.Run("restart failure is joined", func(t *testing.T) {
-		primary := errors.New("cutover failed")
-		restart := errors.New("restart failed")
-		stub := &restoreJailLifecycleStub{ctID: 42, running: true, restartErr: restart}
-		_, err := newRestoreJailLifecycleService(stub).runInPlaceJailRestoreCutover(
-			"tank/sylve/jails/42",
-			func() (string, error) {
-				stub.steps = append(stub.steps, "cutover")
-				return "", primary
-			},
-		)
-		if !errors.Is(err, primary) || !errors.Is(err, restart) ||
-			!strings.Contains(err.Error(), "restore_jail_restart_failed") {
-			t.Fatalf("joined error = %v", err)
-		}
-		want := []string{"lookup", "state", "stop", "state", "cutover", "start"}
-		if !reflect.DeepEqual(stub.steps, want) {
-			t.Fatalf("steps = %v, want %v", stub.steps, want)
-		}
-	})
-}
-
-func TestRunInPlaceJailRestoreCutoverSuccessLeavesJailStopped(t *testing.T) {
-	t.Parallel()
-
-	stub := &restoreJailLifecycleStub{ctID: 42, running: true}
-	backup, err := newRestoreJailLifecycleService(stub).runInPlaceJailRestoreCutover(
-		"tank/sylve/jails/42",
-		func() (string, error) {
-			stub.steps = append(stub.steps, "cutover")
-			return "tank/sylve/jails/42_restore-backup-test", nil
-		},
-	)
-	if err != nil {
-		t.Fatalf("cutover: %v", err)
-	}
-	if backup != "tank/sylve/jails/42_restore-backup-test" {
-		t.Fatalf("backup dataset = %q", backup)
-	}
-	want := []string{"lookup", "state", "stop", "state", "cutover"}
-	if !reflect.DeepEqual(stub.steps, want) {
-		t.Fatalf("steps = %v, want %v", stub.steps, want)
-	}
-}
-
-func TestJailRestoreRuntimeGuardSpansFailuresAfterCutover(t *testing.T) {
-	t.Parallel()
-
-	stub := &restoreJailLifecycleStub{ctID: 42, running: true}
-	guard, err := newRestoreJailLifecycleService(stub).prepareInPlaceJailRestore(t.Context(), "tank/sylve/jails/42")
-	if err != nil {
-		t.Fatalf("prepare jail restore: %v", err)
-	}
-	stub.steps = append(stub.steps, "cutover", "properties", "activation-failed")
-	primary := errors.New("remote activation failed")
-	joined, restartErr := guard.restoreAfterFailure(primary)
-	if restartErr != nil || !errors.Is(joined, primary) {
-		t.Fatalf("restore running state: joined=%v restart=%v", joined, restartErr)
-	}
-	// A second deferred/error-reporting pass must not start the guest twice.
-	joined, restartErr = guard.restoreAfterFailure(joined)
-	if restartErr != nil || !errors.Is(joined, primary) {
-		t.Fatalf("second restore running state: joined=%v restart=%v", joined, restartErr)
-	}
-	want := []string{"lookup", "state", "stop", "state", "cutover", "properties", "activation-failed", "start"}
-	if !reflect.DeepEqual(stub.steps, want) {
-		t.Fatalf("steps = %v, want %v", stub.steps, want)
-	}
-}
-
-func TestJailRestoreRuntimeGuardRemountsBeforeRestart(t *testing.T) {
-	t.Parallel()
-
-	var steps []string
+	mounts := 0
 	guard := &restoreRuntimeGuard{
-		guestType: "jail",
-		guestID:   42,
-		dataset:   "tank/sylve/jails/42",
+		guestID: 42,
+		dataset: "tank/sylve/jails/42",
 		remount: func() error {
-			steps = append(steps, "mount")
-			return nil
-		},
-		restart: func() error {
-			steps = append(steps, "start")
+			mounts++
 			return nil
 		},
 	}
-
-	primary := errors.New("cutover failed")
-	joined, restartErr := guard.restoreAfterFailure(primary)
-	if restartErr != nil || !errors.Is(joined, primary) {
-		t.Fatalf("restore result: joined=%v restart=%v", joined, restartErr)
+	primary := errors.New("remote activation failed")
+	joined, remountErr := guard.restoreAfterFailure(primary)
+	if remountErr != nil || !errors.Is(joined, primary) {
+		t.Fatalf("restore after failure: joined=%v remount=%v", joined, remountErr)
 	}
-	if want := []string{"mount", "start"}; !reflect.DeepEqual(steps, want) {
-		t.Fatalf("steps = %v, want %v", steps, want)
+	// A second deferred/error-reporting pass must not mount twice.
+	if _, remountErr = guard.restoreAfterFailure(joined); remountErr != nil || mounts != 1 {
+		t.Fatalf("second pass: remount=%v mounts=%d", remountErr, mounts)
 	}
 }
 
-func TestPrepareInPlaceJailRestoreWaitsForStopAndUsesNormalUnmount(t *testing.T) {
+func TestJailRestoreRuntimeGuardJoinsRemountFailure(t *testing.T) {
 	t.Parallel()
 
-	stub := &restoreJailLifecycleStub{ctID: 42, running: true}
+	mountFailure := errors.New("mount failed")
+	guard := &restoreRuntimeGuard{
+		guestID: 42,
+		dataset: "tank/sylve/jails/42",
+		remount: func() error { return mountFailure },
+	}
+	primary := errors.New("cutover failed")
+	joined, remountErr := guard.restoreAfterFailure(primary)
+	if !errors.Is(joined, primary) || !errors.Is(joined, mountFailure) || !errors.Is(remountErr, mountFailure) ||
+		!strings.Contains(joined.Error(), "restore_jail_remount_failed") {
+		t.Fatalf("joined=%v remount=%v", joined, remountErr)
+	}
+}
+
+func TestPrepareInPlaceJailRestoreUsesNormalUnmount(t *testing.T) {
+	t.Parallel()
+
+	stub := &restoreJailLifecycleStub{ctID: 42}
 	var unmountForces []bool
 	service := newRestoreJailLifecycleService(stub)
 	service.localDatasetUnmounter = func(_ context.Context, _ string, force bool) error {
@@ -332,69 +174,34 @@ func TestPrepareInPlaceJailRestoreWaitsForStopAndUsesNormalUnmount(t *testing.T)
 		return nil
 	}
 
-	guard, err := service.prepareInPlaceJailRestore(t.Context(), "tank/sylve/jails/42")
-	if err != nil {
-		t.Fatalf("prepareInPlaceJailRestore: %v", err)
-	}
-	if guard == nil {
-		t.Fatal("expected restore guard")
+	guard, err := service.prepareInPlaceJailRestore(t.Context(), 42, "tank/sylve/jails/42")
+	if err != nil || guard == nil {
+		t.Fatalf("prepareInPlaceJailRestore: guard=%v err=%v", guard, err)
 	}
 	if !reflect.DeepEqual(unmountForces, []bool{false}) {
 		t.Fatalf("unmount force values = %v, want [false]", unmountForces)
 	}
-	want := []string{"lookup", "state", "stop", "state"}
-	if !reflect.DeepEqual(stub.steps, want) {
-		t.Fatalf("steps = %v, want %v", stub.steps, want)
+	if len(stub.steps) != 0 {
+		t.Fatalf("the fenced jail was touched: %v", stub.steps)
 	}
 }
 
-func TestPrepareInPlaceJailRestoreRestartsAfterBusyUnmount(t *testing.T) {
+func TestPrepareInPlaceJailRestoreFailsWhileDatasetBusy(t *testing.T) {
 	t.Parallel()
 
-	stub := &restoreJailLifecycleStub{ctID: 42, running: true}
-	service := newRestoreJailLifecycleService(stub)
+	service := newRestoreJailLifecycleService(&restoreJailLifecycleStub{ctID: 42})
 	service.localDatasetUnmounter = func(context.Context, string, bool) error {
 		return errors.New("pool or dataset is busy")
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Millisecond)
 	defer cancel()
 
-	guard, err := service.prepareInPlaceJailRestore(ctx, "tank/sylve/jails/42")
+	guard, err := service.prepareInPlaceJailRestore(ctx, 42, "tank/sylve/jails/42")
 	if guard != nil {
 		t.Fatal("busy unmount must not return a restore guard")
 	}
 	if err == nil || !strings.Contains(err.Error(), "restore_jail_dataset_busy") {
 		t.Fatalf("error = %v, want restore_jail_dataset_busy", err)
-	}
-	want := []string{"lookup", "state", "stop", "state", "start"}
-	if !reflect.DeepEqual(stub.steps, want) {
-		t.Fatalf("steps = %v, want %v", stub.steps, want)
-	}
-}
-
-func TestPrepareInPlaceJailRestoreRestartsAfterStopTimeout(t *testing.T) {
-	t.Parallel()
-
-	stub := &restoreJailLifecycleStub{ctID: 42, running: true, stopKeepsRunning: true}
-	service := newRestoreJailLifecycleService(stub)
-	service.localDatasetUnmounter = func(context.Context, string, bool) error {
-		t.Fatal("unmount must not run while jail remains active")
-		return nil
-	}
-
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Millisecond)
-	defer cancel()
-
-	guard, err := service.prepareInPlaceJailRestore(ctx, "tank/sylve/jails/42")
-	if guard != nil {
-		t.Fatal("stop failure must not return a restore guard")
-	}
-	if err == nil || !strings.Contains(err.Error(), "restore_jail_stop_timeout") {
-		t.Fatalf("error = %v, want restore_jail_stop_timeout", err)
-	}
-	want := []string{"lookup", "state", "stop", "state", "start"}
-	if !reflect.DeepEqual(stub.steps, want) {
-		t.Fatalf("steps = %v, want %v", stub.steps, want)
 	}
 }
 
@@ -491,110 +298,4 @@ func TestVMRestoreFenceHoldsThroughFinalPlacementCheckAndBlocksMutations(t *test
 	if err := fence.release(); err != nil {
 		t.Fatalf("release VM restore fence: %v", err)
 	}
-}
-
-func TestVMRestoreRuntimeGuardRestoresRunningStateAfterLaterFailure(t *testing.T) {
-	t.Parallel()
-
-	database := testutil.NewSQLiteTestDB(
-		t,
-		&vmModels.VM{},
-		&vmModels.Storage{},
-		&vmModels.VMStorageDataset{},
-		&vmModels.Network{},
-		&vmModels.VMCPUPinning{},
-	)
-	if err := database.Create(&vmModels.VM{RID: 42, Name: "restore-runtime-vm"}).Error; err != nil {
-		t.Fatalf("seed VM: %v", err)
-	}
-	vmStub := &restoreVMLifecycleStub{
-		// prepare checks once, stopVMIfPresent checks again, then its wait loop
-		// observes the domain as shut off after the stop action.
-		shutOffStates: []bool{false, false, true},
-		actionErr:     make(map[string]error),
-	}
-	service := &Service{DB: database, VM: vmStub}
-	guard, err := service.prepareInPlaceVMRestoreContext(context.Background(), 42, "tank/sylve/virtual-machines/42")
-	if err != nil {
-		t.Fatalf("prepare VM restore: %v", err)
-	}
-	if !reflect.DeepEqual(vmStub.actions, []string{"stop"}) {
-		t.Fatalf("actions after prepare = %v", vmStub.actions)
-	}
-
-	primary := errors.New("second VM root failed")
-	joined, restartErr := guard.restoreAfterFailure(primary)
-	if restartErr != nil || !errors.Is(joined, primary) {
-		t.Fatalf("restore running state: joined=%v restart=%v", joined, restartErr)
-	}
-	if !reflect.DeepEqual(vmStub.actions, []string{"stop", "start"}) {
-		t.Fatalf("actions after failure = %v", vmStub.actions)
-	}
-}
-
-func TestVMRestoreRuntimeGuardJoinsRestartFailure(t *testing.T) {
-	t.Parallel()
-
-	database := testutil.NewSQLiteTestDB(
-		t,
-		&vmModels.VM{},
-		&vmModels.Storage{},
-		&vmModels.VMStorageDataset{},
-		&vmModels.Network{},
-		&vmModels.VMCPUPinning{},
-	)
-	if err := database.Create(&vmModels.VM{RID: 43, Name: "restore-runtime-vm"}).Error; err != nil {
-		t.Fatalf("seed VM: %v", err)
-	}
-	restartFailure := errors.New("start failed")
-	vmStub := &restoreVMLifecycleStub{
-		shutOffStates: []bool{false, false, true},
-		actionErr:     map[string]error{"start": restartFailure},
-	}
-	service := &Service{DB: database, VM: vmStub}
-	guard, err := service.prepareInPlaceVMRestoreContext(context.Background(), 43, "tank/sylve/virtual-machines/43")
-	if err != nil {
-		t.Fatalf("prepare VM restore: %v", err)
-	}
-	primary := errors.New("restore failed")
-	joined, restartErr := guard.restoreAfterFailure(primary)
-	if !errors.Is(joined, primary) || !errors.Is(joined, restartFailure) ||
-		restartErr == nil || !strings.Contains(joined.Error(), "restore_vm_restart_failed") {
-		t.Fatalf("joined restart failure = %v (restart=%v)", joined, restartErr)
-	}
-}
-
-// runInPlaceJailRestoreCutover preserves the runtime state of an existing jail
-// until the ZFS cutover succeeds. Identity and runtime-state checks are part of
-// the safety boundary: an in-place restore must never replace a dataset while
-// Sylve cannot prove that the corresponding jail is stopped.
-//
-// A successful cutover deliberately leaves the jail stopped so restored
-// metadata and networking can be reconciled safely. When the cutover fails,
-// promoteRestoredDataset has retained or restored the original dataset, so a
-// jail stopped by this attempt is restarted before the error is returned.
-func (s *Service) runInPlaceJailRestoreCutover(
-	dataset string,
-	cutover func() (string, error),
-) (string, error) {
-	if cutover == nil {
-		return "", fmt.Errorf("restore_jail_cutover_required: dataset=%s", dataset)
-	}
-	guard, err := s.prepareInPlaceJailRestore(context.Background(), dataset)
-	if err != nil {
-		return "", err
-	}
-
-	backupDataset, cutoverErr := cutover()
-	if cutoverErr == nil {
-		return backupDataset, nil
-	}
-
-	primaryErr := fmt.Errorf(
-		"rename_restore_failed: could not promote restored dataset into %s: %w",
-		dataset,
-		cutoverErr,
-	)
-	primaryErr, _ = guard.restoreAfterFailure(primaryErr)
-	return "", primaryErr
 }

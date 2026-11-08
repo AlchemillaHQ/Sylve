@@ -38,7 +38,7 @@ func (s *Service) ProposeBackupTargetCreateCandidate(
 	if target.SSHPort == 0 {
 		target.SSHPort = 22
 	}
-	id, err := s.newRaftObjectID("backup_targets")
+	id, err := s.newRaftObjectID()
 	if err != nil {
 		return nil, fmt.Errorf("new_backup_target_id_failed: %w", err)
 	}
@@ -92,7 +92,7 @@ func (s *Service) PrepareBackupTargetProvisionCreate(
 	if target.SSHPort == 0 {
 		target.SSHPort = 22
 	}
-	id, err := s.newRaftObjectID("backup_targets")
+	id, err := s.newRaftObjectID()
 	if err != nil {
 		return nil, fmt.Errorf("new_backup_target_id_failed: %w", err)
 	}

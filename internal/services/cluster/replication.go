@@ -80,7 +80,7 @@ func (s *Service) ProposeReplicationPolicyCreate(input clusterServiceInterfaces.
 		defer s.clusterJoinMu.Unlock()
 	}
 
-	id, err := s.newRaftObjectID("replication_policies")
+	id, err := s.newRaftObjectID()
 	if err != nil {
 		return fmt.Errorf("new_replication_policy_id_failed: %w", err)
 	}
@@ -914,7 +914,7 @@ func (s *Service) UpdateReplicationPolicyProtectionState(
 func (s *Service) CreateOrUpdateReplicationEvent(event clusterModels.ReplicationEvent) (uint, error) {
 	action := "create"
 	if event.ID == 0 {
-		id, err := s.newRaftObjectID("replication_transition_events")
+		id, err := s.newRaftObjectID()
 		if err != nil {
 			return 0, fmt.Errorf("new_replication_transition_event_id_failed: %w", err)
 		}

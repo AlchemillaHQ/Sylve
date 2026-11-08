@@ -8,7 +8,7 @@
  * under sponsorship from the FreeBSD Foundation.
  */
 
-import type { BackupJob, BackupTarget } from '../types/cluster/backups';
+import type { BackupGuestRef, BackupJob, BackupTarget } from '../types/cluster/backups';
 import type { ClusterDetails, ClusterNode } from '../types/cluster/cluster';
 
 export type BackupJobsClusterMode = 'standalone' | 'clustered' | 'unavailable';
@@ -39,6 +39,18 @@ export type BackupJobsPageResults = {
 
 export function isPositiveSafeInteger(value: number): boolean {
 	return Number.isSafeInteger(value) && value > 0;
+}
+
+export function parseGuestFromDatasetPath(dataset: string): BackupGuestRef {
+	for (const [kind, segment] of [
+		['jail', 'jails'],
+		['vm', 'virtual-machines']
+	] as const) {
+		const match = dataset.match(new RegExp(`(?:^|/)${segment}/(\\d+)(?:$|[/.])`));
+		const id = match ? Number.parseInt(match[1], 10) : 0;
+		if (id > 0) return { kind, id };
+	}
+	return { kind: 'dataset', id: 0 };
 }
 
 export function parsePositiveSafeInteger(value: string): number | null {

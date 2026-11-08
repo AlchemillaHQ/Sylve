@@ -16,7 +16,6 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { ClusterDetails, ClusterNode } from '$lib/types/cluster/cluster';
 	import type {
-		BackupGuestRef,
 		BackupJailMetadataInfo,
 		BackupTarget,
 		BackupTargetDatasetInfo,
@@ -24,6 +23,7 @@
 		RestoreTargetDatasetGroup,
 		SnapshotInfo
 	} from '$lib/types/cluster/backups';
+	import { parseGuestFromDatasetPath } from '$lib/utils/backup-jobs-page-state';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import {
 		buildGenerationAliasMap,
@@ -84,20 +84,6 @@
 	let vmMetadata = $state<BackupVMMetadataInfo | null>(null);
 	let error = $state('');
 	let clusterDetails = $state<ClusterDetails | null>(null);
-
-	function parseGuestFromDatasetPath(datasetPath: string): BackupGuestRef {
-		const jailMatch = datasetPath.match(/(?:^|\/)jails\/(\d+)(?:$|[/.])/);
-		if (jailMatch) {
-			const parsed = Number.parseInt(jailMatch[1], 10);
-			if (!Number.isNaN(parsed) && parsed > 0) return { kind: 'jail', id: parsed };
-		}
-		const vmMatch = datasetPath.match(/(?:^|\/)virtual-machines\/(\d+)(?:$|[/.])/);
-		if (vmMatch) {
-			const parsed = Number.parseInt(vmMatch[1], 10);
-			if (!Number.isNaN(parsed) && parsed > 0) return { kind: 'vm', id: parsed };
-		}
-		return { kind: 'dataset', id: 0 };
-	}
 
 	function formatSnapshotCount(count: number): string {
 		return `${count} ${count === 1 ? 'snap' : 'snaps'}`;

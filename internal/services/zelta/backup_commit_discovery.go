@@ -22,9 +22,6 @@ func snapshotCommitLookupName(
 		return "", err
 	}
 	remoteDataset := snapshotDatasetName(snapshot.Name)
-	if remoteDataset == "" {
-		remoteDataset = normalizeDatasetPath(snapshot.Dataset)
-	}
 	shortName := strings.TrimPrefix(snapshotShortName(snapshot), "@")
 	parsed, err := remoteexec.ParseZFSSnapshot(remoteDataset + "@" + shortName)
 	if err != nil || !parsed.Dataset().Within(root) {
@@ -38,51 +35,12 @@ func (s *Service) filterRestorableBackupSnapshots(
 	job *clusterModels.BackupJob,
 	snapshots []SnapshotInfo,
 ) ([]SnapshotInfo, error) {
-	if job == nil {
-		return nil, fmt.Errorf("backup_job_required")
-	}
-	lookupByIndex := make(map[int]string)
-	lookups := make([]string, 0, len(snapshots))
-	for i, snapshot := range snapshots {
-		shortName := snapshotShortName(snapshot)
-		if !backupSnapshotRequiresCommit(job.ID, shortName) {
-			continue
+	return s.filterCommittedSnapshots(ctx, &job.Target, snapshots, func(shortName string) (uint, bool) {
+		if backupSnapshotRequiresCommit(job.ID, shortName) {
+			return job.ID, true
 		}
-		lookup, err := snapshotCommitLookupName(&job.Target, snapshot)
-		if err != nil {
-			continue
-		}
-		lookupByIndex[i] = lookup
-		lookups = append(lookups, lookup)
-	}
-	metadataBySnapshot, err := s.getRemoteBackupCommitMetadataBatch(ctx, &job.Target, lookups)
-	if err != nil {
-		return nil, err
-	}
-
-	filtered := make([]SnapshotInfo, 0, len(snapshots))
-	for i, snapshot := range snapshots {
-		shortName := snapshotShortName(snapshot)
-		if !backupSnapshotRequiresCommit(job.ID, shortName) {
-			snapshot.Legacy = true
-			filtered = append(filtered, snapshot)
-			continue
-		}
-		lookup, ok := lookupByIndex[i]
-		if !ok {
-			continue
-		}
-		result, ok := metadataBySnapshot[lookup]
-		if !ok || result.Err != nil {
-			continue
-		}
-		if err := validateBackupRestoreCommit(result.Metadata, job, shortName); err != nil {
-			continue
-		}
-		snapshot.Committed = true
-		filtered = append(filtered, snapshot)
-	}
-	return filtered, nil
+		return 0, true
+	})
 }
 
 func (s *Service) filterRestorableTargetSnapshots(
@@ -91,22 +49,40 @@ func (s *Service) filterRestorableTargetSnapshots(
 	datasetKind string,
 	snapshots []SnapshotInfo,
 ) ([]SnapshotInfo, error) {
-	lookupByIndex := make(map[int]string)
-	jobIDByIndex := make(map[int]uint)
+	return s.filterCommittedSnapshots(ctx, target, snapshots, func(shortName string) (uint, bool) {
+		jobID, required, err := backupCommitJobIDFromSnapshot(shortName)
+		if err != nil {
+			return 0, false
+		}
+		return jobID, required || datasetKind != clusterModels.BackupJobModeVM
+	})
+}
+
+// commitJob names the job a snapshot's commit must belong to, or 0 for a legacy
+// restore point that has none; false drops the snapshot.
+func (s *Service) filterCommittedSnapshots(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	snapshots []SnapshotInfo,
+	commitJob func(shortName string) (uint, bool),
+) ([]SnapshotInfo, error) {
+	type candidate struct {
+		jobID  uint
+		keep   bool
+		lookup string
+	}
+	candidates := make([]candidate, len(snapshots))
 	lookups := make([]string, 0, len(snapshots))
 	for i, snapshot := range snapshots {
-		shortName := snapshotShortName(snapshot)
-		jobID, commitRequired, parseErr := backupCommitJobIDFromSnapshot(shortName)
-		if parseErr != nil || !commitRequired {
+		jobID, keep := commitJob(snapshotShortName(snapshot))
+		candidates[i] = candidate{jobID: jobID, keep: keep}
+		if !keep || jobID == 0 {
 			continue
 		}
-		lookup, err := snapshotCommitLookupName(target, snapshot)
-		if err != nil {
-			continue
+		if lookup, err := snapshotCommitLookupName(target, snapshot); err == nil {
+			candidates[i].lookup = lookup
+			lookups = append(lookups, lookup)
 		}
-		lookupByIndex[i] = lookup
-		jobIDByIndex[i] = jobID
-		lookups = append(lookups, lookup)
 	}
 	metadataBySnapshot, err := s.getRemoteBackupCommitMetadataBatch(ctx, target, lookups)
 	if err != nil {
@@ -115,34 +91,20 @@ func (s *Service) filterRestorableTargetSnapshots(
 
 	filtered := make([]SnapshotInfo, 0, len(snapshots))
 	for i, snapshot := range snapshots {
-		shortName := snapshotShortName(snapshot)
-		jobID, commitRequired, parseErr := backupCommitJobIDFromSnapshot(shortName)
-		if parseErr != nil {
+		c := candidates[i]
+		switch {
+		case !c.keep:
 			continue
-		}
-		if !commitRequired {
-			if datasetKind == clusterModels.BackupJobModeVM {
+		case c.jobID == 0:
+			snapshot.Legacy = true
+		default:
+			result, ok := metadataBySnapshot[c.lookup]
+			if c.lookup == "" || !ok || result.Err != nil ||
+				validateBackupRestoreCommit(result.Metadata, c.jobID, snapshotShortName(snapshot)) != nil {
 				continue
 			}
-			snapshot.Legacy = true
-			filtered = append(filtered, snapshot)
-			continue
+			snapshot.Committed = true
 		}
-		lookup, ok := lookupByIndex[i]
-		if !ok || jobIDByIndex[i] != jobID {
-			continue
-		}
-		result, ok := metadataBySnapshot[lookup]
-		if !ok || result.Err != nil {
-			continue
-		}
-		metadata := result.Metadata
-		if err := metadata.validate(); err != nil ||
-			metadata.JobID != jobID ||
-			metadata.SnapshotName != strings.TrimPrefix(shortName, "@") {
-			continue
-		}
-		snapshot.Committed = true
 		filtered = append(filtered, snapshot)
 	}
 	return filtered, nil

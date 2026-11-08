@@ -65,9 +65,6 @@ func (s *Service) applyReplicationRunClaim(
 	if !cluster.ValidReplicationRunClaim(decision) {
 		return fmt.Errorf("replication_run_claim_invalid")
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	if bypassRaft {
 		return s.Cluster.ApplyReplicationPolicyScheduleDecision(decision)
 	}
@@ -75,36 +72,17 @@ func (s *Service) applyReplicationRunClaim(
 		return fmt.Errorf("raft_not_initialized")
 	}
 
-	var lastErr error
-	for attempt := 0; attempt < replicationControlForwardAttempts; attempt++ {
-		if err := ctx.Err(); err != nil {
+	err := retryCall(ctx, replicationRunClaimForwardTimeout, replicationRunClaimApplicationError,
+		func(ctx context.Context) error {
+			_, err := cluster.CallLeader[clusterModels.ReplicationPolicyScheduleDecision, struct{}](
+				ctx, s.Cluster, "replication-run-claim", decision,
+			)
 			return err
-		}
-		callCtx, cancel := context.WithTimeout(ctx, replicationRunClaimForwardTimeout)
-		_, lastErr = cluster.CallLeader[clusterModels.ReplicationPolicyScheduleDecision, struct{}](
-			callCtx, s.Cluster, "replication-run-claim", decision,
-		)
-		cancel()
-		if lastErr == nil {
-			return nil
-		}
-		if replicationRunClaimApplicationError(lastErr) {
-			return lastErr
-		}
-		if attempt < replicationControlForwardAttempts-1 {
-			timer := time.NewTimer(replicationControlForwardBackoff * time.Duration(attempt+1))
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return ctx.Err()
-			case <-timer.C:
-			}
-		}
+		})
+	if err == nil || ctx.Err() != nil || replicationRunClaimApplicationError(err) {
+		return err
 	}
-	if lastErr == nil {
-		lastErr = fmt.Errorf("leader_not_available")
-	}
-	return fmt.Errorf("replication_run_claim_unavailable: %w", lastErr)
+	return fmt.Errorf("replication_run_claim_unavailable: %w", err)
 }
 
 func replicationRunClaimApplicationError(err error) bool {

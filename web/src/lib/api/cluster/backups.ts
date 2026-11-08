@@ -116,26 +116,6 @@ export async function resetBackupTargetHostKey(
 	);
 }
 
-export async function listBackupJobs(
-	targetId?: number,
-	guest?: BackupGuestFilter
-): Promise<BackupJob[]> {
-	const params = new URLSearchParams();
-	if (targetId && targetId > 0) {
-		params.set('targetId', String(targetId));
-	}
-	if (guest && guest.id > 0) {
-		params.set('guestType', guest.kind);
-		params.set('guestId', String(guest.id));
-	}
-	const query = params.toString();
-	return await apiRequestData(
-		`/cluster/backups/jobs${query ? `?${query}` : ''}`,
-		z.array(BackupJobSchema),
-		'GET'
-	);
-}
-
 export async function listBackupJobsResult(
 	targetId?: number,
 	guest?: BackupGuestFilter

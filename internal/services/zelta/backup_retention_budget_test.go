@@ -51,9 +51,6 @@ func TestLimitBackupRetentionCleanupPlanKeepsGenerationsWhole(t *testing.T) {
 	if stats.CandidateGenerations != 130 || stats.SelectedGenerations != 64 || stats.DeferredGenerations != 66 {
 		t.Fatalf("unexpected cleanup stats: %#v", stats)
 	}
-	if stats.CandidateSnapshots != 520 || stats.SelectedSnapshots != 256 {
-		t.Fatalf("unexpected snapshot stats: %#v", stats)
-	}
 	for generation, count := range cleanupPlanGenerationCounts(limited) {
 		if count != 4 {
 			t.Fatalf("generation %q was split: selected %d of 4 snapshots", generation, count)

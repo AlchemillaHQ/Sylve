@@ -251,8 +251,7 @@ func TestRestoreEventAndAuditAreDurableBeforeQueuePublication(t *testing.T) {
 		if err := telemetryDB.First(&currentAudit, queued.AuditRecordID).Error; err != nil {
 			t.Fatalf("audit was not persisted before queue publication: %v", err)
 		}
-		if currentAudit.Status != "pending" || currentAudit.AsyncOperationID != queued.OperationToken ||
-			queued.AuditOperationID != queued.OperationToken {
+		if currentAudit.Status != "pending" || currentAudit.AsyncOperationID != queued.OperationToken {
 			t.Fatalf("pre-queue audit = %+v payload=%+v", currentAudit, queued)
 		}
 		return nil
@@ -469,7 +468,6 @@ func TestOOBRestoreKindsUseOneTerminalEventAndAuditFinalizer(t *testing.T) {
 		payload.HolderNodeID = handle.HolderNodeID
 		payload.EventID = execution.EventID
 		payload.AuditRecordID = execution.Audit.RecordID
-		payload.AuditOperationID = execution.Audit.OperationID
 		failureByToken[handle.Token] = fmt.Errorf("injected_%s_oob_failure", tc.kind)
 		if err := service.handleRestoreFromTargetQueue(context.Background(), payload); err != nil {
 			t.Fatalf("execute %s: %v", tc.kind, err)
@@ -615,7 +613,7 @@ func TestRestoreJobModesFinalizeTheirOwnEventAndAuditOnFailure(t *testing.T) {
 			t.Fatalf("enqueue %s: %v", job.Mode, err)
 		}
 		payload := payloads[job.ID]
-		if payload.EventID == 0 || payload.AuditRecordID != audit.ID || payload.AuditOperationID != payload.OperationToken {
+		if payload.EventID == 0 || payload.AuditRecordID != audit.ID {
 			t.Fatalf("%s payload correlation = %+v", job.Mode, payload)
 		}
 		if err := service.handleRestoreJobQueue(context.Background(), payload); err != nil {

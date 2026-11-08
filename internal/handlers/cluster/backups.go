@@ -498,45 +498,6 @@ func RunBackupJobNow(cS *cluster.Service, zS backupJobRunService) gin.HandlerFun
 	}
 }
 
-func extractGuestFromDatasetPath(dataset string) (string, uint) {
-	dataset = strings.TrimSpace(dataset)
-	if dataset == "" {
-		return "", 0
-	}
-
-	parts := strings.Split(strings.Trim(dataset, "/"), "/")
-	for idx := 0; idx+1 < len(parts); idx++ {
-		segment := strings.TrimSpace(parts[idx])
-		if segment != "jails" && segment != "virtual-machines" {
-			continue
-		}
-
-		raw := strings.TrimSpace(parts[idx+1])
-		if raw == "" {
-			continue
-		}
-
-		cutAt := len(raw)
-		if split := strings.IndexAny(raw, "._"); split > 0 && split < cutAt {
-			cutAt = split
-		}
-		raw = strings.TrimSpace(raw[:cutAt])
-		if raw == "" {
-			continue
-		}
-
-		guestID, err := strconv.ParseUint(raw, 10, 64)
-		if err == nil && guestID > 0 {
-			if segment == "jails" {
-				return clusterModels.BackupJobModeJail, uint(guestID)
-			}
-			return clusterModels.BackupJobModeVM, uint(guestID)
-		}
-	}
-
-	return "", 0
-}
-
 // @Summary List Backup Job Snapshots
 // @Description List restorable snapshots produced by a backup job
 // @Tags Cluster Backups
@@ -677,10 +638,7 @@ func RestoreBackupJob(cS *cluster.Service, zS backupJobRestoreService) gin.Handl
 		}
 
 		if job.Mode == clusterModels.BackupJobModeJail || job.Mode == clusterModels.BackupJobModeVM {
-			guestType, guestID := extractGuestFromDatasetPath(job.JailRootDataset)
-			if guestID == 0 {
-				guestType, guestID = extractGuestFromDatasetPath(job.SourceDataset)
-			}
+			guestType, guestID := clusterModels.BackupJobGuestIdentity(job)
 
 			restoreNodeID := runnerNodeID
 			if restoreNodeID == "" {

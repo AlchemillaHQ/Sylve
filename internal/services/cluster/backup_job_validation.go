@@ -74,8 +74,6 @@ type BackupJobSafetyValidationResult struct {
 	GuestType       string `json:"guestType,omitempty"`
 	GuestID         uint   `json:"guestId,omitempty"`
 	FriendlySource  string `json:"friendlySource"`
-	OwnerNodeID     string `json:"ownerNodeId,omitempty"`
-	OwnerEpoch      uint64 `json:"ownerEpoch,omitempty"`
 
 	PlacementFence  *clusterModels.BackupJobPlacementFence         `json:"placementFence,omitempty"`
 	TargetReadiness *clusterModels.BackupTargetNodeReadinessUpdate `json:"targetReadiness,omitempty"`
@@ -161,17 +159,6 @@ func backupJobFriendlySourceWithDB(db *gorm.DB, request BackupJobSafetyValidatio
 	}
 }
 
-func backupJobPlacementOwner(fence *clusterModels.BackupJobPlacementFence, localNodeID string) (string, uint64) {
-	if fence == nil || !fence.PolicyPresent {
-		return strings.TrimSpace(localNodeID), 0
-	}
-	owner := strings.TrimSpace(fence.PolicyActiveNodeID)
-	if owner == "" {
-		owner = strings.TrimSpace(fence.PolicySourceNodeID)
-	}
-	return owner, fence.PolicyOwnerEpoch
-}
-
 // ValidateBackupJobSafetyLocal evaluates runner-local durable inventory in one
 // database transaction and returns a typed receipt bound to this node.
 func (s *Service) ValidateBackupJobSafetyLocal(
@@ -240,7 +227,6 @@ func (s *Service) ValidateBackupJobSafetyLocal(
 				return err
 			}
 			result.PlacementFence = &fence
-			result.OwnerNodeID, result.OwnerEpoch = backupJobPlacementOwner(&fence, localNodeID)
 		}
 		return nil
 	})
