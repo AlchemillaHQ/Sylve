@@ -345,10 +345,6 @@ func (s *Service) upsertRestoredJailState(
 			AllowedOptions:    append([]string{}, restored.AllowedOptions...),
 			MetadataMeta:      restored.MetadataMeta,
 			MetadataEnv:       restored.MetadataEnv,
-			StartLogs:         restored.StartLogs,
-			StopLogs:          restored.StopLogs,
-			StartedAt:         restored.StartedAt,
-			StoppedAt:         restored.StoppedAt,
 		}
 
 		if existingFound {
@@ -377,10 +373,6 @@ func (s *Service) upsertRestoredJailState(
 				"AllowedOptions",
 				"MetadataMeta",
 				"MetadataEnv",
-				"StartLogs",
-				"StopLogs",
-				"StartedAt",
-				"StoppedAt",
 			).Updates(&baseJail).Error; err != nil {
 				return fmt.Errorf("failed_to_update_restored_jail_record: %w", err)
 			}

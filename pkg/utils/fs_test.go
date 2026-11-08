@@ -64,4 +64,19 @@ func TestWriteFileIfChangedLeavesIdenticalFileUntouched(t *testing.T) {
 	if data, _ := os.ReadFile(path); string(data) != "two" {
 		t.Fatalf("changed content not written: %q", data)
 	}
+
+	// Same size and mtime as the last write: trusted without reading.
+	info, _ := os.Stat(path)
+	if err := os.WriteFile(path, []byte("owt"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteFileIfChanged(path, []byte("two"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "owt" {
+		t.Fatalf("file was read and rewritten: %q", data)
+	}
 }

@@ -2198,10 +2198,14 @@ func (s *Service) UpdateName(ctID uint, name string) error {
 // marshalJailJSON records the root's mountpoint next to the jail, so a copy
 // received under another mountpoint can rebase its fstab.
 func marshalJailJSON(jail *jailModels.Jail, mountPoint string) ([]byte, error) {
+	// Runtime state would rewrite the file, and dirty the dataset, on every start and stop.
+	stable := *jail
+	stable.StartedAt, stable.StoppedAt, stable.IntentionallyStopped, stable.UpdatedAt = nil, nil, false, time.Time{}
+	stable.StartLogs, stable.StopLogs = "", ""
 	return json.MarshalIndent(struct {
 		*jailModels.Jail
 		RootMountpoint string `json:"rootMountpoint"`
-	}{jail, mountPoint}, "", "  ")
+	}{&stable, mountPoint}, "", "  ")
 }
 
 func (s *Service) WriteJailJSON(ctId uint) error {

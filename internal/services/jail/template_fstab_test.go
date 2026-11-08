@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -198,5 +199,26 @@ func TestMarshalJailJSONRecordsRootMountpoint(t *testing.T) {
 	}
 	if got.CTID != 23 || got.Fstab != "/a /b nullfs ro 0 0" || got.RootMountpoint != "/tank/sylve/jails/23" {
 		t.Fatalf("jail.json = %s", raw)
+	}
+}
+
+func TestMarshalJailJSONLeavesOutRuntimeState(t *testing.T) {
+	started := time.Now()
+	running := &jailModels.Jail{Name: "web", StartedAt: &started, StartLogs: "started", UpdatedAt: started}
+	stopped := &jailModels.Jail{Name: "web", StoppedAt: &started, StopLogs: "stopped", IntentionallyStopped: true}
+
+	a, err := marshalJailJSON(running, "/jails/web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := marshalJailJSON(stopped, "/jails/web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(a) != string(b) {
+		t.Fatalf("start/stop changed jail.json:\n%s\n%s", a, b)
+	}
+	if running.StartedAt == nil || running.StartLogs == "" {
+		t.Fatal("marshalJailJSON modified the caller's jail")
 	}
 }

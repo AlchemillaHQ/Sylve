@@ -197,12 +197,6 @@ func (s *Service) reconcileRestoredVMFromDataset(
 	}
 	restored.BootROM = normalizeRestoredVMBootROM(restored.BootROM)
 
-	restored.ID = 0
-	restored.CreatedAt = restored.CreatedAt.UTC().AddDate(-1000, 0, 0)
-	restored.UpdatedAt = restored.UpdatedAt.UTC().AddDate(-1000, 0, 0)
-	restored.State = 0
-	restored.StartedAt = nil
-	restored.StoppedAt = nil
 	restored.CPUPinning = []vmModels.VMCPUPinning{}
 	restored.PCIDevices = []int{}
 

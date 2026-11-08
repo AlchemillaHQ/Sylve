@@ -352,6 +352,8 @@ func (s *Service) writeVMJsonWithDB(db *gorm.DB, rid uint) error {
 		}
 	}
 
+	// Runtime state would rewrite the file, and dirty the dataset, on every start and stop.
+	vm.StartedAt, vm.StoppedAt, vm.IntentionallyStopped, vm.UpdatedAt = nil, nil, false, time.Time{}
 	vmJsonData, err := json.MarshalIndent(vm, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_vm_to_json: %w", err)

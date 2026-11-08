@@ -346,6 +346,9 @@ func (s *Service) registerCalls() {
 	OnLeader(s, "backup-job-state", func(_ context.Context, _ string, update BackupJobRuntimeStateUpdate) (struct{}, error) {
 		return struct{}{}, s.UpdateBackupJobRuntimeState(update)
 	})
+	OnLeader(s, "backup-job-schedule", func(_ context.Context, _ string, decision clusterModels.BackupJobScheduleDecision) (struct{}, error) {
+		return struct{}{}, s.ApplyBackupJobScheduleDecision(decision)
+	})
 	OnLeader(s, "replication-policy-state", func(_ context.Context, _ string, update ReplicationPolicyRuntimeState) (struct{}, error) {
 		return struct{}{}, s.ProposeReplicationPolicyStateUpdate(update)
 	})

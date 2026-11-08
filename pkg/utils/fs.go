@@ -11,6 +11,7 @@ package utils
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/h2non/filetype"
@@ -430,11 +432,40 @@ func AtomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	return nil
 }
 
+type writtenFile struct {
+	size    int64
+	modTime time.Time
+	sum     [sha256.Size]byte
+}
+
+var writtenFiles sync.Map
+
 func WriteFileIfChanged(path string, data []byte, perm os.FileMode) error {
-	if current, err := os.ReadFile(path); err == nil && bytes.Equal(current, data) {
-		return nil
+	sum := sha256.Sum256(data)
+	remember := func() {
+		if info, err := os.Stat(path); err == nil {
+			writtenFiles.Store(path, writtenFile{info.Size(), info.ModTime(), sum})
+		}
 	}
-	return AtomicWriteFile(path, data, perm)
+	if info, err := os.Stat(path); err == nil {
+		// Reading to compare is itself a write on an atime=on dataset, so trust
+		// the file we wrote last if it is still untouched.
+		if last, ok := writtenFiles.Load(path); ok {
+			w := last.(writtenFile)
+			if w.sum == sum && w.size == info.Size() && w.modTime.Equal(info.ModTime()) {
+				return nil
+			}
+		}
+		if current, err := os.ReadFile(path); err == nil && bytes.Equal(current, data) {
+			remember()
+			return nil
+		}
+	}
+	if err := AtomicWriteFile(path, data, perm); err != nil {
+		return err
+	}
+	remember()
+	return nil
 }
 
 func ReadLastLines(path string, maxLines int) (string, error) {

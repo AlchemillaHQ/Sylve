@@ -891,7 +891,7 @@ func (s *Service) advanceBackupJobScheduleAfterRestore(job *clusterModels.Backup
 		JobID: current.ID, ExpectedScheduleRevision: current.ScheduleRevision,
 		ExpectedNextRunAt: current.NextRunAt, NextRunAt: &nextRunAt, DecidedAt: now,
 	}
-	if err := s.Cluster.ApplyBackupJobScheduleDecision(decision); err != nil {
+	if err := s.callLeader(context.Background(), "backup-job-schedule", decision); err != nil {
 		return fmt.Errorf("update_next_backup_run: %w", err)
 	}
 	job.NextRunAt = &nextRunAt
