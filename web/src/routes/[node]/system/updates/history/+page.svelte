@@ -1,8 +1,7 @@
 <script lang="ts">
 	import Controls from '$lib/components/custom/System/Updates/Controls.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
-	import TreeTable from '$lib/components/custom/TreeTable.svelte';
-	import Search from '$lib/components/custom/TreeTable/Search.svelte';
+	import TreeTable from '$lib/components/custom/TreeTableRemote.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { hostUpdateActionLabels, type HostUpdateContext } from '$lib/types/system/updates';
@@ -14,14 +13,19 @@
 	import type { CellComponent } from 'tabulator-tables';
 
 	const updates = getContext<HostUpdateContext>('hostUpdates');
-	let query = $state('');
 	let activeRows = $state<Row[] | null>(null);
+	let reload = $state(false);
 	const selectedId = $derived(activeRows?.length === 1 ? Number(activeRows[0].id) : 0);
 	watch(
 		() => updates.node,
 		() => {
 			activeRows = null;
-			query = '';
+		}
+	);
+	watch(
+		() => updates.view?.activeJob?.id,
+		(id, previous) => {
+			if (previous && !id) reload = true;
 		}
 	);
 	function statusFormatter(cell: CellComponent) {
@@ -32,35 +36,35 @@
 			status === 'success' ? '' : 'text-destructive'
 		);
 	}
-	const columns: Column[] = [
-		{ field: 'id', title: 'Operation', formatter: 'plaintext', sorter: 'number' },
-		{ field: 'actionLabel', title: 'Action', formatter: 'plaintext' },
-		{ field: 'status', title: 'Status', formatter: statusFormatter },
-		{ field: 'actor', title: 'Requested by', formatter: 'plaintext' },
-		{
-			field: 'createdAt',
-			title: 'Started',
-			formatter: (cell: CellComponent) => convertDbTime(cell.getValue())
-		},
-		{
-			field: 'finishedAt',
-			title: 'Finished',
-			visible: false,
-			formatter: (cell: CellComponent) => (cell.getValue() ? convertDbTime(cell.getValue()) : '—')
-		}
-	];
-	const tableData = $derived({
-		columns,
-		rows: (updates.view?.history ?? []).map((op) => ({
-			...op,
-			actionLabel: hostUpdateActionLabels[op.action] ?? op.action
-		}))
-	});
+	const table = {
+		columns: [
+			{ field: 'id', title: 'Operation', formatter: 'plaintext' },
+			{
+				field: 'action',
+				title: 'Action',
+				formatter: (cell: CellComponent) =>
+					escapeHTML(hostUpdateActionLabels[cell.getValue()] ?? cell.getValue())
+			},
+			{ field: 'status', title: 'Status', formatter: statusFormatter },
+			{ field: 'actor', title: 'Requested by', formatter: 'plaintext' },
+			{
+				field: 'createdAt',
+				title: 'Started',
+				formatter: (cell: CellComponent) => convertDbTime(cell.getValue())
+			},
+			{
+				field: 'finishedAt',
+				title: 'Finished',
+				visible: false,
+				formatter: (cell: CellComponent) => (cell.getValue() ? convertDbTime(cell.getValue()) : '—')
+			}
+		] as Column[],
+		rows: []
+	};
 </script>
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
-		<Search bind:query />
 		<Button
 			onclick={() => updates.openOperation(selectedId)}
 			size="sm"
@@ -75,12 +79,12 @@
 	</div>
 	<div class="flex h-full flex-col overflow-hidden">
 		{#key updates.node}<TreeTable
-				data={tableData}
+				data={table}
 				name="tt-host-update-history"
+				ajaxURL="/api/system/updates/history"
 				bind:parentActiveRow={activeRows}
-				bind:query
+				bind:reload
 				multipleSelect={false}
-				dataTree={false}
 				initialSort={[{ column: 'id', dir: 'desc' }]}
 				customPlaceholder={updates.error || 'No recent operations'}
 			/>{/key}

@@ -61,6 +61,7 @@ function initial(ctId: number, jailId: number, running: boolean): PackageView {
 		packages,
 		ready: true,
 		offline: !running,
+		sharedSystem: false,
 		reason: '',
 		snapshotSupported: running,
 		inventoryAt: currentTime(),

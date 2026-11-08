@@ -44,7 +44,6 @@ type HostUpdateState struct {
 	InstalledChannel        string                 `json:"-"`
 	InstalledDigest         string                 `json:"-"`
 	InstalledBuiltAt        string                 `json:"-"`
-	RebootBootID            string                 `json:"-"`
 	CreatedAt               time.Time              `json:"-"`
 	UpdatedAt               time.Time              `json:"-"`
 }

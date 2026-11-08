@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { replaceState } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
+	import { storage } from '$lib';
 	import {
 		cancelHostUpdate,
 		getHostUpdateJob,
@@ -10,6 +14,7 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import { connection, planRestart } from '$lib/stores/api.svelte';
 	import {
 		hostUpdateActionLabels,
 		hostUpdateReason,
@@ -46,19 +51,25 @@
 	let bootEnvironment = $state(untrack(() => bootEnvironmentSupported));
 	let now = $state(Date.now());
 	let offset = 0;
-	let notifiedId = 0;
 	let logsComplete = false;
 	let unavailable = $state(false);
+	let reconnecting = $state(false);
+	let ownsRestart = false;
+	// While an installation runs, these mean the node is unreachable, usually
+	// because Sylve is restarting, not that the operation failed.
+	const connectionFailures = ['Request failed', 'Invalid response format', 'node_unreachable'];
 	const controller = new AbortController();
 	const options = () => ({ hostname: node, signal: controller.signal });
 	const running = $derived(!unavailable && (!job || ['queued', 'running'].includes(job.status)));
+	const installing = $derived(running && !!job?.action.endsWith('-apply'));
+	const restartsSylve = (plan: HostUpdateJob['plan']) =>
+		plan?.kind === 'sylve' || !!plan?.transaction.changes.some((change) => change.name === 'sylve');
 	const cancellable = $derived(running && !!job && !job.action.endsWith('-apply'));
 	const expired = $derived(!job?.plan || new Date(job.plan.expiresAt).getTime() <= now);
 	const preview = $derived(
 		job?.action.endsWith('-preview') && job.status === 'success' && !!job.plan
 	);
 	const sylveUpdate = $derived(job?.plan?.kind === 'sylve');
-	const restarting = $derived(job?.phase === 'restarting');
 	const failed = $derived(unavailable || job?.status === 'failed');
 	watch(
 		() => failed,
@@ -106,22 +117,28 @@
 			const result = await getHostUpdateJob(currentId, options());
 			if (controller.signal.aborted) return;
 			if (isAPIResponse(result)) {
-				error = restarting ? 'Waiting for Sylve to reconnect…' : hostUpdateReason(result.message);
+				reconnecting = installing && connectionFailures.includes(result.message);
+				error = reconnecting ? '' : hostUpdateReason(result.message);
 				unavailable = !job;
 				return;
 			}
+			reconnecting = false;
+			const ranHere = !!job && ['queued', 'running'].includes(job.status);
 			job = result;
 			error = '';
 			const finished = !['queued', 'running'].includes(result.status);
-			if (finished && notifiedId !== currentId) {
-				notifiedId = currentId;
-				await afterChange();
+			if (finished && ranHere) void afterChange();
+			// Finished without Sylve going down, so no restart is coming.
+			if (finished && ownsRestart && !connection.plannedRestart?.disconnectObserved) {
+				connection.plannedRestart = null;
+				ownsRestart = false;
 			}
 			if (logsComplete) return;
 			const chunk = await getHostUpdateLogs(currentId, offset, options());
 			if (controller.signal.aborted) return;
 			if (isAPIResponse(chunk)) {
-				error = hostUpdateReason(chunk.message);
+				reconnecting = installing && connectionFailures.includes(chunk.message);
+				if (!reconnecting) error = hostUpdateReason(chunk.message);
 				return;
 			}
 			logs = (logs + chunk.text).slice(-(1 << 20));
@@ -151,25 +168,43 @@
 		}
 	});
 	async function apply() {
-		if (!job?.plan || !acknowledge || expired || applying || loading || running) return;
+		const plan = job?.plan;
+		if (!plan || !acknowledge || expired || applying || loading || running) return;
 		applying = true;
+		// Restarting the node that serves this page drops the UI's connection: show
+		// the restart overlay, and reopen this operation after the automatic reload.
+		if (restartsSylve(plan) && node === storage.localHostname)
+			ownsRestart = planRestart(
+				'Sylve is restarting to finish the update. The page will refresh automatically.'
+			);
 		try {
 			const result = await startHostUpdate(
-				job.plan.kind === 'sylve' ? 'sylve-apply' : 'packages-apply',
+				plan.kind === 'sylve' ? 'sylve-apply' : 'packages-apply',
 				{
-					planId: job.plan.id,
+					planId: plan.id,
 					acknowledge,
-					bootEnvironment:
-						job.plan.kind === 'packages' && bootEnvironmentSupported && bootEnvironment
+					bootEnvironment: plan.kind === 'packages' && bootEnvironmentSupported && bootEnvironment
 				},
 				options()
 			);
 			if (controller.signal.aborted) return;
 			if (isAPIResponse(result)) {
 				error = hostUpdateReason(result.message);
+				if (ownsRestart) connection.plannedRestart = null;
+				ownsRestart = false;
 				return;
 			}
 			currentId = result.id;
+			if (ownsRestart) {
+				const tab = resolve(
+					plan.kind === 'sylve'
+						? '/[node]/system/updates/sylve'
+						: '/[node]/system/updates/packages',
+					{ node }
+				);
+				// eslint-disable-next-line svelte/no-navigation-without-resolve
+				replaceState(`${tab}?job=${result.id}`, page.state);
+			}
 			job = result;
 			logs = '';
 			offset = 0;
@@ -226,6 +261,10 @@
 						{sylveUpdate ? 'Ready to update' : 'Preview ready'}
 					{:else if !job}
 						{unavailable ? 'Operation unavailable' : 'Loading operation…'}
+					{:else if reconnecting}
+						{restartsSylve(job.plan)
+							? 'Sylve is restarting. Reconnecting…'
+							: 'Connection interrupted. Reconnecting…'}
 					{:else if job.phase === 'verifying' && sylveUpdate}
 						Verifying release
 					{:else}

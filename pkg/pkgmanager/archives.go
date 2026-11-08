@@ -133,22 +133,17 @@ func (c *Client) inspectCandidates(ctx context.Context, plan Plan, repos []Repos
 		if change.To == "" || strings.ContainsAny(change.To, "/\\\x00\r\n\t \"'") {
 			return fmt.Errorf("invalid_package_version")
 		}
+		// pkg leaves out the [repo] tag only when a single repository is configured.
 		repository := change.Repository
-		if c.Scope == ScopeHost {
-			var err error
-			repository, err = c.hostChangeRepository(ctx, change, repos)
-			if err != nil {
-				return err
-			}
-			if strings.HasPrefix(change.Name, "FreeBSD-") && repository != c.HostSystem.Repository {
-				return fmt.Errorf("host_base_repository_changed")
-			}
-		} else if repository == "" && len(repos) == 1 {
+		if repository == "" && len(repos) == 1 {
 			repository = repos[0].Name
 		}
 		index := slices.IndexFunc(repos, func(repo Repository) bool { return repo.Name == repository })
 		if index < 0 {
 			return fmt.Errorf("package_repository_ambiguous: %s", change.Name)
+		}
+		if c.Scope == ScopeHost && strings.HasPrefix(change.Name, "FreeBSD-") && repository != c.HostSystem.Repository {
+			return fmt.Errorf("host_base_repository_changed")
 		}
 		if c.Scope == ScopeSystem && repository != c.System.Repository {
 			return fmt.Errorf("package_system_repository_mixed")

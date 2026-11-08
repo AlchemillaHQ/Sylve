@@ -61,7 +61,11 @@ func testService(t *testing.T) *Service {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Service{DB: database, context: t.Context(), directory: t.TempDir(), executable: executable, runningDigest: digest, version: "0.3.1", commit: strings.Repeat("a", 40), builtAt: "2026-10-18T12:00:00Z", releases: sylveupdate.NewClient()}
+	info, err := os.Stat(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Service{DB: database, context: t.Context(), directory: t.TempDir(), executable: executable, executableInfo: info, runningDigest: digest, version: "0.3.1", commit: strings.Repeat("a", 40), builtAt: "2026-10-18T12:00:00Z", releases: sylveupdate.NewClient()}
 	s.installed = s.inspectInstalled
 	s.ownership = func(context.Context, *pkgmanager.Client, string) (bool, string, error) {
 		return true, "sysutils/sylve", nil
@@ -1266,23 +1270,69 @@ func TestRecoveryReconcilesTerminalAuditAfterDatabaseBoundaryCrash(t *testing.T)
 	}
 }
 
-func TestRebootWarningSurvivesMissingBootIdentityAndTimezoneChanges(t *testing.T) {
+func TestRebootRecommendedUpgradeRaisesWarningNotification(t *testing.T) {
 	s := testService(t)
-	raw := "{ sec = 1792310176, usec = 146848 } Sun Oct 18 13:26:16 2026"
-	if bootIdentity(raw) != bootIdentity("{ sec = 1792310176, usec = 146848 } Sun Oct 18 07:56:16 2026") {
-		t.Fatal("timezone changed boot identity")
-	}
-	if err := s.DB.Model(&models.HostUpdateState{}).Where("id = 1").Update("reboot_boot_id", bootIdentity(raw)).Error; err != nil {
+	one := uint(1)
+	op := models.HostUpdateOperation{UUID: uuid.NewString(), Action: "packages-apply", Active: &one}
+	if err := s.DB.Create(&op).Error; err != nil {
 		t.Fatal(err)
 	}
-	for _, test := range []struct {
-		output   string
-		expected bool
-	}{{raw, true}, {"unavailable", true}, {"{ sec = 1792400000, usec = 0 } next boot", false}} {
-		s.command = func(context.Context, string, ...string) (string, error) { return test.output, nil }
-		view, err := s.Get(t.Context())
-		if err != nil || view.RebootRecommended != test.expected {
-			t.Fatalf("reboot marker %q: %+v %v", test.output, view.RebootRecommended, err)
+	s.finish(op, nil, "Update complete."+rebootNotice)
+	var event models.HostUpdateEvent
+	if err := s.DB.First(&event, "kind = ?", "system.updates.operation.host").Error; err != nil || event.Severity != "warning" || event.Title != "Host update completed, reboot recommended" {
+		t.Fatalf("reboot not notified: %+v %v", event, err)
+	}
+}
+
+func TestHistoryPagesFinishedOperationsNewestFirst(t *testing.T) {
+	s := testService(t)
+	one := uint(1)
+	for _, active := range []*uint{nil, nil, nil, &one} {
+		if err := s.DB.Create(&models.HostUpdateOperation{UUID: uuid.NewString(), Action: "check", Active: active}).Error; err != nil {
+			t.Fatal(err)
 		}
+	}
+	first, err := s.History(t.Context(), 1, 2, "", "")
+	if err != nil || first.LastPage != 2 || len(first.Data) != 2 || first.Data[0].ID != 3 {
+		t.Fatalf("first page: %+v %v", first, err)
+	}
+	last, err := s.History(t.Context(), 2, 2, "id", "asc")
+	if err != nil || len(last.Data) != 1 || last.Data[0].ID != 3 {
+		t.Fatalf("last page: %+v %v", last, err)
+	}
+}
+
+func TestRunningJobKeepsLastCheckResults(t *testing.T) {
+	s := testService(t)
+	inventory := []pkgmanager.Package{{Name: "example", Version: "1", Origin: "test/example"}}
+	now := time.Now().UTC()
+	state := models.HostUpdateState{Inventory: inventory, CheckedAt: &now, CheckInventoryHash: pkgmanager.InventoryDigest(inventory), Available: pkgmanager.Plan{Changes: []pkgmanager.Change{{Name: "example", Action: "upgrade", From: "1", To: "2"}}}}
+	if err := s.DB.Model(&models.HostUpdateState{ID: 1}).Select("Inventory", "CheckedAt", "CheckInventoryHash", "Available").Updates(&state).Error; err != nil {
+		t.Fatal(err)
+	}
+	one := uint(1)
+	if err := s.DB.Create(&models.HostUpdateOperation{UUID: uuid.NewString(), Action: "check", Active: &one}).Error; err != nil {
+		t.Fatal(err)
+	}
+	view, err := s.Get(t.Context())
+	if err != nil || view.ActiveJob == nil || !view.UpdatesChecked || view.Inventory[0].Available != "2" {
+		t.Fatalf("running job hid the last check: %+v %v", view, err)
+	}
+}
+
+func TestRecoverRemovesInterruptedReleaseStaging(t *testing.T) {
+	s := testService(t)
+	stage := filepath.Join(filepath.Dir(s.executable), ".sylve-update-123")
+	if err := os.MkdirAll(stage, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stage, "sylve"), []byte("partial download"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Recover(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stage); !os.IsNotExist(err) {
+		t.Fatalf("staging directory survived recovery: %v", err)
 	}
 }

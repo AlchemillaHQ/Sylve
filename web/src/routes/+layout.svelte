@@ -349,7 +349,7 @@
 	});
 
 	let busy = $state(false);
-	let clusterLeaveRestart = $derived(connection.plannedRestart !== null);
+	let restartPlanned = $derived(connection.plannedRestart !== null);
 </script>
 
 <svelte:head>
@@ -404,33 +404,31 @@
 							class="flex flex-col items-center gap-3 rounded-xl border bg-background/90 px-10 py-8 shadow-2xl"
 						>
 							<span
-								class={clusterLeaveRestart
+								class={restartPlanned
 									? 'icon-[mdi--restart] h-16 w-16 animate-spin'
 									: 'icon-[mdi--connection] h-16 w-16'}
 							></span>
 							<p class="text-xl font-semibold text-foreground">
-								{clusterLeaveRestart ? 'Restarting Sylve' : 'Connection lost'}
+								{restartPlanned ? 'Restarting Sylve' : 'Connection lost'}
 							</p>
 							<p class="text-sm text-muted-foreground">
-								{clusterLeaveRestart
-									? 'This node left the cluster. The page will refresh automatically.'
-									: 'Trying to reconnect to the server…'}
+								{connection.plannedRestart?.message ?? 'Trying to reconnect to the server…'}
 							</p>
 							<div class="mt-1 flex gap-1">
 								<span
 									class="inline-block h-2 w-2 animate-bounce rounded-full [animation-delay:0ms]"
-									class:bg-primary={clusterLeaveRestart}
-									class:bg-red-500={!clusterLeaveRestart}
+									class:bg-primary={restartPlanned}
+									class:bg-red-500={!restartPlanned}
 								></span>
 								<span
 									class="inline-block h-2 w-2 animate-bounce rounded-full [animation-delay:150ms]"
-									class:bg-primary={clusterLeaveRestart}
-									class:bg-red-500={!clusterLeaveRestart}
+									class:bg-primary={restartPlanned}
+									class:bg-red-500={!restartPlanned}
 								></span>
 								<span
 									class="inline-block h-2 w-2 animate-bounce rounded-full [animation-delay:300ms]"
-									class:bg-primary={clusterLeaveRestart}
-									class:bg-red-500={!clusterLeaveRestart}
+									class:bg-primary={restartPlanned}
+									class:bg-red-500={!restartPlanned}
 								></span>
 							</div>
 						</div>

@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
@@ -39,6 +40,9 @@ func newPackageTestService(t *testing.T) (*Service, jailModels.Jail) {
 		&jailModels.JailPackagePlan{},
 		&jailModels.JailPackageOperation{},
 		&jailModels.JailPackageNotificationEvent{},
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationLease{},
+		&clusterModels.ReplicationGuestOperation{},
 	)
 	jail := jailModels.Jail{CTID: 900, Name: "package-fixture", Type: jailModels.JailTypeFreeBSD, Storages: []jailModels.Storage{{Pool: "tank", GUID: "123456789", IsBase: true}}}
 	if err := database.Create(&jail).Error; err != nil {
@@ -1287,5 +1291,19 @@ func TestPackageInterruptedUpgradeInvalidatesRecordedResults(t *testing.T) {
 	view, err := s.GetPackages(t.Context(), jail.CTID)
 	if err != nil || !view.Ready || !view.AuditStale || view.AuditError == "" || view.UpdatesChecked || view.SystemUpdatesChecked {
 		t.Fatalf("failed installer retained trusted results: %+v: %v", view, err)
+	}
+}
+
+func TestPackageMonitoringHonorsRestoreFence(t *testing.T) {
+	s, jail := newPackageTestService(t)
+	operation := clusterModels.ReplicationGuestOperation{GuestType: string(clusterModels.ReplicationGuestTypeJail), GuestID: jail.CTID, Operation: clusterModels.ReplicationGuestOperationRestore, State: "running", Token: "package-monitoring-restore-fence", OwnerNodeID: "node-a", TargetNodeID: "node-a", TaskID: 1, AcquiredAt: time.Now().UTC()}
+	if err := s.DB.Create(&operation).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetPackageMonitoring(t.Context(), jail.CTID, jailTypes.PackageMonitoring{Enabled: true, IntervalHours: 6}); err == nil || !strings.Contains(err.Error(), "restore_in_progress") {
+		t.Fatalf("monitoring changed during a restore: %v", err)
+	}
+	if err := s.DB.First(&jail, jail.ID).Error; err != nil || jail.PackageAuditIntervalHours == 6 {
+		t.Fatalf("restore-fenced change was saved: %+v %v", jail, err)
 	}
 }

@@ -270,6 +270,7 @@ func (s *Service) readPackages(ctx context.Context, jail *jailModels.Jail, guid 
 			view.Reason = packageErrorCode(targetErr)
 		} else {
 			view.Offline = target.Offline
+			view.SharedSystem = target.SharedSystem
 			view.SnapshotSupported = safe
 			inventory, readErr := s.packages.client(target, nil).Inventory(readCtx)
 			if readErr != nil {

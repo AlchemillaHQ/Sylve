@@ -21634,7 +21634,7 @@ msgid "Built for"
 msgstr "Built for"
 
 #. 0: job.plan.release.freebsd
-#. 0: published.release.freebsd
+#. 0: view.release.freebsd
 #: src/lib/components/custom/System/Updates/Operation.svelte
 #: src/routes/[node]/system/updates/sylve/+page.svelte
 msgid "FreeBSD {0}"
@@ -21903,7 +21903,7 @@ msgstr "Sylve is up to date."
 msgid "No newer eligible release."
 msgstr "No newer eligible release."
 
-#. 0: convertDbTime(published.releaseCheckedAt)
+#. 0: convertDbTime(view.releaseCheckedAt)
 #: src/routes/[node]/system/updates/sylve/+page.svelte
 msgid "Last checked {0}."
 msgstr "Last checked {0}."
@@ -23601,10 +23601,6 @@ msgstr "No output recorded."
 msgid "Operation unavailable"
 msgstr "Operation unavailable"
 
-#: src/lib/components/custom/Jail/Packages/Operation.svelte
-msgid "pkg must be upgraded on its own first. Apply this, then preview the remaining packages again."
-msgstr "pkg must be upgraded on its own first. Apply this, then preview the remaining packages again."
-
 #: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "Creating boot environment"
 msgstr "Creating boot environment"
@@ -23617,6 +23613,7 @@ msgstr "Downloading release"
 msgid "Verifying release"
 msgstr "Verifying release"
 
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
 #: src/lib/components/custom/System/Updates/Operation.svelte
-msgid "pkg must be updated on its own first. Install this, then preview the remaining packages again."
-msgstr "pkg must be updated on its own first. Install this, then preview the remaining packages again."
+msgid "pkg must be upgraded on its own first. Upgrade it, then preview the remaining packages again."
+msgstr "pkg must be upgraded on its own first. Upgrade it, then preview the remaining packages again."

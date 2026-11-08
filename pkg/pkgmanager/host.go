@@ -224,35 +224,6 @@ func (c *Client) hostMetadata(ctx context.Context, name, archive string) (system
 	return metadata, nil
 }
 
-func (c *Client) hostChangeRepository(ctx context.Context, change Change, repos []Repository) (string, error) {
-	if change.Repository != "" {
-		if slices.ContainsFunc(repos, func(repo Repository) bool { return repo.Name == change.Repository }) {
-			return change.Repository, nil
-		}
-		return "", fmt.Errorf("package_repository_ambiguous: %s", change.Name)
-	}
-	var selected string
-	for _, repo := range repos {
-		result, err := c.Run(ctx, "rquery", "-U", "-r", repo.Name, "%n\t%v", change.Name)
-		if err != nil {
-			return "", err
-		}
-		if result.ExitCode != 0 {
-			return "", commandError(result)
-		}
-		if strings.TrimSpace(result.Stdout) == change.Name+"\t"+change.To {
-			if selected != "" {
-				return "", fmt.Errorf("package_repository_ambiguous: %s", change.Name)
-			}
-			selected = repo.Name
-		}
-	}
-	if selected == "" {
-		return "", fmt.Errorf("package_repository_ambiguous: %s", change.Name)
-	}
-	return selected, nil
-}
-
 func (c *Client) verifyHostCandidates(ctx context.Context, plan Plan, repos []Repository) error {
 	if err := c.validateHostChanges(plan); err != nil {
 		return err

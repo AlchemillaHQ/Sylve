@@ -7,32 +7,15 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
-	import {
-		hostUpdateReason,
-		type HostUpdateContext,
-		type SylveRelease
-	} from '$lib/types/system/updates';
-	import { isAPIResponse, isRequestCancellation, updateCache } from '$lib/utils/http';
+	import { hostUpdateReason, type HostUpdateContext } from '$lib/types/system/updates';
+	import { isAPIResponse, isRequestCancellation } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
-	import { resource, watch } from 'runed';
+	import { watch } from 'runed';
 	import { getContext, onDestroy, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import type { PageData } from './$types';
 
-	let { data }: { data: PageData } = $props();
 	const updates = getContext<HostUpdateContext>('hostUpdates');
 	const view = $derived(updates.view);
-	const cached = $derived(
-		data.node === updates.node &&
-			data.sylveRelease &&
-			data.sylveRelease.releaseChannel === view?.releaseChannel &&
-			!view?.releaseError &&
-			(!view?.releaseCheckedAt ||
-				(data.sylveRelease.releaseCheckedAt &&
-					Date.parse(data.sylveRelease.releaseCheckedAt) > Date.parse(view.releaseCheckedAt)))
-			? data.sylveRelease
-			: view
-	);
 	const previewOnly = $derived(
 		!!view &&
 			view.sylve.mode !== 'standalone' &&
@@ -44,73 +27,32 @@
 	let savingChannel = $state(false);
 	const controller = new AbortController();
 	onDestroy(() => controller.abort());
-	let releaseRequestError = $state('');
-	const releases = resource(
-		[
-			() => updates.node,
-			() => view?.releaseChannel,
-			() => view?.sylve.mode === 'standalone' || previewOnly,
-			() => view?.sylve.sha256,
-			() => data
-		],
-		async (
-			[node, channel, enabled],
-			_,
-			{ signal, data: previous }
-		): Promise<{
-			node: string;
-			channel: typeof channel;
-			view: SylveRelease | null;
-			verified: boolean;
-		}> => {
-			releaseRequestError = '';
-			if (!enabled || !channel) return { node, channel, view: null, verified: false };
-			const fallback =
-				previous?.node === node && previous.channel === channel ? previous.view : cached;
-			const requestSignal = AbortSignal.any([signal, controller.signal]);
-			const result = await getSylveRelease(true, {
-				hostname: node,
-				signal: requestSignal
-			});
-			requestSignal.throwIfAborted();
+	let checking = $state(false);
+	let checkError = $state('');
+	// The page shows the last stored release; GitHub is only asked when the user
+	// checks. Approving an update resolves and verifies the release again anyway.
+	async function check() {
+		if (checking) return;
+		const target = updates.node;
+		checking = true;
+		checkError = '';
+		try {
+			const result = await getSylveRelease(true, { hostname: target, signal: controller.signal });
+			if (controller.signal.aborted || target !== updates.node) return;
 			if (isAPIResponse(result)) {
-				releaseRequestError = result.message || 'release_fetch_failed';
-				return { node, channel, view: fallback, verified: false };
+				checkError = result.message || 'release_fetch_failed';
+				return;
 			}
-			if (result.releaseChannel !== channel) {
-				await updates.refresh();
-				requestSignal.throwIfAborted();
-				return { node, channel, view: fallback, verified: false };
-			}
-			await updateCache(`sylve-release-${channel}`, result, node);
-			requestSignal.throwIfAborted();
-			return { node, channel, view: result, verified: true };
-		},
-		{
-			initialValue: untrack(() => ({
-				node: updates.node,
-				channel: view?.releaseChannel,
-				view: cached,
-				verified: false
-			}))
+			await updates.refresh();
+		} catch (cause) {
+			if (!isRequestCancellation(cause)) throw cause;
+		} finally {
+			if (target === updates.node) checking = false;
 		}
-	);
-	const published = $derived(
-		releases.current.node === updates.node && releases.current.channel === view?.releaseChannel
-			? (releases.current.view ?? cached)
-			: cached
-	);
-	const releaseVerified = $derived(
-		releases.current.node === updates.node &&
-			releases.current.channel === view?.releaseChannel &&
-			releases.current.view?.sylve.sha256 === view?.sylve.sha256 &&
-			releases.current.verified
-	);
-	const releaseError = $derived(releaseRequestError || published?.releaseError || '');
-	const checking = $derived(releases.loading);
+	}
+	const releaseError = $derived(checkError || view?.releaseError || '');
 	const busy = $derived(
 		!updates.enabled ||
-			!releaseVerified ||
 			savingChannel ||
 			checking ||
 			!!releaseError ||
@@ -119,6 +61,7 @@
 	watch([() => updates.node, () => view?.releaseChannel], () => {
 		channel = view?.releaseChannel ?? 'rolling';
 		savingChannel = false;
+		checkError = '';
 	});
 	async function saveChannel() {
 		if (!view || !updates.enabled || savingChannel || channel === view.releaseChannel) return;
@@ -138,6 +81,7 @@
 			await updates.refresh();
 			if (controller.signal.aborted || target !== updates.node) return;
 			toast.success('Release channel saved', { position: 'bottom-center' });
+			void check();
 		} catch (cause) {
 			if (!isRequestCancellation(cause)) throw cause;
 		} finally {
@@ -201,7 +145,7 @@
 				<Button
 					size="sm"
 					class="ml-auto shrink-0"
-					onclick={() => releases.refetch()}
+					onclick={() => void check()}
 					disabled={checking || savingChannel || channel !== view.releaseChannel}
 					variant="outline"
 					><span
@@ -240,7 +184,7 @@
 							</p>
 							<p class="text-destructive">{hostUpdateReason(releaseError)}</p>
 						</div>
-					{:else if (published?.releaseAvailable || previewOnly) && published?.release}
+					{:else if (view?.releaseAvailable || previewOnly) && view?.release}
 						<div class="space-y-4 border-t pt-4 text-sm">
 							<div class="flex flex-wrap items-center justify-between gap-2">
 								<p class="font-medium">
@@ -253,21 +197,21 @@
 							<dl class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
 								<div class="space-y-1">
 									<dt class="text-muted-foreground text-xs">Version</dt>
-									<dd>{published.release.version}</dd>
+									<dd>{view.release.version}</dd>
 								</div>
 								<div class="space-y-1">
 									<dt class="text-muted-foreground text-xs">Built at</dt>
-									<dd title={published.release.builtAt}>
-										{convertDbTime(published.release.builtAt, 'yyyy-MM-dd hh:mm:ss a')}
+									<dd title={view.release.builtAt}>
+										{convertDbTime(view.release.builtAt, 'yyyy-MM-dd hh:mm:ss a')}
 									</dd>
 								</div>
 								<div class="min-w-0 space-y-1">
 									<dt class="text-muted-foreground text-xs">Commit</dt>
-									<dd class="break-all">{published.release.commit.slice(0, 12)}</dd>
+									<dd class="break-all">{view.release.commit.slice(0, 12)}</dd>
 								</div>
 								<div class="space-y-1">
 									<dt class="text-muted-foreground text-xs">Built for</dt>
-									<dd>FreeBSD {published.release.freebsd}</dd>
+									<dd>FreeBSD {view.release.freebsd}</dd>
 								</div>
 							</dl>
 							<Button
@@ -276,11 +220,11 @@
 								disabled={busy || previewOnly}>Update &amp; restart</Button
 							>
 						</div>
-					{:else if checking && !published?.releaseCheckedAt}
+					{:else if checking && !view?.releaseCheckedAt}
 						<p class="text-muted-foreground text-sm" role="status">Loading latest release...</p>
-					{:else if published?.releaseCheckedAt && !previewOnly}
+					{:else if view?.releaseCheckedAt && !previewOnly}
 						<p class="text-sm" role="status">
-							{published.release?.sha256 === view.sylve.sha256
+							{view.release?.sha256 === view.sylve.sha256
 								? 'Sylve is up to date.'
 								: 'No newer eligible release.'}
 						</p>
@@ -289,8 +233,8 @@
 							Release information is unavailable.
 						</p>
 					{/if}
-					{#if published?.releaseCheckedAt}<p class="text-muted-foreground text-xs">
-							Last checked {convertDbTime(published.releaseCheckedAt)}.
+					{#if view?.releaseCheckedAt}<p class="text-muted-foreground text-xs">
+							Last checked {convertDbTime(view.releaseCheckedAt)}.
 						</p>{/if}
 				{:else if savingChannel}
 					<p class="text-muted-foreground text-xs" role="status">Saving release channel...</p>

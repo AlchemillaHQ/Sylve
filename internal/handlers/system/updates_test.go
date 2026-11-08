@@ -33,6 +33,9 @@ type updateStub struct {
 }
 
 func (*updateStub) Get(context.Context) (hostupdates.View, error) { return hostupdates.View{}, nil }
+func (*updateStub) History(context.Context, int, int, string, string) (hostupdates.HistoryPage, error) {
+	return hostupdates.HistoryPage{}, nil
+}
 func (s *updateStub) GetRelease(_ context.Context, refresh bool) (hostupdates.ReleaseView, error) {
 	s.refresh = refresh
 	s.releaseCalls++

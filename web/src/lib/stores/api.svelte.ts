@@ -24,13 +24,18 @@ export const connection = $state({
 	sseConnected: null as boolean | null,
 	plannedRestart: null as null | {
 		disconnectObserved: boolean;
+		message: string;
 	}
 });
 
-export function planClusterLeaveRestart(): boolean {
+export function planRestart(message: string): boolean {
 	const ownsRestartPlan = connection.plannedRestart === null;
-	connection.plannedRestart ??= { disconnectObserved: connection.sseConnected === false };
+	connection.plannedRestart ??= { disconnectObserved: connection.sseConnected === false, message };
 	return ownsRestartPlan;
+}
+
+export function planClusterLeaveRestart(): boolean {
+	return planRestart('This node left the cluster. The page will refresh automatically.');
 }
 
 export const jailPowerSignal = $state({

@@ -166,7 +166,8 @@
 			) {
 				const view = afterChange ? await afterChange() : await getJailPackages(ctId, options());
 				if (controller.signal.aborted || requestedTask !== currentTask) return;
-				upgradeAvailable = !!view && !isAPIResponse(view) && view.ready && !view.offline;
+				upgradeAvailable =
+					!!view && !isAPIResponse(view) && view.ready && !view.offline && !view.sharedSystem;
 				snapshotSupported =
 					upgradeAvailable && !!view && !isAPIResponse(view) && view.snapshotSupported;
 				if (!snapshotSupported) snapshot = false;
@@ -180,7 +181,9 @@
 							? 'Start the jail before applying these changes. This preview has not changed any packages.'
 							: !view.ready
 								? packageReason(view.reason || 'package_operation_in_progress')
-								: '';
+								: view.sharedSystem
+									? packageReason('package_shared_system_mount_unsupported')
+									: '';
 			} else if (completedNow) {
 				await afterChange?.();
 			}

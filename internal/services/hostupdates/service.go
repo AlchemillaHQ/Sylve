@@ -16,7 +16,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -45,17 +44,15 @@ type Job struct {
 
 type View struct {
 	models.HostUpdateState
-	Ready                    bool                         `json:"ready"`
-	Pkgbase                  bool                         `json:"pkgbase"`
-	Reason                   string                       `json:"reason"`
-	UpdatesChecked           bool                         `json:"updatesChecked"`
-	AuditStale               bool                         `json:"auditStale"`
-	RebootRecommended        bool                         `json:"rebootRecommended"`
-	BootEnvironmentSupported bool                         `json:"bootEnvironmentSupported"`
-	Sylve                    sylveupdate.Installed        `json:"sylve"`
-	ReleaseAvailable         bool                         `json:"releaseAvailable"`
-	ActiveJob                *Job                         `json:"activeJob"`
-	History                  []models.HostUpdateOperation `json:"history"`
+	Ready                    bool                  `json:"ready"`
+	Pkgbase                  bool                  `json:"pkgbase"`
+	Reason                   string                `json:"reason"`
+	UpdatesChecked           bool                  `json:"updatesChecked"`
+	AuditStale               bool                  `json:"auditStale"`
+	BootEnvironmentSupported bool                  `json:"bootEnvironmentSupported"`
+	Sylve                    sylveupdate.Installed `json:"sylve"`
+	ReleaseAvailable         bool                  `json:"releaseAvailable"`
+	ActiveJob                *Job                  `json:"activeJob"`
 }
 
 type Monitoring struct {
@@ -73,7 +70,9 @@ type Service struct {
 	commit           string
 	builtAt          string
 	executable       string
+	executableInfo   os.FileInfo
 	runningDigest    string
+	bootEnvironments bool
 	restart          func()
 	mu               sync.Mutex
 	releaseMu        sync.Mutex
@@ -104,29 +103,36 @@ func NewService(ctx context.Context, database, telemetry *gorm.DB, dataPath, ver
 	if err != nil {
 		return nil, err
 	}
+	info, err := os.Stat(executable)
+	if err != nil {
+		return nil, err
+	}
 	digest, err := sylveupdate.FileDigest(executable)
 	if err != nil {
 		return nil, err
 	}
 	s := &Service{
-		DB:            database,
-		Telemetry:     telemetry,
-		context:       ctx,
-		directory:     directory,
-		version:       version,
-		commit:        commit,
-		executable:    executable,
-		runningDigest: digest,
-		restart:       restart,
-		client:        pkgmanager.NewHostClient,
-		probe:         pkgmanager.ProbeHost,
-		releases:      sylveupdate.NewClient(),
-		command:       runCommand,
-		ownership:     packageOwnership,
+		DB:             database,
+		Telemetry:      telemetry,
+		context:        ctx,
+		directory:      directory,
+		version:        version,
+		commit:         commit,
+		executable:     executable,
+		executableInfo: info,
+		runningDigest:  digest,
+		restart:        restart,
+		client:         pkgmanager.NewHostClient,
+		probe:          pkgmanager.ProbeHost,
+		releases:       sylveupdate.NewClient(),
+		command:        runCommand,
+		ownership:      packageOwnership,
 	}
 	if timestamp, err := sylveupdate.ParseBuildTime(builtAt); err == nil {
 		s.builtAt = timestamp.Format(time.RFC3339Nano)
 	}
+	_, err = s.command(ctx, "/sbin/bectl", "check")
+	s.bootEnvironments = err == nil
 	s.installed = s.inspectInstalled
 	if _, err = s.state(); err != nil {
 		return nil, err
@@ -199,8 +205,8 @@ func (s *Service) inspectInstalled(ctx context.Context, state models.HostUpdateS
 	if state.InstalledDigest == s.runningDigest && state.InstalledChannel != "" {
 		installed.Channel = state.InstalledChannel
 	}
-	current, err := sylveupdate.FileDigest(s.executable)
-	if err != nil || current != s.runningDigest {
+	info, err := os.Stat(s.executable)
+	if err != nil || !os.SameFile(info, s.executableInfo) || info.Size() != s.executableInfo.Size() || !info.ModTime().Equal(s.executableInfo.ModTime()) {
 		installed.Reason = "sylve_executable_changed_restart_required"
 		return installed
 	}
@@ -241,7 +247,7 @@ func (s *Service) Get(ctx context.Context) (View, error) {
 	if err != nil {
 		return View{}, err
 	}
-	view := View{HostUpdateState: state, History: []models.HostUpdateOperation{}, AuditStale: true}
+	view := View{HostUpdateState: state, AuditStale: true, BootEnvironmentSupported: s.bootEnvironments}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	view.Sylve = s.installed(ctx, state)
@@ -276,10 +282,12 @@ func (s *Service) Get(ctx context.Context) (View, error) {
 			}
 		}
 	}
+	// While a job runs, the last stored results still describe the stored inventory.
+	current := view.Ready || view.ActiveJob != nil
 	hash := pkgmanager.InventoryDigest(view.Inventory)
 	now := time.Now().UTC()
-	view.UpdatesChecked = view.Ready && state.CheckInventoryHash == hash && state.CheckError == "" && monitoringResultFresh(state, state.CheckedAt, now)
-	view.AuditStale = !view.Ready || state.AuditInventoryHash != pkgmanager.AuditInventoryDigest(view.Inventory) || state.AuditError != "" || !monitoringResultFresh(state, state.AuditAt, now)
+	view.UpdatesChecked = current && state.CheckInventoryHash == hash && state.CheckError == "" && monitoringResultFresh(state, state.CheckedAt, now)
+	view.AuditStale = !current || state.AuditInventoryHash != pkgmanager.AuditInventoryDigest(view.Inventory) || state.AuditError != "" || !monitoringResultFresh(state, state.AuditAt, now)
 	findings := map[string]pkgmanager.AuditPackage{}
 	for _, pkg := range state.Audit.Packages {
 		findings[pkg.Name] = pkg
@@ -298,30 +306,36 @@ func (s *Service) Get(ctx context.Context) (View, error) {
 			pkg.Advisories = finding.Advisories
 		}
 	}
-	bootID, err := s.command(ctx, "/sbin/sysctl", "-n", "kern.boottime")
-	bootID = bootIdentity(bootID)
-	view.RebootRecommended = state.RebootBootID != "" && (err != nil || bootID == "" || bootID == state.RebootBootID)
-	_, err = s.command(ctx, "/sbin/bectl", "check")
-	view.BootEnvironmentSupported = err == nil
-	if err = s.DB.Where("active IS NULL").Order("id DESC").Limit(20).Find(&view.History).Error; err != nil {
-		return view, err
-	}
 	return view, nil
+}
+
+type HistoryPage struct {
+	LastPage int                          `json:"last_page"`
+	Data     []models.HostUpdateOperation `json:"data"`
+}
+
+func (s *Service) History(ctx context.Context, page, size int, sortField, sortDir string) (HistoryPage, error) {
+	page, size = max(page, 1), min(max(size, 1), 500)
+	column, ok := map[string]string{"id": "id", "action": "action", "status": "status", "actor": "actor", "createdAt": "created_at", "finishedAt": "finished_at"}[sortField]
+	if !ok {
+		column = "id"
+	}
+	direction := "DESC"
+	if sortDir == "asc" {
+		direction = "ASC"
+	}
+	var total int64
+	if err := s.DB.WithContext(ctx).Model(&models.HostUpdateOperation{}).Where("active IS NULL").Count(&total).Error; err != nil {
+		return HistoryPage{}, err
+	}
+	history := HistoryPage{LastPage: max(1, int((total+int64(size)-1)/int64(size))), Data: []models.HostUpdateOperation{}}
+	err := s.DB.WithContext(ctx).Where("active IS NULL").Order(column + " " + direction).Offset((page - 1) * size).Limit(size).Find(&history.Data).Error
+	return history, err
 }
 
 func code(err error) string {
 	value, _, _ := strings.Cut(err.Error(), ":")
 	return strings.TrimSpace(value)
-}
-
-var bootTimePattern = regexp.MustCompile(`^\{ sec = ([0-9]+), usec = ([0-9]+) \}`)
-
-func bootIdentity(output string) string {
-	fields := bootTimePattern.FindStringSubmatch(output)
-	if fields == nil {
-		return ""
-	}
-	return fields[1] + ":" + fields[2]
 }
 
 func requireIdle(database *gorm.DB) error {
@@ -558,13 +572,15 @@ func (s *Service) phase(op *models.HostUpdateOperation, phase string) error {
 	return s.DB.Model(op).Updates(map[string]any{"phase": phase, "status": "running"}).Error
 }
 
+const rebootNotice = " Host reboot recommended."
+
 func (s *Service) finish(op models.HostUpdateOperation, cause error, message string) {
 	now := time.Now().UTC()
 	status, phase, failure := "success", "completed", ""
 	if cause != nil {
 		status, phase, failure = "failed", "failed", pkgmanager.Redact(cause.Error())
 	}
-	err := s.DB.Transaction(func(tx *gorm.DB) error {
+	finalize := func(tx *gorm.DB) error {
 		updates := map[string]any{"active": nil, "status": status, "phase": phase, "error": failure, "finished_at": now}
 		if message != "" {
 			updates["result"] = message
@@ -577,11 +593,20 @@ func (s *Service) finish(op models.HostUpdateOperation, cause error, message str
 			severity, title := "info", "Host update completed"
 			if cause != nil {
 				severity, title = "warning", "Host update failed"
+			} else if strings.Contains(message, rebootNotice) {
+				severity, title = "warning", "Host update completed, reboot recommended"
 			}
 			return s.event(tx, "operation", title, strings.TrimSpace(message+" "+failure), severity, op.ID, "history")
 		}
 		return nil
-	})
+	}
+	// A failed write would leave the operation active and block every later one
+	// until Sylve restarts.
+	err := s.DB.Transaction(finalize)
+	for attempt := 1; err != nil && attempt < 3; attempt++ {
+		time.Sleep(time.Duration(attempt) * time.Second)
+		err = s.DB.Transaction(finalize)
+	}
 	if err != nil {
 		logger.L.Error().Err(err).Msg("host_update_completion_failed")
 		return

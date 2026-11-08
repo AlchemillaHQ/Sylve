@@ -44,7 +44,7 @@ func packageResponse(c *gin.Context, value any, err error, status int) {
 		status = http.StatusForbidden
 	case code == "package_service_unavailable" || strings.HasPrefix(code, "pkg_"):
 		status = http.StatusServiceUnavailable
-	case strings.HasPrefix(code, "invalid_") || code == "package_selection_required" || code == "too_many_packages" || code == "duplicate_package_selection":
+	case strings.HasPrefix(code, "invalid") || strings.HasSuffix(code, "_required") || code == "too_many_packages" || code == "duplicate_package_selection":
 		status = http.StatusBadRequest
 	case errors.Is(err, gorm.ErrRecordNotFound) || strings.HasSuffix(code, "_not_found"):
 		status = http.StatusNotFound

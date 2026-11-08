@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -22,7 +23,7 @@ func TestPackageCommandsRequireJailAndCannotInjectFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, " ")
-	if !strings.HasPrefix(joined, "-j 23 ") || !strings.Contains(joined, "IGNORE_OSVERSION=false") || !strings.Contains(joined, "REPO_AUTOUPDATE=false") || !strings.Contains(joined, "PKG_ENABLE_PLUGINS=false") || !strings.Contains(joined, "PKG_ENV={}") {
+	if !strings.HasPrefix(joined, "-j 23 ") || !strings.Contains(joined, "IGNORE_OSVERSION=false") || !strings.Contains(joined, "REPO_AUTOUPDATE=false") || !strings.Contains(joined, "PKG_ENABLE_PLUGINS=false") || !strings.Contains(joined, "PKG_ENV=SYLVE=1") {
 		t.Fatal(args)
 	}
 	for _, target := range []Target{{}, {JID: 23, Name: "jail", Root: "/"}, {Name: "jail", Root: "/private"}} {
@@ -321,6 +322,47 @@ func TestLogWriterRedactsSplitSecretsAndBoundsOutput(t *testing.T) {
 	writer.Flush()
 	if output.Len() > MaxLogBytes+100 {
 		t.Fatal("unbounded log", output.Len())
+	}
+}
+
+func TestConfigOverridesReplaceTargetLists(t *testing.T) {
+	if _, err := os.Stat(DefaultBinary); err != nil {
+		t.Skip("pkg-static is not installed")
+	}
+	config := filepath.Join(t.TempDir(), "pkg.conf")
+	hostile := "PKG_ENV { HTTP_PROXY: \"http://jail:3128\" }\nALIAS { query: \"delete -y\" }\nAUDIT_IGNORE_GLOB [ \"*\" ]\nAUDIT_IGNORE_REGEX [ \".*\" ]\n"
+	if err := os.WriteFile(config, []byte(hostile), 0600); err != nil {
+		t.Fatal(err)
+	}
+	args, err := (&Client{Target: Target{JID: 23, Name: "jail", Root: "/private/jail"}}).args("-vv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(DefaultBinary, append([]string{"-C", config}, args[2:]...)...).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`sylve = "version";`, `SYLVE = "1";`, `"/",`, `"^/$",`} {
+		if !strings.Contains(string(out), want) {
+			t.Fatalf("missing %s in:\n%s", want, out)
+		}
+	}
+	for _, kept := range []string{"jail:3128", "delete -y", `"*"`, `".*"`} {
+		if strings.Contains(string(out), kept) {
+			t.Fatalf("target config %s survived the overrides", kept)
+		}
+	}
+}
+
+func TestLogWriterTreatsCRLFAsOneLineBreak(t *testing.T) {
+	var output bytes.Buffer
+	writer := NewLogWriter(&output)
+	for _, chunk := range []string{"a\r\nb\r", "\nprogress 1%\rprogress 2%\n"} {
+		_, _ = writer.Write([]byte(chunk))
+	}
+	writer.Flush()
+	if output.String() != "a\nb\nprogress 1%\nprogress 2%\n" {
+		t.Fatalf("%q", output.String())
 	}
 }
 

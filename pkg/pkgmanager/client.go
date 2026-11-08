@@ -120,13 +120,17 @@ func (c *Client) args(args ...string) ([]string, error) {
 	if !c.Target.Host {
 		base = []string{selector, target}
 	}
+	// -o replaces a list or object with the given entries, and pkg has no syntax
+	// for an empty one ({} and "" read garbage; an empty regex matches every
+	// package). So the overrides use entries that can't match: package names
+	// never contain a slash. Aliases must go because they shadow built-in commands.
 	base = append(base,
 		"-o", "PKG_DBDIR=/var/db/pkg", "-o", "PKG_CACHEDIR=/var/cache/pkg",
 		"-o", "IGNORE_OSVERSION="+strconv.FormatBool(c.Target.Host), "-o", "IGNORE_OSMAJOR=false",
 		"-o", "PKG_ENABLE_PLUGINS=false", "-o", "ASSUME_ALWAYS_YES=false",
 		"-o", "DEFAULT_ALWAYS_YES=false", "-o", "REPO_AUTOUPDATE=false",
-		"-o", "WARN_SIZE_LIMIT=0", "-o", "AUDIT_IGNORE_GLOB=[]", "-o", "AUDIT_IGNORE_REGEX=[]",
-		"-o", "ALIAS={}", "-o", "SAT_SOLVER=", "-o", "CUDF_SOLVER=",
+		"-o", "WARN_SIZE_LIMIT=0", "-o", "AUDIT_IGNORE_GLOB=/", "-o", "AUDIT_IGNORE_REGEX=^/$",
+		"-o", "ALIAS=sylve=version", "-o", "SAT_SOLVER=", "-o", "CUDF_SOLVER=",
 		"-o", "HANDLE_RC_SCRIPTS=false",
 	)
 	// A jail's pkg.conf is jail-controlled (offline targets run as host root in a
@@ -134,7 +138,7 @@ func (c *Client) args(args ...string) ([]string, error) {
 	if c.Target.Host {
 		base = append(base, "-o", "AUTOREMOVE=false", "-o", "AUTOMERGE=true", "-o", "MERGETOOL=", "-o", "RUN_SCRIPTS=true", "-o", "PKG_TRIGGERS_ENABLE=true")
 	} else {
-		base = append(base, "-o", "PKG_ENV={}")
+		base = append(base, "-o", "PKG_ENV=SYLVE=1")
 	}
 	if c.Target.Offline && !(len(args) == 1 && args[0] == "-vv") {
 		base = append(base, "-o", "RUN_SCRIPTS=false", "-o", "PKG_TRIGGERS_ENABLE=false",

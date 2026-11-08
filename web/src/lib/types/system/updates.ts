@@ -82,7 +82,6 @@ export const HostUpdatesSchema = HostUpdateMonitoringSchema.extend({
 	reason: z.string(),
 	updatesChecked: z.boolean(),
 	auditStale: z.boolean(),
-	rebootRecommended: z.boolean(),
 	bootEnvironmentSupported: z.boolean(),
 	sylve: z.object({
 		mode: z.string(),
@@ -94,8 +93,7 @@ export const HostUpdatesSchema = HostUpdateMonitoringSchema.extend({
 		sha256: z.string(),
 		path: z.string()
 	}),
-	activeJob: HostUpdateJobSchema.nullable(),
-	history: z.array(HostUpdateOperationSchema)
+	activeJob: HostUpdateJobSchema.nullable()
 });
 export const SylveReleaseSchema = HostUpdatesSchema.pick({
 	sylve: true,
@@ -105,7 +103,6 @@ export const SylveReleaseSchema = HostUpdatesSchema.pick({
 	releaseError: true,
 	releaseAvailable: true
 });
-export type SylveRelease = z.infer<typeof SylveReleaseSchema>;
 export type HostUpdates = z.infer<typeof HostUpdatesSchema>;
 export type HostUpdateJob = z.infer<typeof HostUpdateJobSchema>;
 export type HostUpdateAction =
@@ -157,7 +154,6 @@ export function hostUpdateReason(reason = ''): string {
 			'Package metadata could not be verified. Try again, or repair the package database.',
 		host_package_manager_ambiguous:
 			'Both pkg and pkg-devel are installed. Remove one before using host updates.',
-		host_boot_identity_unavailable: 'The host boot time could not be read. Nothing was installed.',
 		host_update_interrupted:
 			'Sylve restarted during this operation. Inspect installed packages and the log before retrying.',
 		host_update_result_mismatch:

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { getHostUpdates, startHostUpdate } from '$lib/api/system/updates';
+	import { getHostUpdateJob, getHostUpdates, startHostUpdate } from '$lib/api/system/updates';
 	import Monitoring from '$lib/components/custom/System/Updates/Monitoring.svelte';
 	import Operation from '$lib/components/custom/System/Updates/Operation.svelte';
 	import {
@@ -123,15 +123,14 @@
 		},
 		{ lazy: false }
 	);
+	// Poll only the running job; the full view is reloaded once it finishes.
 	useInterval(3000, {
-		callback: () => {
-			if (
-				view?.activeJob &&
-				!operationOpen &&
-				!inventory.loading &&
-				document.visibilityState === 'visible'
-			)
-				void refresh();
+		callback: async () => {
+			const active = view?.activeJob;
+			if (!active || operationOpen || inventory.loading || document.visibilityState !== 'visible')
+				return;
+			const job = await getHostUpdateJob(active.id, { hostname: node });
+			if (!isAPIResponse(job) && !['queued', 'running'].includes(job.status)) void refresh();
 		}
 	});
 </script>

@@ -59,6 +59,7 @@ type PackageView struct {
 	Packages             []pkgmanager.Package `json:"packages"`
 	Ready                bool                 `json:"ready"`
 	Offline              bool                 `json:"offline"`
+	SharedSystem         bool                 `json:"sharedSystem"`
 	Reason               string               `json:"reason"`
 	SnapshotSupported    bool                 `json:"snapshotSupported"`
 	InventoryAt          *time.Time           `json:"inventoryAt"`

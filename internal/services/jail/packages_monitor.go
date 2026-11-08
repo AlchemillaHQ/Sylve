@@ -64,46 +64,56 @@ func (s *Service) SetPackageMonitoring(ctx context.Context, ctID uint, monitor j
 	if err != nil {
 		return jailTypes.PackageMonitoring{}, err
 	}
-	jail, guid, err := s.packageJail(ctx, ctID)
-	if err != nil {
+	if _, _, err = s.packageJail(ctx, ctID); err != nil {
 		return jailTypes.PackageMonitoring{}, err
 	}
-	state, err := s.packageState(jail, guid)
-	if err != nil {
-		return jailTypes.PackageMonitoring{}, err
-	}
-	if monitor.CronExpr != "" {
-		monitor.IntervalHours = monitorView(jail, state).IntervalHours
-	}
-	if err = s.savePackageInventory(state); err != nil {
-		return jailTypes.PackageMonitoring{}, err
-	}
-	if monitor.Enabled && (!jail.PackageMonitoringEnabled || monitor.IntervalHours != jail.PackageAuditIntervalHours || monitor.CronExpr != jail.PackageAuditCronExpr || state.NextAuditAt == nil) {
-		state.NextAuditAt = &now
-		if monitor.CronExpr != "" {
-			state.NextAuditAt = &scheduled
-		}
-	}
-	if !monitor.Enabled {
-		state.NextAuditAt = nil
-	}
-	err = s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&jailModels.Jail{}).Where("id = ? AND type = ?", jail.ID, jailModels.JailTypeFreeBSD).Updates(map[string]any{"package_monitoring_enabled": monitor.Enabled, "package_audit_interval_hours": monitor.IntervalHours, "package_audit_cron_expr": monitor.CronExpr}).Error; err != nil {
+	// Monitoring settings live in jail.json, so they take the same migration,
+	// restore and lease guards as any other jail option.
+	var view jailTypes.PackageMonitoring
+	err = s.mutateJailOption(ctID, func(*jailModels.Jail) error {
+		jail, guid, err := s.packageJail(ctx, ctID)
+		if err != nil {
 			return err
 		}
-		return tx.Model(&state).Select("NextAuditAt").Updates(&state).Error
-	})
-	if err != nil {
-		return jailTypes.PackageMonitoring{}, err
-	}
-	jail.PackageMonitoringEnabled, jail.PackageAuditIntervalHours = monitor.Enabled, monitor.IntervalHours
-	jail.PackageAuditCronExpr = monitor.CronExpr
-	if s.GZFS != nil {
-		if writeErr := s.WriteJailJSON(ctID); writeErr != nil {
-			return monitorView(jail, state), fmt.Errorf("package_monitor_metadata_write_failed: %w", writeErr)
+		state, err := s.packageState(jail, guid)
+		if err != nil {
+			return err
 		}
-	}
-	return monitorView(jail, state), nil
+		if monitor.CronExpr != "" {
+			monitor.IntervalHours = monitorView(jail, state).IntervalHours
+		}
+		if err = s.savePackageInventory(state); err != nil {
+			return err
+		}
+		if monitor.Enabled && (!jail.PackageMonitoringEnabled || monitor.IntervalHours != jail.PackageAuditIntervalHours || monitor.CronExpr != jail.PackageAuditCronExpr || state.NextAuditAt == nil) {
+			state.NextAuditAt = &now
+			if monitor.CronExpr != "" {
+				state.NextAuditAt = &scheduled
+			}
+		}
+		if !monitor.Enabled {
+			state.NextAuditAt = nil
+		}
+		err = s.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&jailModels.Jail{}).Where("id = ? AND type = ?", jail.ID, jailModels.JailTypeFreeBSD).Updates(map[string]any{"package_monitoring_enabled": monitor.Enabled, "package_audit_interval_hours": monitor.IntervalHours, "package_audit_cron_expr": monitor.CronExpr}).Error; err != nil {
+				return err
+			}
+			return tx.Model(&state).Select("NextAuditAt").Updates(&state).Error
+		})
+		if err != nil {
+			return err
+		}
+		jail.PackageMonitoringEnabled, jail.PackageAuditIntervalHours = monitor.Enabled, monitor.IntervalHours
+		jail.PackageAuditCronExpr = monitor.CronExpr
+		view = monitorView(jail, state)
+		if s.GZFS != nil {
+			if err = s.WriteJailJSON(ctID); err != nil {
+				return fmt.Errorf("package_monitor_metadata_write_failed: %w", err)
+			}
+		}
+		return nil
+	})
+	return view, err
 }
 
 func (s *Service) persistPackageAudit(jail *jailModels.Jail, guid string, inventory []pkgmanager.Package, report pkgmanager.Audit, op jailModels.JailPackageOperation) error {

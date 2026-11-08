@@ -99,6 +99,7 @@ export const PackageViewSchema = z.object({
 	packages: z.array(JailPackageSchema),
 	ready: z.boolean(),
 	offline: z.boolean(),
+	sharedSystem: z.boolean().default(false),
 	reason: z.string(),
 	snapshotSupported: z.boolean(),
 	inventoryAt: z.string().nullable(),

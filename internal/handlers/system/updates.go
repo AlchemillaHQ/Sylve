@@ -27,6 +27,7 @@ import (
 
 type hostUpdateService interface {
 	Get(context.Context) (hostupdates.View, error)
+	History(context.Context, int, int, string, string) (hostupdates.HistoryPage, error)
 	GetRelease(context.Context, bool) (hostupdates.ReleaseView, error)
 	Start(context.Context, string, hostupdates.Request, string) (hostupdates.Job, error)
 	Job(context.Context, uint) (hostupdates.Job, error)
@@ -42,6 +43,7 @@ func RegisterHostUpdateRoutes(group *gin.RouterGroup, service *hostupdates.Servi
 		api = service
 	}
 	group.GET("", GetHostUpdates(api))
+	group.GET("/history", GetHostUpdateHistory(api))
 	group.GET("/sylve/release", GetSylveRelease(api))
 	group.POST("/actions/:action", StartHostUpdate(api))
 	group.GET("/jobs/:id", GetHostUpdateJob(api, false))
@@ -66,7 +68,7 @@ func updateResponse(c *gin.Context, value any, err error, status int) {
 		status = http.StatusServiceUnavailable
 	case errors.Is(err, gorm.ErrRecordNotFound) || strings.HasSuffix(code, "_not_found"):
 		status = http.StatusNotFound
-	case strings.HasPrefix(code, "invalid_") || code == "too_many_packages":
+	case strings.HasPrefix(code, "invalid") || code == "too_many_packages":
 		status = http.StatusBadRequest
 	case strings.HasPrefix(code, "host_") || strings.HasPrefix(code, "sylve_") || strings.HasPrefix(code, "release_") || strings.HasPrefix(code, "package_") || strings.HasPrefix(code, "standalone_") || strings.HasPrefix(code, "boot_environment_") || code == "no_package_changes":
 		status = http.StatusConflict
@@ -81,6 +83,19 @@ func GetHostUpdates(service hostUpdateService) gin.HandlerFunc {
 			return
 		}
 		value, err := service.Get(c.Request.Context())
+		updateResponse(c, value, err, http.StatusOK)
+	}
+}
+
+func GetHostUpdateHistory(service hostUpdateService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if service == nil {
+			updateResponse(c, nil, errors.New("host_update_service_unavailable"), 0)
+			return
+		}
+		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+		size, _ := strconv.Atoi(c.DefaultQuery("size", "100"))
+		value, err := service.History(c.Request.Context(), page, size, c.Query("sort[0][field]"), c.Query("sort[0][dir]"))
 		updateResponse(c, value, err, http.StatusOK)
 	}
 }

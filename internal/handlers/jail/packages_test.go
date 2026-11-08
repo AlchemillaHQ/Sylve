@@ -127,3 +127,20 @@ func TestPackageHandlerRejectsMalformedRequestsBeforeAdmission(t *testing.T) {
 		}
 	}
 }
+
+func TestPackageHandlerRejectsBadRequestsWith400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/jail/:ctid/packages", GetJailPackages(&packageHandlerStub{}))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/jail/abc/packages", nil))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("bad ctid: %d %s", response.Code, response.Body)
+	}
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	packageResponse(context, nil, errors.New("package_system_acknowledgement_required"), 0)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("missing acknowledgement: %d", recorder.Code)
+	}
+}

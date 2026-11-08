@@ -34,11 +34,16 @@ func (w *LogWriter) Write(data []byte) (int, error) {
 	w.pending += string(data)
 	for {
 		index := strings.IndexAny(w.pending, "\r\n")
-		if index < 0 {
+		// A trailing \r may be the first half of a pty's \r\n.
+		if index < 0 || (w.pending[index] == '\r' && index == len(w.pending)-1) {
 			break
 		}
+		next := index + 1
+		if w.pending[index] == '\r' && w.pending[next] == '\n' {
+			next++
+		}
 		w.line(w.pending[:index] + "\n")
-		w.pending = w.pending[index+1:]
+		w.pending = w.pending[next:]
 	}
 	if len(w.pending) > 64<<10 {
 		w.line("[oversized log line omitted]\n")

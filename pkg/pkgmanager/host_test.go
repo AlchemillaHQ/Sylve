@@ -36,7 +36,7 @@ func TestHostBranch(t *testing.T) {
 func TestHostTargetIsExplicit(t *testing.T) {
 	c := NewHostClient(nil)
 	args, err := c.args("upgrade", "-U", "-n")
-	if err != nil || slices.Contains(args, "-j") || slices.Contains(args, "-c") || !slices.Contains(args, "IGNORE_OSVERSION=true") || !slices.Contains(args, "AUTOMERGE=true") || slices.Contains(args, "PKG_ENV={}") {
+	if err != nil || slices.Contains(args, "-j") || slices.Contains(args, "-c") || !slices.Contains(args, "IGNORE_OSVERSION=true") || !slices.Contains(args, "AUTOMERGE=true") || slices.Contains(args, "PKG_ENV=SYLVE=1") {
 		t.Fatalf("host arguments: %v, %v", args, err)
 	}
 	c.Scope = ScopeApplications

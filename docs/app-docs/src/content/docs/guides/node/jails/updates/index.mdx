@@ -29,11 +29,20 @@ A snapshot is the quickest local rollback point, but it is not an independent ba
 
 On the jail's **Packages** page, upgrade previews use installed-package information and repository catalogs without downloading package archives. After you approve **Upgrade**, Sylve rechecks the approved transaction and downloads and verifies the archives before creating the requested snapshot and installing packages. Missing downloads or unsafe package contents stop preparation before installation. Completed downloads remain in the jail's native `/var/cache/pkg` cache for reuse on a later attempt.
 
+Package management runs the host's `pkg-static`, which must be 2.8.4 or newer in the 2.x series. A few details of the **Packages** page:
+
+- **Outdated `pkg` in the jail:** pkg always upgrades itself before anything else, so the preview then contains only the `pkg` upgrade. Upgrade it, then preview the remaining packages again.
+- **Shared mounts:** a running jail with another filesystem mounted over one of its system paths, such as a nullfs mount under `/usr`, can still be listed, audited and previewed. **Upgrade** stays disabled because an upgrade could write through that mount.
+- **Queueing:** package operations run at most two at a time per node, in their own queue, so they never hold up starting, stopping or migrating guests. A waiting check, audit or preview can be stopped before it starts; upgrades cannot be stopped.
+- **Restarts:** stopping or restarting Sylve waits for a running upgrade to finish.
+
 ### Scheduled vulnerability audits
 
 On a FreeBSD jail's **Packages** page, open **Package Monitoring** using the **clock** button. **Frequency** accepts **Never**, **Every 6 hours**, **Every 12 hours**, **Daily**, or a custom five-field cron expression. For example, `0 3 * * 0` runs on Sundays at 03:00 in the node's local time. Cron weekdays use `0–6`, with `0` for Sunday.
 
 Each jail keeps its own schedule. Cron occurrences that overlap another operation are skipped, not postponed; missed occurrences are not replayed individually. Audits can run while the jail is stopped if its filesystem is mounted. Scheduled audits only check registered packages for known vulnerabilities; they never install upgrades.
+
+The monitoring settings are saved in the jail's metadata, so changing them is refused while the jail is being migrated or restored, while another package operation runs on it, or on a node that does not hold its replication lease.
 
 ## Identify the jail type
 

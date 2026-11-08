@@ -28,7 +28,7 @@ import (
 )
 
 type applyResult struct {
-	rebootBootID    string
+	reboot          bool
 	bootEnvironment string
 	executableHash  string
 }
@@ -155,9 +155,6 @@ func (s *Service) apply(ctx context.Context, op *models.HostUpdateOperation, log
 	default:
 		err = fmt.Errorf("invalid_host_update_request")
 	}
-	if result.rebootBootID != "" {
-		err = errors.Join(err, s.DB.Model(&state).Update("reboot_boot_id", result.rebootBootID).Error)
-	}
 	err = errors.Join(err, s.DB.Model(&state).Updates(map[string]any{"check_inventory_hash": "", "audit_inventory_hash": ""}).Error)
 	if err != nil {
 		return "Some packages or the executable may have changed. Inspect the log and installed state before retrying; no automatic rollback was performed.", err
@@ -166,8 +163,8 @@ func (s *Service) apply(ctx context.Context, op *models.HostUpdateOperation, log
 	if result.bootEnvironment != "" {
 		message += " Pre-update boot environment: " + result.bootEnvironment + "."
 	}
-	if result.rebootBootID != "" {
-		message += " Host reboot recommended."
+	if result.reboot {
+		message += rebootNotice
 	}
 	if result.executableHash != s.runningDigest {
 		actual, err := sylveupdate.FileDigest(s.executable)
@@ -263,13 +260,7 @@ func (s *Service) applyPackages(ctx context.Context, op *models.HostUpdateOperat
 		result.bootEnvironment = name
 		_, _ = fmt.Fprintf(log, "Pre-update boot environment: %s. This does not back up separate data datasets or EFI partitions.\n", name)
 	}
-	if needsReboot {
-		result.rebootBootID, err = s.command(ctx, "/sbin/sysctl", "-n", "kern.boottime")
-		result.rebootBootID = bootIdentity(result.rebootBootID)
-		if err != nil || result.rebootBootID == "" {
-			return fmt.Errorf("host_boot_identity_unavailable")
-		}
-	}
+	result.reboot = needsReboot
 	if err = s.phase(op, "applying"); err != nil {
 		return err
 	}
@@ -352,6 +343,13 @@ func (s *Service) applyRelease(ctx context.Context, op *models.HostUpdateOperati
 	if err = s.phase(op, "applying"); err != nil {
 		return err
 	}
+	previous := installed.Path + ".prev"
+	if err = os.Remove(previous); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err = os.Link(installed.Path, previous); err != nil {
+		return err
+	}
 	if err = os.Rename(staged, installed.Path); err != nil {
 		return err
 	}
@@ -364,7 +362,7 @@ func (s *Service) applyRelease(ctx context.Context, op *models.HostUpdateOperati
 		return err
 	}
 	result.executableHash = plan.Release.SHA256
-	_, _ = fmt.Fprintf(log, "Installed %s %s (%s). Sylve will restart; replication-protected guests may stop or fail over. No automatic downgrade/rollback is performed.\n", plan.Release.Channel, plan.Release.Version, plan.Release.Commit)
+	_, _ = fmt.Fprintf(log, "Installed %s %s (%s). Sylve will restart; replication-protected guests may stop or fail over. The previous binary is kept at %s for a manual rollback.\n", plan.Release.Channel, plan.Release.Version, plan.Release.Commit, previous)
 	return nil
 }
 
@@ -449,6 +447,10 @@ func (s *Service) reconcileAudits() error {
 func (s *Service) Recover() error {
 	if err := s.reconcileAudits(); err != nil {
 		return err
+	}
+	stages, _ := filepath.Glob(filepath.Join(filepath.Dir(s.executable), ".sylve-update-*"))
+	for _, stage := range stages {
+		_ = os.RemoveAll(stage)
 	}
 	var operations []models.HostUpdateOperation
 	if err := s.DB.Where("active IS NOT NULL").Find(&operations).Error; err != nil {
