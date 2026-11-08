@@ -4,6 +4,7 @@ package container
 
 import (
 	"cmp"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -313,6 +314,172 @@ func TestCatalogHintExamplesBecomePlaceholders(t *testing.T) {
 				t.Errorf("%s %s: placeholder %q, want %q", app, variable.Name, variable.Placeholder, placeholder)
 			}
 		}
+	}
+}
+
+func TestCatalogSecretsTakeTheFormatTheirImageWants(t *testing.T) {
+	var manifest catalogManifest
+	manifest.Fjord.Variables = []catalogVariable{{Name: "PASSWORD_ENCRYPTION_KEY", Format: "base64"}}
+	key, err := base64.StdEncoding.DecodeString(catalogSecret(manifest, "PASSWORD_ENCRYPTION_KEY"))
+	if err != nil || len(key) != 32 {
+		t.Fatal("fixed keys are base64 of exactly 32 bytes", len(key), err)
+	}
+	if password := catalogSecret(manifest, "POSTGRES_PASSWORD"); len(password) != 64 || strings.Trim(password, "0123456789abcdef") != "" {
+		t.Fatal("other secrets stay hex, safe in URLs", password)
+	}
+
+	service := newCatalogService(t)
+	plan, err := renderDefaults(t, service, "daemonless/plausible", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, create := range plan.Containers {
+		if env := envOf(create); env["TOTP_VAULT_KEY"] != "" || env["SECRET_KEY_BASE"] != "" {
+			t.Fatal("optional secrets are left for the image to make", create.Name, env["TOTP_VAULT_KEY"])
+		}
+	}
+
+	template, err := service.CatalogTemplate(t.Context(), "daemonless", "openssh-server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, variable := range template.Variables {
+		if variable.Name == "PUBLIC_KEY" && (variable.Type != "string" || variable.Default != "") ||
+			variable.Name == "PASSWORD_ACCESS" && (variable.Type != "string" || variable.Default != "false") {
+			t.Fatal("a public key and a switch are not secrets to make up", variable)
+		}
+	}
+	if _, err := renderDefaults(t, service, "daemonless/openssh-server", nil, nil); err == nil || !strings.Contains(err.Error(), "catalog_setting_required") {
+		t.Fatal("the public key is the person's to give", err)
+	}
+
+	if plan, err = renderDefaults(t, service, "daemonless/erpnext", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(plan.Containers, func(create containerServiceInterfaces.CreateRequest) bool {
+		password := envOf(create)["ADMIN_PASSWORD"]
+		return password != "" && strings.Contains(create.Description, password)
+	}) {
+		t.Fatal("a made-up admin password is shown with the app", plan.Containers)
+	}
+
+	template, err = service.CatalogTemplate(t.Context(), "daemonless", "gitea")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, choice := range template.Choices {
+		for _, option := range choice.Options {
+			for _, variable := range option.Ask {
+				if variable.Type == "secret" && variable.Default != "" {
+					t.Fatal("what a choice asks for is not made up", option.ID, variable)
+				}
+			}
+		}
+	}
+	if _, err := renderDefaults(t, service, "daemonless/gitea", map[string]string{"GITEA__database__HOST": "db", "GITEA__database__USER": "gitea",
+		"GITEA__database__NAME": "gitea"}, map[string]string{"database": "external"}); err == nil || !strings.Contains(err.Error(), "catalog_setting_required") {
+		t.Fatal("an external database's password is the person's to give", err)
+	}
+}
+
+func TestReinstallsReuseTheSecretsKeptWithTheirData(t *testing.T) {
+	made, old := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	creates := []containerServiceInterfaces.CreateRequest{
+		{Name: "db", Spec: containerServiceInterfaces.Spec{Env: []containerModels.EnvVar{{Name: "POSTGRES_PASSWORD", Value: made}, {Name: "POSTGRES_USER", Value: "app"}}},
+			Secrets: map[string]string{"POSTGRES_PASSWORD": made, "PIN": "1234"}},
+		{Name: "api", Spec: containerServiceInterfaces.Spec{Env: []containerModels.EnvVar{{Name: "DATABASE_URL", Value: "postgresql://app:" + made + "@postgres:5432/app"}, {Name: "PIN", Value: "1234"}}},
+			Secrets: map[string]string{"POSTGRES_PASSWORD": made, "PIN": "1234"}},
+	}
+
+	dirs := []string{t.TempDir(), t.TempDir()}
+	if restoreSecrets(creates, readKeptSecrets(dirs)) {
+		t.Fatal("nothing is put back without kept data")
+	}
+	if err := writeKeptSecrets(dirs[1:], map[string]string{"POSTGRES_PASSWORD": old, "PIN": "9999"}); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(filepath.Join(dirs[1], keptSecretsFile)); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatal("kept secrets are root's alone", info, err)
+	}
+	if !restoreSecrets(creates, readKeptSecrets(dirs)) {
+		t.Fatal("kept secrets are put back")
+	}
+	db, api := envOf(creates[0]), envOf(creates[1])
+	if db["POSTGRES_PASSWORD"] != old || api["DATABASE_URL"] != "postgresql://app:"+old+"@postgres:5432/app" || creates[1].Secrets["POSTGRES_PASSWORD"] != old {
+		t.Fatal("a kept password replaces the made-up one wherever it went", db, api)
+	}
+	if db["POSTGRES_USER"] != "app" || api["PIN"] != "1234" {
+		t.Fatal("short values are left alone, as they could turn up by chance", db, api)
+	}
+
+	plan, err := renderDefaults(t, newCatalogService(t), "daemonless/gitea", nil, map[string]string{"database": "postgres"})
+	if err != nil || len(plan.Containers) != 2 {
+		t.Fatal(plan, err)
+	}
+	for _, create := range plan.Containers {
+		if password := create.Secrets["GITEA__database__PASSWD"]; len(password) != 64 {
+			t.Fatal("every container says which secrets it was made with", create.Name, create.Secrets)
+		}
+	}
+}
+
+func TestStacksInstallAgainUnderANameOfTheirOwn(t *testing.T) {
+	service := newCatalogService(t)
+	template, err := service.CatalogTemplate(t.Context(), "daemonless", "immich")
+	if err != nil || template.Stack != "immich" {
+		t.Fatal("the template names the stack it installs by default", template.Stack, err)
+	}
+	values := map[string]string{}
+	for _, variable := range template.Variables {
+		values[variable.Name] = variable.Default
+	}
+	plan, err := service.RenderCatalogApp(t.Context(), "daemonless", "immich",
+		containerServiceInterfaces.CatalogRenderRequest{Values: values, Stack: "immich-2"})
+	if err != nil || plan.Stack != "immich-2" {
+		t.Fatal(plan.Stack, err)
+	}
+	names := []string{}
+	for _, create := range plan.Containers {
+		names = append(names, create.Name)
+		if create.Stack != "immich-2" || create.Network != "immich-2" || create.StackTitle != "immich-2" {
+			t.Fatal("a second copy has its own network and title", create.Name, create.Network, create.StackTitle)
+		}
+	}
+	slices.Sort(names)
+	if !slices.Equal(names, []string{"immich-2-database", "immich-2-machine-learning", "immich-2-redis", "immich-2-server"}) {
+		t.Fatal("its containers take the stack's name in place of the app's", names)
+	}
+	if _, err := service.RenderCatalogApp(t.Context(), "daemonless", "immich",
+		containerServiceInterfaces.CatalogRenderRequest{Values: values, Stack: "my stack"}); err == nil {
+		t.Fatal("a stack name must work as a network and container name")
+	}
+}
+
+func TestContainersHaveATitleApartFromTheirName(t *testing.T) {
+	service := newTestService(t)
+	ctx := t.Context()
+	record := containerModels.Container{OCID: 401, Name: "weavestream-web", Pool: "tank", Image: "web", RuntimeID: "x"}
+	if err := service.DB.Create(&record).Error; err != nil {
+		t.Fatal(err)
+	}
+	title := "  Web (public) "
+	if err := service.UpdateOptions(ctx, 401, containerServiceInterfaces.OptionsRequest{Title: &title}); err != nil {
+		t.Fatal(err)
+	}
+	if record, _ = service.record(ctx, 401); record.Title != "Web (public)" || record.Name != "weavestream-web" {
+		t.Fatal("a title is only a label; the name stays", record.Title, record.Name)
+	}
+	long := strings.Repeat("x", 64)
+	if err := service.UpdateOptions(ctx, 401, containerServiceInterfaces.OptionsRequest{Title: &long}); err == nil {
+		t.Fatal("titles are kept short")
+	}
+
+	if spec := containerServiceInterfaces.SpecOf(record); spec.Name != "weavestream-web" {
+		t.Fatal("an update keeps the name unless it changes it", spec.Name)
+	}
+	spec := containerServiceInterfaces.Spec{Name: "Web (public)", Image: "web", Network: containerServiceInterfaces.HostNetwork}
+	if _, _, err := service.normalizeSpec(ctx, spec); err == nil || !strings.Contains(err.Error(), "invalid_container_name") {
+		t.Fatal("a name must be one the network can use", err)
 	}
 }
 

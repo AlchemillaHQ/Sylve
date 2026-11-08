@@ -133,8 +133,8 @@ func ListContainersSimple(service containerServiceInterfaces.ContainerServiceInt
 		}
 		simple := make([]containerServiceInterfaces.SimpleList, len(items))
 		for i, item := range items {
-			simple[i] = containerServiceInterfaces.SimpleList{OCID: item.OCID, Name: item.Name, Stack: item.Stack,
-				StackTitle: item.StackTitle, State: item.State}
+			simple[i] = containerServiceInterfaces.SimpleList{OCID: item.OCID, Name: item.Name, Title: item.Title,
+				Stack: item.Stack, StackTitle: item.StackTitle, State: item.State}
 		}
 		respond(c, http.StatusOK, "containers_listed", simple)
 	}

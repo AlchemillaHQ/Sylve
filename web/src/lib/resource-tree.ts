@@ -196,6 +196,10 @@ function compareResources(
 	return nameCollator.compare(a.id, b.id);
 }
 
+export function containerLabel(container: { name: string; title: string; stack: string }): string {
+	return container.title || stackMemberName(container.name, container.stack);
+}
+
 export function stackMemberName(name: string, stack: string): string {
 	const prefix = `${stack}-`.toLowerCase();
 	return stack && name.length > prefix.length && name.toLowerCase().startsWith(prefix)

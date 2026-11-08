@@ -6,6 +6,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"path"
 	"slices"
 	"strings"
@@ -55,10 +56,14 @@ func (s *Service) PrepareStack(ctx context.Context, req containerServiceInterfac
 	return req, nil
 }
 
+func stackDataset(pool, stack string) string {
+	return pool + "/sylve/stacks/" + stack
+}
+
 // stackFolders gives the folders a stack names relative to itself, like
 // "./data/postgres", datasets under the stack's own, which its containers
-// share as a compose project's share its folder. Deleting the stack keeps them,
-// as it keeps any dataset picked for a mount.
+// share as a compose project's share its folder. They're the stack's volumes:
+// deleting its last container with its volumes destroys them.
 func (s *Service) stackFolders(ctx context.Context, req containerServiceInterfaces.StackRequest) error {
 	for _, create := range req.Containers {
 		for i, mount := range create.Mounts {
@@ -100,6 +105,11 @@ func (s *Service) stackFolders(ctx context.Context, req containerServiceInterfac
 }
 
 func (s *Service) createStack(ctx context.Context, req containerServiceInterfaces.StackRequest) error {
+	folders, err := s.GZFS.ZFS.Get(ctx, stackDataset(req.Pool, req.Stack), false)
+	if err != nil && !storagezfs.DatasetDoesNotExist(err) {
+		return err
+	}
+	keptFolders := folders != nil
 	if err := s.stackFolders(ctx, req); err != nil {
 		return err
 	}
@@ -107,6 +117,13 @@ func (s *Service) createStack(ctx context.Context, req containerServiceInterface
 	kept := make([]bool, len(req.Containers))
 	errs := make([]error, len(req.Containers))
 	report, _ := ctx.Value(progressKey{}).(func(string))
+	locations := []string{stackDataset(req.Pool, req.Stack)}
+	for _, create := range req.Containers {
+		locations = append(locations, containerModels.VolumesDataset(create.Pool, create.OCID))
+	}
+	if restoreSecrets(req.Containers, readKeptSecrets(s.dataDirs(ctx, locations...))) && report != nil {
+		report("Reusing the secrets kept with the stack's data")
+	}
 	var (
 		mu      sync.Mutex
 		failing string
@@ -153,6 +170,13 @@ func (s *Service) createStack(ctx context.Context, req containerServiceInterface
 		}
 	}
 	if failed < 0 {
+		secrets := map[string]string{}
+		for _, create := range req.Containers {
+			maps.Copy(secrets, create.Secrets)
+		}
+		if err := writeKeptSecrets(s.dataDirs(ctx, locations...), secrets); err != nil {
+			logger.L.Warn().Err(err).Str("stack", req.Stack).Msg("container_stack_secrets_not_kept")
+		}
 		return nil
 	}
 
@@ -161,8 +185,14 @@ func (s *Service) createStack(ctx context.Context, req containerServiceInterface
 		if !created[i] {
 			continue
 		}
-		if err := s.Delete(cleanup, create.OCID, !kept[i]); err != nil {
+		if err := s.delete(cleanup, create.OCID, !kept[i], false); err != nil {
 			logger.L.Warn().Err(err).Uint("ocid", create.OCID).Msg("container_stack_rollback_failed")
+		}
+	}
+	// Folders kept from an earlier install hold its data; only new ones go.
+	if !keptFolders {
+		if err := s.destroyStackFolders(cleanup, req.Pool, req.Stack); err != nil {
+			logger.L.Warn().Err(err).Str("stack", req.Stack).Msg("container_stack_folders_not_removed")
 		}
 	}
 	if err := s.RemoveEmptyStack(cleanup, req.Stack); err != nil {
@@ -197,6 +227,22 @@ func (s *Service) RenameStack(ctx context.Context, stack, title string) error {
 		s.changed(ocid)
 	}
 	return nil
+}
+
+// destroyStackFolders destroys a stack's folders once it has no containers.
+func (s *Service) destroyStackFolders(ctx context.Context, pool, stack string) error {
+	var count int64
+	if err := s.DB.WithContext(ctx).Model(&containerModels.Container{}).Where("stack = ?", stack).Count(&count).Error; err != nil || stack == "" || count > 0 {
+		return err
+	}
+	dataset, err := s.GZFS.ZFS.Get(ctx, stackDataset(pool, stack), false)
+	if err != nil && !storagezfs.DatasetDoesNotExist(err) {
+		return err
+	}
+	if dataset == nil {
+		return nil
+	}
+	return dataset.Destroy(ctx, true, false)
 }
 
 func (s *Service) RemoveEmptyStack(ctx context.Context, stack string) error {

@@ -113,6 +113,12 @@ func (s *Service) Create(ctx context.Context, req containerServiceInterfaces.Cre
 	if err := s.ValidateCreate(ctx, req); err != nil {
 		return err
 	}
+	data := containerModels.VolumesDataset(req.Pool, req.OCID)
+	if req.Stack == "" && len(req.Secrets) > 0 {
+		creates := []containerServiceInterfaces.CreateRequest{req}
+		restoreSecrets(creates, readKeptSecrets(s.dataDirs(ctx, data)))
+		req = creates[0]
+	}
 	spec, network, err := s.normalizeSpec(ctx, req.Spec)
 	if err != nil {
 		return err
@@ -129,7 +135,7 @@ func (s *Service) Create(ctx context.Context, req containerServiceInterfaces.Cre
 		}
 	}()
 
-	record := containerModels.Container{OCID: req.OCID, Name: req.Name, Description: req.Description, Pool: req.Pool,
+	record := containerModels.Container{OCID: req.OCID, Name: req.Name, Title: req.Title, Description: req.Description, Pool: req.Pool,
 		Cores: req.Cores, Memory: req.Memory, StartAtBoot: req.StartAtBoot, StartOrder: req.StartOrder,
 		WebPort: req.WebPort, WebHTTPS: req.WebHTTPS, CatalogApp: req.CatalogApp, Stack: req.Stack, StackTitle: req.StackTitle,
 		Service: req.Service, CreationPending: true}
@@ -182,6 +188,11 @@ func (s *Service) Create(ctx context.Context, req containerServiceInterfaces.Cre
 		reservation = nil
 	}
 	s.changed(record.OCID)
+	if req.Stack == "" {
+		if keepErr := writeKeptSecrets(s.dataDirs(ctx, data), req.Secrets); keepErr != nil {
+			logger.L.Warn().Err(keepErr).Uint("ocid", record.OCID).Msg("container_secrets_not_kept")
+		}
+	}
 
 	if req.StartAfterCreate {
 		err = s.start(ctx, record)
@@ -396,6 +407,11 @@ func (s *Service) Update(ctx context.Context, ocid uint, spec containerServiceIn
 	if err != nil {
 		return err
 	}
+	if spec.Name != "" && spec.Name != previous.Name {
+		if err := s.validateName(ctx, spec.Name, previous.ID); err != nil {
+			return err
+		}
+	}
 	updated := previous
 	applySpec(&updated, spec, network)
 	if err := s.ensurePool(ctx, updated.Pool); err != nil {
@@ -446,6 +462,12 @@ func (s *Service) Update(ctx context.Context, ocid uint, spec containerServiceIn
 }
 
 func (s *Service) Delete(ctx context.Context, ocid uint, deleteVolumes bool) error {
+	return s.delete(ctx, ocid, deleteVolumes, deleteVolumes)
+}
+
+// delete removes the container, with its volumes if asked, and with folders its
+// stack's folders once no other member uses them.
+func (s *Service) delete(ctx context.Context, ocid uint, deleteVolumes, folders bool) error {
 	record, err := s.record(ctx, ocid)
 	if err != nil {
 		return err
@@ -479,6 +501,11 @@ func (s *Service) Delete(ctx context.Context, ocid uint, deleteVolumes bool) err
 		return err
 	}
 	s.changed(ocid)
+	if folders {
+		if err := s.destroyStackFolders(ctx, record.Pool, record.Stack); err != nil {
+			return fmt.Errorf("failed_to_delete_stack_folders: %w", err)
+		}
+	}
 	if err := s.RemoveEmptyStack(ctx, record.Stack); err != nil {
 		logger.L.Warn().Err(err).Str("stack", record.Stack).Msg("container_stack_network_not_removed")
 	}

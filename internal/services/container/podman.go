@@ -176,6 +176,9 @@ func serviceClient(pool string) *http.Client {
 }
 
 func (s *Service) startService(ctx context.Context, pool string) error {
+	if err := s.ensurePool(ctx, pool); err != nil {
+		return err
+	}
 	s.serviceMu.Lock()
 	defer s.serviceMu.Unlock()
 
@@ -303,6 +306,9 @@ func (s *Service) ensurePool(ctx context.Context, pool string) error {
 	}
 	downloads, err := s.downloads(ctx, pool)
 	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(downloads, 0o700); err != nil {
 		return err
 	}
 

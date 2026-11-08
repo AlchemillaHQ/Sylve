@@ -49,6 +49,7 @@ type Container struct {
 	ID          uint   `json:"id" gorm:"primaryKey"`
 	OCID        uint   `json:"ocId" gorm:"uniqueIndex;not null"`
 	Name        string `json:"name" gorm:"uniqueIndex;not null"`
+	Title       string `json:"title"`
 	Description string `json:"description"`
 	Pool        string `json:"pool" gorm:"not null"`
 

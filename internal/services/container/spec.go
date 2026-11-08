@@ -96,6 +96,9 @@ func (s *Service) normalizeSpec(ctx context.Context, spec containerServiceInterf
 	if spec.Hostname != "" && !nameRegex.MatchString(spec.Hostname) {
 		return spec, nil, fmt.Errorf("invalid_hostname")
 	}
+	if spec.Name != "" && !nameRegex.MatchString(spec.Name) {
+		return spec, nil, fmt.Errorf("invalid_container_name")
+	}
 
 	seen := map[string]bool{}
 	for _, env := range spec.Env {
@@ -399,6 +402,7 @@ func shmBytes(size string) int64 {
 }
 
 func applySpec(record *containerModels.Container, spec containerServiceInterfaces.Spec, network *containerModels.Network) {
+	record.Name = cmp.Or(spec.Name, record.Name)
 	record.Image, record.OS = spec.Image, spec.OS
 	record.Command, record.Entrypoint = spec.Command, spec.Entrypoint
 	record.WorkDir, record.User, record.Hostname = spec.WorkDir, spec.User, spec.Hostname

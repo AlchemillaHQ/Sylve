@@ -53,6 +53,7 @@ export const ContainerRestartSchema = z.enum(['no', 'on-failure', 'always', 'unl
 export const ContainerSchema = z.object({
 	ocId: z.number().int(),
 	name: z.string(),
+	title: z.string().catch(''),
 	description: z.string(),
 	pool: z.string(),
 	image: z.string(),
@@ -95,10 +96,16 @@ export const ContainerListItemSchema = ContainerSchema.extend({ state: z.string(
 export const SimpleContainerSchema = z.object({
 	ocId: z.number().int(),
 	name: z.string(),
+	title: z.string().catch(''),
 	stack: z.string().catch(''),
 	stackTitle: z.string().catch(''),
 	state: z.string()
 });
+
+// containerTitle is the name a container is shown under: its title, or else
+// its name, which is also its hostname and its name on its network.
+export const containerTitle = (container: { name: string; title: string }) =>
+	container.title || container.name;
 
 export const ContainerRuntimeSchema = z.object({
 	state: z.string(),
@@ -197,6 +204,7 @@ export const mountTypeLabels: Record<ContainerMount['type'], string> = {
 };
 
 export interface ContainerSpec {
+	name?: string;
 	image: string;
 	os: '' | 'freebsd' | 'linux';
 	command: string[];
@@ -232,12 +240,14 @@ export interface ContainerCreateRequest extends ContainerSpec {
 	webHttps: boolean;
 	catalogApp: string;
 	stack?: string;
+	title?: string;
 	stackTitle?: string;
 	service?: string;
+	secrets?: Record<string, string>;
 }
 
 export interface ContainerOptions {
-	name?: string;
+	title?: string;
 	description?: string;
 	cores?: number;
 	memory?: number;
@@ -277,6 +287,7 @@ export const emptyContainerSpec = (): ContainerSpec => ({
 });
 
 export const containerSpecOf = (c: Container): ContainerSpec => ({
+	name: c.name,
 	image: c.image,
 	os: c.os === 'freebsd' || c.os === 'linux' ? c.os : '',
 	command: [...c.command],

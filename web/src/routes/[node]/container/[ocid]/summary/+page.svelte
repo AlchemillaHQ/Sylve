@@ -8,7 +8,11 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import type { GFSStep } from '$lib/types/common';
-	import type { ContainerContext, ContainerStatsBootstrap } from '$lib/types/container/container';
+	import {
+		containerTitle,
+		type ContainerContext,
+		type ContainerStatsBootstrap
+	} from '$lib/types/container/container';
 	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import { formatBytesBinary } from '$lib/utils/bytes';
@@ -97,12 +101,13 @@
 		return at.startsWith('0001') ? '' : `${label} ${dateToAgo(at)}`;
 	});
 
-	let renaming = $state({ editing: false, name: '', saving: false });
+	let renaming = $state({ editing: false, title: '', saving: false });
 	async function rename() {
-		const name = renaming.name.trim();
-		if (!name || name === current.name) return void (renaming.editing = false);
+		const entered = renaming.title.trim();
+		const title = entered === current.name ? '' : entered;
+		if (title === current.title) return void (renaming.editing = false);
 		renaming.saving = true;
-		if (await container.setOptions({ name })) renaming.editing = false;
+		if (await container.setOptions({ title })) renaming.editing = false;
 		renaming.saving = false;
 	}
 	const pendingLabels: Record<string, string> = {
@@ -146,7 +151,8 @@
 						<!-- svelte-ignore a11y_autofocus -->
 						<input
 							class="w-40 min-w-0 border-b border-current bg-transparent outline-none"
-							bind:value={renaming.name}
+							placeholder={current.name}
+							bind:value={renaming.title}
 							onkeydown={(e) => {
 								if (e.key === 'Enter') rename();
 								if (e.key === 'Escape') renaming.editing = false;
@@ -165,12 +171,13 @@
 							<span class="icon-[mdi--close] h-5 w-5"></span>
 						</button>
 					{:else}
-						<span class="whitespace-nowrap">{current.name}</span>
+						<span class="whitespace-nowrap">{containerTitle(current)}</span>
 						{#if since}
 							<span class="whitespace-nowrap">({since})</span>
 						{/if}
 						<button
-							onclick={() => (renaming = { editing: true, name: current.name, saving: false })}
+							onclick={() =>
+								(renaming = { editing: true, title: containerTitle(current), saving: false })}
 							class="invisible text-current transition-opacity group-hover:visible"
 							title="Edit Name"
 						>
@@ -271,7 +278,7 @@
 					icon="icon-[material-symbols--terminal]"
 					size="h-6 w-6"
 					gap="gap-2"
-					title={`${current.name} Logs`}
+					title={`${containerTitle(current)} Logs`}
 				/>
 			</Dialog.Title>
 		</Dialog.Header>

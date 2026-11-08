@@ -44,7 +44,12 @@ export async function getCatalogTemplate(
 export async function renderCatalogApp(
 	source: string,
 	id: string,
-	settings: { variant: string; values: Record<string, string>; choices: Record<string, string> },
+	settings: {
+		variant: string;
+		values: Record<string, string>;
+		choices: Record<string, string>;
+		stack: string;
+	},
 	hostname: string
 ): Promise<CatalogPlan | APIResponse> {
 	return await apiRequestResult(

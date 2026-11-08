@@ -34,6 +34,7 @@ under sponsorship from the FreeBSD Foundation.
 	import { describeContainerError } from '$lib/utils/container/errors';
 	import { nextFreePort, portConflict } from '$lib/utils/container/ports';
 	import { getMountableDatasets, getUsedPorts } from '$lib/api/container/resources';
+	import { getSimpleContainers } from '$lib/api/container/container';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import { resource } from 'runed';
 	import { tick } from 'svelte';
@@ -83,7 +84,8 @@ under sponsorship from the FreeBSD Foundation.
 	let settings = $state({
 		variant: '',
 		values: {} as Record<string, string>,
-		choices: {} as Record<string, string>
+		choices: {} as Record<string, string>,
+		stack: ''
 	});
 	let showAdvanced = $state(false);
 	let busy = $state(false);
@@ -101,10 +103,19 @@ under sponsorship from the FreeBSD Foundation.
 	);
 	let containers = $derived.by(() => {
 		const drops = new Set(chosen.flatMap((option) => option.drops));
+		const stack = template?.stack ?? '';
+		const named = (name: string) =>
+			!stack || !settings.stack
+				? name
+				: name === stack
+					? settings.stack
+					: name.startsWith(`${stack}-`)
+						? settings.stack + name.slice(stack.length)
+						: name;
 		return [
 			...(template?.containers ?? []).filter((name) => !drops.has(name)),
 			...chosen.flatMap((option) => option.adds)
-		];
+		].map(named);
 	});
 
 	const datasets = resource(
@@ -139,12 +150,19 @@ under sponsorship from the FreeBSD Foundation.
 		}
 		template = result;
 		const asks = result.choices.flatMap((choice) => choice.options.flatMap((option) => option.ask));
+		let stack = result.stack;
+		if (stack) {
+			const list = await getSimpleContainers(node).catch(() => []);
+			const taken = new Set(list.map((container) => container.stack));
+			for (let copy = 2; taken.has(stack); copy++) stack = `${result.stack}-${copy}`;
+		}
 		settings = {
 			variant: result.app.variants.find((variant) => variant.default)?.id ?? '',
 			values: Object.fromEntries(
 				[...asks, ...result.variables].map((variable) => [variable.name, variable.default])
 			),
-			choices: Object.fromEntries(result.choices.map((choice) => [choice.id, choice.default]))
+			choices: Object.fromEntries(result.choices.map((choice) => [choice.id, choice.default])),
+			stack
 		};
 		showAdvanced = false;
 		await tick();
@@ -457,6 +475,27 @@ under sponsorship from the FreeBSD Foundation.
 				{/if}
 
 				<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+					{#if template.stack}
+						<div class="space-y-1.5">
+							<div class="flex items-center justify-between gap-2">
+								<Label class="text-sm leading-snug" for="catalog-stack">Stack Name</Label>
+								<Tooltip.Root>
+									<Tooltip.Trigger aria-label="Help" class="inline-flex shrink-0 items-center">
+										<span class="icon-[mdi--help-circle-outline] size-4"></span>
+									</Tooltip.Trigger>
+									<Tooltip.Content class="max-w-64 text-pretty">
+										Names its containers, network and folders; a new name installs another copy.
+									</Tooltip.Content>
+								</Tooltip.Root>
+							</div>
+							<Input
+								id="catalog-stack"
+								autocomplete="off"
+								placeholder={template.stack}
+								bind:value={settings.stack}
+							/>
+						</div>
+					{/if}
 					{#if template.app.variants.length > 1}
 						<SimpleSelect
 							label="Variant"

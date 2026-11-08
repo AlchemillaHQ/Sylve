@@ -69,11 +69,13 @@ export const CatalogTemplateSchema = z.object({
 	app: CatalogAppSchema,
 	variables: list(CatalogVariableSchema),
 	choices: list(CatalogChoiceSchema),
-	containers: list(z.string())
+	containers: list(z.string()),
+	stack: z.string().catch('')
 });
 
 export const CatalogRenderedSchema = ContainerSchema.pick({
 	name: true,
+	title: true,
 	description: true,
 	image: true,
 	env: true,
@@ -93,7 +95,8 @@ export const CatalogRenderedSchema = ContainerSchema.pick({
 }).extend({
 	os: z.enum(['', 'freebsd', 'linux']).catch(''),
 	network: z.string(),
-	startAfterCreate: z.boolean().catch(true)
+	startAfterCreate: z.boolean().catch(true),
+	secrets: z.record(z.string(), z.string()).catch({})
 });
 
 export const CatalogPlanSchema = z.object({

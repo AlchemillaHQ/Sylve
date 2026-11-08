@@ -33,6 +33,7 @@
 	};
 
 	let rows = $derived([
+		{ id: 'title', property: 'Title', value: current.title || 'Same as the name' },
 		{ id: 'name', property: 'Name', value: current.name },
 		{
 			id: 'image',
@@ -76,6 +77,7 @@
 	]);
 
 	const titles: Record<string, [string, string]> = {
+		title: ['Title', 'icon-[mdi--label-outline]'],
 		name: ['Name', 'icon-[mdi--rename]'],
 		boot: ['Start At Boot / Start Order', 'icon-[basil--power-button-solid]'],
 		image: ['Image', 'icon-[mdi--layers-triple-outline]'],
@@ -89,6 +91,7 @@
 		open: false,
 		id: '',
 		spec: containerSpecOf(container.current),
+		title: '',
 		name: '',
 		startAtBoot: false,
 		startOrder: 0
@@ -101,15 +104,20 @@
 			open: true,
 			id,
 			spec: containerSpecOf(current),
+			title: current.title,
 			name: current.name,
 			startAtBoot: current.startAtBoot,
 			startOrder: current.startOrder
 		};
 	}
 
-	function save() {
+	async function save() {
 		if (section) return container.update(dialog.spec);
-		if (dialog.id === 'name') return container.setOptions({ name: dialog.name });
+		if (dialog.id === 'title') return container.setOptions({ title: dialog.title });
+		if (dialog.id === 'name') {
+			if (dialog.name.trim() === current.name) return true;
+			return container.update({ ...dialog.spec, name: dialog.name.trim() });
+		}
 		return container.setOptions({
 			startAtBoot: dialog.startAtBoot,
 			startOrder: Number(dialog.startOrder)
@@ -124,13 +132,25 @@
 		bind:open={dialog.open}
 		{title}
 		{icon}
-		width={section && section !== 'environment' ? 'sm:max-w-3xl' : ''}
+		width={section ? 'sm:max-w-3xl' : ''}
 		onSave={save}
 	>
 		{#if section}
 			<Spec bind:spec={dialog.spec} {section} node={data.node} pool={current.pool} />
+		{:else if dialog.id === 'title'}
+			<CustomValueInput
+				label="Title"
+				placeholder={current.name}
+				hint="Shown for the container; empty shows its name"
+				bind:value={dialog.title}
+			/>
 		{:else if dialog.id === 'name'}
-			<CustomValueInput label="Name" placeholder="redis" bind:value={dialog.name} />
+			<CustomValueInput
+				label="Name"
+				placeholder="redis"
+				hint="Its hostname, unless one is set, and the name other containers on its network reach it by. Saving recreates the container."
+				bind:value={dialog.name}
+			/>
 		{:else}
 			<div class="flex flex-col gap-4">
 				<CustomValueInput

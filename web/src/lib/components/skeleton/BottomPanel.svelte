@@ -12,7 +12,7 @@
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
-	import type { SimpleContainer } from '$lib/types/container/container';
+	import { containerTitle, type SimpleContainer } from '$lib/types/container/container';
 	import type { AuditRecord } from '$lib/types/info/audit';
 	import type { SimpleJail, SimpleJailTemplate } from '$lib/types/jail/jail';
 	import type { SimpleVmTemplate } from '$lib/types/vm/vm';
@@ -839,8 +839,8 @@
 	);
 
 	function containerIdentityLabel(ocId: number): string {
-		const name = containerByOcId.get(ocId)?.name;
-		return name ? `${name} (OCID ${ocId})` : `OCID ${ocId}`;
+		const container = containerByOcId.get(ocId);
+		return container ? `${containerTitle(container)} (OCID ${ocId})` : `OCID ${ocId}`;
 	}
 
 	function containerActionLabel(path: string, method: string, response: unknown): string | null {
@@ -863,7 +863,8 @@
 					? `Container - Create - ${containerIdentityLabel(ocId)}`
 					: 'Container - Create';
 			}
-			const stack = containerByOcId.get(ocId)?.stack;
+			const member = containerByOcId.get(ocId);
+			const stack = member?.stackTitle || member?.stack;
 			return `Container Stack - Create${stack ? ` - ${stack}` : ocId > 0 ? ` - OCID ${ocId}` : ''}`;
 		}
 		match = path.match(/^\/api\/container\/images\/([^/]+)\/(pull|prune|[^/]+)$/);

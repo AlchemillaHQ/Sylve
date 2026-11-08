@@ -40,7 +40,7 @@ func containerOCID(command *cli.Command) (uint, error) {
 func createStack(ctx context.Context, command *cli.Command, plan containerServiceInterfaces.CatalogPlan) error {
 	for _, flag := range command.Flags {
 		name := flag.Names()[0]
-		if command.IsSet(name) && !slices.Contains([]string{"app", "set", "choice", "variant", "ocid", "pool", "start-at-boot", "json"}, name) {
+		if command.IsSet(name) && !slices.Contains([]string{"app", "set", "choice", "variant", "stack", "ocid", "pool", "start-at-boot", "json"}, name) {
 			return fmt.Errorf("--%s sets up one container, and %s is %d; set it on each after creation", name, plan.Stack, len(plan.Containers))
 		}
 	}
@@ -296,6 +296,7 @@ func newContainersCommand() *cli.Command {
 			&cli.StringSliceFlag{Name: "set", Usage: "App setting NAME=VALUE (repeatable; see 'containers catalog show')"},
 			&cli.StringSliceFlag{Name: "choice", Usage: "App choice ID=OPTION, e.g. database=sqlite (repeatable)"},
 			&cli.StringFlag{Name: "variant", Usage: "App image variant (default: the app's default)"},
+			&cli.StringFlag{Name: "stack", Usage: "Stack name for an app of several containers (default: the app's ID); a new one installs another copy"},
 			&cli.IntFlag{Name: "ocid", Usage: "Container ID (1-9999)"},
 			&cli.StringFlag{Name: "name", Usage: "Container name"},
 			&cli.StringFlag{Name: "description", Usage: "Description"},
@@ -326,7 +327,8 @@ func newContainersCommand() *cli.Command {
 				if err != nil {
 					return err
 				}
-				settings := containerServiceInterfaces.CatalogRenderRequest{Variant: command.String("variant"), Values: values, Choices: choices}
+				settings := containerServiceInterfaces.CatalogRenderRequest{Variant: command.String("variant"), Values: values, Choices: choices,
+					Stack: command.String("stack")}
 				response, err := executeConsoleOperationResponse(ctx, command, consoleprotocol.OperationContainerRead,
 					consoleprotocol.ContainerPayload{Action: "catalog-render", Args: []string{app}, Request: marshalRequest(settings), JSON: true})
 				if err != nil {
@@ -399,6 +401,7 @@ func newContainersCommand() *cli.Command {
 		Flags: append([]cli.Flag{jsonFlag, ocidFlag,
 			&cli.StringFlag{Name: "file", Usage: "JSON Spec file"},
 			&cli.BoolFlag{Name: "pull", Usage: "Pull the image even if it is present"},
+			&cli.StringFlag{Name: "name", Usage: "New name: the hostname, unless one is set, and the name its network knows it by"},
 		}, specFlags()...),
 		Action: func(ctx context.Context, command *cli.Command) error {
 			ocid, err := containerOCID(command)
@@ -428,6 +431,9 @@ func newContainersCommand() *cli.Command {
 			if args := command.Args().Slice(); len(args) > 0 {
 				spec.Command = args
 			}
+			if command.IsSet("name") {
+				spec.Name = command.String("name")
+			}
 			spec.PullImage = command.Bool("pull")
 			return containerOperation(ctx, command, true, consoleprotocol.ContainerPayload{Action: "update", OCID: ocid, Request: marshalRequest(spec)})
 		},
@@ -435,9 +441,9 @@ func newContainersCommand() *cli.Command {
 
 	optionsCmd := &cli.Command{
 		Name:  "options",
-		Usage: "Change a container's name, description, or boot options",
+		Usage: "Change a container's title, description, or boot options",
 		Flags: []cli.Flag{jsonFlag, ocidFlag,
-			&cli.StringFlag{Name: "name", Usage: "New name"},
+			&cli.StringFlag{Name: "title", Usage: "Name shown for it; empty shows its name (see update --name)"},
 			&cli.StringFlag{Name: "description", Usage: "Description"},
 			&cli.UintFlag{Name: "cores", Usage: "CPU limit in cores (0 is unlimited)"},
 			&cli.StringFlag{Name: "memory", Usage: "Memory limit, e.g. 512MiB or 2GiB (0 is unlimited)"},
@@ -450,9 +456,9 @@ func newContainersCommand() *cli.Command {
 				return err
 			}
 			var req containerServiceInterfaces.OptionsRequest
-			if command.IsSet("name") {
-				req.Name = new(string)
-				*req.Name = command.String("name")
+			if command.IsSet("title") {
+				req.Title = new(string)
+				*req.Title = command.String("title")
 			}
 			if command.IsSet("description") {
 				req.Description = new(string)

@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { containerAction, renameContainerStack } from '$lib/api/container/container';
+	import {
+		containerAction,
+		deleteContainer,
+		renameContainerStack
+	} from '$lib/api/container/container';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
+	import { toastContainerError } from '$lib/utils/container/errors';
 	import { convertJailToTemplate, deleteJailTemplate, jailAction } from '$lib/api/jail/jail';
 	import CreateJailFromTemplate from '$lib/components/custom/Jail/Template/Create.svelte';
 	import ViewJailTemplate from '$lib/components/custom/Jail/Template/View.svelte';
@@ -22,7 +28,7 @@
 	import { toast } from 'svelte-sonner';
 	import SidebarElement from './TreeViewCluster.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
-	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, removeCache } from '$lib/utils/http';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 	import { getGuestNavigationHref } from '$lib/guest-navigation';
 	import {
@@ -162,7 +168,29 @@
 	let renameStackOpen = $state(false);
 	let renameStackLoading = $state(false);
 	let renameStackTitle = $state('');
-	let renameStackContent = $state<HTMLElement | null>(null);
+	let deleteStackOpen = $state(false);
+	let deleteStackVolumes = $state(false);
+
+	const handleDeleteStack = async () => {
+		const hostname = item.nodeHostname;
+		if (!hostname) return;
+		const viewing = (item.children ?? []).some(
+			(member) => member.href && activeUrl.startsWith(member.href.replace(/\/summary$/, ''))
+		);
+		for (const member of item.children ?? []) {
+			if (member.resourceId === undefined) continue;
+			const result = await deleteContainer(member.resourceId, deleteStackVolumes, hostname);
+			if (isAPIResponse(result)) {
+				toastContainerError(result);
+				return;
+			}
+			await removeCache(`container-${member.resourceId}`, hostname);
+		}
+		deleteStackOpen = false;
+		reload.leftPanel = true;
+		toast.success(`Stack ${item.label} deletion queued`, { position: 'bottom-center' });
+		if (viewing) useSafeGoto(`/${hostname}/summary`, { replaceState: false, noScroll: false });
+	};
 
 	const handleRenameStack = async () => {
 		if (renameStackLoading || !item.stack || !item.nodeHostname) return;
@@ -496,13 +524,10 @@
 
 				{#if item.children && item.children.length > 0}
 					<div class="flex shrink-0 items-center gap-0.5">
-						{#if isStack}
-							<span class="text-muted-foreground/70 text-[10px]">{item.children.length}</span>
-						{/if}
 						<span
 							role="button"
 							tabindex="0"
-							class="hover:bg-background flex size-5 shrink-0 cursor-pointer items-center justify-center rounded"
+							class="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded"
 							onclick={handleIconClick}
 							onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleIconClick(e) : null)}
 						>
@@ -660,6 +685,17 @@
 					>
 						<span class="icon-[mdi--rename-outline] h-4 w-4"></span>
 						Rename
+					</ContextMenu.Item>
+					<ContextMenu.Separator />
+					<ContextMenu.Item
+						class="gap-2 text-destructive"
+						onclick={() => {
+							deleteStackVolumes = false;
+							deleteStackOpen = true;
+						}}
+					>
+						<span class="icon-[mdi--delete-outline] h-4 w-4"></span>
+						Delete
 					</ContextMenu.Item>
 				{:else if item.resourceType === 'jail-template'}
 					<ContextMenu.Item class="gap-2" onclick={() => (viewTemplateOpen = true)}>
@@ -824,14 +860,7 @@
 
 {#if isStack}
 	<Dialog.Root bind:open={renameStackOpen}>
-		<Dialog.Content
-			bind:ref={renameStackContent}
-			class="max-w-md"
-			onOpenAutoFocus={(event) => {
-				event.preventDefault();
-				renameStackContent?.querySelector<HTMLElement>('input')?.focus({ preventScroll: true });
-			}}
-		>
+		<Dialog.Content class="max-w-md">
 			<Dialog.Header>
 				<Dialog.Title>
 					<div class="flex items-center gap-2">
@@ -844,7 +873,6 @@
 			<CustomValueInput
 				label="Name"
 				placeholder={item.stack}
-				hint="Only changes how the stack is shown; leave empty for {item.stack}"
 				bind:value={renameStackTitle}
 				disabled={renameStackLoading}
 				classes="space-y-2"
@@ -861,6 +889,23 @@
 			</Dialog.Footer>
 		</Dialog.Content>
 	</Dialog.Root>
+
+	<AlertDialog
+		bind:open={deleteStackOpen}
+		names={{
+			parent: 'the stack',
+			element: `${item.label} (${item.children?.length ?? 0} containers)`
+		}}
+		actions={{ onConfirm: handleDeleteStack, onCancel: () => (deleteStackOpen = false) }}
+		confirmLabel="Delete"
+		loadingLabel="Deleting..."
+	>
+		<CustomCheckbox
+			label="Delete Volumes"
+			bind:checked={deleteStackVolumes}
+			classes="flex items-center gap-2"
+		/>
+	</AlertDialog>
 {/if}
 
 {#if item.resourceType === 'vm' && item.resourceId}

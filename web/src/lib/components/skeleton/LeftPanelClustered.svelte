@@ -6,8 +6,8 @@
 	import {
 		buildResourceTree,
 		collectResourceTreeIds,
+		containerLabel,
 		filterResourceTree,
-		stackMemberName,
 		type ResourceTreeNodeInput,
 		type ResourceTreeItem,
 		type ResourceTreePreferences,
@@ -223,11 +223,11 @@
 				...(n.containers ?? []).map((container) => ({
 					id: `container-${container.ocId}`,
 					sortId: container.ocId,
-					sortName: container.name,
+					sortName: containerLabel(container),
 					resourceId: container.ocId,
 					resourceType: 'container' as const,
 					nodeHostname: n.hostname,
-					label: `${stackMemberName(container.name, container.stack)} (${container.ocId})`,
+					label: `${containerLabel(container)} (${container.ocId})`,
 					stack: container.stack,
 					stackTitle: container.stackTitle,
 					icon: 'lucide--container',
@@ -356,7 +356,13 @@
 <div class="flex h-full min-h-0 flex-col px-1.5 pt-1">
 	<nav aria-label="sylve-sidebar" class="menu thin-scrollbar h-full min-h-0 w-full">
 		<ul class="h-full min-h-0">
-			<ScrollArea orientation="both" class="h-full w-full">
+			<ScrollArea
+				orientation="both"
+				class="h-full w-full"
+				scrollbarXClasses="hidden"
+				scrollbarYClasses="hidden"
+				fade
+			>
 				{#if searching && displayTree.length === 0}
 					<div
 						class="text-muted-foreground flex flex-col items-center gap-1.5 px-2 py-8 text-center text-xs"

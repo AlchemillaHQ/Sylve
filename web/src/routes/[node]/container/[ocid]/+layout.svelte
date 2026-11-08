@@ -20,10 +20,11 @@
 	import { reload } from '$lib/stores/api.svelte';
 	import { confirmGuestAction } from '$lib/stores/guest-actions.svelte';
 	import type { GFSStep } from '$lib/types/common';
-	import type {
-		ContainerAction,
-		ContainerContext,
-		ContainerDetail
+	import {
+		containerTitle,
+		type ContainerAction,
+		type ContainerContext,
+		type ContainerDetail
 	} from '$lib/types/container/container';
 	import { getAPIErrorText, isAPIResponse, removeCache, updateCache } from '$lib/utils/http';
 	import { toastContainerError } from '$lib/utils/container/errors';
@@ -156,7 +157,7 @@
 			!(await confirmGuestAction({
 				guestType: 'container',
 				guestId: current.ocId,
-				name: current.name,
+				name: containerTitle(current),
 				hostname: data.node,
 				action
 			}))
@@ -176,7 +177,8 @@
 	async function remove() {
 		deleteDialog.open = false;
 		inFlight = true;
-		const { ocId, name, stack } = current;
+		const { ocId, stack, stackTitle } = current;
+		const name = containerTitle(current);
 		const whole = deleteDialog.stack && stackMembers.current.length > 1;
 		const ocIds = whole ? stackMembers.current.map((member) => member.ocId) : [ocId];
 		for (const member of ocIds) {
@@ -189,9 +191,12 @@
 			await removeCache(`container-${member}`, data.node);
 		}
 		inFlight = false;
-		toast.success(whole ? `Stack ${stack} deletion queued` : `Container ${name} deletion queued`, {
-			position: 'bottom-center'
-		});
+		toast.success(
+			whole ? `Stack ${stackTitle || stack} deletion queued` : `Container ${name} deletion queued`,
+			{
+				position: 'bottom-center'
+			}
+		);
 		reload.leftPanel = true;
 		await useSafeGoto(`/${data.node}/summary`);
 	}
@@ -208,7 +213,7 @@
 						<span class="icon-[mdi--close-circle] text-gray-500"></span>
 					{/if}
 				</Badge>
-				<p class="truncate text-sm font-semibold">{current.name} ({current.ocId})</p>
+				<p class="truncate text-sm font-semibold">{containerTitle(current)} ({current.ocId})</p>
 			</div>
 		{/if}
 
@@ -314,11 +319,11 @@
 			<AlertDialog.Title>Are you sure?</AlertDialog.Title>
 			<AlertDialog.Description>
 				This will permanently delete the container
-				<span class="font-semibold">{current.name} ({current.ocId}).</span>
+				<span class="font-semibold">{containerTitle(current)} ({current.ocId}).</span>
 				{#if stackMembers.current.length > 1}
 					<CustomCheckbox
-						label="Delete the whole {current.stack} stack ({stackMembers.current
-							.length} containers)"
+						label="Delete the whole {current.stackTitle || current.stack} stack ({stackMembers
+							.current.length} containers)"
 						bind:checked={deleteDialog.stack}
 						classes="mt-4 flex items-center gap-2"
 					/>

@@ -31,6 +31,7 @@ under sponsorship from the FreeBSD Foundation.
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
+	import { Input } from '$lib/components/ui/input/index.js';
 	import type { CatalogPlan } from '$lib/types/container/catalog';
 	import {
 		restartLabels,
@@ -148,6 +149,18 @@ under sponsorship from the FreeBSD Foundation.
 	});
 	let open = $state({ image: false, os: false, network: false, restart: false });
 
+	let envText = $state(false);
+	function toggleEnvText() {
+		if (!envText) {
+			text.env = spec.env
+				.filter((env) => env.name.trim())
+				.map((env) => `${env.name}=${env.value}`)
+				.join('\n');
+		}
+		envText = !envText;
+	}
+	const secretName = (name: string) => /pass|secret|key|token/i.test(name);
+
 	let networkOptions = $derived([
 		...networks.current.map((network) => ({
 			value: network.name,
@@ -247,21 +260,80 @@ under sponsorship from the FreeBSD Foundation.
 			/>
 		</div>
 	{:else if section === 'environment'}
-		<CustomValueInput
-			label="Environment"
-			placeholder={placeholders.env}
-			hint="One NAME=value per line"
-			type="textarea"
-			textAreaClasses="min-h-32 font-mono"
-			bind:value={text.env}
-			onChange={() =>
-				(spec.env = lines(text.env).map((line) => {
-					const index = line.indexOf('=');
-					return index < 0
-						? { name: line.trim(), value: '' }
-						: { name: line.slice(0, index).trim(), value: line.slice(index + 1) };
-				}))}
-		/>
+		{#if envText}
+			<CustomValueInput
+				label="Environment"
+				placeholder={placeholders.env}
+				hint="One NAME=value per line"
+				type="textarea"
+				textAreaClasses="min-h-48 font-mono"
+				bind:value={text.env}
+				onChange={() =>
+					(spec.env = lines(text.env).map((line) => {
+						const index = line.indexOf('=');
+						return index < 0
+							? { name: line.trim(), value: '' }
+							: { name: line.slice(0, index).trim(), value: line.slice(index + 1) };
+					}))}
+			/>
+		{:else}
+			<div class="-m-1 flex max-h-[55vh] flex-col gap-2 overflow-y-auto p-1">
+				{#if spec.env.length > 0}
+					<div class="text-muted-foreground flex gap-2 text-xs font-medium">
+						<span class="w-2/5">Name</span>
+						<span>Value</span>
+					</div>
+				{/if}
+				{#each spec.env as variable, index (index)}
+					<div class="flex items-center gap-2">
+						<Input
+							class="w-2/5 font-mono"
+							placeholder="NAME"
+							autocomplete="off"
+							bind:value={spec.env[index].name}
+						/>
+						<Input
+							class="min-w-0 flex-1 font-mono"
+							placeholder="value"
+							type={secretName(variable.name) ? 'password' : 'text'}
+							showPasswordOnFocus
+							autocomplete={secretName(variable.name) ? 'new-password' : 'off'}
+							bind:value={spec.env[index].value}
+						/>
+						<Button
+							variant="outline"
+							size="icon"
+							class="h-9 w-9 shrink-0"
+							title="Remove"
+							onclick={() => spec.env.splice(index, 1)}
+						>
+							<span class="icon-[mdi--delete] h-4 w-4"></span>
+						</Button>
+					</div>
+				{:else}
+					<div
+						class="text-muted-foreground flex flex-col items-center justify-center gap-2 py-8 text-sm"
+					>
+						<span class="icon-[mdi--variable] h-10 w-10"></span>
+						<span>No environment variables</span>
+					</div>
+				{/each}
+			</div>
+		{/if}
+		<div class="flex items-center gap-2">
+			{#if !envText}
+				<Button size="sm" class="h-7" onclick={() => spec.env.push({ name: '', value: '' })}>
+					<span class="icon-[gg--add] mr-1 h-4 w-4"></span>Add Variable
+				</Button>
+			{/if}
+			<Button size="sm" variant="outline" class="h-7" onclick={toggleEnvText}>
+				{#if envText}
+					<span class="icon-[mdi--format-list-bulleted] mr-1 h-4 w-4"></span>Edit as List
+				{:else}
+					<span class="icon-[mdi--text-box-outline] mr-1 h-4 w-4"></span>Paste as Text
+				{/if}
+			</Button>
+		</div>
 	{:else if section === 'network'}
 		<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
 			<CustomComboBox

@@ -48,6 +48,7 @@ under sponsorship from the FreeBSD Foundation.
 	let rows = $derived.by((): [string, string, string?][] => {
 		if (view === 'container') {
 			return [
+				...(container.title ? [['Name', container.name] as [string, string]] : []),
 				['OS', container.os === 'freebsd' ? 'FreeBSD' : 'Linux'],
 				['Image', container.image],
 				['Pool', container.pool],

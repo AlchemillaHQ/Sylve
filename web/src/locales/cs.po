@@ -248,6 +248,7 @@ msgid "Discord"
 msgstr ""
 
 #: src/lib/components/custom/Container/Catalog.svelte
+#: src/lib/components/custom/Container/Catalog.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Help"
@@ -825,7 +826,9 @@ msgstr "Poznámku se nepodařilo vytvořit"
 
 #: src/lib/components/custom/Container/Create.svelte
 #: src/lib/components/custom/Container/Create.svelte
+#: src/lib/components/custom/Container/GuestInformation.svelte
 #: src/lib/components/custom/Container/NetworkForm.svelte
+#: src/lib/components/custom/Container/Spec.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
@@ -859,6 +862,7 @@ msgstr "Poznámku se nepodařilo vytvořit"
 #: src/lib/components/skeleton/ResourceTreeToolbar.svelte
 #: src/lib/components/skeleton/ResourceTreeToolbar.svelte
 #: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/authentication/groups/+page.svelte
 #: src/routes/[node]/authentication/groups/+page.svelte
 #: src/routes/[node]/authentication/users/local/+page.svelte
@@ -945,6 +949,7 @@ msgstr "Zobrazit"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/authentication/groups/+page.svelte
@@ -1627,6 +1632,7 @@ msgstr "Vlastnost"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/lib/components/custom/Container/Properties.svelte
+#: src/lib/components/custom/Container/Spec.svelte
 #: src/routes/[node]/container/[ocid]/hardware/+page.svelte
 #: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/directory-services/kerberos/settings/+page.svelte
@@ -1883,11 +1889,13 @@ msgstr "<0/> Vyjmout"
 
 #: src/lib/components/custom/FileExplorer/GridView.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "<0/> Rename"
 msgstr "<0/> Přejmenovat"
 
 #: src/lib/components/custom/FileExplorer/GridView.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "<0/> Delete"
 msgstr "<0/> Smazat"
 
@@ -1913,6 +1921,7 @@ msgstr "Zadat nový název"
 
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Rename"
 msgstr "Přejmenovat"
@@ -3223,7 +3232,6 @@ msgid "Target connectivity validated"
 msgstr ""
 
 #: src/lib/components/custom/VM/MigrateModal.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Validation failed"
 msgstr ""
@@ -7571,6 +7579,7 @@ msgstr "Zobrazit pravidelné"
 msgid "Flash File"
 msgstr "Bitově zapsat soubor"
 
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/container/[ocid]/+layout.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "Delete Volumes"
@@ -7975,6 +7984,7 @@ msgstr ""
 msgid "<0/> View Template"
 msgstr ""
 
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
@@ -10640,6 +10650,7 @@ msgid "Transport Name"
 msgstr ""
 
 #: src/lib/components/custom/Container/Spec.svelte
+#: src/lib/components/custom/Container/Spec.svelte
 #: src/lib/components/custom/Network/IfaceL3/Form.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/container/[ocid]/storage/+page.svelte
@@ -13081,7 +13092,6 @@ msgstr ""
 msgid "Waiting to retry the migration safely…"
 msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Ready"
@@ -13795,6 +13805,7 @@ msgstr ""
 msgid "Authenticated access not configured"
 msgstr ""
 
+#: src/lib/components/custom/Container/Catalog.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Not set"
@@ -14546,36 +14557,6 @@ msgstr ""
 
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Replication is blocked by a cloned source snapshot; remove or promote the listed clone, then retry"
-msgstr ""
-
-#: src/routes/datacenter/backups/targets/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
-msgid "Not validated"
-msgstr ""
-
-#: src/routes/datacenter/backups/targets/+page.svelte
-msgid "Removed voter"
-msgstr ""
-
-#: src/routes/datacenter/backups/targets/+page.svelte
-msgid "Configuration changed"
-msgstr ""
-
-#: src/routes/datacenter/backups/targets/+page.svelte
-msgid "No validation has been recorded for this node"
-msgstr ""
-
-#. 0: status.lastVerifiedAt; 1: readyUntil
-#: src/routes/datacenter/backups/targets/+page.svelte
-msgid "Last checked {0}{1}"
-msgstr ""
-
-#: src/routes/datacenter/backups/targets/+page.svelte
-msgid "Validation node"
-msgstr ""
-
-#: src/routes/datacenter/backups/targets/+page.svelte
-msgid "Node used for target connectivity validation"
 msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
@@ -17518,6 +17499,7 @@ msgstr ""
 msgid "Application API Token"
 msgstr ""
 
+#: src/lib/components/custom/Container/Catalog.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/routes/[node]/storage/nfs/settings/+page.svelte
@@ -21538,6 +21520,7 @@ msgstr ""
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/system/updates/packages/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Not checked"
 msgstr ""
 
@@ -22767,10 +22750,6 @@ msgid "Edit a container to change its image, ports, environment, storage or reso
 msgstr ""
 
 #: src/lib/components/custom/Container/Create.svelte
-msgid "The stack's other containers reach it by this name"
-msgstr ""
-
-#: src/lib/components/custom/Container/Create.svelte
 msgid "Container ID"
 msgstr ""
 
@@ -22816,6 +22795,9 @@ msgid "Podman ID"
 msgstr ""
 
 #: src/lib/components/custom/Container/GuestInformation.svelte
+#: src/routes/[node]/container/[ocid]/options/+page.svelte
+#: src/routes/[node]/container/[ocid]/options/+page.svelte
+#: src/routes/[node]/container/[ocid]/options/+page.svelte
 msgid "Title"
 msgstr ""
 
@@ -23142,7 +23124,9 @@ msgstr ""
 msgid "Container updated"
 msgstr ""
 
-#. 0: stack
+#. 0: item.label
+#. 0: stackTitle || stack
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/container/[ocid]/+layout.svelte
 msgid "Stack {0} deletion queued"
 msgstr ""
@@ -23156,7 +23140,7 @@ msgstr ""
 msgid "Open Web UI"
 msgstr ""
 
-#. 0: current.stack; 1: stackMembers.current .length
+#. 0: current.stackTitle || current.stack; 1: stackMembers .current.length
 #: src/routes/[node]/container/[ocid]/+layout.svelte
 msgid "Delete the whole {0} stack ({1} containers)"
 msgstr ""
@@ -23486,4 +23470,105 @@ msgstr ""
 #. 0: dataset
 #: src/lib/components/custom/VM/MigrateModal.svelte
 msgid "Catching up {0}"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Failed to rename stack"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Rename Stack"
+msgstr ""
+
+#. 0: form.service || form.name
+#: src/lib/components/custom/Container/Create.svelte
+msgid "The stack's other containers reach it as {0}"
+msgstr ""
+
+#: src/lib/components/custom/Container/Catalog.svelte
+msgid "New datasets under the stack"
+msgstr ""
+
+#. 0: variable.folders.join(', ')
+#: src/lib/components/custom/Container/Catalog.svelte
+msgid "Holds {0}. Leave empty for a ZFS dataset per folder under the stack; a host directory or dataset you give must already contain them."
+msgstr ""
+
+#: src/lib/components/custom/Container/Catalog.svelte
+msgid "Stack Name"
+msgstr ""
+
+#: src/lib/components/custom/Container/Catalog.svelte
+msgid "Names its containers, network and folders; a new name installs another copy."
+msgstr ""
+
+#: src/lib/components/custom/Container/Spec.svelte
+msgid "No environment variables"
+msgstr ""
+
+#: src/lib/components/custom/Container/Spec.svelte
+msgid "<0/>Add Variable"
+msgstr ""
+
+#: src/lib/components/custom/Container/Spec.svelte
+msgid "<0/>Edit as List"
+msgstr ""
+
+#: src/lib/components/custom/Container/Spec.svelte
+msgid "<0/>Paste as Text"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "No connection check from this node yet"
+msgstr ""
+
+#. 0: new Date(status.lastVerifiedAt).toLocaleString()
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Last checked {0}"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Settings changed"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Connectivity"
+msgstr ""
+
+#. 0: failed.join(', ')
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Validation failed on {0}"
+msgstr ""
+
+#: src/routes/[node]/container/[ocid]/options/+page.svelte
+msgid "Same as the name"
+msgstr ""
+
+#: src/routes/[node]/container/[ocid]/options/+page.svelte
+msgid "Shown for the container; empty shows its name"
+msgstr ""
+
+#: src/routes/[node]/container/[ocid]/options/+page.svelte
+msgid "Its hostname, unless one is set, and the name other containers on its network reach it by. Saving recreates the container."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Archived generations to keep must be 0 or greater"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Keep Archived Generations"
+msgstr ""
+
+#. 0: Number.parseInt(form.pruneKeepGenerations || '0', 10)
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Keep newest {0}"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Keep all"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Archived generations: <0/>"
 msgstr ""

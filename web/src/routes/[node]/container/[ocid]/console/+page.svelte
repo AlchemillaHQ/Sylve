@@ -1,6 +1,6 @@
 <script lang="ts">
 	import GuestConsole from '$lib/components/custom/Terminal/GuestConsole.svelte';
-	import type { ContainerContext } from '$lib/types/container/container';
+	import { containerTitle, type ContainerContext } from '$lib/types/container/container';
 	import { getContext } from 'svelte';
 
 	let { data }: { data: { node: string; ocId: number; hash: string } } = $props();
@@ -11,7 +11,7 @@
 
 <GuestConsole
 	kind="Container"
-	name={container.current.name}
+	name={containerTitle(container.current)}
 	url={`/api/container/${data.ocId}/console`}
 	node={data.node}
 	hash={data.hash}

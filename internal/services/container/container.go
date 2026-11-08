@@ -20,6 +20,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/config"
@@ -146,9 +147,13 @@ func (s *Service) Startup(ctx context.Context) error {
 	}
 	for _, pool := range basic.Pools {
 		if downloads, err := s.downloads(ctx, pool); err == nil {
+			// podman needs the downloads folder itself for every exec, not only pulls.
 			stale, _ := filepath.Glob(filepath.Join(filepath.Dir(downloads), ".pull-*"))
-			for _, dir := range stale {
-				_ = os.RemoveAll(dir)
+			left, _ := filepath.Glob(filepath.Join(downloads, "*"))
+			for _, dir := range append(stale, left...) {
+				if dir != downloads {
+					_ = os.RemoveAll(dir)
+				}
 			}
 		}
 	}
@@ -485,11 +490,12 @@ func (s *Service) UpdateOptions(ctx context.Context, ocid uint, req containerSer
 		return err
 	}
 	updates := map[string]any{}
-	if req.Name != nil {
-		if err := s.validateName(ctx, *req.Name, record.ID); err != nil {
-			return err
+	if req.Title != nil {
+		title := strings.TrimSpace(*req.Title)
+		if utf8.RuneCountInString(title) > 63 {
+			return fmt.Errorf("invalid_container_title")
 		}
-		updates["name"] = *req.Name
+		updates["title"] = title
 	}
 	if req.Description != nil {
 		updates["description"] = *req.Description

@@ -18,6 +18,9 @@ const (
 )
 
 type Spec struct {
+	// Name renames the container on update: its hostname and the name its
+	// network knows it by. CreateRequest's own Name shadows it on create.
+	Name           string                   `json:"name,omitempty"`
 	Image          string                   `json:"image"`
 	OS             string                   `json:"os"`
 	Command        []string                 `json:"command"`
@@ -44,7 +47,7 @@ func SpecOf(c containerModels.Container) Spec {
 	if c.Network != nil {
 		network = c.Network.Name
 	}
-	return Spec{Image: c.Image, OS: c.OS, Command: c.Command, Entrypoint: c.Entrypoint, WorkDir: c.WorkDir,
+	return Spec{Name: c.Name, Image: c.Image, OS: c.OS, Command: c.Command, Entrypoint: c.Entrypoint, WorkDir: c.WorkDir,
 		User: c.User, Hostname: c.Hostname, Env: c.Env, Network: network, IP: c.IP, Ports: c.Ports, Mounts: c.Mounts,
 		Restart: c.Restart, RestartRetries: c.RestartRetries, StopTimeout: c.StopTimeout,
 		Annotations: c.Annotations, ExtraHosts: c.ExtraHosts, ShmSize: c.ShmSize}
@@ -53,6 +56,7 @@ func SpecOf(c containerModels.Container) Spec {
 type CreateRequest struct {
 	OCID        uint   `json:"ocId" binding:"required"`
 	Name        string `json:"name" binding:"required"`
+	Title       string `json:"title"`
 	Description string `json:"description"`
 	Pool        string `json:"pool" binding:"required"`
 	Spec
@@ -67,6 +71,8 @@ type CreateRequest struct {
 	Stack            string `json:"stack"`
 	StackTitle       string `json:"stackTitle"`
 	Service          string `json:"service"`
+	// Secrets are the catalog secrets the request was rendered with, by setting.
+	Secrets map[string]string `json:"secrets,omitempty"`
 }
 
 type CatalogPlan struct {
@@ -87,7 +93,7 @@ type DeleteRequest struct {
 }
 
 type OptionsRequest struct {
-	Name        *string `json:"name"`
+	Title       *string `json:"title"`
 	Description *string `json:"description"`
 	Cores       *uint   `json:"cores"`
 	Memory      *uint64 `json:"memory"`
@@ -143,6 +149,7 @@ type ListItem struct {
 type SimpleList struct {
 	OCID       uint   `json:"ocId"`
 	Name       string `json:"name"`
+	Title      string `json:"title"`
 	Stack      string `json:"stack"`
 	StackTitle string `json:"stackTitle"`
 	State      string `json:"state"`
@@ -228,12 +235,16 @@ type CatalogTemplate struct {
 	Variables  []CatalogVariable `json:"variables"`
 	Choices    []CatalogChoice   `json:"choices"`
 	Containers []string          `json:"containers"`
+	Stack      string            `json:"stack,omitempty"`
 }
 
 type CatalogRenderRequest struct {
 	Variant string            `json:"variant"`
 	Values  map[string]string `json:"values"`
 	Choices map[string]string `json:"choices"`
+	// Stack names a stack app's install in place of the app's ID, so it can be
+	// installed more than once.
+	Stack string `json:"stack"`
 }
 
 // Console is an interactive shell in a container.
