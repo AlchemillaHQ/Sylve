@@ -5,6 +5,7 @@
 package zelta
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"testing"
@@ -52,7 +53,7 @@ func TestQuiesceBackupGuestPreservesJailState(t *testing.T) {
 
 	t.Run("already stopped remains stopped", func(t *testing.T) {
 		stub := &backupGuestStateJailStub{ctID: 100}
-		restore, stopped, err := (&Service{Jail: stub}).quiesceBackupGuest(job, 0)
+		restore, stopped, err := (&Service{Jail: stub}).quiesceBackupGuestContext(context.Background(), job, 0)
 		if err != nil || stopped || restore != nil {
 			t.Fatalf("unexpected result: restore=%v stopped=%t err=%v", restore != nil, stopped, err)
 		}
@@ -63,7 +64,7 @@ func TestQuiesceBackupGuestPreservesJailState(t *testing.T) {
 
 	t.Run("running jail is stopped then restored", func(t *testing.T) {
 		stub := &backupGuestStateJailStub{ctID: 100, running: true}
-		restore, stopped, err := (&Service{Jail: stub}).quiesceBackupGuest(job, 0)
+		restore, stopped, err := (&Service{Jail: stub}).quiesceBackupGuestContext(context.Background(), job, 0)
 		if err != nil || !stopped || restore == nil {
 			t.Fatalf("unexpected result: restore=%v stopped=%t err=%v", restore != nil, stopped, err)
 		}
@@ -80,7 +81,7 @@ func TestQuiesceBackupGuestPreservesJailState(t *testing.T) {
 
 	t.Run("stop failure has no inverse", func(t *testing.T) {
 		stub := &backupGuestStateJailStub{ctID: 100, running: true, stopErr: errors.New("stop failed")}
-		restore, stopped, err := (&Service{Jail: stub}).quiesceBackupGuest(job, 0)
+		restore, stopped, err := (&Service{Jail: stub}).quiesceBackupGuestContext(context.Background(), job, 0)
 		if err == nil || stopped || restore != nil {
 			t.Fatalf("unexpected result: restore=%v stopped=%t err=%v", restore != nil, stopped, err)
 		}
@@ -91,7 +92,7 @@ func TestQuiesceBackupGuestPreservesJailState(t *testing.T) {
 
 	t.Run("restart failure is returned", func(t *testing.T) {
 		stub := &backupGuestStateJailStub{ctID: 100, running: true, startErr: errors.New("start failed")}
-		restore, stopped, err := (&Service{Jail: stub}).quiesceBackupGuest(job, 0)
+		restore, stopped, err := (&Service{Jail: stub}).quiesceBackupGuestContext(context.Background(), job, 0)
 		if err != nil || !stopped || restore == nil {
 			t.Fatalf("unexpected result: restore=%v stopped=%t err=%v", restore != nil, stopped, err)
 		}
@@ -110,7 +111,7 @@ func TestQuiesceBackupGuestDisabledDoesNotInspectGuest(t *testing.T) {
 		JailRootDataset:  "tank/sylve/jails/100",
 		StopBeforeBackup: false,
 	}
-	restore, stopped, err := (&Service{Jail: stub}).quiesceBackupGuest(job, 0)
+	restore, stopped, err := (&Service{Jail: stub}).quiesceBackupGuestContext(context.Background(), job, 0)
 	if err != nil || stopped || restore != nil || stub.lookupCalls != 0 || len(stub.actions) != 0 {
 		t.Fatalf(
 			"disabled quiesce touched guest: restore=%v stopped=%t err=%v lookups=%d actions=%v",

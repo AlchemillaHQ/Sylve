@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/alchemillahq/sylve/internal/assets"
 	"github.com/alchemillahq/sylve/internal/config"
@@ -157,6 +158,9 @@ func runZeltaWithEnvStreaming(
 ) (string, error) {
 	bin := zeltaBinPath()
 	cmd := exec.CommandContext(ctx, bin, args...)
+	// zelta's zfs and ssh children must die with it on cancel.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

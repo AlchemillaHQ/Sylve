@@ -2930,7 +2930,7 @@ func (s *Service) isDatasetEncrypted(ctx context.Context, dataset string) (bool,
 		return false, fmt.Errorf("dataset_required")
 	}
 
-	output, err := utils.RunCommandWithContext(ctx, "zfs", "get", "-H", "-r", "-o", "value", "encryption", dataset)
+	output, err := utils.RunCommandWithContext(ctx, "zfs", "get", "-H", "-r", "-t", "filesystem,volume", "-o", "value", "encryption", dataset)
 	if err != nil {
 		return false, fmt.Errorf("%s: %w", strings.TrimSpace(output), err)
 	}

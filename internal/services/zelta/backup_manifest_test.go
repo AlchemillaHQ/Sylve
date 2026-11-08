@@ -18,6 +18,11 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
+func parseBackupSnapshotGUIDs(output, root, snapshotName string) (map[string]string, error) {
+	byName, err := parseBackupSnapshotGUIDInventory(output, root)
+	return byName[snapshotName], err
+}
+
 func TestBuildBackupSnapshotManifestEntriesRequiresCompleteSourceTree(t *testing.T) {
 	datasets, err := parseBackupDatasetTree(
 		"pool/source\tfilesystem\npool/source/child\tvolume\n",
@@ -313,6 +318,14 @@ func TestParseBackupCommitMetadataRejectsInheritedAndDuplicateProperties(t *test
 	inherited[0] = strings.TrimSuffix(inherited[0], "\tlocal") + "\tinherited from pool/backup"
 	if _, err := parseBackupCommitMetadata(strings.Join(inherited, "\n")); err == nil || !strings.Contains(err.Error(), "not_local") {
 		t.Fatalf("expected inherited commit property rejection, got %v", err)
+	}
+
+	unset := make([]string, 0, len(lines))
+	for _, line := range lines {
+		unset = append(unset, strings.SplitN(line, "\t", 2)[0]+"\t-\t-")
+	}
+	if _, err := parseBackupCommitMetadata(strings.Join(unset, "\n")); err == nil || !strings.Contains(err.Error(), "backup_snapshot_not_committed") {
+		t.Fatalf("expected unset commit properties to mean not committed, got %v", err)
 	}
 
 	duplicate := append(append([]string(nil), lines...), lines[0])

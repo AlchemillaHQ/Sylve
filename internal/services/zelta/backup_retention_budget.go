@@ -50,7 +50,7 @@ func buildBackupRetentionCleanupPlan(
 				inventory.localSnapshots,
 				inventory.remoteSnapshots,
 			)
-			plan.localCandidates = buildLocalRetentionPruneCandidates(
+			plan.localCandidates = buildRetentionPruneCandidates(
 				localSnapshots,
 				job.PruneKeepLast,
 				protect,
@@ -58,12 +58,7 @@ func buildBackupRetentionCleanupPlan(
 			)
 		}
 		if job.PruneTarget {
-			plan.targetCandidates = buildBKRetentionPruneCandidates(
-				remoteSnapshots,
-				job.PruneKeepLast,
-				snapshotCandidateSet(snapshotNames(remoteSnapshots)),
-				snapPrefix,
-			)
+			plan.targetCandidates = buildRetentionPruneCandidates(remoteSnapshots, job.PruneKeepLast, nil, snapPrefix)
 		}
 		plans = append(plans, plan)
 	}

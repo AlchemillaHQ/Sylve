@@ -92,6 +92,8 @@ func normalizeRestoredVMBootROM(value vmModels.VMBootROM) vmModels.VMBootROM {
 	}
 }
 
+var errRestoredVMApplied = errors.New("restored_vm_applied")
+
 func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context, dataset string, restoreNetwork bool) error {
 	return s.reconcileRestoredVMFromDataset(ctx, dataset, "", restoreNetwork, false, false, false)
 }
@@ -399,6 +401,12 @@ func (s *Service) reconcileRestoredVMFromDataset(
 	if err != nil {
 		return err
 	}
+	// The DB now describes the restored disks; callers must not roll them back.
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w: %w", errRestoredVMApplied, err)
+		}
+	}()
 
 	if unlockNetworkLifecycle != nil {
 		unlockNetworkLifecycle()

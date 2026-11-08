@@ -37,3 +37,31 @@ func TestFlashImageToDiskCtxKeepsADiskFilesSize(t *testing.T) {
 		t.Fatalf("disk is %d bytes; image written: %v", len(written), bytes.Equal(written[:len(image)], image))
 	}
 }
+
+func TestWriteFileIfChangedLeavesIdenticalFileUntouched(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vm.json")
+	if err := WriteFileIfChanged(path, []byte("one"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteFileIfChanged(path, []byte("one"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(before, after) || !after.ModTime().Equal(before.ModTime()) {
+		t.Fatal("identical content must not rewrite the file")
+	}
+
+	if err := WriteFileIfChanged(path, []byte("two"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "two" {
+		t.Fatalf("changed content not written: %q", data)
+	}
+}

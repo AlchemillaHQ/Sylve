@@ -6,6 +6,7 @@ package zelta
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -137,6 +138,10 @@ func (s *Service) backupRetentionEligibleSnapshotProofsFromInventories(
 			// for destructive cleanup. Keep legacy points indefinitely.
 			continue
 		}
+		if _, rootHasIt := inventories[commitRoot].snapshotGUIDsByName[shortName][commitRoot]; !rootHasIt {
+			// The commit marker lives on the root snapshot.
+			continue
+		}
 		shortNames = append(shortNames, shortName)
 		remoteCommitSnapshots = append(remoteCommitSnapshots, commitRoot+"@"+shortName)
 	}
@@ -176,13 +181,10 @@ func (s *Service) backupRetentionEligibleSnapshotProofsFromInventories(
 				err,
 			)
 		}
-		manifest, err := buildRemoteBackupManifestFromInventories(
-			job,
-			shortName,
-			metadata.Recursive,
-			scopes,
-			inventories,
-		)
+		manifest, err := buildRemoteBackupManifestFromInventories(job, metadata, scopes, inventories)
+		if errors.Is(err, errBackupGenerationUnprovable) {
+			continue
+		}
 		if err != nil {
 			return proofs, fmt.Errorf(
 				"backup_retention_manifest_unavailable: snapshot=%s: %w",

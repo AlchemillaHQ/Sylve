@@ -898,7 +898,7 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 		return s.runRestoreFromTargetVM(ctx, target, payload, nil)
 	}
 
-	_, err = s.runRestoreFromTargetSingleDataset(ctx, target, payload, nil, true, false, false, nil, nil)
+	_, err = s.runRestoreFromTargetSingleDataset(ctx, target, payload, nil, true, false, nil, nil)
 	return err
 }
 
@@ -1168,6 +1168,13 @@ func (s *Service) runRestoreFromTargetVM(
 			s.releaseGuestIdentityReservationAfterError(ctx, guestIdentityReservation, &retErr)
 		}()
 	}
+	// Before the fence: a leftover staging dataset must not cost a hard stop.
+	for _, plan := range rootPlans {
+		identity := newRestoreStagingIdentity(jobID, target.ID, plan.destination)
+		if err := s.prepareRestoreStagingDataset(ctx, plan.destination+".restoring", identity); err != nil {
+			return fmt.Errorf("restore_preflight_staging_check_failed: %w", err)
+		}
+	}
 	vmRestoreFence, err := s.acquireVMRestoreFence(ctx, destRID, event.ID)
 	if err != nil {
 		return fmt.Errorf("acquire_vm_restore_fence_failed: %w", err)
@@ -1199,12 +1206,6 @@ func (s *Service) runRestoreFromTargetVM(
 			vmRestoreFence.guestID,
 		); err != nil {
 			return fmt.Errorf("restore_guest_placement_check_failed: %w", err)
-		}
-	}
-	for _, plan := range rootPlans {
-		identity := newRestoreStagingIdentity(jobID, target.ID, plan.destination)
-		if err := s.prepareRestoreStagingDataset(ctx, plan.destination+".restoring", identity); err != nil {
-			return fmt.Errorf("restore_preflight_staging_check_failed: %w", err)
 		}
 	}
 
@@ -1254,7 +1255,6 @@ func (s *Service) runRestoreFromTargetVM(
 			jobID,
 			false,
 			true,
-			false,
 			&event.ID,
 			&prepared,
 		)
@@ -1282,6 +1282,20 @@ func (s *Service) runRestoreFromTargetVM(
 		}
 	}
 
+	// Activate before reconcile commits the VM rows, while it can still be rolled back.
+	var activations []restoreTargetGenerationActivation
+	if jobID != nil && *jobID > 0 {
+		var err error
+		activations, err = s.activateTargetGenerationsForRestore(ctx, target, generationSelections)
+		if err != nil {
+			rollbackErr := rollbackAppliedBackups()
+			if rollbackErr != nil {
+				return fmt.Errorf("%w; rollback_failed: %v", err, rollbackErr)
+			}
+			return err
+		}
+	}
+
 	reconcileErr := error(nil)
 	if strictAsNew {
 		sourcePrimaryRoot := canonicalRemoteVMRoot(
@@ -1298,8 +1312,14 @@ func (s *Service) runRestoreFromTargetVM(
 	} else {
 		reconcileErr = s.reconcileRestoredVMFromDatasetWithOptions(ctx, primaryDestination, restoreNetwork)
 	}
+	if errors.Is(reconcileErr, errRestoredVMApplied) {
+		return fmt.Errorf("reconcile_restored_vm_failed: %w", reconcileErr)
+	}
 	if reconcileErr != nil {
-		rollbackErr := rollbackAppliedBackups()
+		rollbackErr := errors.Join(
+			rollbackAppliedBackups(),
+			s.rollbackTargetGenerationActivations(target, activations),
+		)
 		if rollbackErr != nil {
 			return fmt.Errorf("reconcile_restored_vm_failed: %w; rollback_failed: %v", reconcileErr, rollbackErr)
 		}
@@ -1308,19 +1328,6 @@ func (s *Service) runRestoreFromTargetVM(
 
 	if strictAsNew {
 		if err := s.finalizeGuestIdentityRestore(ctx, guestIdentityReservation); err != nil {
-			return err
-		}
-	}
-
-	if jobID != nil && *jobID > 0 {
-		// Remote generation activation is deliberately deferred until every local
-		// root and VM metadata have activated successfully. The helper rolls back
-		// any earlier remote swaps if a later swap fails.
-		if _, err := s.activateTargetGenerationsForRestore(ctx, target, generationSelections); err != nil {
-			rollbackErr := rollbackAppliedBackups()
-			if rollbackErr != nil {
-				return fmt.Errorf("%w; rollback_failed: %v", err, rollbackErr)
-			}
 			return err
 		}
 	}
@@ -1419,7 +1426,6 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	jobID *uint,
 	reconcileJail bool,
 	keepBackup bool,
-	activateRemoteGeneration bool,
 	sharedEventID *uint,
 	preparedPlan *remoteRestoreDatasetPlan,
 ) (backupResult string, retErr error) {
@@ -1642,19 +1648,11 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		recordRestoreFailure(restoreErr)
 		return "", restoreErr
 	}
-	output, restoreErr = runZeltaWithEnvStreaming(
-		ctx,
-		extraEnv,
-		func(line string) {
-			appendEventOutput(line)
-		},
-		"backup",
-		"--json",
-		"--no-snapshot",
-		remoteEndpoint,
-		restorePath,
+	output, restoreErr = s.pullRestore(
+		ctx, target, extraEnv, appendEventOutput,
+		destinationDataset, remoteEndpoint, snapshot, restorePath,
+		stagingIdentity, expectedManifest, true,
 	)
-	restoreErr = targetSSHHostKeyError(target, output, restoreErr)
 	if restoreErr != nil {
 		restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, restoreErr)
 		logger.L.Warn().
@@ -1673,6 +1671,9 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	restoreExists, verifyErr := s.localDatasetExists(ctx, restorePath)
 	if verifyErr != nil || !restoreExists {
 		restoreErr = zeltaRecvMissingError(restorePath, output)
+		if verifyErr != nil {
+			restoreErr = fmt.Errorf("verify_restored_dataset_failed: %w", verifyErr)
+		}
 		restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, restoreErr)
 		if ownsEvent {
 			s.finalizeRestoreEvent(&event, restoreErr, output)
@@ -1719,60 +1720,20 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		}
 	}
 
-	if idx := strings.LastIndex(destinationDataset, "/"); idx > 0 {
-		parent := destinationDataset[:idx]
-		_ = s.ensureLocalFilesystemPath(ctx, parent)
-	}
-
 	backupDataset := ""
 	var renameErr error
 	if strictAsNew {
 		renameErr = s.promoteRestoredDatasetAsNew(ctx, restorePath, destinationDataset)
-	} else if isJailDestination && destExists {
-		jailRuntimeGuard, quiesceErr := s.prepareInPlaceJailRestore(ctx, destinationDataset)
-		if quiesceErr != nil {
-			restoreErr = s.cleanupOwnedRestoreStagingAfterError(
-				restorePath,
-				stagingIdentity,
-				quiesceErr,
-			)
-			recordRestoreFailure(restoreErr)
-			return "", restoreErr
-		}
-		// Keep the guard alive for the whole post-stop transaction, not only the
-		// ZFS rename. A later property, reconciliation, or generation-activation
-		// failure must restart a jail that this restore stopped. Successful
-		// restores intentionally leave it stopped.
-		defer func() {
-			var restartErr error
-			retErr, restartErr = jailRuntimeGuard.restoreAfterFailure(retErr)
-			if restartErr != nil {
-				jailSafeToRestart = false
-				recordRestoreFailure(retErr)
-			}
-		}()
-		backupDataset, renameErr = s.promoteRestoredDataset(ctx, restorePath, destinationDataset)
-		if renameErr != nil {
-			renameErr = fmt.Errorf(
-				"rename_restore_failed: could not promote restored dataset into %s: %w",
-				destinationDataset,
-				renameErr,
-			)
-		}
 	} else {
 		backupDataset, renameErr = s.promoteRestoredDataset(ctx, restorePath, destinationDataset)
 	}
 	if renameErr != nil {
-		if isJailDestination && destExists && !strictAsNew {
-			restoreErr = renameErr
-		} else {
-			restoreErr = fmt.Errorf(
-				"rename_restore_failed: could not promote %s → %s: %w",
-				restorePath,
-				destinationDataset,
-				renameErr,
-			)
-		}
+		restoreErr = fmt.Errorf(
+			"rename_restore_failed: could not promote %s → %s: %w",
+			restorePath,
+			destinationDataset,
+			renameErr,
+		)
 		restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, restoreErr)
 		recordRestoreFailure(restoreErr)
 		return "", restoreErr
@@ -1826,33 +1787,6 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 				Err(reconcileErr).
 				Str("destination_dataset", destinationDataset).
 				Msg("restore_jail_metadata_reconcile_failed_data_intact")
-		}
-	}
-
-	if activateRemoteGeneration {
-		activationActive := preferredRemoteDataset
-		activationSelected := remoteDataset
-		if datasetWithinRoot(activationActive, activationSelected) && activationActive != activationSelected {
-			// Snapshot resolution can land on a child dataset (for example a VM zvol under the VM root).
-			// Generation activation is only defined for the lineage root dataset, so keep it anchored there.
-			activationSelected = activationActive
-		}
-		if _, err := s.activateTargetGenerationsForRestore(
-			ctx,
-			target,
-			[]restoreTargetGenerationSelection{{
-				ActiveDataset:   activationActive,
-				SelectedDataset: activationSelected,
-			}},
-		); err != nil {
-			restoreErr = s.rollbackRestorePromotionAfterError(
-				destinationDataset,
-				backupDataset,
-				destExists,
-				err,
-			)
-			recordRestoreFailure(restoreErr)
-			return "", restoreErr
 		}
 	}
 
@@ -2240,7 +2174,11 @@ func (s *Service) listRemoteSnapshots(ctx context.Context, target *clusterModels
 				Str("dataset", remoteDatasetForLog(remoteDataset)).
 				Bool("recursive", recursive).
 				Msg("ssh_snapshot_list_failed_retrying")
-			time.Sleep(2 * time.Second)
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("failed_to_list_remote_snapshots: %w", ctx.Err())
+			case <-time.After(2 * time.Second):
+			}
 		}
 	}
 	if err != nil {
@@ -2519,7 +2457,7 @@ func (s *Service) listRemoteLineageDatasets(ctx context.Context, target *cluster
 
 	output, err := s.runTargetZFSList(ctx, target, "-t", "filesystem", "-d", "1", "-Hp", "-o", "name", parent)
 	if err != nil {
-		return []string{remoteDataset}, nil
+		return nil, fmt.Errorf("list_remote_lineage_datasets_failed: %w", err)
 	}
 
 	results := make([]string, 0)

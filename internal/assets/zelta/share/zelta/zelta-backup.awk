@@ -119,7 +119,7 @@ function update_latest_snapshot(endpoint, ds_suffix, snap_name,		_idx, _src_late
 	else if (endpoint == "TGT") {
 		DSPair[ds_suffix, "match"] = snap_name
 		Dataset[_idx, "latest_snapshot"] = snap_name
-		if (snap_name == _src_latest) {
+		if (snap_name == _src_latest || snap_name == DSTree["final_snapshot"]) {
 			Dataset["SRC", ds_suffix, "next_snapshot"] = ""
 			DSTree["syncable"]--
 			Action[ds_suffix, "status_info"] = "up-to-date"
@@ -399,8 +399,8 @@ function compute_eligibility(           _i, _ds_suffix, _src_idx, _tgt_idx,
 
 		# Case 3: We have matches
 
-		# Match is latest on source - nothing to sync
-		if (_match == _src_latest) {
+		# Match is latest on source, or the snapshot the source endpoint named - nothing to sync
+		if (_match == _src_latest || _match == DSTree["final_snapshot"]) {
 			# Target has local changes
 			if (Dataset[_tgt_idx, "written"]) {
 				Action[_ds_suffix, "status_notice"] = "target has local writes"
@@ -491,7 +491,7 @@ function apply_predicted_source_snapshot(		_i) {
 }
 
 # This function replaces the original 'zelta snapshot' command
-function create_source_snapshot(force_snap,	_snap_name, _ds_snap, _cmd_arr, _cmd, _cmd_status, _snap_failed, _should_snap, _i) {
+function create_source_snapshot(force_snap,	_snap_name, _ds_snap, _cmd_arr, _cmd, _snap_failed, _should_snap, _i) {
 	_should_snap = force_snap ? force_snap : should_snapshot()
 	if (_should_snap) {
 		_snap_name = get_snap_name()
@@ -525,12 +525,8 @@ function create_source_snapshot(force_snap,	_snap_name, _ds_snap, _cmd_arr, _cmd
 			report(LOG_WARNING, "unexpected `zfs snapshot` output: "$0)
 		}
 	}
-	_cmd_status = close(_cmd)
-	if (_cmd_status || _snap_failed)
-		stop(3, "source_snapshot_creation_failed: " _ds_snap)
-	if (!dataset_exists("SRC", _ds_snap))
-		stop(3, "source_snapshot_verification_failed: " _ds_snap)
-
+	close(_cmd)
+	# If there's unexpected output, rely on `zelta match` to compute a final snapshot
 	if (!_snap_failed) {
 		# We only want to attempt to take a snapshot at most once
 		DSTree["snapshot_attempted"]++

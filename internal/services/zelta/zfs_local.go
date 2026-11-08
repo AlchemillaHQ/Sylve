@@ -395,44 +395,6 @@ func (s *Service) ensureLocalPoolExists(ctx context.Context, pool string) error 
 	return nil
 }
 
-func (s *Service) ensureLocalFilesystemPath(ctx context.Context, dataset string) error {
-	dataset = normalizeRestoreDestinationDataset(dataset)
-	if dataset == "" {
-		return fmt.Errorf("destination_dataset_required")
-	}
-
-	parts := strings.Split(dataset, "/")
-	if len(parts) == 0 {
-		return fmt.Errorf("destination_dataset_required")
-	}
-
-	pool := strings.TrimSpace(parts[0])
-	if err := s.ensureLocalPoolExists(ctx, pool); err != nil {
-		return err
-	}
-
-	if len(parts) < 2 {
-		return nil
-	}
-
-	current := pool
-	for idx := 1; idx < len(parts); idx++ {
-		current = current + "/" + parts[idx]
-		ds, err := s.getLocalDataset(ctx, current)
-		if err != nil {
-			return fmt.Errorf("failed_to_check_dataset_%s: %w", current, err)
-		}
-		if ds != nil {
-			continue
-		}
-		if _, err := s.GZFS.ZFS.CreateFilesystem(ctx, current, map[string]string{}); err != nil {
-			return fmt.Errorf("failed_to_create_dataset_%s: %w", current, err)
-		}
-	}
-
-	return nil
-}
-
 func (s *Service) listLocalVolumeDatasets(ctx context.Context) ([]string, error) {
 	if s != nil && s.localVolumeDatasetLister != nil {
 		return s.localVolumeDatasetLister(ctx)

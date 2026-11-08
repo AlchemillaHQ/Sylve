@@ -10,6 +10,7 @@ package zelta
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -26,8 +27,6 @@ func TestClassifyBackupOutput(t *testing.T) {
 		{"up to date alt", "No datasets to backup, source and target are up-to-date", backupOutputUpToDate},
 		{"no source", "error: No source: tank/data does not exist", backupOutputBlockedNoSource},
 		{"no source snapshot", "error: No source snapshot found", backupOutputBlockedNoSourceSnapshot},
-		{"source snapshot creation failed", "source_snapshot_creation_failed: tank/data@bk_j1_x", backupOutputBlockedSourceSnapshot},
-		{"source snapshot verification failed", "source_snapshot_verification_failed: tank/data@bk_j1_x", backupOutputBlockedSourceSnapshot},
 		{"target diverged", "error: Target has diverged from source", backupOutputBlockedTargetDiverged},
 		{"target diverged alt", "Target diverged after last sync", backupOutputBlockedTargetDiverged},
 		{"target local writes", "error: Target has local writes preventing sync", backupOutputBlockedTargetLocalWrites},
@@ -52,7 +51,6 @@ func TestBackupOutputKindErrorCode(t *testing.T) {
 	}{
 		{backupOutputBlockedNoSource, backupErrorSourceMissing},
 		{backupOutputBlockedNoSourceSnapshot, backupErrorSourceSnapshotMissing},
-		{backupOutputBlockedSourceSnapshot, backupErrorSourceSnapshotFailed},
 		{backupOutputBlockedTargetLocalWrites, backupErrorTargetLocalWrites},
 		{backupOutputBlockedTargetDiverged, backupErrorTargetDiverged},
 		{backupOutputBlockedNoSnapshotDiverged, backupErrorTargetDiverged},
@@ -67,19 +65,6 @@ func TestBackupOutputKindErrorCode(t *testing.T) {
 	}
 }
 
-func TestSnapshotCandidateSet(t *testing.T) {
-	s := snapshotCandidateSet([]string{"pool/a@snap1", "pool/a@snap2", "pool/b@snap1"})
-	if len(s) != 3 {
-		t.Fatalf("expected 3, got %d: %v", len(s), s)
-	}
-	if _, ok := s["pool/a@snap1"]; !ok {
-		t.Fatal("should contain pool/a@snap1")
-	}
-	if got := snapshotCandidateSet(nil); len(got) != 0 {
-		t.Fatal("nil should return empty")
-	}
-}
-
 func TestIsJobAlreadyRunningErr(t *testing.T) {
 	if isJobAlreadyRunningErr(nil) {
 		t.Fatal("nil should not be already_running")
@@ -89,25 +74,28 @@ func TestIsJobAlreadyRunningErr(t *testing.T) {
 	} else {
 		t.Fatal("transition error should be detected as already_running")
 	}
+	if isJobAlreadyRunningErr(errors.New("restore_destination_already_running: dataset=pool/ds holder=pool")) {
+		t.Fatal("a busy restore destination is a real failure, not a duplicate run")
+	}
 }
 
-func TestBuildBKRetentionPruneCandidates(t *testing.T) {
+func TestBuildRetentionPruneCandidates(t *testing.T) {
 	snapshots := []SnapshotInfo{
 		{Name: "pool/ds@bk_2025-01-01", ShortName: "@bk_2025-01-01", Dataset: "pool/ds"},
 		{Name: "pool/ds@bk_2025-01-02", ShortName: "@bk_2025-01-02", Dataset: "pool/ds"},
 		{Name: "pool/ds@bk_2025-01-03", ShortName: "@bk_2025-01-03", Dataset: "pool/ds"},
 	}
-	candidates := buildBKRetentionPruneCandidates(snapshots, 1, nil, "bk")
+	candidates := buildRetentionPruneCandidates(snapshots, 1, nil, "bk")
 	if len(candidates) != 2 {
 		t.Fatalf("keep 1 of 3 → 2 prune candidates, got %d: %v", len(candidates), candidates)
 	}
 
-	candidates = buildBKRetentionPruneCandidates(snapshots, 5, nil, "bk")
+	candidates = buildRetentionPruneCandidates(snapshots, 5, nil, "bk")
 	if len(candidates) != 0 {
 		t.Fatalf("keep 5 of 3 → 0 prune candidates, got %d", len(candidates))
 	}
 
-	candidates = buildBKRetentionPruneCandidates(nil, 1, nil, "bk")
+	candidates = buildRetentionPruneCandidates(nil, 1, nil, "bk")
 	if len(candidates) != 0 {
 		t.Fatal("nil snapshots should return empty")
 	}
@@ -331,5 +319,16 @@ func TestVMDestSuffixForSource(t *testing.T) {
 				t.Fatalf("vmDestSuffixForSource(%q, %q) = %q, want %q", tc.configured, tc.vmSource, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestParseMovedBytesCountsFinishedStreamsUntilTheSummary(t *testing.T) {
+	running := "info: syncing: 4M for pool/vm@bk\ninfo: 2.00K incremental stream received in 0.1 seconds\n" +
+		"info: syncing: 4M for pool/vm/disk0@bk\ninfo: 1M full stream received in 2 seconds"
+	if got := parseMovedBytesFromOutput(running); got == nil || *got != 2_000+1_000_000 {
+		t.Fatalf("moved while running = %v, want %d", got, 2_000+1_000_000)
+	}
+	if got := parseMovedBytesFromOutput(running + "\nnotice: 3M sent, 2 streams received in 2 seconds"); got == nil || *got != 3_000_000 {
+		t.Fatalf("moved after summary = %v, want %d", got, 3_000_000)
 	}
 }

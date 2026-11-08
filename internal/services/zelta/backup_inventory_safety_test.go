@@ -115,3 +115,63 @@ func TestBackupRetentionInventoryRejectsManifestMismatch(t *testing.T) {
 		t.Fatalf("expected fail-closed manifest mismatch, got %v", err)
 	}
 }
+
+func TestBackupRetentionInventoryProvesGenerationsAcrossScopeChanges(t *testing.T) {
+	harness := newFakeSSHHarness(t)
+	snapshots, guidsByName, metadataBySnapshot, remoteNames := backupInventoryScaleFixture(t, 1)
+	harness.SetScenario(backupCommitBatchScenario(t, remoteNames, metadataBySnapshot))
+	job := &clusterModels.BackupJob{
+		ID: 1,
+		Target: clusterModels.BackupTarget{
+			SSHHostKey: fakeSSHHostKey(),
+			SSHHost:    "user@target",
+			BackupRoot: "backup",
+		},
+	}
+	inventories := map[string]remoteBackupManifestInventory{
+		"backup/root": {
+			root:                "backup/root",
+			datasets:            map[string]string{"backup/root": "filesystem"},
+			snapshotGUIDsByName: guidsByName,
+		},
+		"backup/added": {
+			root:                "backup/added",
+			datasets:            map[string]string{"backup/added": "volume"},
+			snapshotGUIDsByName: map[string]map[string]string{},
+		},
+	}
+
+	proofs, err := (&Service{}).backupRetentionEligibleSnapshotProofsFromInventories(
+		context.Background(),
+		job,
+		"backup/root",
+		snapshots,
+		[]backupScope{
+			{sourceDataset: "source/root", destSuffix: "root"},
+			{sourceDataset: "source/added", destSuffix: "added"},
+		},
+		inventories,
+	)
+	if err != nil {
+		t.Fatalf("generation committed before a pool was added: %v", err)
+	}
+	if _, ok := proofs.Target[snapshots[0].Name]; !ok {
+		t.Fatalf("expected %s to be provable, got %+v", snapshots[0].Name, proofs.Target)
+	}
+
+	harness.SetScenario(backupCommitBatchScenario(t, remoteNames, metadataBySnapshot))
+	proofs, err = (&Service{}).backupRetentionEligibleSnapshotProofsFromInventories(
+		context.Background(),
+		job,
+		"backup/root",
+		snapshots,
+		[]backupScope{{sourceDataset: "source/other", destSuffix: "other"}},
+		inventories,
+	)
+	if err != nil {
+		t.Fatalf("generation committed with a root the job no longer has: %v", err)
+	}
+	if len(proofs.Target) != 0 {
+		t.Fatalf("an unprovable generation must be kept, got proofs %+v", proofs.Target)
+	}
+}

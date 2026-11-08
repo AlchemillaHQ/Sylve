@@ -17,6 +17,10 @@ func TestBackupZeltaArgsHonorsRecursiveSetting(t *testing.T) {
 		t.Fatalf("recursive backup unexpectedly limited depth: %v", recursive)
 	}
 
+	if !slices.Contains(recursive, "--no-snapshot") || slices.Contains(recursive, "--snapshot") {
+		t.Fatalf("Sylve takes the snapshot itself; zelta must not: %v", recursive)
+	}
+
 	nonrecursive := backupZeltaArgs("tank/source", "root@host:tank/target", "bk_j1_test", false)
 	wantPair := false
 	for i := 0; i+1 < len(nonrecursive); i++ {
@@ -28,7 +32,7 @@ func TestBackupZeltaArgsHonorsRecursiveSetting(t *testing.T) {
 	if !wantPair {
 		t.Fatalf("nonrecursive backup did not set --depth 1: %v", nonrecursive)
 	}
-	if got := nonrecursive[len(nonrecursive)-2:]; !slices.Equal(got, []string{"tank/source", "root@host:tank/target"}) {
+	if got := nonrecursive[len(nonrecursive)-2:]; !slices.Equal(got, []string{"tank/source@bk_j1_test", "root@host:tank/target"}) {
 		t.Fatalf("source/target arguments moved: got %v", got)
 	}
 }

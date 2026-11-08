@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -561,4 +562,50 @@ func seedReplicationPolicy(db *gorm.DB, policy *clusterModels.ReplicationPolicy,
 		return err
 	}
 	return fsm.ApplyLocal(cmd)
+}
+
+func snapshotNames(snapshots []SnapshotInfo) []string {
+	names := make([]string, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		names = append(names, snapshot.Name)
+	}
+	return names
+}
+
+func parseExactSnapshotGUID(output, expectedSnapshot string) (string, error) {
+	fields := strings.Fields(strings.TrimSpace(output))
+	if len(fields) != 2 || fields[0] != expectedSnapshot || fields[1] == "-" {
+		return "", fmt.Errorf("unexpected snapshot listing %q", output)
+	}
+	return fields[1], nil
+}
+
+// Unchanged runs are skipped, so tests that back up twice must change data in between.
+func changeDataset(t *testing.T, dataset string) {
+	t.Helper()
+	output, err := exec.Command("zfs", "get", "-H", "-o", "value", "type,mountpoint,mounted", dataset).Output()
+	fields := strings.Fields(string(output))
+	if err != nil || len(fields) != 3 {
+		t.Fatalf("inspect %s: %v: %s", dataset, err, output)
+	}
+	if fields[0] == "volume" {
+		if output, err := exec.Command(
+			"dd", "if=/dev/urandom", "of=/dev/zvol/"+dataset, "bs=4k", "count=1", "conv=notrunc",
+		).CombinedOutput(); err != nil {
+			t.Fatalf("write %s: %v: %s", dataset, err, output)
+		}
+		return
+	}
+	dir := fields[1]
+	if fields[2] != "yes" {
+		dir = t.TempDir()
+		if output, err := exec.Command("mount", "-t", "zfs", dataset, dir).CombinedOutput(); err != nil {
+			t.Fatalf("mount %s: %v: %s", dataset, err, output)
+		}
+		defer exec.Command("umount", dir).Run()
+	}
+	name := filepath.Join(dir, fmt.Sprintf(".change-%d", time.Now().UnixNano()))
+	if err := os.WriteFile(name, []byte("change"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
 }

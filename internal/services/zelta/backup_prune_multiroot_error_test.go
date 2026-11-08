@@ -142,6 +142,7 @@ func TestIntegrationRunBackupJobMultiPoolPruneFailureIsReportedAndRetryable(t *t
 		t.Fatalf("enable keep-last retention: %v", err)
 	}
 	time.Sleep(time.Second)
+	changeDataset(t, diskA)
 
 	err := run()
 	if err == nil || !strings.Contains(err.Error(), "backup_prune_destroy_failed") {

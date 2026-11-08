@@ -8,6 +8,7 @@ import (
 	"context"
 	"os/exec"
 	"reflect"
+	"strings"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -143,17 +144,18 @@ func TestIntegrationLocalRetentionProofPreservesSameNameNonrecursiveDescendant(t
 	}
 
 	svc := &Service{GZFS: gzfsClient}
-	if err := svc.destroyLocalBackupSnapshotsWithProof(
+	if _, _, err := svc.destroyLocalBackupSnapshotsWithProof(
 		context.Background(),
 		candidates,
 		map[string]string{rootSnapshot: "changed-guid"},
+		backupSnapshotTree{},
 	); err == nil {
 		t.Fatal("changed local snapshot GUID unexpectedly passed the final proof check")
 	}
 	if err := exec.Command("zfs", "list", "-H", "-t", "snapshot", rootSnapshot).Run(); err != nil {
 		t.Fatalf("root snapshot was destroyed after proof mismatch: %v", err)
 	}
-	if err := svc.destroyLocalBackupSnapshotsWithProof(context.Background(), candidates, proofs); err != nil {
+	if _, _, err := svc.destroyLocalBackupSnapshotsWithProof(context.Background(), candidates, proofs, backupSnapshotTree{}); err != nil {
 		t.Fatalf("destroy proven root snapshot: %v", err)
 	}
 	if err := exec.Command("zfs", "list", "-H", "-t", "snapshot", childSnapshot).Run(); err != nil {
@@ -211,15 +213,90 @@ func TestIntegrationTargetRetentionProofPreservesSameNameNonrecursiveDescendant(
 	}
 
 	target := &clusterModels.BackupTarget{SSHHostKey: hostKey, SSHHost: "root@localhost", BackupRoot: root}
-	if err := (&Service{}).destroyTargetBackupSnapshotsWithProof(
+	if _, _, err := (&Service{}).destroyTargetBackupSnapshotsWithProof(
 		context.Background(),
 		target,
 		candidates,
 		proofs,
+		backupSnapshotTree{},
 	); err != nil {
 		t.Fatalf("destroy proven target root snapshot: %v", err)
 	}
 	if err := exec.Command("zfs", "list", "-H", "-t", "snapshot", childSnapshot).Run(); err != nil {
 		t.Fatalf("same-name target descendant snapshot was destroyed: %v", err)
+	}
+}
+
+func TestDestroyProvenBackupSnapshotsBatchesAndSkipsBusyGenerations(t *testing.T) {
+	t.Parallel()
+
+	type listing map[string]string // snapshot -> "guid\tuserrefs\tclones"
+	run := func(state listing, calls *[]string) zfsCommand {
+		return func(_ context.Context, argv ...string) (string, error) {
+			*calls = append(*calls, strings.Join(argv, " "))
+			if argv[1] != "list" {
+				return "", nil
+			}
+			var out []string
+			for _, name := range argv[8:] {
+				out = append(out, name+"\t"+state[name])
+			}
+			return strings.Join(out, "\n"), nil
+		}
+	}
+	proofs := map[string]string{
+		"t/r@g1": "1", "t/r/c@g1": "2",
+		"t/r@g2": "3", "t/r/c@g2": "4",
+	}
+	candidates := []string{"t/r@g1", "t/r/c@g1", "t/r@g2", "t/r/c@g2"}
+	tree := backupSnapshotTree{root: "t/r", recursive: true, snapshots: []SnapshotInfo{
+		{Name: "t/r@g1"}, {Name: "t/r/c@g1"}, {Name: "t/r@g2"}, {Name: "t/r/c@g2"}, {Name: "t/r@g3"},
+	}}
+
+	var calls []string
+	clean := listing{"t/r@g1": "1\t0\t-", "t/r/c@g1": "2\t0\t-", "t/r@g2": "3\t0\t-", "t/r/c@g2": "4\t0\t-"}
+	destroyed, _, err := destroyProvenBackupSnapshots(context.Background(), run(clean, &calls), candidates, proofs, tree)
+	if err != nil || destroyed != 4 {
+		t.Fatalf("destroyed=%d err=%v", destroyed, err)
+	}
+	if want := "zfs destroy -r t/r@g1,g2"; calls[len(calls)-1] != want || len(calls) != 2 {
+		t.Fatalf("calls = %v, want one listing then %q", calls, want)
+	}
+
+	calls = nil
+	held := listing{"t/r@g1": "1\t0\t-", "t/r/c@g1": "2\t1\t-", "t/r@g2": "3\t0\t-", "t/r/c@g2": "4\t0\t-"}
+	destroyed, _, err = destroyProvenBackupSnapshots(context.Background(), run(held, &calls), candidates, proofs, backupSnapshotTree{})
+	if err == nil || !strings.Contains(err.Error(), "t/r/c@g1 (held)") || destroyed != 2 {
+		t.Fatalf("destroyed=%d err=%v", destroyed, err)
+	}
+	if want := []string{"zfs destroy t/r@g2", "zfs destroy t/r/c@g2"}; !reflect.DeepEqual(calls[1:], want) {
+		t.Fatalf("calls = %v, want %v after the listing", calls, want)
+	}
+
+	calls = nil
+	changed := listing{"t/r@g1": "9\t0\t-", "t/r/c@g1": "2\t0\t-", "t/r@g2": "3\t0\t-", "t/r/c@g2": "4\t0\t-"}
+	if _, _, err := destroyProvenBackupSnapshots(context.Background(), run(changed, &calls), candidates, proofs, tree); err == nil ||
+		!strings.Contains(err.Error(), "proof_changed") || len(calls) != 1 {
+		t.Fatalf("a changed GUID must stop before any destroy: err=%v calls=%v", err, calls)
+	}
+}
+
+func TestDestroyProvenBackupSnapshotsKeepsArchiveOriginsQuietly(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+	run := func(_ context.Context, argv ...string) (string, error) {
+		calls = append(calls, strings.Join(argv, " "))
+		if argv[1] == "list" {
+			return "t/r@g1\t1\t0\tt/r_gen-x\nt/r@g2\t2\t0\t-", nil
+		}
+		return "", nil
+	}
+	proofs := map[string]string{"t/r@g1": "1", "t/r@g2": "2"}
+	destroyed, _, err := destroyProvenBackupSnapshots(
+		context.Background(), run, []string{"t/r@g1", "t/r@g2"}, proofs, backupSnapshotTree{root: "t/r"},
+	)
+	if err != nil || destroyed != 1 || calls[len(calls)-1] != "zfs destroy t/r@g2" {
+		t.Fatalf("destroyed=%d err=%v calls=%v", destroyed, err, calls)
 	}
 }

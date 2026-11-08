@@ -22,7 +22,6 @@ import (
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/remoteexec"
-	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 const (
@@ -117,49 +116,6 @@ func parseBackupDatasetTree(output, observedRoot string, recursive bool) (map[st
 		return nil, fmt.Errorf("backup_manifest_root_missing:%s", observedRoot)
 	}
 	return datasets, nil
-}
-
-func parseBackupSnapshotGUIDs(output, observedRoot, snapshotName string) (map[string]string, error) {
-	observedRoot = normalizeDatasetPath(observedRoot)
-	snapshotName, err := normalizeBackupSnapshotName(snapshotName)
-	if err != nil {
-		return nil, err
-	}
-	if observedRoot == "" {
-		return nil, fmt.Errorf("backup_manifest_root_required")
-	}
-
-	guids := make(map[string]string)
-	scanner := bufio.NewScanner(strings.NewReader(output))
-	for scanner.Scan() {
-		fields := strings.Fields(strings.TrimSpace(scanner.Text()))
-		if len(fields) == 0 {
-			continue
-		}
-		if len(fields) != 2 {
-			return nil, fmt.Errorf("invalid_backup_manifest_snapshot_entry")
-		}
-		at := strings.LastIndex(fields[0], "@")
-		if at <= 0 || fields[0][at+1:] != snapshotName {
-			continue
-		}
-		dataset := normalizeDatasetPath(fields[0][:at])
-		if dataset != observedRoot && !strings.HasPrefix(dataset, observedRoot+"/") {
-			return nil, fmt.Errorf("backup_manifest_snapshot_outside_root:%s", dataset)
-		}
-		guid := strings.TrimSpace(fields[1])
-		if guid == "" || guid == "-" {
-			return nil, fmt.Errorf("backup_manifest_snapshot_guid_missing:%s", dataset)
-		}
-		if _, exists := guids[dataset]; exists {
-			return nil, fmt.Errorf("duplicate_backup_manifest_snapshot:%s", dataset)
-		}
-		guids[dataset] = guid
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-	return guids, nil
 }
 
 func buildBackupSnapshotManifestEntries(
@@ -370,68 +326,6 @@ func backupSnapshotListArgs(root string, recursive bool) []string {
 	return append(args, root)
 }
 
-func (s *Service) localBackupManifestEntries(
-	ctx context.Context,
-	root string,
-	snapshotName string,
-	recursive bool,
-) ([]backupManifestEntry, error) {
-	root = normalizeDatasetPath(root)
-	datasetArgs := backupDatasetListArgs(root, recursive)
-	datasetOutput, err := utils.RunCommandWithContext(ctx, datasetArgs[0], datasetArgs[1:]...)
-	if err != nil {
-		return nil, fmt.Errorf("list_backup_source_tree_failed: %w", err)
-	}
-	snapshotArgs := backupSnapshotListArgs(root, recursive)
-	snapshotOutput, err := utils.RunCommandWithContext(ctx, snapshotArgs[0], snapshotArgs[1:]...)
-	if err != nil {
-		return nil, fmt.Errorf("list_backup_source_snapshots_failed: %w", err)
-	}
-	datasets, err := parseBackupDatasetTree(datasetOutput, root, recursive)
-	if err != nil {
-		return nil, err
-	}
-	guids, err := parseBackupSnapshotGUIDs(snapshotOutput, root, snapshotName)
-	if err != nil {
-		return nil, err
-	}
-	return buildBackupSnapshotManifestEntries(datasets, guids, root, root, true)
-}
-
-func (s *Service) remoteBackupManifestEntries(
-	ctx context.Context,
-	target *clusterModels.BackupTarget,
-	remoteRoot string,
-	canonicalSourceRoot string,
-	snapshotName string,
-	recursive bool,
-) ([]backupManifestEntry, error) {
-	parsedRemoteRoot, err := canonicalTargetDataset(target, remoteRoot)
-	if err != nil {
-		return nil, fmt.Errorf("backup_target_manifest_root_invalid: %w", err)
-	}
-	remoteRoot = parsedRemoteRoot.String()
-	datasetArgs := backupDatasetListArgs(remoteRoot, recursive)
-	datasetOutput, err := s.runTargetSSH(ctx, target, datasetArgs...)
-	if err != nil {
-		return nil, fmt.Errorf("list_backup_target_tree_failed: %w", err)
-	}
-	snapshotArgs := backupSnapshotListArgs(remoteRoot, recursive)
-	snapshotOutput, err := s.runTargetSSH(ctx, target, snapshotArgs...)
-	if err != nil {
-		return nil, fmt.Errorf("list_backup_target_snapshots_failed: %w", err)
-	}
-	datasets, err := parseBackupDatasetTree(datasetOutput, remoteRoot, recursive)
-	if err != nil {
-		return nil, err
-	}
-	guids, err := parseBackupSnapshotGUIDs(snapshotOutput, remoteRoot, snapshotName)
-	if err != nil {
-		return nil, err
-	}
-	return buildBackupSnapshotManifestEntries(datasets, guids, remoteRoot, canonicalSourceRoot, false)
-}
-
 func (s *Service) buildLocalBackupManifest(
 	ctx context.Context,
 	jobID uint,
@@ -441,7 +335,12 @@ func (s *Service) buildLocalBackupManifest(
 ) (backupManifest, error) {
 	entries := make([]backupManifestEntry, 0)
 	for _, scope := range scopes {
-		part, err := s.localBackupManifestEntries(ctx, scope.sourceDataset, snapshotName, recursive)
+		root := normalizeDatasetPath(scope.sourceDataset)
+		inventory, err := loadBackupManifestInventory(ctx, runLocalZFS, "source", root, recursive)
+		if err != nil {
+			return backupManifest{}, err
+		}
+		part, err := inventory.manifestEntries(root, snapshotName, recursive, true)
 		if err != nil {
 			return backupManifest{}, err
 		}
@@ -461,15 +360,15 @@ func (s *Service) buildRemoteBackupManifest(
 	}
 	entries := make([]backupManifestEntry, 0)
 	for _, scope := range scopes {
-		remoteRoot := remoteActiveDatasetForSuffix(job.Target.BackupRoot, scope.destSuffix)
-		part, err := s.remoteBackupManifestEntries(
-			ctx,
-			&job.Target,
-			remoteRoot,
-			scope.sourceDataset,
-			snapshotName,
-			job.Recursive,
-		)
+		remoteRoot, err := canonicalTargetDataset(&job.Target, remoteActiveDatasetForSuffix(job.Target.BackupRoot, scope.destSuffix))
+		if err != nil {
+			return backupManifest{}, fmt.Errorf("backup_target_manifest_root_invalid: %w", err)
+		}
+		inventory, err := loadBackupManifestInventory(ctx, s.targetZFS(&job.Target), "target", remoteRoot.String(), job.Recursive)
+		if err != nil {
+			return backupManifest{}, err
+		}
+		part, err := inventory.manifestEntries(scope.sourceDataset, snapshotName, job.Recursive, false)
 		if err != nil {
 			return backupManifest{}, err
 		}
@@ -678,6 +577,10 @@ func parseBackupCommitMetadata(output string) (backupCommitMetadata, error) {
 		property := strings.TrimSpace(fields[0])
 		if _, known := knownProperties[property]; !known {
 			return backupCommitMetadata{}, fmt.Errorf("unexpected_backup_commit_property:%s", property)
+		}
+		// zfs prints "-" as the source of a user property that was never set.
+		if fields[2] == "-" {
+			continue
 		}
 		if fields[2] != "local" {
 			return backupCommitMetadata{}, fmt.Errorf("backup_commit_property_not_local:%s", property)

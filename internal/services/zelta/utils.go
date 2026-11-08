@@ -122,6 +122,9 @@ func parseMovedBytesFromOutput(output string) *uint64 {
 
 	matches := sentSizeRegex.FindAllStringSubmatch(output, -1)
 	if len(matches) == 0 {
+		matches = receivedSizeRegex.FindAllStringSubmatch(output, -1)
+	}
+	if len(matches) == 0 {
 		return nil
 	}
 

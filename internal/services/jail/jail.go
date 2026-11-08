@@ -2233,7 +2233,7 @@ func (s *Service) WriteJailJSON(ctId uint) error {
 		return fmt.Errorf("failed_to_marshal_jail_to_json: %w", err)
 	}
 
-	if err := utils.AtomicWriteFile(jailJsonPath, jailJsonData, 0644); err != nil {
+	if err := utils.WriteFileIfChanged(jailJsonPath, jailJsonData, 0644); err != nil {
 		return fmt.Errorf("failed_to_write_jail_json_file: %w", err)
 	}
 

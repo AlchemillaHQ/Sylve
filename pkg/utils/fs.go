@@ -430,6 +430,13 @@ func AtomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	return nil
 }
 
+func WriteFileIfChanged(path string, data []byte, perm os.FileMode) error {
+	if current, err := os.ReadFile(path); err == nil && bytes.Equal(current, data) {
+		return nil
+	}
+	return AtomicWriteFile(path, data, perm)
+}
+
 func ReadLastLines(path string, maxLines int) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {

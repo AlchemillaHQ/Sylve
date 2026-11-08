@@ -7,11 +7,13 @@ package zelta
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/remoteexec"
+	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 // remoteBackupManifestInventory is one immutable view of a target root. The
@@ -29,6 +31,8 @@ type backupCommitMetadataResult struct {
 }
 
 const backupCommitMetadataBatchSize = 128
+
+var errBackupGenerationUnprovable = errors.New("backup_generation_unprovable")
 
 func addBackupSnapshotGUID(
 	byName map[string]map[string]string,
@@ -201,26 +205,42 @@ func (s *Service) loadRemoteBackupManifestInventory(
 	if err != nil {
 		return remoteBackupManifestInventory{}, fmt.Errorf("backup_target_manifest_root_invalid: %w", err)
 	}
-	remoteRoot = parsedRoot.String()
-	datasetArgs := backupDatasetListArgs(remoteRoot, true)
-	datasetOutput, err := s.runTargetSSH(ctx, target, datasetArgs...)
+	return loadBackupManifestInventory(ctx, s.targetZFS(target), "target", parsedRoot.String(), true)
+}
+
+func loadBackupManifestInventory(
+	ctx context.Context,
+	run zfsCommand,
+	side, root string,
+	recursive bool,
+) (remoteBackupManifestInventory, error) {
+	datasetOutput, err := run(ctx, backupDatasetListArgs(root, recursive)...)
 	if err != nil {
-		return remoteBackupManifestInventory{}, fmt.Errorf("list_backup_target_tree_failed: %w", err)
+		return remoteBackupManifestInventory{}, fmt.Errorf("list_backup_%s_tree_failed: %w", side, err)
 	}
-	snapshotArgs := backupSnapshotListArgs(remoteRoot, true)
-	snapshotOutput, err := s.runTargetSSH(ctx, target, snapshotArgs...)
+	snapshotOutput, err := run(ctx, backupSnapshotListArgs(root, recursive)...)
 	if err != nil {
-		return remoteBackupManifestInventory{}, fmt.Errorf("list_backup_target_snapshots_failed: %w", err)
+		return remoteBackupManifestInventory{}, fmt.Errorf("list_backup_%s_snapshots_failed: %w", side, err)
 	}
-	datasets, err := parseBackupDatasetTree(datasetOutput, remoteRoot, true)
+	datasets, err := parseBackupDatasetTree(datasetOutput, root, recursive)
 	if err != nil {
 		return remoteBackupManifestInventory{}, err
 	}
-	guids, err := parseBackupSnapshotGUIDInventory(snapshotOutput, remoteRoot)
+	guids, err := parseBackupSnapshotGUIDInventory(snapshotOutput, root)
 	if err != nil {
 		return remoteBackupManifestInventory{}, err
 	}
-	return newRemoteBackupManifestInventory(remoteRoot, datasets, guids)
+	return newRemoteBackupManifestInventory(root, datasets, guids)
+}
+
+func runLocalZFS(ctx context.Context, argv ...string) (string, error) {
+	return utils.RunCommandWithContext(ctx, argv[0], argv[1:]...)
+}
+
+func (s *Service) targetZFS(target *clusterModels.BackupTarget) zfsCommand {
+	return func(ctx context.Context, argv ...string) (string, error) {
+		return s.runTargetSSH(ctx, target, argv...)
+	}
 }
 
 func (s *Service) loadRemoteBackupManifestInventoryFromSnapshots(
@@ -252,20 +272,32 @@ func (s *Service) loadRemoteBackupManifestInventoryFromSnapshots(
 
 func buildRemoteBackupManifestFromInventories(
 	job *clusterModels.BackupJob,
-	snapshotName string,
-	recursive bool,
+	metadata backupCommitMetadata,
 	scopes []backupScope,
 	inventories map[string]remoteBackupManifestInventory,
 ) (backupManifest, error) {
 	if job == nil {
 		return backupManifest{}, fmt.Errorf("backup_job_required")
 	}
-	entries := make([]backupManifestEntry, 0)
+	// A VM may have gained or lost a pool since this generation was committed.
+	scopeByRoot := make(map[string]backupScope, len(scopes))
 	for _, scope := range scopes {
+		scopeByRoot[normalizeDatasetPath(scope.sourceDataset)] = scope
+	}
+	snapshotName, recursive := metadata.SnapshotName, metadata.Recursive
+	entries := make([]backupManifestEntry, 0)
+	for _, root := range metadata.Roots {
+		scope, ok := scopeByRoot[normalizeDatasetPath(root)]
+		if !ok {
+			return backupManifest{}, fmt.Errorf("%w:%s", errBackupGenerationUnprovable, root)
+		}
 		remoteRoot := remoteActiveDatasetForSuffix(job.Target.BackupRoot, scope.destSuffix)
 		inventory, ok := inventories[remoteRoot]
 		if !ok {
 			return backupManifest{}, fmt.Errorf("backup_target_manifest_inventory_missing:%s", remoteRoot)
+		}
+		if _, ok := inventory.snapshotGUIDsByName[snapshotName][inventory.root]; !ok {
+			return backupManifest{}, fmt.Errorf("%w:%s", errBackupGenerationUnprovable, remoteRoot)
 		}
 		part, err := inventory.manifestEntries(
 			scope.sourceDataset,

@@ -60,82 +60,6 @@ func TestParseSnapshotInfoOutputLegacyFourColumns(t *testing.T) {
 	}
 }
 
-func TestLatestCommonBackupSnapshotByGUID(t *testing.T) {
-	prefix := "bk_jx"
-	local := []SnapshotInfo{
-		mkSnap("p/d@bk_jx_a", "1", "2026-06-24T02:00:00Z"),
-		mkSnap("p/d@bk_jx_b", "2", "2026-06-25T02:00:00Z"),
-		mkSnap("p/d@bk_jx_c", "3", "2026-06-26T02:00:00Z"),
-	}
-	remote := []SnapshotInfo{
-		mkSnap("t/d@bk_jx_b", "2", "2026-06-25T02:00:00Z"),
-		mkSnap("t/d@2026-06-26", "999", "2026-06-26T06:06:00Z"),
-	}
-	base, ok := latestCommonBackupSnapshot(local, remote, prefix)
-	if !ok {
-		t.Fatal("expected a common base")
-	}
-	if base.Guid != "2" {
-		t.Fatalf("expected common base guid 2 (b), got %q", base.Guid)
-	}
-}
-
-func TestLatestCommonBackupSnapshotRequiresGUIDIdentity(t *testing.T) {
-	prefix := "bk_jx"
-	tests := []struct {
-		name   string
-		local  SnapshotInfo
-		remote SnapshotInfo
-	}{
-		{
-			name:   "same name different GUID",
-			local:  mkSnap("p/d@bk_jx_a", "local-guid", ""),
-			remote: mkSnap("t/d@bk_jx_a", "remote-guid", ""),
-		},
-		{
-			name:   "both GUIDs missing",
-			local:  mkSnap("p/d@bk_jx_a", "", ""),
-			remote: mkSnap("t/d@bk_jx_a", "", ""),
-		},
-		{
-			name:   "remote GUID missing",
-			local:  mkSnap("p/d@bk_jx_a", "local-guid", ""),
-			remote: mkSnap("t/d@bk_jx_a", "", ""),
-		},
-		{
-			name:   "local GUID missing",
-			local:  mkSnap("p/d@bk_jx_a", "", ""),
-			remote: mkSnap("t/d@bk_jx_a", "remote-guid", ""),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if _, ok := latestCommonBackupSnapshot(
-				[]SnapshotInfo{tt.local},
-				[]SnapshotInfo{tt.remote},
-				prefix,
-			); ok {
-				t.Fatal("snapshot name alone must not establish a common base")
-			}
-		})
-	}
-}
-
-func TestLatestCommonBackupSnapshotNoCommon(t *testing.T) {
-	prefix := "bk_jx"
-	local := []SnapshotInfo{mkSnap("p/d@bk_jx_a", "1", "2026-06-24T02:00:00Z")}
-	remote := []SnapshotInfo{mkSnap("t/d@2026-06-26", "999", "2026-06-26T06:06:00Z")}
-	if _, ok := latestCommonBackupSnapshot(local, remote, prefix); ok {
-		t.Fatal("expected no common base")
-	}
-}
-
-func TestLatestCommonBackupSnapshotEmpty(t *testing.T) {
-	if _, ok := latestCommonBackupSnapshot(nil, nil, "bk_jx"); ok {
-		t.Fatal("empty inputs should yield no common base")
-	}
-}
-
 func TestLatestCommonBackupSnapshotsByDatasetAndJobPrefix(t *testing.T) {
 	local := []SnapshotInfo{
 		mkSnap("src/root@bk_ja_1", "r1", ""),
@@ -284,7 +208,7 @@ func TestFilterToleratedLegacyTargetSnapshotsRequiresCanonicalJobScope(t *testin
 		"backup/root/other@bk_ja_legacy",
 	}
 
-	got := filterToleratedLegacyTargetSnapshots(job, sourceRoot, targetRoot, scopes, foreign)
+	got := filterToleratedTargetSnapshots(job, sourceRoot, targetRoot, scopes, nil, foreign)
 	want := []string{
 		targetRoot + "@bk_jb_legacy",
 		targetRoot + "@bk_ja_c1_current",
@@ -308,7 +232,7 @@ func TestFilterToleratedLegacyTargetSnapshotsRequiresCanonicalJobScope(t *testin
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := filterToleratedLegacyTargetSnapshots(job, tt.sourceRoot, tt.targetRoot, tt.scopes, foreign)
+			got := filterToleratedTargetSnapshots(job, tt.sourceRoot, tt.targetRoot, tt.scopes, nil, foreign)
 			if !reflect.DeepEqual(got, foreign) {
 				t.Fatalf("non-canonical scope filtered snapshots: got %v, want %v", got, foreign)
 			}
@@ -325,7 +249,7 @@ func TestBuildLocalRetentionKeepNPerDataset(t *testing.T) {
 		mkSnap("p/d@bk_jx_4", "4", ""),
 		mkSnap("p/d@bk_jx_5", "5", ""),
 	}
-	got := buildLocalRetentionPruneCandidates(snaps, 2, nil, prefix)
+	got := buildRetentionPruneCandidates(snaps, 2, nil, prefix)
 	sort.Strings(got)
 	want := []string{"p/d@bk_jx_1", "p/d@bk_jx_2", "p/d@bk_jx_3"}
 	if !reflect.DeepEqual(got, want) {
@@ -340,7 +264,7 @@ func TestBuildLocalRetentionIgnoresNonBackupSnapshots(t *testing.T) {
 		mkSnap("p/d@bk_jx_2", "2", ""),
 		mkSnap("p/d@2026-06-26", "9", ""),
 	}
-	got := buildLocalRetentionPruneCandidates(snaps, 1, nil, prefix)
+	got := buildRetentionPruneCandidates(snaps, 1, nil, prefix)
 	if !reflect.DeepEqual(got, []string{"p/d@bk_jx_1"}) {
 		t.Fatalf("should only consider bk_ snaps: got=%v", got)
 	}
@@ -355,7 +279,7 @@ func TestBuildLocalRetentionProtectsBase(t *testing.T) {
 		mkSnap("p/d@bk_jx_4", "4", ""),
 	}
 	protect := map[string]struct{}{"p/d@bk_jx_1": {}}
-	got := buildLocalRetentionPruneCandidates(snaps, 2, protect, prefix)
+	got := buildRetentionPruneCandidates(snaps, 2, protect, prefix)
 	for _, c := range got {
 		if c == "p/d@bk_jx_1" {
 			t.Fatalf("protected base must never be pruned, got %v", got)
@@ -373,7 +297,7 @@ func TestBuildLocalRetentionKeepZeroNoFloorlessWipe(t *testing.T) {
 		mkSnap("p/d@bk_jx_2", "2", ""),
 	}
 	protect := map[string]struct{}{"p/d@bk_jx_2": {}}
-	got := buildLocalRetentionPruneCandidates(snaps, 0, protect, prefix)
+	got := buildRetentionPruneCandidates(snaps, 0, protect, prefix)
 	if !reflect.DeepEqual(got, []string{"p/d@bk_jx_1"}) {
 		t.Fatalf("keep0 should prune all but protected: got=%v", got)
 	}
@@ -388,7 +312,7 @@ func TestBuildLocalRetentionPerDatasetGrouping(t *testing.T) {
 		mkSnap("p/b@bk_jx_1", "4", ""),
 		mkSnap("p/b@bk_jx_2", "5", ""),
 	}
-	got := buildLocalRetentionPruneCandidates(snaps, 1, nil, prefix)
+	got := buildRetentionPruneCandidates(snaps, 1, nil, prefix)
 	sort.Strings(got)
 	want := []string{"p/a@bk_jx_1", "p/a@bk_jx_2", "p/b@bk_jx_1"}
 	if !reflect.DeepEqual(got, want) {
@@ -408,14 +332,10 @@ func TestBuildTargetRetentionRecursivePerDatasetAndJobPrefix(t *testing.T) {
 		mkSnap("dst/root@bk_ja_3", "r3", ""),
 		mkSnap("dst/root/child@bk_ja_3", "c3", ""),
 	}
-	safe := snapshotCandidateSet([]string{
-		"dst/root@bk_ja_1",
-		"dst/root@bk_ja_2",
-		"dst/root/child@bk_ja_1",
-		// The child's second snapshot is its protected incremental base.
-	})
+	// The child's second snapshot is its protected incremental base.
+	protect := map[string]struct{}{"dst/root/child@bk_ja_2": {}}
 
-	got := buildBKRetentionPruneCandidates(snaps, 1, safe, prefix)
+	got := buildRetentionPruneCandidates(snaps, 1, protect, prefix)
 	sort.Strings(got)
 	want := []string{
 		"dst/root/child@bk_ja_1",

@@ -6,12 +6,16 @@ package zelta
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"maps"
+	"sort"
 	"strings"
+	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/remoteexec"
-	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 // backupRetentionProofSet is the destructive-retention authority derived from
@@ -118,129 +122,308 @@ func filterBackupSnapshotsByProof(
 	return filtered
 }
 
-func snapshotNames(snapshots []SnapshotInfo) []string {
-	names := make([]string, 0, len(snapshots))
-	for _, snapshot := range snapshots {
-		if isValidZFSSnapshotName(snapshot.Name) {
-			names = append(names, snapshot.Name)
-		}
-	}
-	return names
+type zfsCommand func(ctx context.Context, argv ...string) (string, error)
+
+type backupSnapshotTree struct {
+	root      string
+	snapshots []SnapshotInfo
+	recursive bool
 }
 
-func parseExactSnapshotGUID(output, expectedSnapshot string) (string, error) {
-	expectedSnapshot = strings.TrimSpace(expectedSnapshot)
-	lines := make([]string, 0, 1)
-	for _, rawLine := range strings.Split(strings.TrimSpace(output), "\n") {
-		line := strings.TrimSpace(rawLine)
-		if line != "" {
-			lines = append(lines, line)
+// zfs destroy -r is not atomic, so a held or cloned generation is kept whole, and
+// parents go first: an interrupted run only leaves children whose root is gone.
+func destroyProvenBackupSnapshots(
+	ctx context.Context,
+	run zfsCommand,
+	candidates []string,
+	proofs map[string]string,
+	tree backupSnapshotTree,
+) (int, map[string]struct{}, error) {
+	if len(candidates) == 0 {
+		return 0, nil, nil
+	}
+	for _, candidate := range candidates {
+		if proofs[candidate] == "" {
+			return 0, nil, fmt.Errorf("backup_retention_snapshot_unproven: snapshot=%s", candidate)
 		}
 	}
-	if len(lines) != 1 {
-		return "", fmt.Errorf("backup_retention_snapshot_identity_ambiguous")
+	output, err := run(ctx, append([]string{
+		"zfs", "list", "-H", "-p", "-t", "snapshot", "-o", "name,guid,userrefs,clones",
+	}, candidates...)...)
+	if err != nil {
+		return 0, nil, fmt.Errorf("backup_retention_snapshot_recheck_failed: %w", err)
 	}
-	fields := strings.Fields(lines[0])
-	if len(fields) != 2 || fields[0] != expectedSnapshot {
-		return "", fmt.Errorf("backup_retention_snapshot_identity_mismatch")
+	type snapshotState struct{ guid, userrefs, clones string }
+	current := make(map[string]snapshotState, len(candidates))
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		fields := strings.Split(strings.TrimSpace(line), "\t")
+		if len(fields) == 4 {
+			current[fields[0]] = snapshotState{fields[1], fields[2], fields[3]}
+		}
 	}
-	guid := strings.TrimSpace(fields[1])
-	if guid == "" || guid == "-" {
-		return "", fmt.Errorf("backup_retention_snapshot_guid_missing")
+	busy := make(map[string]struct{})
+	var inUse []string
+	for _, candidate := range candidates {
+		state, ok := current[candidate]
+		if !ok {
+			return 0, nil, fmt.Errorf("backup_retention_snapshot_recheck_missing: snapshot=%s", candidate)
+		}
+		if state.guid != proofs[candidate] {
+			return 0, nil, fmt.Errorf(
+				"backup_retention_snapshot_proof_changed: snapshot=%s expected_guid=%s actual_guid=%s",
+				candidate, proofs[candidate], state.guid,
+			)
+		}
+		clones := strings.FieldsFunc(state.clones, func(r rune) bool { return r == ',' })
+		if state.clones == "-" {
+			clones = nil
+		}
+		if state.userrefs != "0" {
+			inUse = append(inUse, candidate+" (held)")
+		} else {
+			for _, clone := range clones {
+				if tree.root == "" || !strings.HasPrefix(clone, tree.root+"_gen-") {
+					inUse = append(inUse, candidate+" (cloned to "+clone+")")
+				}
+			}
+		}
+		if state.userrefs != "0" || len(clones) > 0 {
+			busy[backupRetentionGeneration(candidate)] = struct{}{}
+		}
 	}
-	return guid, nil
+	var busyErr error
+	if len(inUse) > 0 {
+		busyErr = fmt.Errorf("backup_retention_snapshot_in_use: %s", strings.Join(inUse, ", "))
+	}
+
+	byDataset := make(map[string][]string)
+	datasetsByGeneration := make(map[string]map[string]struct{})
+	for _, candidate := range candidates {
+		generation := backupRetentionGeneration(candidate)
+		if _, skip := busy[generation]; skip {
+			continue
+		}
+		dataset := snapshotDatasetName(candidate)
+		byDataset[dataset] = append(byDataset[dataset], generation)
+		if datasetsByGeneration[generation] == nil {
+			datasetsByGeneration[generation] = make(map[string]struct{})
+		}
+		datasetsByGeneration[generation][dataset] = struct{}{}
+	}
+	if len(byDataset) == 0 {
+		return 0, busy, busyErr
+	}
+	destroyed := 0
+	for _, datasets := range datasetsByGeneration {
+		destroyed += len(datasets)
+	}
+	if generations := recursiveDestroyGenerations(tree, datasetsByGeneration); generations != nil {
+		_, err := run(ctx, "zfs", "destroy", "-r", tree.root+"@"+strings.Join(generations, ","))
+		if err != nil {
+			return 0, nil, err
+		}
+		return destroyed, busy, busyErr
+	}
+	datasets := make([]string, 0, len(byDataset))
+	for dataset := range byDataset {
+		datasets = append(datasets, dataset)
+	}
+	sort.Strings(datasets)
+	for _, dataset := range datasets {
+		if _, err := run(ctx, "zfs", "destroy", dataset+"@"+strings.Join(byDataset[dataset], ",")); err != nil {
+			return 0, nil, err
+		}
+	}
+	return destroyed, busy, busyErr
+}
+
+func recursiveDestroyGenerations(
+	tree backupSnapshotTree,
+	datasetsByGeneration map[string]map[string]struct{},
+) []string {
+	if !tree.recursive {
+		return nil
+	}
+	held := make(map[string]map[string]struct{}, len(datasetsByGeneration))
+	for _, snapshot := range tree.snapshots {
+		generation := backupRetentionGeneration(snapshot.Name)
+		if _, wanted := datasetsByGeneration[generation]; !wanted {
+			continue
+		}
+		dataset := snapshotDatasetName(snapshot.Name)
+		if !datasetWithinRoot(tree.root, dataset) {
+			continue
+		}
+		if held[generation] == nil {
+			held[generation] = make(map[string]struct{})
+		}
+		held[generation][dataset] = struct{}{}
+	}
+	generations := make([]string, 0, len(datasetsByGeneration))
+	for generation, candidates := range datasetsByGeneration {
+		if _, ok := candidates[tree.root]; !ok || !maps.Equal(held[generation], candidates) {
+			return nil
+		}
+		generations = append(generations, generation)
+	}
+	sort.Strings(generations)
+	return generations
 }
 
 func (s *Service) destroyLocalBackupSnapshotsWithProof(
 	ctx context.Context,
-	snapshots []string,
+	candidates []string,
 	proofs map[string]string,
-) error {
-	for _, candidate := range snapshots {
-		parsed, err := remoteexec.ParseZFSSnapshot(candidate)
-		if err != nil {
-			return fmt.Errorf("backup_retention_local_snapshot_invalid: %w", err)
-		}
-		snapshot := parsed.String()
-		expectedGUID, ok := proofs[snapshot]
-		if !ok || expectedGUID == "" {
-			return fmt.Errorf("backup_retention_local_snapshot_unproven: snapshot=%s", snapshot)
-		}
-		output, err := utils.RunCommandWithContext(
-			ctx,
-			"zfs", "list", "-H", "-p", "-t", "snapshot", "-o", "name,guid", snapshot,
-		)
-		if err != nil {
-			return fmt.Errorf("backup_retention_local_snapshot_recheck_failed: snapshot=%s: %w", snapshot, err)
-		}
-		guid, err := parseExactSnapshotGUID(output, snapshot)
-		if err != nil {
-			return fmt.Errorf("backup_retention_local_snapshot_recheck_invalid: snapshot=%s: %w", snapshot, err)
-		}
-		if guid != expectedGUID {
-			return fmt.Errorf(
-				"backup_retention_local_snapshot_proof_changed: snapshot=%s expected_guid=%s actual_guid=%s",
-				snapshot,
-				expectedGUID,
-				guid,
-			)
-		}
-		if err := s.DestroySnapshots(ctx, []string{snapshot}); err != nil {
-			return err
+	tree backupSnapshotTree,
+) (int, map[string]struct{}, error) {
+	for _, candidate := range candidates {
+		if _, err := remoteexec.ParseZFSSnapshot(candidate); err != nil {
+			return 0, nil, fmt.Errorf("backup_retention_local_snapshot_invalid: %w", err)
 		}
 	}
-	return nil
+	return destroyProvenBackupSnapshots(ctx, runLocalZFS, candidates, proofs, tree)
 }
 
 func (s *Service) destroyTargetBackupSnapshotsWithProof(
 	ctx context.Context,
 	target *clusterModels.BackupTarget,
-	snapshots []string,
+	candidates []string,
 	proofs map[string]string,
-) error {
+	tree backupSnapshotTree,
+) (int, map[string]struct{}, error) {
 	if target == nil {
-		return fmt.Errorf("backup_target_required")
+		return 0, nil, fmt.Errorf("backup_target_required")
 	}
 	_, root, err := canonicalizeBackupTarget(target)
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
-	for _, candidate := range snapshots {
+	for _, candidate := range candidates {
 		parsed, err := remoteexec.ParseZFSSnapshot(candidate)
 		if err != nil {
-			return fmt.Errorf("backup_retention_target_snapshot_invalid: %w", err)
-		}
-		snapshot := parsed.String()
-		expectedGUID, ok := proofs[snapshot]
-		if !ok || expectedGUID == "" {
-			return fmt.Errorf("backup_retention_target_snapshot_unproven: snapshot=%s", snapshot)
+			return 0, nil, fmt.Errorf("backup_retention_target_snapshot_invalid: %w", err)
 		}
 		if !parsed.Dataset().Within(root) {
-			return fmt.Errorf("backup_retention_target_snapshot_outside_root: snapshot=%s", snapshot)
-		}
-		output, err := s.runTargetSSH(
-			ctx,
-			target,
-			"zfs", "list", "-H", "-p", "-t", "snapshot", "-o", "name,guid", snapshot,
-		)
-		if err != nil {
-			return fmt.Errorf("backup_retention_target_snapshot_recheck_failed: snapshot=%s: %w", snapshot, err)
-		}
-		guid, err := parseExactSnapshotGUID(output, snapshot)
-		if err != nil {
-			return fmt.Errorf("backup_retention_target_snapshot_recheck_invalid: snapshot=%s: %w", snapshot, err)
-		}
-		if guid != expectedGUID {
-			return fmt.Errorf(
-				"backup_retention_target_snapshot_proof_changed: snapshot=%s expected_guid=%s actual_guid=%s",
-				snapshot,
-				expectedGUID,
-				guid,
-			)
-		}
-		if err := s.DestroyTargetSnapshotsByName(ctx, target, []string{snapshot}); err != nil {
-			return err
+			return 0, nil, fmt.Errorf("backup_retention_target_snapshot_outside_root: snapshot=%s", candidate)
 		}
 	}
-	return nil
+	return destroyProvenBackupSnapshots(ctx, func(ctx context.Context, argv ...string) (string, error) {
+		output, err := s.runTargetSSH(ctx, target, argv...)
+		if err != nil && isRemoteSubcommandBlocked(output) {
+			logger.L.Warn().Str("ssh_host", target.SSHHost).Msg("remote_zfs_destroy_not_permitted")
+			return output, fmt.Errorf("remote_zfs_destroy_not_permitted: %w", err)
+		}
+		return output, err
+	}, candidates, proofs, tree)
+}
+
+func (s *Service) pruneBackupJob(
+	ctx context.Context,
+	job *clusterModels.BackupJob,
+	scopes []backupScope,
+) ([]string, error) {
+	var output []string
+	fail := func(err error) ([]string, error) {
+		logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("backup_prune_failed")
+		return append(output, err.Error()), err
+	}
+
+	coordinator, err := backupCommitCoordinatorScope(job, scopes)
+	if err != nil {
+		return fail(fmt.Errorf("backup_prune_commit_coordinator_failed: %w", err))
+	}
+	inventories, err := s.loadBackupRetentionScopeInventories(ctx, job, scopes)
+	if err != nil {
+		return fail(fmt.Errorf("backup_prune_commit_inventory_failed: %w", err))
+	}
+	for _, inventory := range inventories {
+		if inventory.localSnapshotErr != nil {
+			return fail(fmt.Errorf(
+				"backup_prune_local_snapshot_list_failed: source=%s: %w",
+				inventory.sourceRoot,
+				inventory.localSnapshotErr,
+			))
+		}
+	}
+	commitRoot := remoteActiveDatasetForSuffix(job.Target.BackupRoot, scopes[coordinator].destSuffix)
+	commitSnapshots, ok := backupRetentionSnapshotsForRoot(inventories, commitRoot)
+	if !ok {
+		return fail(fmt.Errorf("backup_prune_commit_validation_failed: backup_retention_commit_inventory_missing"))
+	}
+	proofs, err := s.backupRetentionEligibleSnapshotProofsFromInventories(
+		ctx,
+		job,
+		commitRoot,
+		commitSnapshots,
+		scopes,
+		backupRetentionManifestInventories(inventories),
+	)
+	if err != nil {
+		return fail(fmt.Errorf("backup_prune_commit_validation_failed: %w", err))
+	}
+
+	started := time.Now()
+	plans, stats := limitBackupRetentionCleanupPlan(
+		buildBackupRetentionCleanupPlan(job, inventories, proofs),
+		backupRetentionGenerationBudget,
+	)
+	if stats.DeferredGenerations > 0 {
+		output = append(output, fmt.Sprintf(
+			"backup_prune_deferred: generation_budget=%d selected_generations=%d deferred_generations=%d",
+			backupRetentionGenerationBudget,
+			stats.SelectedGenerations,
+			stats.DeferredGenerations,
+		))
+	}
+
+	// A generation kept locally stays on the target too, so it remains provable.
+	var pruneErr error
+	prunedLocal, prunedTarget := 0, 0
+	keptLocally := make(map[string]struct{})
+	for _, plan := range plans {
+		tree := backupSnapshotTree{plan.inventory.sourceRoot, plan.inventory.localSnapshots, job.Recursive}
+		destroyed, kept, err := s.destroyLocalBackupSnapshotsWithProof(ctx, plan.localCandidates, proofs.Source, tree)
+		prunedLocal += destroyed
+		maps.Copy(keptLocally, kept)
+		if err != nil && kept == nil {
+			for _, candidate := range plan.localCandidates {
+				keptLocally[backupRetentionGeneration(candidate)] = struct{}{}
+			}
+		}
+		if err != nil {
+			err = fmt.Errorf("backup_prune_destroy_failed: source=%s: %w", plan.inventory.sourceRoot, err)
+			output = append(output, err.Error())
+			pruneErr = errors.Join(pruneErr, err)
+		}
+	}
+	if job.PruneTarget {
+		for _, plan := range plans {
+			candidates := make([]string, 0, len(plan.targetCandidates))
+			for _, candidate := range plan.targetCandidates {
+				if _, kept := keptLocally[backupRetentionGeneration(candidate)]; !kept {
+					candidates = append(candidates, candidate)
+				}
+			}
+			tree := backupSnapshotTree{plan.inventory.remoteRoot, plan.inventory.remoteSnapshots, job.Recursive}
+			destroyed, _, err := s.destroyTargetBackupSnapshotsWithProof(ctx, &job.Target, candidates, proofs.Target, tree)
+			prunedTarget += destroyed
+			if err != nil {
+				err = fmt.Errorf("backup_prune_target_destroy_failed: source=%s: %w", plan.inventory.sourceRoot, err)
+				output = append(output, err.Error())
+				pruneErr = errors.Join(pruneErr, err)
+			}
+		}
+	}
+
+	logger.L.Info().
+		Uint("job_id", job.ID).
+		Int("candidate_generations", stats.CandidateGenerations).
+		Int("selected_generations", stats.SelectedGenerations).
+		Int("deferred_generations", stats.DeferredGenerations).
+		Int("pruned_local", prunedLocal).
+		Int("pruned_target", prunedTarget).
+		Err(pruneErr).
+		Int64("duration_ms", time.Since(started).Milliseconds()).
+		Msg("backup_prune_pass_completed")
+	return output, pruneErr
 }

@@ -308,18 +308,14 @@ func (s *Service) finishDurableBackupTargetRestoreOperation(
 	ctx, cancel := context.WithTimeout(context.Background(), replicationControlDefaultTimeout)
 	defer cancel()
 
-	if err := s.transitionDurableBackupTargetRestoreOperation(ctx, "finish", handle); err != nil {
-		if backupTargetRestoreOperationStaleMessage(err) {
-			return nil
-		}
+	err := s.transitionDurableBackupTargetRestoreOperation(ctx, "finish", handle)
+	if err == nil {
+		err = s.transitionDurableBackupTargetRestoreOperation(ctx, "release", handle)
+	}
+	if err != nil && !backupTargetRestoreOperationStaleMessage(err) {
 		return err
 	}
-	if err := s.transitionDurableBackupTargetRestoreOperation(ctx, "release", handle); err != nil {
-		if backupTargetRestoreOperationStaleMessage(err) {
-			return nil
-		}
-		return err
-	}
+	s.setTargetRestoreToken(&s.startedTargetRestoreTokens, handle.Token, false)
 	return nil
 }
 

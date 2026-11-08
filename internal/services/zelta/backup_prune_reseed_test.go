@@ -104,6 +104,9 @@ func TestIntegrationRunBackupJobPruneAfterBackup(t *testing.T) {
 	}
 
 	for i := 0; i < 4; i++ {
+		if i > 0 {
+			changeDataset(t, poolName+"/source/backup")
+		}
 		svc.queuedJobs = make(map[uint]struct{})
 		svc.runningJobs = make(map[uint]struct{})
 		svc.runningWorkloadOp = make(map[string]string)
@@ -219,6 +222,9 @@ func TestIntegrationRunBackupJobAcceptsManifestProvenTargetOnlySnapshot(t *testi
 
 	run := func(attempt int) {
 		t.Helper()
+		if attempt > 1 {
+			changeDataset(t, source)
+		}
 		svc.queuedJobs = make(map[uint]struct{})
 		svc.runningJobs = make(map[uint]struct{})
 		svc.runningWorkloadOp = make(map[string]string)

@@ -377,7 +377,6 @@ func TestIntegrationScheduledEncryptedRestoreActivationFailureRollsBackRealZFS(t
 		&jobID,
 		false,
 		true,
-		false,
 		nil,
 		nil,
 	)

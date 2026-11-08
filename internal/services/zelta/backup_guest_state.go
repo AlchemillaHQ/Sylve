@@ -20,16 +20,9 @@ func guestStateRecoveryContext(ctx context.Context) (context.Context, context.Ca
 	return context.WithTimeout(context.WithoutCancel(ctx), guestStateRecoveryTimeout)
 }
 
-// quiesceBackupGuest returns an inverse operation only when this backup
+// quiesceBackupGuestContext returns an inverse operation only when this backup
 // actually stopped a running guest. A guest that was already stopped is left
 // stopped, and every later caller error can safely invoke the returned inverse.
-func (s *Service) quiesceBackupGuest(
-	job *clusterModels.BackupJob,
-	vmRID uint,
-) (backupGuestRestore, bool, error) {
-	return s.quiesceBackupGuestContext(context.Background(), job, vmRID)
-}
-
 func (s *Service) quiesceBackupGuestContext(
 	ctx context.Context,
 	job *clusterModels.BackupJob,

@@ -12,7 +12,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -30,6 +29,7 @@ import (
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
 	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
+	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/digitalocean/go-libvirt"
 	"gorm.io/gorm"
@@ -370,23 +370,14 @@ func (s *Service) writeVMJsonWithDB(db *gorm.DB, rid uint) error {
 	}
 
 	copyFile := func(src, dst string) error {
-		srcFile, err := os.Open(src)
+		data, err := os.ReadFile(src)
 		if err != nil {
 			if os.IsNotExist(err) {
 				return nil
 			}
 			return err
 		}
-		defer srcFile.Close()
-
-		dstFile, err := os.Create(dst)
-		if err != nil {
-			return err
-		}
-		defer dstFile.Close()
-
-		_, err = io.Copy(dstFile, srcFile)
-		return err
+		return utils.WriteFileIfChanged(dst, data, 0644)
 	}
 
 	outputDirectories, err := s.resolveVMJSONOutputDirectories(context.Background(), vm)
@@ -400,7 +391,7 @@ func (s *Service) writeVMJsonWithDB(db *gorm.DB, rid uint) error {
 			return fmt.Errorf("failed_to_create_directory_%s: %w", sylveDir, err)
 		}
 
-		if err := os.WriteFile(vmJsonPath, vmJsonData, 0644); err != nil {
+		if err := utils.WriteFileIfChanged(vmJsonPath, vmJsonData, 0644); err != nil {
 			return fmt.Errorf("failed_to_write_vm_json_to_%s: %w", vmJsonPath, err)
 		}
 

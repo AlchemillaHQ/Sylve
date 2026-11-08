@@ -7,6 +7,7 @@ package zelta
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -513,7 +514,7 @@ func TestVMRestoreRuntimeGuardRestoresRunningStateAfterLaterFailure(t *testing.T
 		actionErr:     make(map[string]error),
 	}
 	service := &Service{DB: database, VM: vmStub}
-	guard, err := service.prepareInPlaceVMRestore(42, "tank/sylve/virtual-machines/42")
+	guard, err := service.prepareInPlaceVMRestoreContext(context.Background(), 42, "tank/sylve/virtual-machines/42")
 	if err != nil {
 		t.Fatalf("prepare VM restore: %v", err)
 	}
@@ -551,7 +552,7 @@ func TestVMRestoreRuntimeGuardJoinsRestartFailure(t *testing.T) {
 		actionErr:     map[string]error{"start": restartFailure},
 	}
 	service := &Service{DB: database, VM: vmStub}
-	guard, err := service.prepareInPlaceVMRestore(43, "tank/sylve/virtual-machines/43")
+	guard, err := service.prepareInPlaceVMRestoreContext(context.Background(), 43, "tank/sylve/virtual-machines/43")
 	if err != nil {
 		t.Fatalf("prepare VM restore: %v", err)
 	}
@@ -561,4 +562,39 @@ func TestVMRestoreRuntimeGuardJoinsRestartFailure(t *testing.T) {
 		restartErr == nil || !strings.Contains(joined.Error(), "restore_vm_restart_failed") {
 		t.Fatalf("joined restart failure = %v (restart=%v)", joined, restartErr)
 	}
+}
+
+// runInPlaceJailRestoreCutover preserves the runtime state of an existing jail
+// until the ZFS cutover succeeds. Identity and runtime-state checks are part of
+// the safety boundary: an in-place restore must never replace a dataset while
+// Sylve cannot prove that the corresponding jail is stopped.
+//
+// A successful cutover deliberately leaves the jail stopped so restored
+// metadata and networking can be reconciled safely. When the cutover fails,
+// promoteRestoredDataset has retained or restored the original dataset, so a
+// jail stopped by this attempt is restarted before the error is returned.
+func (s *Service) runInPlaceJailRestoreCutover(
+	dataset string,
+	cutover func() (string, error),
+) (string, error) {
+	if cutover == nil {
+		return "", fmt.Errorf("restore_jail_cutover_required: dataset=%s", dataset)
+	}
+	guard, err := s.prepareInPlaceJailRestore(context.Background(), dataset)
+	if err != nil {
+		return "", err
+	}
+
+	backupDataset, cutoverErr := cutover()
+	if cutoverErr == nil {
+		return backupDataset, nil
+	}
+
+	primaryErr := fmt.Errorf(
+		"rename_restore_failed: could not promote restored dataset into %s: %w",
+		dataset,
+		cutoverErr,
+	)
+	primaryErr, _ = guard.restoreAfterFailure(primaryErr)
+	return "", primaryErr
 }

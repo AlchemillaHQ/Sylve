@@ -200,10 +200,6 @@ func waitForRestoreJailRetry(ctx context.Context) bool {
 	}
 }
 
-func (s *Service) prepareInPlaceVMRestore(vmID uint, dataset string) (*restoreRuntimeGuard, error) {
-	return s.prepareInPlaceVMRestoreContext(context.Background(), vmID, dataset)
-}
-
 func (s *Service) prepareInPlaceVMRestoreContext(
 	ctx context.Context,
 	vmID uint,
@@ -237,39 +233,4 @@ func (s *Service) prepareInPlaceVMRestoreContext(
 		return s.startVMIfPresentContext(recoveryCtx, vmID)
 	}
 	return guard, nil
-}
-
-// runInPlaceJailRestoreCutover preserves the runtime state of an existing jail
-// until the ZFS cutover succeeds. Identity and runtime-state checks are part of
-// the safety boundary: an in-place restore must never replace a dataset while
-// Sylve cannot prove that the corresponding jail is stopped.
-//
-// A successful cutover deliberately leaves the jail stopped so restored
-// metadata and networking can be reconciled safely. When the cutover fails,
-// promoteRestoredDataset has retained or restored the original dataset, so a
-// jail stopped by this attempt is restarted before the error is returned.
-func (s *Service) runInPlaceJailRestoreCutover(
-	dataset string,
-	cutover func() (string, error),
-) (string, error) {
-	if cutover == nil {
-		return "", fmt.Errorf("restore_jail_cutover_required: dataset=%s", dataset)
-	}
-	guard, err := s.prepareInPlaceJailRestore(context.Background(), dataset)
-	if err != nil {
-		return "", err
-	}
-
-	backupDataset, cutoverErr := cutover()
-	if cutoverErr == nil {
-		return backupDataset, nil
-	}
-
-	primaryErr := fmt.Errorf(
-		"rename_restore_failed: could not promote restored dataset into %s: %w",
-		dataset,
-		cutoverErr,
-	)
-	primaryErr, _ = guard.restoreAfterFailure(primaryErr)
-	return "", primaryErr
 }

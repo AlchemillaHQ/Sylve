@@ -6,11 +6,14 @@ package zelta
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 type remoteRestoreDatasetPlan struct {
@@ -403,4 +406,72 @@ func (s *Service) recheckRemoteRestoreDatasetPlan(
 		return fmt.Errorf("restore_snapshot_changed_after_preflight: %s", strings.Join(problems, ","))
 	}
 	return nil
+}
+
+// Equal snapshot GUIDs mean identical snapshots, so a local copy can replace the pull.
+func localRestoreSource(
+	ctx context.Context,
+	dataset, snapshot string,
+	expected []restoreDatasetManifestEntry,
+	recursive bool,
+) string {
+	dataset = normalizeDatasetPath(dataset)
+	snapshot = "@" + strings.TrimPrefix(strings.TrimSpace(snapshot), "@")
+	if dataset == "" || len(expected) == 0 {
+		return ""
+	}
+	args := []string{"list", "-H", "-p", "-t", "snapshot", "-o", "name,guid", "-d", "1"}
+	if recursive {
+		args = []string{"list", "-H", "-p", "-t", "snapshot", "-o", "name,guid", "-r"}
+	}
+	output, err := utils.RunCommandWithContext(ctx, "zfs", append(args, dataset)...)
+	if err != nil {
+		return ""
+	}
+	local := make(map[string]string)
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		name, guid, ok := strings.Cut(line, "\t")
+		if !ok || !strings.HasSuffix(name, snapshot) {
+			continue
+		}
+		local[relativeDatasetSuffix(dataset, strings.TrimSuffix(name, snapshot))] = guid
+	}
+	if len(local) != len(expected) {
+		return ""
+	}
+	for _, entry := range expected {
+		if entry.SnapshotGUID == "" || local[entry.Suffix] != entry.SnapshotGUID {
+			return ""
+		}
+	}
+	return dataset + snapshot
+}
+
+func (s *Service) pullRestore(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	env []string,
+	onLine func(string),
+	localDataset, remoteEndpoint, snapshot, restorePath string,
+	identity restoreStagingIdentity,
+	expected []restoreDatasetManifestEntry,
+	recursive bool,
+) (string, error) {
+	if local := localRestoreSource(ctx, localDataset, snapshot, expected, recursive); local != "" {
+		note := "restore_source_local: " + local
+		onLine(note)
+		output, err := runZeltaWithEnvStreaming(ctx, env, onLine, restoreZeltaArgs(local, restorePath, recursive)...)
+		if err == nil {
+			return note + "\n" + output, nil
+		}
+		cleanupCtx, cancel := restoreRecoveryContext()
+		cleanupErr := s.cleanupOwnedRestoreStaging(cleanupCtx, restorePath, identity)
+		cancel()
+		if cleanupErr != nil || ctx.Err() != nil {
+			return note + "\n" + output, errors.Join(err, cleanupErr)
+		}
+		logger.L.Warn().Err(err).Str("source", local).Msg("restore_local_source_failed_using_target")
+	}
+	output, err := runZeltaWithEnvStreaming(ctx, env, onLine, restoreZeltaArgs(remoteEndpoint, restorePath, recursive)...)
+	return output, targetSSHHostKeyError(target, output, err)
 }

@@ -397,6 +397,12 @@ func (s *Service) runRestoreJob(
 			return restoreErr
 		}
 	}
+	// Before the fence: a leftover staging dataset must not cost a hard stop.
+	if err := s.prepareRestoreStagingDataset(ctx, restorePath, stagingIdentity); err != nil {
+		restoreErr := fmt.Errorf("restore_preflight_staging_check_failed: %w", err)
+		s.finalizeRestoreEvent(&event, restoreErr, "")
+		return restoreErr
+	}
 	var jailRestoreFence *restoreGuestFence
 	jailSafeToRestart := true
 	if job.Mode == clusterModels.BackupJobModeJail {
@@ -438,11 +444,6 @@ func (s *Service) runRestoreJob(
 			return restoreErr
 		}
 	}
-	if err := s.prepareRestoreStagingDataset(ctx, restorePath, stagingIdentity); err != nil {
-		restoreErr := fmt.Errorf("restore_preflight_staging_check_failed: %w", err)
-		s.finalizeRestoreEvent(&event, restoreErr, "")
-		return restoreErr
-	}
 
 	logger.L.Info().
 		Uint("job_id", job.ID).
@@ -454,12 +455,9 @@ func (s *Service) runRestoreJob(
 	var restoreErr error
 	var output string
 
-	// Step 1: Pull from remote backup@snapshot → temp dataset using zelta.
+	// Step 1: Receive backup@snapshot into the staging dataset with zelta.
 	// A pre-existing staging dataset is never inferred to be ours and destroyed;
 	// the preflight above requires an operator to inspect it first.
-	// Override recv flags: skip readonly=on (RECV_TOP default) so the restored
-	// dataset is writable. Setting RECV_TOP=no makes zelta treat it as falsy (0),
-	// which arr_join() skips. RECV_FS keeps its default flags.
 	extraEnv, err := s.buildZeltaEnv(&job.Target)
 	if err != nil {
 		s.finalizeRestoreEvent(&event, err, output)
@@ -480,9 +478,9 @@ func (s *Service) runRestoreJob(
 		return restoreErr
 	}
 
-	restoreArgs := restoreZeltaArgs(remoteEndpoint, restorePath, restoreRecursive)
-	output, restoreErr = runZeltaWithEnvStreaming(
+	output, restoreErr = s.pullRestore(
 		ctx,
+		&job.Target,
 		extraEnv,
 		func(line string) {
 			if err := s.AppendBackupEventOutput(event.ID, line); err != nil {
@@ -492,9 +490,9 @@ func (s *Service) runRestoreJob(
 					Msg("append_restore_event_output_failed")
 			}
 		},
-		restoreArgs...,
+		sourceDataset, remoteEndpoint, snapshot, restorePath,
+		stagingIdentity, expectedRestoreManifest, restoreRecursive,
 	)
-	restoreErr = targetSSHHostKeyError(&job.Target, output, restoreErr)
 
 	logger.L.Info().
 		Str("zelta_output", output).
@@ -512,6 +510,9 @@ func (s *Service) runRestoreJob(
 	restoreExists, verifyErr := s.localDatasetExists(ctx, restorePath)
 	if verifyErr != nil || !restoreExists {
 		restoreErr = zeltaRecvMissingError(restorePath, output)
+		if verifyErr != nil {
+			restoreErr = fmt.Errorf("verify_restored_dataset_failed: %w", verifyErr)
+		}
 		restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, restoreErr)
 		s.finalizeRestoreEvent(&event, restoreErr, output)
 		return restoreErr
@@ -547,12 +548,6 @@ func (s *Service) runRestoreJob(
 		restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, restoreErr)
 		s.finalizeRestoreEvent(&event, restoreErr, output)
 		return restoreErr
-	}
-
-	// Step 3: Ensure the parent dataset exists (for restoring to a fresh system)
-	if idx := strings.LastIndex(sourceDataset, "/"); idx > 0 {
-		parent := sourceDataset[:idx]
-		_ = s.ensureLocalFilesystemPath(ctx, parent)
 	}
 
 	// Step 4: Promote the staged dataset into place. A jail was stopped before
@@ -1129,6 +1124,15 @@ func (s *Service) runRestoreVMJob(
 	if !datasetWithinRoot(job.Target.BackupRoot, remoteDataset) {
 		return fmt.Errorf("remote_dataset_outside_backup_root")
 	}
+	if guestType, guestID := backupJobGuestIdentity(job); guestType != "" && guestID > 0 {
+		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, guestType, guestID, s.localNodeID())
+		if leaseErr != nil {
+			return fmt.Errorf("pre_restore_lease_check_failed: %w", leaseErr)
+		}
+		if !allowed {
+			return fmt.Errorf("lease_lost_before_restore: ownership transferred to another node")
+		}
+	}
 	snapshot, err := normalizeSnapshotName(snapshot)
 	if err != nil {
 		return err
@@ -1144,7 +1148,14 @@ func (s *Service) runRestoreVMJob(
 	}
 
 	jobID := job.ID
-	return s.runRestoreFromTargetVM(ctx, &job.Target, payload, &jobID)
+	if err := s.runRestoreFromTargetVM(ctx, &job.Target, payload, &jobID); err != nil {
+		return err
+	}
+	// No target metadata resync: the activated generation keeps its properties.
+	if scheduleErr := s.advanceBackupJobScheduleAfterRestore(job); scheduleErr != nil {
+		logger.L.Warn().Err(scheduleErr).Uint("job_id", job.ID).Msg("failed_to_advance_backup_schedule_after_restore")
+	}
+	return nil
 }
 
 // fixRestoredProperties corrects ZFS properties after a restore so the dataset
@@ -1158,41 +1169,29 @@ func (s *Service) fixRestoredProperties(ctx context.Context, dataset string) err
 		return nil
 	}
 
-	allDatasets, err := s.listLocalFilesystemDatasets(ctx)
+	output, err := utils.RunCommandWithContext(ctx, "zfs", backupDatasetListArgs(dataset, true)[1:]...)
 	if err != nil {
 		return fmt.Errorf("list_restored_datasets_failed: %w", err)
 	}
-	var restoreErrors []error
-
-	seen := map[string]struct{}{dataset: {}}
-	subtree := []string{dataset}
-	prefix := dataset + "/"
-
-	for _, candidate := range allDatasets {
-		ds := normalizeDatasetPath(candidate)
-		if ds == "" || ds == dataset {
-			continue
-		}
-		if !strings.HasPrefix(ds, prefix) {
-			continue
-		}
-		if _, ok := seen[ds]; ok {
-			continue
-		}
-		seen[ds] = struct{}{}
-		subtree = append(subtree, ds)
+	types, err := parseBackupDatasetTree(output, dataset, true)
+	if err != nil {
+		return fmt.Errorf("list_restored_datasets_failed: %w", err)
 	}
-
+	subtree := make([]string, 0, len(types))
+	for name := range types {
+		subtree = append(subtree, name)
+	}
 	sort.SliceStable(subtree, func(i, j int) bool {
-		di := strings.Count(subtree[i], "/")
-		dj := strings.Count(subtree[j], "/")
+		di, dj := strings.Count(subtree[i], "/"), strings.Count(subtree[j], "/")
 		if di == dj {
 			return subtree[i] < subtree[j]
 		}
 		return di < dj
 	})
 
-	for idx, dsName := range subtree {
+	var restoreErrors []error
+	for _, dsName := range subtree {
+		volume := types[dsName] == "volume"
 		ds, err := s.getLocalDataset(ctx, dsName)
 		if err != nil {
 			logger.L.Warn().Err(err).Str("dataset", dsName).Msg("fix_restored_property_get_failed")
@@ -1219,72 +1218,34 @@ func (s *Service) fixRestoredProperties(ctx context.Context, dataset string) err
 			}
 		}
 
+		// Volumes have no canmount, mountpoint or mount.
+		if volume {
+			if err := ds.SetProperties(ctx, "readonly", "off"); err != nil {
+				logger.L.Warn().Err(err).Str("dataset", dsName).Msg("fix_restored_volume_readonly_failed")
+				restoreErrors = append(restoreErrors, fmt.Errorf("set_restored_volume_%s_readonly_failed: %w", dsName, err))
+			}
+			continue
+		}
 		if err := ds.SetProperties(ctx, "readonly", "off", "canmount", "on"); err != nil {
 			logger.L.Warn().Err(err).Str("dataset", dsName).Msg("fix_restored_property_set_failed")
 			restoreErrors = append(restoreErrors, fmt.Errorf("set_restored_properties_for_%s_failed: %w", dsName, err))
 			continue
 		}
-
-		if idx == 0 {
+		if dsName == dataset {
 			if _, err := utils.RunCommandWithContext(ctx, "zfs", "inherit", "mountpoint", dsName); err != nil {
 				logger.L.Warn().Err(err).Str("dataset", dsName).Msg("fix_restored_property_inherit_mountpoint_failed")
 				restoreErrors = append(restoreErrors, fmt.Errorf("inherit_restored_mountpoint_for_%s_failed: %w", dsName, err))
 				continue
 			}
 		}
-
 		if err := ds.Mount(ctx, false); err != nil {
-			lowerErr := strings.ToLower(strings.TrimSpace(err.Error()))
-			if strings.Contains(lowerErr, "already mounted") {
+			if strings.Contains(strings.ToLower(err.Error()), "already mounted") {
 				continue
 			}
 			logger.L.Warn().Err(err).Str("dataset", dsName).Msg("fix_restored_property_mount_failed")
 			restoreErrors = append(restoreErrors, fmt.Errorf("mount_restored_dataset_%s_failed: %w", dsName, err))
 		}
 	}
-
-	// Fix volumes separately: no canmount, no mountpoint, no mount.
-	volDatasets, volErr := s.listLocalVolumeDatasets(ctx)
-	if volErr == nil {
-		prefix := dataset + "/"
-		for _, v := range volDatasets {
-			vn := normalizeDatasetPath(v)
-			if vn == "" || !strings.HasPrefix(vn, prefix) {
-				continue
-			}
-			vol, getErr := s.getLocalDataset(ctx, vn)
-			if getErr != nil {
-				logger.L.Warn().Err(getErr).Str("dataset", vn).Msg("fix_restored_volume_get_failed")
-				restoreErrors = append(restoreErrors, fmt.Errorf("get_restored_volume_%s_failed: %w", vn, getErr))
-				continue
-			}
-			if vol == nil {
-				restoreErrors = append(restoreErrors, fmt.Errorf("restored_volume_not_found: %s", vn))
-				continue
-			}
-			if vol.IsEncrypted() {
-				keyLoaded, keyErr := s.ensureEncryptionKeyForDataset(ctx, vol)
-				if keyErr != nil {
-					logger.L.Error().Err(keyErr).Str("dataset", vn).Msg("fix_restored_volume_key_load_failed")
-					restoreErrors = append(restoreErrors, fmt.Errorf("restore_encryption_key_load_failed_for_%s: %w", vn, keyErr))
-					continue
-				}
-				if !keyLoaded {
-					logger.L.Error().Str("dataset", vn).Msg("fix_restored_volume_key_not_auto_loaded")
-					restoreErrors = append(restoreErrors, fmt.Errorf("restore_encryption_key_required_for_%s", vn))
-					continue
-				}
-			}
-			if err := vol.SetProperties(ctx, "readonly", "off"); err != nil {
-				logger.L.Warn().Err(err).Str("dataset", vn).Msg("fix_restored_volume_readonly_failed")
-				restoreErrors = append(restoreErrors, fmt.Errorf("set_restored_volume_%s_readonly_failed: %w", vn, err))
-			}
-		}
-	} else {
-		logger.L.Warn().Err(volErr).Msg("fix_restored_property_list_volumes_failed")
-		restoreErrors = append(restoreErrors, fmt.Errorf("list_restored_volumes_failed: %w", volErr))
-	}
-
 	return errors.Join(restoreErrors...)
 }
 
