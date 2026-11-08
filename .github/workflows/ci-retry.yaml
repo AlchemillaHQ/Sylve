@@ -1,8 +1,10 @@
 name: CI Retry
 run-name: ${{ github.event.workflow_run.display_title }}
 
-# Some GitHub runner hosts don't expose nested virtualization, which bhyve needs.
-# Every re-run lands on a fresh runner, so retry those failures up to five times.
+# Some GitHub runner hosts don't expose nested virtualization, which bhyve needs,
+# and GitHub's release downloads (anyvm.py for the FreeBSD VM) sometimes return
+# 504s for a while. Re-run those infrastructure failures until they pass, waiting
+# a little longer each time. Real failures aren't retried.
 on:
   workflow_run:
     workflows: [CI]
@@ -13,17 +15,20 @@ permissions:
 
 jobs:
   retry:
-    name: Retry runners without nested virtualization
-    if: github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt <= 5
+    name: Retry infrastructure failures
+    if: github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Re-run failed jobs
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: |
-          if gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed | grep -q 'nested virtualization unavailable'; then
+          if gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed |
+            grep -qE 'nested virtualization unavailable|Could not download anyvm\.py'; then
+            sleep $(( RUN_ATTEMPT < 5 ? RUN_ATTEMPT * 60 : 300 ))
             gh run rerun "$RUN_ID" --repo "$GITHUB_REPOSITORY" --failed
           else
             echo "CI failed for another reason; not retrying."
