@@ -23,7 +23,6 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/assets"
 	"github.com/alchemillahq/sylve/internal/config"
-	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -294,48 +293,6 @@ func isBenignPipeReadError(err error) bool {
 
 	return strings.Contains(lower, "file already closed") ||
 		strings.Contains(lower, "use of closed file")
-}
-
-func (s *Service) DestroySnapshots(ctx context.Context, snapshots []string) error {
-	for _, snapshot := range snapshots {
-		snap, err := remoteexec.ParseZFSSnapshot(snapshot)
-		if err != nil {
-			continue
-		}
-		if err := s.destroyLocalDataset(ctx, snap.String(), false); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (s *Service) DestroyTargetSnapshotsByName(ctx context.Context, target *clusterModels.BackupTarget, targetSnapshots []string) error {
-	_, root, err := canonicalizeBackupTarget(target)
-	if err != nil {
-		return err
-	}
-	for _, targetSnapshot := range targetSnapshots {
-		snapshot, err := remoteexec.ParseZFSSnapshot(targetSnapshot)
-		if err != nil || !snapshot.Dataset().Within(root) {
-			continue
-		}
-		snap := snapshot.String()
-
-		out, err := s.runTargetSSH(ctx, target, "zfs", "destroy", snap)
-		if err != nil {
-			if isRemoteSubcommandBlocked(out) {
-				logger.L.Warn().
-					Str("ssh_host", target.SSHHost).
-					Str("dataset", remoteDatasetForLog(snapshot.Dataset().String())).
-					Msg("remote_zfs_destroy_not_permitted")
-				return fmt.Errorf("remote_zfs_destroy_not_permitted: %w", err)
-			}
-			return err
-		}
-	}
-
-	return nil
 }
 
 func isValidZFSSnapshotName(name string) bool {

@@ -242,10 +242,11 @@ func TestInvalidRemoteCommandValuesDoNotInvokeSSH(t *testing.T) {
 
 	t.Run("unsafe snapshot", func(t *testing.T) {
 		harness := newFakeSSHHarness(t)
-		if err := (&Service{}).DestroyTargetSnapshotsByName(
-			context.Background(), &target, []string{"tank/backups/data@bk_valid;touch"},
-		); err != nil {
-			t.Fatalf("destroy invalid snapshot: %v", err)
+		snapshot := "tank/backups/data@bk_valid;touch"
+		if _, _, err := (&Service{}).destroyTargetBackupSnapshotsWithProof(
+			context.Background(), &target, []string{snapshot}, map[string]string{snapshot: "1"}, backupSnapshotTree{},
+		); err == nil {
+			t.Fatal("invalid snapshot was accepted")
 		}
 		if calls := harness.Calls(); len(calls) != 0 {
 			t.Fatalf("invalid snapshot invoked ssh: %#v", calls)
@@ -722,6 +723,9 @@ func TestTargetSSHKeyPath(t *testing.T) {
 func TestDestroyTargetSnapshotsReportsBlockedRemoteDelete(t *testing.T) {
 	harness := newFakeSSHHarness(t)
 	harness.SetScenario(fakeSSHScenario{Responses: map[string][]fakeSSHResponse{
+		"zfs list -H -p -t snapshot -o name,guid,userrefs,clones tank/backups/vm@bk_j1_c1_old": {{
+			Stdout: "tank/backups/vm@bk_j1_c1_old\t1\t0\t-\n",
+		}},
 		"zfs destroy tank/backups/vm@bk_j1_c1_old": {{
 			Stderr:   "subcommand not allowed\n",
 			ExitCode: 1,
@@ -733,17 +737,19 @@ func TestDestroyTargetSnapshotsReportsBlockedRemoteDelete(t *testing.T) {
 		SSHHost:    "root@backup.example",
 		BackupRoot: "tank/backups",
 	}
-	err := (&Service{}).DestroyTargetSnapshotsByName(
+	_, _, err := (&Service{}).destroyTargetBackupSnapshotsWithProof(
 		context.Background(),
 		target,
 		[]string{"tank/backups/vm@bk_j1_c1_old"},
+		map[string]string{"tank/backups/vm@bk_j1_c1_old": "1"},
+		backupSnapshotTree{},
 	)
 	if err == nil ||
 		!strings.Contains(err.Error(), "remote_zfs_destroy_not_permitted") ||
 		!strings.Contains(err.Error(), "subcommand not allowed") {
 		t.Fatalf("blocked target deletion error = %v", err)
 	}
-	if calls := harness.Calls(); len(calls) != 1 || calls[0] != "zfs destroy tank/backups/vm@bk_j1_c1_old" {
+	if calls := harness.Calls(); len(calls) != 2 || calls[1] != "zfs destroy tank/backups/vm@bk_j1_c1_old" {
 		t.Fatalf("remote delete calls = %#v", calls)
 	}
 }
