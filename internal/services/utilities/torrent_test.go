@@ -90,7 +90,9 @@ func waitForTorrentProgress(t *testing.T, download torrentDownload, ready func(t
 	if download == nil {
 		t.Fatal("torrent download is unavailable")
 	}
-	deadline := time.NewTimer(10 * time.Second)
+	// A peer handshake that stalls costs about 5 s before the client redials, so
+	// a loaded CI runner needs more than a couple of those.
+	deadline := time.NewTimer(30 * time.Second)
 	defer deadline.Stop()
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
@@ -104,7 +106,8 @@ func waitForTorrentProgress(t *testing.T, download torrentDownload, ready func(t
 		}
 		select {
 		case <-deadline.C:
-			t.Fatalf("timed out waiting for torrent progress: %+v", progress)
+			peers := download.(*anacrolixTorrentDownload).torrent.Stats().TorrentGauges
+			t.Fatalf("timed out waiting for torrent progress: %+v, peers: %+v", progress, peers)
 		case <-ticker.C:
 		}
 	}

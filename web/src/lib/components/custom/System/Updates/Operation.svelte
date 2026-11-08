@@ -117,7 +117,7 @@
 			const result = await getHostUpdateJob(currentId, options());
 			if (controller.signal.aborted) return;
 			if (isAPIResponse(result)) {
-				reconnecting = installing && connectionFailures.includes(result.message);
+				reconnecting = installing && connectionFailures.includes(result.message ?? '');
 				error = reconnecting ? '' : hostUpdateReason(result.message);
 				unavailable = !job;
 				return;
@@ -137,7 +137,7 @@
 			const chunk = await getHostUpdateLogs(currentId, offset, options());
 			if (controller.signal.aborted) return;
 			if (isAPIResponse(chunk)) {
-				reconnecting = installing && connectionFailures.includes(chunk.message);
+				reconnecting = installing && connectionFailures.includes(chunk.message ?? '');
 				if (!reconnecting) error = hostUpdateReason(chunk.message);
 				return;
 			}
