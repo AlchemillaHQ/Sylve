@@ -58,7 +58,7 @@ func newBackupRunFixture(t *testing.T, name string) *backupRunFixture {
 	if err := svc.DB.Create(&job).Error; err != nil {
 		t.Fatal(err)
 	}
-	destSuffix := svc.backupDestSuffixForMode(job.Mode, "", source)
+	destSuffix := datasetDestSuffix("", source)
 	return &backupRunFixture{
 		t: t, svc: svc, job: job, source: source,
 		active: remoteActiveDatasetForSuffix(target.BackupRoot, destSuffix),

@@ -276,11 +276,11 @@ func (s *Service) runBackupJobCore(
 	var destSuffix string
 	switch job.Mode {
 	case clusterModels.BackupJobModeVM:
-		destSuffix = s.backupDestSuffixForVMSource(strings.TrimSpace(job.DestSuffix), sourceDataset)
+		destSuffix = vmDestSuffixForSource(job.DestSuffix, sourceDataset)
 	case clusterModels.BackupJobModeJail:
-		destSuffix = s.backupDestSuffixForJailSource(strings.TrimSpace(job.DestSuffix), sourceDataset)
+		destSuffix = jailDestSuffixForSource(job.DestSuffix, sourceDataset)
 	default:
-		destSuffix = s.backupDestSuffixForMode(job.Mode, strings.TrimSpace(job.DestSuffix), sourceDataset)
+		destSuffix = datasetDestSuffix(job.DestSuffix, sourceDataset)
 	}
 	backupScopes := s.backupRunScopes(job, sourceDataset, destSuffix, vmSourceDatasets)
 	operationRoots := make([]string, 0, len(backupScopes))

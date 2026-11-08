@@ -28,7 +28,7 @@ func (s *Service) backupRunScopes(job *clusterModels.BackupJob, sourceDataset, d
 		for _, vmSource := range vmSourceDatasets {
 			scopes = append(scopes, backupScope{
 				sourceDataset: vmSource,
-				destSuffix:    s.backupDestSuffixForVMSource(strings.TrimSpace(job.DestSuffix), vmSource),
+				destSuffix:    vmDestSuffixForSource(job.DestSuffix, vmSource),
 			})
 		}
 		return scopes

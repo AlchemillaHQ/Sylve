@@ -268,14 +268,6 @@ func (s *Service) targetSSHKeyPath(target *clusterModels.BackupTarget) (string, 
 	return stored, nil
 }
 
-func (s *Service) resolvedSSHKeyPath(target *clusterModels.BackupTarget) string {
-	path, err := s.targetSSHKeyPath(target)
-	if err != nil {
-		return strings.TrimSpace(target.SSHKeyPath)
-	}
-	return path
-}
-
 func (s *Service) materializeBackupTargetSSHKeyLocked(target *clusterModels.BackupTarget) error {
 	if target == nil {
 		return fmt.Errorf("backup_target_required")

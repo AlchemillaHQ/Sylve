@@ -164,7 +164,7 @@ func TestIntegrationRunBackupJobPreservesLegacyTargetSnapshotDuringTopologyRotat
 		t.Fatalf("first backup failed after integration prerequisites passed: %v", err)
 	}
 
-	destSuffix := svc.backupDestSuffixForMode("dataset", "", poolName+"/source/foreign")
+	destSuffix := datasetDestSuffix("", poolName+"/source/foreign")
 	activeDS := poolName + "/target/" + destSuffix
 	if !zfsDatasetExists(t, activeDS) {
 		t.Fatalf("active target dataset %s missing after first backup", activeDS)
@@ -281,7 +281,7 @@ func TestIntegrationRunBackupJobRecursiveForeignSnapshotFailsClosed(t *testing.T
 		t.Fatalf("first recursive backup failed after integration prerequisites passed: %v", err)
 	}
 
-	destSuffix := svc.backupDestSuffixForMode("dataset", "", poolName+"/source/rchild")
+	destSuffix := datasetDestSuffix("", poolName+"/source/rchild")
 	activeDS := poolName + "/target/" + destSuffix
 	if !zfsDatasetExists(t, activeDS) {
 		t.Fatalf("active target dataset %s missing after first backup", activeDS)
@@ -408,7 +408,7 @@ func TestIntegrationRunBackupJobVMForeignSnapshotFailsClosed(t *testing.T) {
 		t.Fatalf("first VM backup failed after integration prerequisites passed: %v", err)
 	}
 
-	vmDestSuffix := svc.backupDestSuffixForVMSource("", vmSource)
+	vmDestSuffix := vmDestSuffixForSource("", vmSource)
 	activeDS := poolName + "/target/" + vmDestSuffix
 	if !zfsDatasetExists(t, activeDS) {
 		t.Fatalf("VM target dataset %s not found after first backup", activeDS)
@@ -519,7 +519,7 @@ func TestIntegrationRunBackupJobJailForeignSnapshotFailsClosed(t *testing.T) {
 		t.Fatalf("first jail backup failed after integration prerequisites passed: %v", err)
 	}
 
-	jailDestSuffix := svc.backupDestSuffixForJailSource("jails/42/j-test/active", jailRoot)
+	jailDestSuffix := jailDestSuffixForSource("jails/42/j-test/active", jailRoot)
 	activeDS := poolName + "/target/" + jailDestSuffix
 	if !zfsDatasetExists(t, activeDS) {
 		t.Fatalf("jail target dataset %s not found after first backup", activeDS)

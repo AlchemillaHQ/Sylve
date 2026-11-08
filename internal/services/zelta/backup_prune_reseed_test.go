@@ -166,7 +166,7 @@ func TestIntegrationRunBackupJobPruneAfterBackup(t *testing.T) {
 		t.Fatalf("expected exactly 2 child source snapshots, got %d", localChildAfter)
 	}
 
-	destSuffix := svc.backupDestSuffixForMode("dataset", "", poolName+"/source/backup")
+	destSuffix := datasetDestSuffix("", poolName+"/source/backup")
 	remoteRoot := remoteActiveDatasetForSuffix(target.BackupRoot, destSuffix)
 	remoteSnapshots := listZFSSnapshots(t, remoteRoot)
 	for _, dataset := range []string{remoteRoot, remoteRoot + "/child"} {
@@ -245,7 +245,7 @@ func TestIntegrationRunBackupJobAcceptsManifestProvenTargetOnlySnapshot(t *testi
 	if got := countSnapshotsForDatasetWithPrefix(localSnapshots, source, prefix); got != 1 {
 		t.Fatalf("local keep-last did not create a target-only point: local_count=%d snapshots=%v", got, localSnapshots)
 	}
-	destSuffix := svc.backupDestSuffixForMode(job.Mode, "", source)
+	destSuffix := datasetDestSuffix("", source)
 	remoteRoot := remoteActiveDatasetForSuffix(target.BackupRoot, destSuffix)
 	remoteSnapshots := listZFSSnapshots(t, remoteRoot)
 	if got := countSnapshotsForDatasetWithPrefix(remoteSnapshots, remoteRoot, prefix); got != 2 {
@@ -315,7 +315,7 @@ func TestIntegrationRunBackupJobAutoReseedOnDivergedTarget(t *testing.T) {
 		t.Fatalf("first backup failed after integration prerequisites passed: %v", err)
 	}
 
-	destSuffix := svc.backupDestSuffixForMode("dataset", "", poolName+"/source/reseed")
+	destSuffix := datasetDestSuffix("", poolName+"/source/reseed")
 	targetDS := poolName + "/target/" + destSuffix
 	if !zfsDatasetExists(t, targetDS) {
 		t.Fatalf("target dataset %s does not exist after first backup", targetDS)

@@ -946,49 +946,11 @@ func (s *Service) runBackupJobWithToken(
 	return runErr
 }
 
-func (s *Service) backupDestSuffixForMode(mode, configuredSuffix, sourceDataset string) string {
-	configuredSuffix = normalizeDatasetPath(configuredSuffix)
-	sourceDataset = normalizeDatasetPath(sourceDataset)
-
-	if mode == clusterModels.BackupJobModeVM {
-		if sourceDataset == "" {
-			return configuredSuffix
-		}
-		if configuredSuffix == "" {
-			return sourceDataset
-		}
-		sourceRoot := normalizeDatasetPath(vmDatasetRoot(sourceDataset))
-		if sourceRoot != "" {
-			sourceRootSuffix := autoDestSuffix(sourceRoot)
-			if configuredSuffix == sourceRootSuffix ||
-				strings.HasPrefix(configuredSuffix, sourceRootSuffix+"/j-") {
-				rel := strings.TrimPrefix(sourceDataset, sourceRoot)
-				rel = strings.TrimPrefix(rel, "/")
-				if rel == "" {
-					return configuredSuffix
-				}
-				return normalizeDatasetPath(configuredSuffix + "/" + rel)
-			}
-		}
-		if configuredSuffix == sourceDataset || strings.HasSuffix(configuredSuffix, "/"+sourceDataset) {
-			return configuredSuffix
-		}
-		return configuredSuffix + "/" + sourceDataset
-	}
-
-	if configuredSuffix != "" {
+func datasetDestSuffix(configuredSuffix, sourceDataset string) string {
+	if configuredSuffix = normalizeDatasetPath(configuredSuffix); configuredSuffix != "" {
 		return configuredSuffix
 	}
-
-	return autoDestSuffix(sourceDataset)
-}
-
-func (s *Service) backupDestSuffixForVMSource(configuredSuffix, vmSourceDataset string) string {
-	return vmDestSuffixForSource(configuredSuffix, vmSourceDataset)
-}
-
-func (s *Service) backupDestSuffixForJailSource(configuredSuffix, jailSourceDataset string) string {
-	return jailDestSuffixForSource(configuredSuffix, jailSourceDataset)
+	return autoDestSuffix(normalizeDatasetPath(sourceDataset))
 }
 
 func vmDestSuffixForSource(configuredSuffix, vmSourceDataset string) string {
@@ -1003,7 +965,7 @@ func vmDestSuffixForSource(configuredSuffix, vmSourceDataset string) string {
 	rel := strings.TrimPrefix(vmSourceDataset, sourceRoot)
 	rel = strings.TrimPrefix(rel, "/")
 
-	if tail := vmJobLineageTail(configuredSuffix); tail != "" {
+	if tail := jobLineageTail(configuredSuffix); tail != "" {
 		mapped := normalizeDatasetPath(sourceRoot + "/" + tail)
 		if rel != "" {
 			mapped = normalizeDatasetPath(mapped + "/" + rel)
@@ -1029,7 +991,7 @@ func vmDestSuffixForSource(configuredSuffix, vmSourceDataset string) string {
 	return normalizeDatasetPath(mapped)
 }
 
-func vmJobLineageTail(destSuffix string) string {
+func jobLineageTail(destSuffix string) string {
 	destSuffix = normalizeDatasetPath(destSuffix)
 	if destSuffix == "" {
 		return ""
@@ -1052,7 +1014,7 @@ func jailDestSuffixForSource(configuredSuffix, jailSourceDataset string) string 
 		return configuredSuffix
 	}
 
-	if tail := jailJobLineageTail(configuredSuffix); tail != "" {
+	if tail := jobLineageTail(configuredSuffix); tail != "" {
 		return normalizeDatasetPath(jailSourceDataset + "/" + tail)
 	}
 
@@ -1064,22 +1026,6 @@ func jailDestSuffixForSource(configuredSuffix, jailSourceDataset string) string 
 	}
 
 	return normalizeDatasetPath(jailSourceDataset + "/" + configuredSuffix)
-}
-
-func jailJobLineageTail(destSuffix string) string {
-	destSuffix = normalizeDatasetPath(destSuffix)
-	if destSuffix == "" {
-		return ""
-	}
-
-	if idx := strings.Index(destSuffix, "/j-"); idx >= 0 {
-		return strings.TrimLeft(destSuffix[idx+1:], "/")
-	}
-	if idx := strings.Index(destSuffix, "/job-"); idx >= 0 {
-		return strings.TrimLeft(destSuffix[idx+1:], "/")
-	}
-
-	return ""
 }
 
 func (s *Service) resolveVMBackupSourceDatasets(ctx context.Context, vmRID uint, preferred string) ([]string, error) {
@@ -1275,10 +1221,6 @@ func (s *Service) stopVMIfPresent(rid uint) error {
 	return s.stopVMIfPresentContext(context.Background(), rid)
 }
 
-func (s *Service) stopVMIfPresentForTransition(rid uint, transitionRunID string) error {
-	return s.stopVMIfPresentForTransitionContext(context.Background(), rid, transitionRunID)
-}
-
 func (s *Service) stopVMIfPresentContext(ctx context.Context, rid uint) error {
 	return s.stopVMIfPresentForTransitionContext(ctx, rid, "")
 }
@@ -1349,10 +1291,6 @@ func (s *Service) stopVMIfPresentForTransitionContext(
 		case <-time.After(500 * time.Millisecond):
 		}
 	}
-}
-
-func (s *Service) startVMIfPresent(rid uint) error {
-	return s.startVMIfPresentContext(context.Background(), rid)
 }
 
 func (s *Service) startVMIfPresentContext(ctx context.Context, rid uint) error {

@@ -9,6 +9,7 @@
 package clusterHandlers
 
 import (
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -27,6 +28,7 @@ import (
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
+	ginGzip "github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
@@ -110,7 +112,6 @@ func TestForwardToPassesTheRequestAndTheAnswerThrough(t *testing.T) {
 				fmt.Sprintf("/api/cluster/test?case=%d&hash=browser-hash&auth=00", index),
 				`{"request":true}`,
 				map[string]string{
-					"Accept-Encoding":            "gzip, deflate, br",
 					"Idempotency-Key":            "operation-1",
 					"X-Correlation-ID":           "correlation-1",
 					"Authorization":              "Bearer browser-token",
@@ -148,7 +149,7 @@ func TestForwardToPassesTheRequestAndTheAnswerThrough(t *testing.T) {
 	if got := seen.Header.Get(authService.ProxyUserHeader); got != want {
 		t.Fatalf("forwarded for %q, want the signed-in admin %q", got, want)
 	}
-	for _, name := range []string{"Authorization", "Cookie", authService.ClusterKeyHeader, cluster.JoinerPinHeader, "Accept-Encoding"} {
+	for _, name := range []string{"Authorization", "Cookie", authService.ClusterKeyHeader, cluster.JoinerPinHeader} {
 		if got := seen.Header.Get(name); got != "" {
 			t.Fatalf("the client's %s went along: %q", name, got)
 		}
@@ -170,6 +171,41 @@ func TestForwardToSendsTheBodyTheHandlerRead(t *testing.T) {
 	c.Writer.WriteHeaderNow()
 	if recorder.Code != http.StatusAccepted || seenBody != `{"snapshot":"canonical"}` || seenLength != int64(len(seenBody)) {
 		t.Fatalf("answer %d, runner got %q (length %d)", recorder.Code, seenBody, seenLength)
+	}
+}
+
+func TestForwardToCompressesTheAnswerOnce(t *testing.T) {
+	const answer = `{"status":"success"}`
+	serveForwards(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			_, _ = w.Write([]byte(answer))
+			return
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		writer := gzip.NewWriter(w)
+		_, _ = writer.Write([]byte(answer))
+		_ = writer.Close()
+	}))
+	service := &cluster.Service{AuthService: authForwardStub{}}
+	router := gin.New()
+	router.Use(ginGzip.Gzip(ginGzip.BestSpeed))
+	router.GET("/api/cluster/test", func(c *gin.Context) {
+		c.Set("UserID", uint(7))
+		c.Set("AuthType", "sylve")
+		c.Set("AuthScope", "local")
+		ForwardTo(c, service, "leader:8184", nil)
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/cluster/test", nil)
+	request.Header.Set("Accept-Encoding", "gzip")
+	router.ServeHTTP(forwardRecorder{recorder}, request)
+	reader, err := gzip.NewReader(recorder.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body, err := io.ReadAll(reader); err != nil || string(body) != answer {
+		t.Fatalf("body=%q, %v", body, err)
 	}
 }
 

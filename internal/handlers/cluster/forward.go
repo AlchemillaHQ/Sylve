@@ -68,8 +68,12 @@ func ForwardTo(c *gin.Context, cS *cluster.Service, host string, body []byte) {
 			r.SetURL(&url.URL{Scheme: "https", Host: host})
 			r.SetXForwarded()
 			StripForwardHeaders(r.Out.Header)
-			// This node's gzip middleware compresses the answer once.
-			r.Out.Header.Del("Accept-Encoding")
+			// When this node's gzip middleware compresses the answer, the member
+			// mustn't as well. /api/nodes/ routes are excluded and pass the member's
+			// compression through.
+			if c.Writer.Header().Get("Content-Encoding") == "gzip" {
+				r.Out.Header.Del("Accept-Encoding")
+			}
 			r.Out.Header.Set(authService.ProxyUserHeader, user.Header())
 			query := r.Out.URL.Query()
 			query.Del("hash")

@@ -171,14 +171,3 @@ func (s *Service) BuildBackupTargetUpdatePlan(
 		ProposedFingerprint: clusterModels.BackupTargetConfigurationFingerprint(candidate),
 	}, nil
 }
-
-func (s *Service) BuildBackupTargetUpdateCandidate(
-	existing *clusterModels.BackupTarget,
-	input clusterServiceInterfaces.BackupTargetReq,
-) (*clusterModels.BackupTarget, error) {
-	plan, err := s.BuildBackupTargetUpdatePlan(existing, input)
-	if err != nil {
-		return nil, err
-	}
-	return plan.Candidate, nil
-}

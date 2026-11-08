@@ -1874,7 +1874,7 @@ func (s *Service) listRemoteVMRepresentativeRoots(
 	selectedSuffix := relativeDatasetSuffix(backupRoot, remoteDataset)
 	_, _, selectedBase := classifyDatasetLineage(selectedSuffix)
 	selectedVMRoot := vmDatasetRoot(selectedBase)
-	jobLineage := vmJobLineageTail(selectedBase)
+	jobLineage := jobLineageTail(selectedBase)
 	if selectedVMRoot == "" || jobLineage == "" ||
 		selectedBase != normalizeDatasetPath(selectedVMRoot+"/"+jobLineage) {
 		return nil, fmt.Errorf("remote_vm_job_lineage_required")

@@ -219,7 +219,7 @@ func TestIntegrationListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 		t.Logf("SSH zfs list snapshots recursive: err=%v out=%s", sshErr, string(sshOut))
 	}
 
-	destSuffix := svc.backupDestSuffixForMode("dataset", "", poolName+"/source/data")
+	destSuffix := datasetDestSuffix("", poolName+"/source/data")
 	remoteDS := poolName + "/target/" + destSuffix
 	t.Logf("backup dest suffix: %q → remote dataset: %s", destSuffix, remoteDS)
 

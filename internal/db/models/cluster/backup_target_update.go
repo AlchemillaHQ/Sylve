@@ -178,10 +178,6 @@ func backupTargetActiveOperationCountTxn(tx *gorm.DB, targetID uint) (int64, err
 	return jobOperations + restoreOperations, nil
 }
 
-func BackupTargetActiveOperationCount(db *gorm.DB, targetID uint) (int64, error) {
-	return backupTargetActiveOperationCountTxn(db, targetID)
-}
-
 func proposedBackupTargetForUpdate(existing BackupTarget, update BackupTargetUpdateV2) (BackupTarget, error) {
 	proposed := normalizeBackupTarget(existing)
 	switch update.Kind {
