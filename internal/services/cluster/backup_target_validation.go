@@ -544,11 +544,13 @@ func backupTargetReadinessStatuses(
 		status.LastError = row.LastError
 		status.Revision = row.Revision
 		status.ConfigurationCurrent = strings.TrimSpace(row.TargetFingerprint) == fingerprint
+		trusted := true
 		if target.HostKey != nil {
-			status.ConfigurationCurrent = status.ConfigurationCurrent && row.HostKeyRevision == target.HostKey.Revision && target.HostKey.State == "trusted"
+			status.ConfigurationCurrent = status.ConfigurationCurrent && row.HostKeyRevision == target.HostKey.Revision
+			trusted = target.HostKey.State == "trusted"
 		}
 		status.Expired = row.ValidationSucceeded && (row.ReadyUntil == nil || !row.ReadyUntil.After(now))
-		status.Ready = row.ValidationSucceeded && currentVoter && status.ConfigurationCurrent && !status.Expired
+		status.Ready = row.ValidationSucceeded && trusted && currentVoter && status.ConfigurationCurrent && !status.Expired
 		if !currentVoter && status.LastError == "" {
 			status.LastError = "backup_target_validation_node_not_current_voter"
 		} else if !status.ConfigurationCurrent && status.LastError == "" {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { storage } from '$lib';
+	import { listBackupJobsResult, listBackupTargetsResult } from '$lib/api/cluster/backups';
 	import { getNodes } from '$lib/api/cluster/cluster';
 	import { getSimpleContainers } from '$lib/api/container/container';
 	import { getAuditRecords } from '$lib/api/info/audit';
@@ -132,6 +133,36 @@
 		{
 			initialValue: [] as SimpleVmTemplate[]
 		}
+	);
+
+	const backupAuditIds = $derived(
+		[
+			...new Set(
+				(auditRecords.current || []).flatMap(
+					(record) =>
+						record.action?.path?.match(/^\/api\/cluster\/backups\/(?:targets|jobs)\/(\d+)/)?.[1] ??
+						[]
+				)
+			)
+		]
+			.sort()
+			.join(',')
+	);
+
+	const backupNames = resource(
+		() => `backup-audit-names-${backupAuditIds}`,
+		async () => {
+			if (!backupAuditIds) return new Map<string, string>();
+			const [targets, jobs] = await Promise.all([
+				listBackupTargetsResult(),
+				listBackupJobsResult()
+			]);
+			return new Map([
+				...(Array.isArray(targets) ? targets : []).map((t) => [`targets:${t.id}`, t.name] as const),
+				...(Array.isArray(jobs) ? jobs : []).map((j) => [`jobs:${j.id}`, j.name] as const)
+			]);
+		},
+		{ initialValue: new Map<string, string>() }
 	);
 
 	useInterval(() => 2000, {
@@ -1438,13 +1469,18 @@
 		};
 	}
 
-	function backupActionIdentity(path: string): string | null {
+	function backupActionIdentity(path: string, body: unknown): string | null {
 		const match = path.match(
-			/^\/api\/cluster\/backups\/(targets|jobs)\/(\d+)(?:\/(?:validate|run|restore))?$/
+			/^\/api\/cluster\/backups\/(targets|jobs)(?:\/(\d+)(?:\/(?:validate|run|restore))?)?$/
 		);
 		if (!match) return null;
-		const id = match[2];
-		return match[1] === 'targets' ? `Target ID ${id}` : `Job ID ${id}`;
+		const [, kind, id] = match;
+		const name =
+			auditText((body as { name?: unknown } | undefined)?.name) ||
+			backupNames.current.get(`${kind}:${id}`);
+		if (name) return name;
+		if (!id) return null;
+		return kind === 'targets' ? `Target ID ${id}` : `Job ID ${id}`;
 	}
 
 	function replicationActionIdentity(path: string): string | null {
@@ -1536,7 +1572,7 @@
 				resolvedAction += ` - ${hostInterfaceL3Target.identity}`;
 			}
 
-			const backupIdentity = backupActionIdentity(path);
+			const backupIdentity = backupActionIdentity(path, recordCopy.action.body);
 			if (backupIdentity && resolvedAction.startsWith('DC Backup ')) {
 				resolvedAction += ` - ${backupIdentity}`;
 			}

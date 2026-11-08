@@ -19,9 +19,10 @@
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 	import { renderWithIcon } from '$lib/utils/table';
+	import { escapeHTML } from '$lib/utils/string';
+	import { dateToAgo } from '$lib/utils/time';
 	import Form from '$lib/components/custom/DataCenter/Backups/Targets/Form.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
-	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 
 	interface Data {
 		targets: BackupTarget[];
@@ -122,36 +123,18 @@
 		}
 	});
 
-	let selectedValidationNodeId = $state('');
-	let validationNodeInitialized = $state(false);
 	let clusterEnabled = $derived(clusterDetails.current?.cluster.enabled === true);
-	let validationNodeOptions = $derived.by(() => {
-		if (!clusterEnabled) return [];
-
-		const names = new Map(clusterNodes.current.map((node) => [node.nodeUUID, node.hostname]));
+	let nodeNames = $derived(
+		new Map(clusterNodes.current.map((node) => [node.nodeUUID, node.hostname]))
+	);
+	let validationNodeIds = $derived.by(() => {
+		if (!clusterEnabled) return [''];
+		const localId = clusterDetails.current?.nodeId || '';
 		return (clusterDetails.current?.nodes || [])
 			.filter((node) => node.suffrage === 'voter')
-			.map((node) => ({
-				value: node.id,
-				label: `${names.get(node.id) || node.id}${node.isLeader ? ' (leader)' : ''}`
-			}));
+			.map((node) => node.id)
+			.sort((a, b) => Number(b === localId) - Number(a === localId));
 	});
-
-	watch(
-		[
-			() => validationNodeInitialized,
-			() => clusterDetails.current?.nodeId,
-			() => validationNodeOptions
-		],
-		([initialized, currentNodeId, options]) => {
-			if (initialized || options.length === 0) return;
-			const current = (currentNodeId || '').trim();
-			selectedValidationNodeId = options.some((option) => option.value === current)
-				? current
-				: options[0].value;
-			validationNodeInitialized = true;
-		}
-	);
 
 	let reload = $state(false);
 
@@ -203,27 +186,50 @@
 		nodeId: string;
 	} | null>(null);
 
-	function selectedReadiness(target: BackupTarget): BackupTargetNodeReadiness | undefined {
-		if (!selectedValidationNodeId) {
-			return target.readiness.find((status) => status.currentVoter);
+	type ConnectivityState = 'ok' | 'failed' | 'changed' | 'unchecked';
+	type Connectivity = { state: ConnectivityState; label: string; title: string };
+
+	const connectivityIcons: Record<ConnectivityState, [string, string]> = {
+		ok: ['mdi:check-network', 'text-green-500'],
+		failed: ['mdi:network-off', 'text-red-500'],
+		changed: ['mdi:clock-alert-outline', 'text-orange-500'],
+		unchecked: ['mdi:help-network-outline', 'text-muted-foreground']
+	};
+
+	function nodeConnectivity(status: BackupTargetNodeReadiness): Connectivity {
+		const node = clusterEnabled ? nodeNames.get(status.nodeId) || status.nodeId : '';
+		const withNode = (text: string) => (node ? `${node} · ${text}` : text);
+		if (!status.lastVerifiedAt) {
+			return {
+				state: 'unchecked',
+				label: withNode('Not checked'),
+				title: 'No connection check from this node yet'
+			};
 		}
-		return target.readiness.find((status) => status.nodeId === selectedValidationNodeId);
+
+		const checked = `Last checked ${new Date(status.lastVerifiedAt).toLocaleString()}`;
+		if (!status.configurationCurrent) {
+			return {
+				state: 'changed',
+				label: withNode('Settings changed'),
+				title: `${checked}, before the target settings changed`
+			};
+		}
+		if (!status.validationSucceeded) {
+			return {
+				state: 'failed',
+				label: withNode('Failed'),
+				title: `${checked}: ${status.lastError}`
+			};
+		}
+		return { state: 'ok', label: withNode(dateToAgo(status.lastVerifiedAt)), title: checked };
 	}
 
-	function readinessLabel(status: BackupTargetNodeReadiness | undefined): string | null {
-		if (!status) return 'Not validated';
-		if (!status.currentVoter) return 'Removed voter';
-		if (status.ready) return 'Ready';
-		if (!status.configurationCurrent) return 'Configuration changed';
-		if (!status.validationSucceeded && status.lastVerifiedAt) return 'Failed';
-		if (status.expired) return null;
-		return 'Not validated';
-	}
-
-	function readinessTitle(status: BackupTargetNodeReadiness | undefined): string {
-		if (!status?.lastVerifiedAt) return 'No validation has been recorded for this node';
-		const readyUntil = status.readyUntil ? `; ready until ${status.readyUntil}` : '';
-		return `Last checked ${status.lastVerifiedAt}${readyUntil}`;
+	function targetConnectivity(target: BackupTarget): Connectivity[] {
+		return target.readiness
+			.filter((status) => status.currentVoter)
+			.map(nodeConnectivity)
+			.sort((a, b) => a.label.localeCompare(b.label));
 	}
 
 	const targetColumns: Column[] = [
@@ -231,36 +237,20 @@
 		{
 			field: 'enabled',
 			title: 'Status',
+			formatter: (cell: CellComponent) =>
+				cell.getValue()
+					? renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500')
+					: renderWithIcon('mdi:close-circle', 'Disabled', 'text-muted-foreground')
+		},
+		{
+			field: 'connectivity',
+			title: 'Connectivity',
 			formatter: (cell: CellComponent) => {
-				const icons = [
-					cell.getValue()
-						? renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500')
-						: renderWithIcon('mdi:close-circle', 'Disabled', 'text-muted-foreground')
-				];
-				const row = cell.getRow().getData();
-				const value = typeof row.readiness === 'string' ? row.readiness : '';
-				const title = String(row.readinessTitle || '');
-				if (value) {
-					switch (value) {
-						case 'Ready':
-							icons.push(renderWithIcon('mdi:check-network', value, 'text-green-500', title));
-							break;
-						case 'Failed':
-							icons.push(renderWithIcon('mdi:network-off', value, 'text-red-500', title));
-							break;
-						case 'Configuration changed':
-							icons.push(
-								renderWithIcon('mdi:clock-alert-outline', value, 'text-orange-500', title)
-							);
-							break;
-						default:
-							icons.push(
-								renderWithIcon('mdi:help-network-outline', value, 'text-muted-foreground', title)
-							);
-					}
-				}
-
-				return `<div class="flex flex-col gap-1">${icons.join(' ')}</div>`;
+				const lines = (cell.getValue() as Connectivity[]).map(({ state, label, title }) => {
+					const [icon, color] = connectivityIcons[state];
+					return renderWithIcon(icon, escapeHTML(label), color, escapeHTML(title));
+				});
+				return `<div class="flex flex-col gap-1">${lines.join('')}</div>`;
 			}
 		},
 		{ field: 'name', title: 'Name' },
@@ -293,8 +283,7 @@
 			backupRoot: target.backupRoot,
 			description: target.description || '-',
 			enabled: target.enabled,
-			readiness: readinessLabel(selectedReadiness(target)),
-			readinessTitle: readinessTitle(selectedReadiness(target)),
+			connectivity: targetConnectivity(target),
 			createdAt: target.createdAt
 		})),
 		columns: targetColumns
@@ -318,23 +307,27 @@
 	async function validateTarget() {
 		if (!mutationsAvailable || !selectedTargetId || validating || resettingHostKey) return;
 		const targetId = selectedTargetId;
-		const nodeId = selectedValidationNodeId;
+		const failed: string[] = [];
 		validating = true;
 		try {
-			const response = await validateBackupTarget(targetId, nodeId);
-			reload = true;
-			if (selectedTargetId !== targetId) return;
-			if (response.status === 'success') {
-				toast.success('Target connectivity validated', { position: 'bottom-center' });
-			} else {
-				handleAPIError(response);
-				toast.error('Validation failed', { position: 'bottom-center' });
+			// One node at a time: the first successful check enrolls the host key.
+			for (const nodeId of validationNodeIds) {
+				const response = await validateBackupTarget(targetId, nodeId).catch(() => null);
+				if (response?.status !== 'success') failed.push(nodeNames.get(nodeId) || nodeId);
 			}
-		} catch {
-			if (selectedTargetId !== targetId) return;
-			toast.error('Validation failed', { position: 'bottom-center' });
 		} finally {
 			validating = false;
+			reload = true;
+		}
+
+		if (selectedTargetId !== targetId) return;
+		if (failed.length === 0) {
+			toast.success('Target connectivity validated', { position: 'bottom-center' });
+		} else {
+			const message = clusterEnabled
+				? `Validation failed on ${failed.join(', ')}`
+				: 'Validation failed';
+			toast.error(message, { position: 'bottom-center' });
 		}
 	}
 
@@ -345,7 +338,7 @@
 			name: selectedTarget.name,
 			revision: selectedTarget.hostKey.revision,
 			fingerprint: selectedTarget.hostKey.fingerprint,
-			nodeId: selectedValidationNodeId
+			nodeId: validationNodeIds[0]
 		};
 		hostKeyResetOpen = true;
 	}
@@ -490,18 +483,6 @@
 		{@render button('edit')}
 		{@render button('delete')}
 
-		{#if validationNodeOptions.length > 0}
-			<SimpleSelect
-				options={validationNodeOptions}
-				value={selectedValidationNodeId}
-				onChange={(value) => (selectedValidationNodeId = value)}
-				placeholder="Validation node"
-				title="Node used for target connectivity validation"
-				classes={{
-					trigger: '!h-6.5 text-sm'
-				}}
-			/>
-		{/if}
 		{@render button('validate')}
 		{@render button('reset-host-key')}
 

@@ -398,6 +398,29 @@ func TestBackupTargetReadinessEffectiveStatusHandlesExpiryAndRemovedVoter(t *tes
 	}
 }
 
+func TestBackupTargetReadinessFailedCheckBeforeHostKeyIsLearned(t *testing.T) {
+	now := time.Date(2026, time.March, 4, 5, 6, 7, 0, time.UTC)
+	target := clusterModels.BackupTarget{
+		ID: 52, SSHHost: "backup", SSHPort: 22, BackupRoot: "tank/backups",
+		HostKey: &clusterModels.BackupTargetSSHHostKeyStatus{State: "unlearned", Revision: 1},
+	}
+	fingerprint := clusterModels.BackupTargetConnectivityFingerprint(&target)
+	future := now.Add(time.Minute)
+	rows := []clusterModels.BackupTargetNodeReadiness{
+		{TargetID: target.ID, NodeID: "failed", TargetFingerprint: fingerprint, HostKeyRevision: 1,
+			LastVerifiedAt: now, LastError: "ssh_connection_failed"},
+		{TargetID: target.ID, NodeID: "untrusted", TargetFingerprint: fingerprint, HostKeyRevision: 1,
+			ValidationSucceeded: true, LastVerifiedAt: now, ReadyUntil: &future},
+	}
+	statuses := backupTargetReadinessStatuses(target, rows, []string{"failed", "untrusted"}, now)
+	if !statuses[0].ConfigurationCurrent || statuses[0].LastError != "ssh_connection_failed" {
+		t.Fatalf("failed check status: %+v", statuses[0])
+	}
+	if statuses[1].Ready {
+		t.Fatalf("untrusted host key status: %+v", statuses[1])
+	}
+}
+
 func TestIntegrationRaftHostKeyInstallFromFollower(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 3,
 		&clusterModels.BackupTarget{}, &clusterModels.BackupTargetSSHHostTrust{}, &clusterModels.ClusterOption{},
