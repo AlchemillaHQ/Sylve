@@ -221,19 +221,13 @@ exec "$SYLVE_OVERLAP_REAL_ZFS" "$@"
 	if output, err := exec.Command("zfs", "destroy", rotatedDataset+"@selected").CombinedOutput(); err != nil {
 		t.Fatalf("prune selected snapshot after send: %v: %s", err, output)
 	}
-	_, err = service.runRestoreFromTargetSingleDataset(
-		ctx,
-		target,
-		restoreFromTargetPayload{
-			TargetID: target.ID, RemoteDataset: activeDataset, Snapshot: "@selected",
-			DestinationDataset: destinationDataset,
-		},
-		nil,
-		false,
-		false,
-		nil,
-		nil,
-	)
+	err = service.runRestoreDataset(ctx, restoreRequest{
+		target:        target,
+		kind:          clusterModels.BackupJobModeDataset,
+		remoteDataset: activeDataset,
+		snapshot:      "@selected",
+		destination:   destinationDataset,
+	})
 	if err == nil || !strings.Contains(err.Error(), "snapshot_not_found_on_target") {
 		t.Fatalf("restore did not fail closed after pre-send prune: %v", err)
 	}

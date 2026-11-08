@@ -245,6 +245,9 @@ func (s *Service) reconcileRestoredVMFromDataset(
 				return fmt.Errorf("failed_to_lookup_existing_vm_by_rid: %w", err)
 			}
 		}
+		if baseVM.Name, err = uniqueRestoredGuestName(tx, &vmModels.VM{}, baseVM.Name, existing.ID); err != nil {
+			return err
+		}
 
 		if existingFound {
 			if strictAsNew {

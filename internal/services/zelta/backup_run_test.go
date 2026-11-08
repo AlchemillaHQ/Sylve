@@ -199,12 +199,9 @@ func TestIntegrationRunRestoreJobCopiesLocalSnapshot(t *testing.T) {
 	if err := f.svc.DB.Preload("Target").First(&job, f.job.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := f.svc.runRestoreJob(context.Background(), &job, points[0], ""); err != nil {
-		t.Fatalf("restore failed: %v\n%s", err, dumpLatestBackupEvent(t, f.svc.DB))
-	}
-	var event clusterModels.BackupEvent
-	if err := f.svc.DB.Order("id desc").First(&event).Error; err != nil {
-		t.Fatal(err)
+	event := runQueuedTestRestoreJob(t, context.Background(), f.svc, &job, points[0])
+	if event.Status != "success" {
+		t.Fatalf("restore failed: %s\n%s", event.Error, event.Output)
 	}
 	if !strings.Contains(event.Output, "restore_source_local: "+f.source+points[0]) {
 		t.Fatalf("restore did not use the local snapshot: %q", event.Output)

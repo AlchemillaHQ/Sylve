@@ -135,15 +135,13 @@ func TestValidateVMRestoreSnapshotCompatibility(t *testing.T) {
 	}
 }
 
-func TestRunRestoreFromTargetVMRejectsLegacyBeforeRuntimeOrReceive(t *testing.T) {
+func TestRunRestoreVMRejectsLegacyBeforeRuntimeOrReceive(t *testing.T) {
 	t.Parallel()
 
-	err := (&Service{}).runRestoreFromTargetVM(
-		context.Background(),
-		&clusterModels.BackupTarget{BackupRoot: "backup/root"},
-		restoreFromTargetPayload{Snapshot: "@bk_j1_legacy"},
-		nil,
-	)
+	err := (&Service{}).runRestoreVM(context.Background(), restoreRequest{
+		target:   &clusterModels.BackupTarget{BackupRoot: "backup/root"},
+		snapshot: "@bk_j1_legacy",
+	})
 	if err == nil || !strings.Contains(err.Error(), "restore_vm_legacy_snapshot_unsupported") {
 		t.Fatalf("legacy VM restore error = %v", err)
 	}
@@ -183,17 +181,14 @@ func TestIntegrationLegacyVMRestoreMissingRootSnapshotFailsBeforeStaging(t *test
 		BackupRoot: backupRoot,
 		Enabled:    true,
 	}
-	jobID := uint(1)
-	err := service.runRestoreFromTargetVM(
-		context.Background(),
-		target,
-		restoreFromTargetPayload{
-			RemoteDataset:      remoteA,
-			Snapshot:           "@" + snapshot,
-			DestinationDataset: destinationA,
-		},
-		&jobID,
-	)
+	err := service.runRestoreVM(context.Background(), restoreRequest{
+		target:        target,
+		job:           &clusterModels.BackupJob{ID: 1},
+		kind:          clusterModels.BackupJobModeVM,
+		remoteDataset: remoteA,
+		snapshot:      "@" + snapshot,
+		destination:   destinationA,
+	})
 	if err == nil || !strings.Contains(err.Error(), "snapshot_not_found_on_target") ||
 		!strings.Contains(err.Error(), "dataset="+remoteB) {
 		t.Fatalf("partial legacy VM restore error = %v", err)

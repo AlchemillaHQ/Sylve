@@ -405,13 +405,13 @@ func TestRestoreTargetQueuePanicIsTerminallyObserved(t *testing.T) {
 	if err := service.DB.First(&event, payload.EventID).Error; err != nil {
 		t.Fatalf("load event: %v", err)
 	}
-	if event.Status != "failed" || !strings.Contains(event.Error, "panic_in_restore_from_target") {
+	if event.Status != "failed" || !strings.Contains(event.Error, "panic_in_restore") {
 		t.Fatalf("panic event = %+v", event)
 	}
 	if err := telemetryDB.First(&audit, audit.ID).Error; err != nil {
 		t.Fatalf("load audit: %v", err)
 	}
-	if audit.Status != "failed" || !strings.Contains(audit.Error, "panic_in_restore_from_target") {
+	if audit.Status != "failed" || !strings.Contains(audit.Error, "panic_in_restore") {
 		t.Fatalf("panic audit = %+v", audit)
 	}
 	var operation clusterModels.BackupTargetRestoreOperation

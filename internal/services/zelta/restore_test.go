@@ -10,6 +10,7 @@ package zelta
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -645,8 +646,8 @@ func TestIntegrationRunRecursiveRestoreJobSelectedSnapshotWithEphemeralZFS(t *te
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	if err := svc.runRestoreJob(ctx, &job, "@selected", ""); err != nil {
-		t.Fatalf("recursive restore failed: %v", err)
+	if event := runQueuedTestRestoreJob(t, ctx, svc, &job, "@selected"); event.Status != "success" {
+		t.Fatalf("recursive restore failed: %s\n%s", event.Error, event.Output)
 	}
 
 	expectedTypes := map[string]string{"": "filesystem", "child": "filesystem", "disk0": "volume"}
@@ -705,14 +706,31 @@ func TestIntegrationRunRecursiveRestoreJobSelectedSnapshotWithEphemeralZFS(t *te
 			t.Fatalf("restore staging property %s remains local on promoted dataset: %q", property, propertyState)
 		}
 	}
+}
 
+// runQueuedTestRestoreJob runs a job restore with the event the queue gives it.
+func runQueuedTestRestoreJob(
+	t *testing.T,
+	ctx context.Context,
+	svc *Service,
+	job *clusterModels.BackupJob,
+	snapshot string,
+) clusterModels.BackupEvent {
+	t.Helper()
+	jobID := job.ID
+	execution := restoreExecution{OperationID: fmt.Sprintf("test-restore-%d-%d", job.ID, time.Now().UnixNano())}
+	spec := restoreEventSpec{JobID: &jobID, SourceDataset: job.Name + snapshot, TargetEndpoint: "test"}
+	finish := func() error { return nil }
+	if err := svc.runQueuedRestore(ctx, execution, spec, finish, func(ctx context.Context) error {
+		return svc.runRestoreJob(ctx, job, snapshot, "")
+	}); err != nil {
+		t.Fatalf("queued restore: %v", err)
+	}
 	var event clusterModels.BackupEvent
-	if err := db.Where("job_id = ? AND mode = ?", job.ID, "restore").Order("id desc").First(&event).Error; err != nil {
+	if err := svc.DB.Where("operation_id = ?", execution.OperationID).First(&event).Error; err != nil {
 		t.Fatalf("load restore event: %v", err)
 	}
-	if event.Status != "success" {
-		t.Fatalf("restore event status = %q error=%q", event.Status, event.Error)
-	}
+	return event
 }
 
 func mustRunRestoreZFSTestCommand(t *testing.T, args ...string) string {

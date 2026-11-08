@@ -134,7 +134,10 @@ func TestIntegrationRollbackRestorePromotionAfterActivationFailureRealZFS(t *tes
 		t.Fatalf("promote restore candidate: %v", err)
 	}
 	activationErr := errors.New("deterministic_activation_failure")
-	err = service.rollbackRestorePromotionAfterError(destination, backupDataset, true, activationErr)
+	err = service.rollbackRestoreAfterError(
+		[]restoredDatasetBackup{{destination: destination, backup: backupDataset}},
+		activationErr,
+	)
 	if !errors.Is(err, activationErr) || strings.Contains(err.Error(), "rollback_failed") {
 		t.Fatalf("rollback result: %v", err)
 	}
@@ -363,23 +366,18 @@ func TestIntegrationScheduledEncryptedRestoreActivationFailureRollsBackRealZFS(t
 		BackupRoot: backupRoot,
 		Enabled:    true,
 	}
-	jobID := uint(58)
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	_, err := service.runRestoreFromTargetSingleDataset(
-		ctx,
-		target,
-		restoreFromTargetPayload{
-			RemoteDataset:      remoteDataset,
-			Snapshot:           "@selected",
-			DestinationDataset: destination,
-		},
-		&jobID,
-		false,
-		true,
-		nil,
-		nil,
-	)
+	plan, err := service.prepareTargetRestoreDatasetPlan(ctx, target, remoteDataset, "@selected")
+	if err != nil {
+		t.Fatalf("prepare restore plan: %v", err)
+	}
+	request := restoreRequest{
+		target: target,
+		job:    &clusterModels.BackupJob{ID: 58},
+		kind:   clusterModels.BackupJobModeDataset,
+	}
+	_, err = service.restoreDatasetRoot(ctx, request, plan, destination)
 	if err == nil || !strings.Contains(err.Error(), "restore_encryption_key_required") {
 		t.Fatalf("expected restore activation failure, got %v", err)
 	}

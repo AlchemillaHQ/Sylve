@@ -105,21 +105,6 @@ func TestCanonicalRestoreFromTargetInput(t *testing.T) {
 	}
 }
 
-func TestIsValidRestoreDestinationDataset(t *testing.T) {
-	if !isValidRestoreDestinationDataset("tank/data") {
-		t.Fatal("valid pool/path should pass")
-	}
-	if isValidRestoreDestinationDataset("tank") {
-		t.Fatal("pool-only (no slash) should fail")
-	}
-	if isValidRestoreDestinationDataset("") {
-		t.Fatal("empty should fail")
-	}
-	if isValidRestoreDestinationDataset("tank/data@snap") {
-		t.Fatal("@ in path should fail (not a dataset)")
-	}
-}
-
 func TestNormalizeRestoreDestinationDataset(t *testing.T) {
 	if p := normalizeRestoreDestinationDataset("tank/jails/42/"); p != "tank/jails/42" {
 		t.Fatalf("expected tank/jails/42, got %q", p)

@@ -248,37 +248,42 @@ func (s *Service) EnqueueRestoreJob(ctx context.Context, jobID uint, snapshot st
 	return nil
 }
 
-// runRestoreJob executes the full restore flow:
-//  1. Pull from remote backup@snapshot → temp dataset (.restoring)
-//  2. Verify the staged recursive dataset/snapshot manifest
-//  3. Archive the original dataset by renaming it (when present)
-//  4. Rename temp → original path and activate it
-//  5. Remove only the ownership-proven archive with ordinary recursive cleanup
+// restoreRequest is a validated restore whose destination its front-end holds.
+type restoreRequest struct {
+	target         *clusterModels.BackupTarget
+	job            *clusterModels.BackupJob    // nil when restoring from a target
+	newGuest       *oobGuestRestoreDestination // a target's guest restored as a new guest
+	kind           string
+	remoteDataset  string
+	snapshot       string
+	destination    string
+	restoreNetwork bool
+}
+
+func (r restoreRequest) jobID() *uint {
+	if r.job == nil {
+		return nil
+	}
+	return &r.job.ID
+}
+
+// runRestoreJob restores a job's source from its own backups.
 func (s *Service) runRestoreJob(
 	ctx context.Context,
 	job *clusterModels.BackupJob,
 	snapshot string,
 	remoteDataset string,
-) (retErr error) {
+) error {
 	if job == nil || job.ID == 0 {
 		return fmt.Errorf("backup_job_required")
 	}
 	if err := cluster.ValidateBackupJobSafetyWithDB(ctx, s.DB, job); err != nil {
 		return fmt.Errorf("restore_backup_job_safety_check_failed: %w", err)
 	}
-	remoteDataset, snapshot, sourceDataset, err := canonicalRestoreJobInput(job, snapshot, remoteDataset)
+	remoteDataset, snapshot, destination, err := canonicalRestoreJobInput(job, snapshot, remoteDataset)
 	if err != nil {
 		return err
 	}
-	releaseDownloadStorage, err := s.DownloadStorage.TryMutation(sourceDataset)
-	if err != nil {
-		return err
-	}
-	defer releaseDownloadStorage()
-	if !s.beginJob(job.ID) {
-		return fmt.Errorf("backup_job_already_running")
-	}
-	defer s.releaseJob(job.ID)
 	if !job.Target.Enabled {
 		return fmt.Errorf("backup_target_disabled")
 	}
@@ -288,425 +293,330 @@ func (s *Service) runRestoreJob(
 	}
 	defer releaseTargetKey()
 
-	if acquired, holder := s.acquireRestoreDestination(sourceDataset); !acquired {
-		return fmt.Errorf(
-			"restore_destination_already_running: dataset=%s holder=%s",
-			sourceDataset,
-			holder,
-		)
+	guestType, guestID := backupJobGuestIdentity(job)
+	workloadType, workloadID := guestType, guestID
+	if guestID == 0 {
+		workloadType, workloadID = clusterModels.BackupJobModeDataset, datasetHash(destination)
 	}
-	defer s.releaseRestoreDestination(sourceDataset)
-	restoreWorkloadType, restoreWorkloadID := backupJobGuestIdentity(job)
-	if restoreWorkloadType == "" && restoreWorkloadID == 0 {
-		restoreWorkloadType = clusterModels.BackupJobModeDataset
-		restoreWorkloadID = datasetHash(sourceDataset)
-	}
-	if acquired, holder := s.acquireWorkloadOperation(
-		restoreWorkloadType,
-		restoreWorkloadID,
+	release, err := s.lockRestoreDestination(
+		ctx,
+		destination,
+		workloadType,
+		workloadID,
 		fmt.Sprintf("restore_job:%d", job.ID),
-	); !acquired {
-		return fmt.Errorf(
-			"workload_operation_conflict_with_%s guest_type=%s guest_id=%d",
-			holder,
-			restoreWorkloadType,
-			restoreWorkloadID,
+	)
+	if err != nil {
+		return err
+	}
+	defer release()
+	if guestID > 0 {
+		allowed, err := cluster.CanNodeMutateProtectedGuest(s.DB, guestType, guestID, s.localNodeID())
+		if err != nil {
+			return fmt.Errorf("pre_restore_lease_check_failed: %w", err)
+		}
+		if !allowed {
+			return fmt.Errorf("lease_lost_before_restore: ownership transferred to another node")
+		}
+	}
+
+	request := restoreRequest{
+		target:         &job.Target,
+		job:            job,
+		kind:           job.Mode,
+		remoteDataset:  remoteDataset,
+		snapshot:       snapshot,
+		destination:    destination,
+		restoreNetwork: true,
+	}
+	if job.Mode == clusterModels.BackupJobModeVM {
+		err = s.runRestoreVM(ctx, request)
+	} else {
+		err = s.runRestoreDataset(ctx, request)
+	}
+	if err != nil {
+		return err
+	}
+	if err := s.advanceBackupJobScheduleAfterRestore(job); err != nil {
+		s.appendRestoreOutput(ctx, fmt.Sprintf("restore_backup_schedule_advance_failed: %v", err))
+	}
+	return nil
+}
+
+// lockRestoreDestination keeps other restores and workload operations off a
+// restore's destination. A plain dataset mustn't hold a registered guest.
+func (s *Service) lockRestoreDestination(
+	ctx context.Context,
+	destination, workloadType string,
+	workloadID uint,
+	holder string,
+) (func(), error) {
+	if acquired, current := s.acquireRestoreDestination(destination); !acquired {
+		return nil, fmt.Errorf(
+			"restore_destination_already_running: dataset=%s holder=%s",
+			destination,
+			current,
 		)
 	}
-	defer s.releaseWorkloadOperation(restoreWorkloadType, restoreWorkloadID)
+	if acquired, current := s.acquireWorkloadOperation(workloadType, workloadID, holder); !acquired {
+		s.releaseRestoreDestination(destination)
+		return nil, fmt.Errorf(
+			"workload_operation_conflict_with_%s guest_type=%s guest_id=%d",
+			current,
+			workloadType,
+			workloadID,
+		)
+	}
+	release := func() {
+		s.releaseWorkloadOperation(workloadType, workloadID)
+		s.releaseRestoreDestination(destination)
+	}
+	if workloadType == clusterModels.BackupJobModeDataset {
+		if err := s.requireNoManagedGuestsWithinRestore(ctx, destination); err != nil {
+			release()
+			return nil, err
+		}
+	}
+	return release, nil
+}
 
-	if job.Mode == clusterModels.BackupJobModeDataset {
-		if err := s.requireNoManagedGuestsWithinRestore(ctx, sourceDataset); err != nil {
+// runRestoreDataset restores a dataset or a jail. A jail stays fenced and
+// stopped until it's done, and its records come from the restored jail.json.
+func (s *Service) runRestoreDataset(ctx context.Context, request restoreRequest) (retErr error) {
+	var plan remoteRestoreDatasetPlan
+	var err error
+	if request.job != nil {
+		plan, err = s.prepareJobRestoreDatasetPlan(ctx, request.job, request.remoteDataset, request.snapshot)
+	} else {
+		plan, err = s.prepareTargetRestoreDatasetPlan(ctx, request.target, request.remoteDataset, request.snapshot)
+	}
+	if err != nil {
+		return err
+	}
+	var reservation *restoreGuestIdentityReservation
+	if request.newGuest != nil {
+		ctx, reservation, err = s.reserveGuestIdentityForRestore(ctx, request.newGuest.Kind, request.newGuest.GuestID)
+		if err != nil {
+			return err
+		}
+		defer s.releaseGuestIdentityReservationAfterError(ctx, reservation, &retErr)
+		if err := s.requireOOBGuestRestoreAvailable(ctx, request.newGuest, nil, true); err != nil {
 			return err
 		}
 	}
-
-	if job.Mode == clusterModels.BackupJobModeVM {
-		return s.runRestoreVMJob(ctx, job, snapshot, remoteDataset, sourceDataset)
-	}
-
-	restorePlan, err := s.prepareJobRestoreDatasetPlan(
-		ctx,
-		job,
-		remoteDataset,
-		snapshot,
-	)
-	if err != nil {
-		return err
-	}
-	remoteDataset = restorePlan.resolvedRemoteDataset
-	restoreRecursive := restorePlan.restoreRecursive
-	expectedRestoreManifest := restorePlan.expectedManifest
-
-	// Build the remote source endpoint with snapshot suffix:
-	// e.g. root@192.168.180.1:zroot/sylve-backups/jails/105@zelta_2026-02-18_12.00.00
-	remoteEndpoint, err := canonicalZeltaSnapshotEndpoint(&job.Target, remoteDataset, snapshot)
-	if err != nil {
-		return err
-	}
-
-	// The temp local dataset for receiving the restore sits next to the original:
-	// e.g. zroot/sylve/jails/105 → zroot/sylve/jails/105.restoring
-	restorePath := sourceDataset + ".restoring"
-	stagingIdentity := newRestoreStagingIdentity(&job.ID, job.TargetID, sourceDataset)
-
-	// Pre-flight: ensure the destination pool exists before pulling data.
-	destinationRoot := sourceDataset
-	if idx := strings.Index(destinationRoot, "/"); idx > 0 {
-		destinationRoot = destinationRoot[:idx]
-	}
-	if err := s.ensureLocalPoolExists(ctx, destinationRoot); err != nil {
+	if err := s.validateDestinationPoolsExist(ctx, []string{request.destination}); err != nil {
 		return fmt.Errorf("restore_preflight_pool_check_failed: %w", err)
 	}
-	var event clusterModels.BackupEvent
-	if execution, managed := restoreExecutionFromContext(ctx); managed {
-		current, loadErr := s.GetLocalBackupEvent(execution.EventID)
-		if loadErr != nil {
-			return fmt.Errorf("load_restore_event_failed: %w", loadErr)
-		}
-		event = *current
-	} else {
-		event = clusterModels.BackupEvent{
-			JobID:          &job.ID,
-			Mode:           "restore",
-			Status:         "running",
-			SourceDataset:  job.Name + snapshot,
-			TargetEndpoint: sourceDataset,
-			StartedAt:      time.Now().UTC(),
-		}
-		if err := s.DB.Create(&event).Error; err != nil {
-			return fmt.Errorf("create_restore_event_failed: %w", err)
-		}
-		stopHeartbeat := s.startBackupEventHeartbeat(ctx, event.ID, time.Minute)
-		defer stopHeartbeat()
-	}
-	// Verify the replication lease before the restore operation itself becomes
-	// the durable guest-wide exclusion lock.
-	if guestType, guestID := backupJobGuestIdentity(job); guestType != "" && guestID > 0 {
-		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, guestType, guestID, s.localNodeID())
-		if leaseErr != nil {
-			restoreErr := fmt.Errorf("pre_restore_lease_check_failed: %w", leaseErr)
-			s.finalizeRestoreEvent(&event, restoreErr, "")
-			return restoreErr
-		}
-		if !allowed {
-			restoreErr := fmt.Errorf("lease_lost_before_restore: ownership transferred to another node")
-			s.finalizeRestoreEvent(&event, restoreErr, "")
-			return restoreErr
-		}
-	}
 	// Before the fence: a leftover staging dataset must not cost a hard stop.
-	if err := s.prepareRestoreStagingDataset(ctx, restorePath, stagingIdentity); err != nil {
-		restoreErr := fmt.Errorf("restore_preflight_staging_check_failed: %w", err)
-		s.finalizeRestoreEvent(&event, restoreErr, "")
-		return restoreErr
+	identity := newRestoreStagingIdentity(request.jobID(), request.target.ID, request.destination)
+	if err := s.prepareRestoreStagingDataset(ctx, request.destination+".restoring", identity); err != nil {
+		return fmt.Errorf("restore_preflight_staging_check_failed: %w", err)
 	}
-	var jailRestoreFence *restoreGuestFence
-	jailSafeToRestart := true
-	if job.Mode == clusterModels.BackupJobModeJail {
-		jailRestoreFence, err = s.acquireJailRestoreFence(ctx, sourceDataset, event.ID)
-		if err != nil {
-			restoreErr := fmt.Errorf("acquire_jail_restore_fence_failed: %w", err)
-			s.finalizeRestoreEvent(&event, restoreErr, "")
-			return restoreErr
+
+	var fence *restoreGuestFence
+	restartJail := true
+	if request.kind == clusterModels.BackupJobModeJail {
+		execution := restoreExecutionFromContext(ctx)
+		fence, err = s.acquireJailRestoreFence(ctx, request.destination, execution.EventID)
+		if err == nil && fence == nil {
+			err = fmt.Errorf("restore_fence_schema_unavailable")
 		}
-		if jailRestoreFence == nil {
-			restoreErr := fmt.Errorf("acquire_jail_restore_fence_failed: restore_fence_schema_unavailable")
-			s.finalizeRestoreEvent(&event, restoreErr, "")
-			return restoreErr
+		if err != nil {
+			return fmt.Errorf("acquire_jail_restore_fence_failed: %w", err)
 		}
 		defer func() {
-			if jailRestoreFence == nil || retErr == nil {
+			if fence == nil || retErr == nil {
 				return
 			}
-			if releaseErr := jailRestoreFence.release(); releaseErr != nil {
-				retErr = errors.Join(retErr, fmt.Errorf("release_jail_restore_fence_failed: %w", releaseErr))
+			if err := fence.release(); err != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("release_jail_restore_fence_failed: %w", err))
 				return
 			}
-			if jailRestoreFence.wasRunning && jailSafeToRestart {
-				restartCtx, restartCancel := guestStateRecoveryContext(ctx)
-				restartErr := s.jailActionContext(restartCtx, int(jailRestoreFence.guestID), "start")
-				restartCancel()
-				if restartErr != nil {
-					retErr = errors.Join(retErr, fmt.Errorf("restore_jail_restart_failed: %w", restartErr))
+			if fence.wasRunning && restartJail {
+				restartCtx, cancel := guestStateRecoveryContext(ctx)
+				err := s.jailActionContext(restartCtx, int(fence.guestID), "start")
+				cancel()
+				if err != nil {
+					retErr = errors.Join(retErr, fmt.Errorf("restore_jail_restart_failed: %w", err))
 				}
 			}
 		}()
-		if err := s.requireInPlaceGuestRestorePlacement(
-			ctx,
-			jailRestoreFence.guestType,
-			jailRestoreFence.guestID,
-		); err != nil {
-			restoreErr := fmt.Errorf("restore_guest_placement_check_failed: %w", err)
-			s.finalizeRestoreEvent(&event, restoreErr, "")
-			return restoreErr
+	}
+	if fence != nil && request.newGuest == nil {
+		if err := s.requireInPlaceGuestRestorePlacement(ctx, fence.guestType, fence.guestID); err != nil {
+			return fmt.Errorf("restore_guest_placement_check_failed: %w", err)
+		}
+		existed, err := s.localDatasetExists(ctx, request.destination)
+		if err != nil {
+			return fmt.Errorf("failed_to_check_destination_dataset_before_restore: %w", err)
+		}
+		if existed {
+			guard, err := s.prepareInPlaceJailRestore(ctx, fence.guestID, request.destination)
+			if err != nil {
+				return err
+			}
+			defer func() {
+				var remountErr error
+				if retErr, remountErr = guard.restoreAfterFailure(retErr); remountErr != nil {
+					restartJail = false
+				}
+			}()
 		}
 	}
 
-	logger.L.Info().
-		Uint("job_id", job.ID).
-		Str("remote", remoteEndpoint).
-		Str("local", sourceDataset).
-		Str("snapshot", snapshot).
-		Msg("starting_zelta_restore")
-
-	var restoreErr error
-	var output string
-
-	// Step 1: Receive backup@snapshot into the staging dataset with zelta.
-	// A pre-existing staging dataset is never inferred to be ours and destroyed;
-	// the preflight above requires an operator to inspect it first.
-	extraEnv, err := s.buildZeltaEnv(&job.Target)
+	restored, err := s.restoreDatasetRoot(ctx, request, plan, request.destination)
 	if err != nil {
-		s.finalizeRestoreEvent(&event, err, output)
 		return err
 	}
-	receiveTopOptions, err := stagingIdentity.receiveTopOptions()
-	if err != nil {
-		restoreErr = err
-		s.finalizeRestoreEvent(&event, restoreErr, output)
-		return restoreErr
-	}
-	extraEnv = setEnvValue(extraEnv, "ZELTA_RECV_TOP", receiveTopOptions)
-	extraEnv = setEnvValue(extraEnv, "ZELTA_LOG_LEVEL", "3")
-
-	if err := s.recheckRemoteRestoreDatasetPlan(ctx, &job.Target, restorePlan); err != nil {
-		restoreErr = fmt.Errorf("restore_preflight_recheck_failed: %w", err)
-		s.finalizeRestoreEvent(&event, restoreErr, output)
-		return restoreErr
-	}
-
-	output, restoreErr = s.pullRestore(
-		ctx,
-		&job.Target,
-		extraEnv,
-		func(line string) {
-			if err := s.AppendBackupEventOutput(event.ID, line); err != nil {
-				logger.L.Warn().
-					Uint("event_id", event.ID).
-					Err(err).
-					Msg("append_restore_event_output_failed")
-			}
-		},
-		sourceDataset, remoteEndpoint, snapshot, restorePath,
-		stagingIdentity, expectedRestoreManifest, restoreRecursive,
-	)
-
-	logger.L.Info().
-		Str("zelta_output", output).
-		Err(restoreErr).
-		Str("restore_path", restorePath).
-		Msg("zelta_backup_pull_finished")
-
-	if restoreErr != nil {
-		restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, restoreErr)
-		s.finalizeRestoreEvent(&event, restoreErr, output)
-		return restoreErr
-	}
-
-	// Verify the dataset was actually created
-	restoreExists, verifyErr := s.localDatasetExists(ctx, restorePath)
-	if verifyErr != nil || !restoreExists {
-		restoreErr = zeltaRecvMissingError(restorePath, output)
-		if verifyErr != nil {
-			restoreErr = fmt.Errorf("verify_restored_dataset_failed: %w", verifyErr)
-		}
-		restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, restoreErr)
-		s.finalizeRestoreEvent(&event, restoreErr, output)
-		return restoreErr
-	}
-	logger.L.Debug().Str("verify", restorePath).Msg("restore_dataset_verified")
-	if err := s.verifyRestoreManifest(
-		ctx,
-		restorePath,
-		snapshot,
-		expectedRestoreManifest,
-		restoreRecursive,
-	); err != nil {
-		restoreErr = err
-		restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, restoreErr)
-		s.finalizeRestoreEvent(&event, restoreErr, output)
-		return restoreErr
-	}
-	// Revalidate after the potentially long receive. Registered guests are
-	// rejected regardless of runtime state, so this also catches a guest added
-	// while the restore stream was in flight before any local cutover occurs.
-	if job.Mode == clusterModels.BackupJobModeDataset {
-		if err := s.requireNoManagedGuestsWithinRestore(ctx, sourceDataset); err != nil {
-			restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, err)
-			s.finalizeRestoreEvent(&event, restoreErr, output)
-			return restoreErr
+	applied := []restoredDatasetBackup{restored}
+	// Activate before reconcile writes the jail's rows, while it can still be rolled back.
+	if request.job != nil {
+		if _, err := s.activateTargetGenerationsForRestore(ctx, request.target, []restoreTargetGenerationSelection{{
+			ActiveDataset:   remoteDatasetForJob(request.job),
+			SelectedDataset: plan.resolvedRemoteDataset,
+		}}); err != nil {
+			return s.rollbackRestoreAfterError(applied, err)
 		}
 	}
-
-	// Step 2: Check whether the destination dataset exists.
-	destinationExisted, existErr := s.localDatasetExists(ctx, sourceDataset)
-	if existErr != nil {
-		restoreErr = fmt.Errorf("failed_to_check_source_dataset_before_restore: %w", existErr)
-		restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, restoreErr)
-		s.finalizeRestoreEvent(&event, restoreErr, output)
-		return restoreErr
-	}
-
-	// Step 4: Promote the staged dataset into place. A jail was stopped before
-	// staging began and remains fenced until this restore is fully finalized.
-	backupDataset := ""
-	var promoteErr error
-	if job.Mode == clusterModels.BackupJobModeJail && destinationExisted {
-		jailRuntimeGuard, quiesceErr := s.prepareInPlaceJailRestore(ctx, jailRestoreFence.guestID, sourceDataset)
-		if quiesceErr != nil {
-			restoreErr = s.cleanupOwnedRestoreStagingAfterError(
-				restorePath,
-				stagingIdentity,
-				quiesceErr,
-			)
-			s.finalizeRestoreEvent(&event, restoreErr, output)
-			return restoreErr
+	if request.newGuest != nil {
+		if err := s.reconcileRestoredJailFromDatasetAsNew(ctx, request.destination, request.restoreNetwork); err != nil {
+			return s.rollbackRestoreAfterError(applied, fmt.Errorf("reconcile_restored_jail_failed: %w", err))
 		}
-		defer func() {
-			var restartErr error
-			retErr, restartErr = jailRuntimeGuard.restoreAfterFailure(retErr)
-			if restartErr == nil {
-				return
-			}
-			jailSafeToRestart = false
-			if strings.TrimSpace(output) == "" {
-				output = restartErr.Error()
-			} else {
-				output = strings.TrimRight(output, "\n") + "\n" + restartErr.Error()
-			}
-			s.finalizeRestoreEvent(&event, retErr, output)
-		}()
-		backupDataset, promoteErr = s.promoteRestoredDataset(ctx, restorePath, sourceDataset)
-		if promoteErr != nil {
-			promoteErr = fmt.Errorf(
-				"rename_restore_failed: could not promote restored dataset into %s: %w",
-				sourceDataset,
-				promoteErr,
-			)
+		if err := s.finalizeGuestIdentityRestore(ctx, reservation); err != nil {
+			return err
 		}
-	} else {
-		backupDataset, promoteErr = s.promoteRestoredDataset(ctx, restorePath, sourceDataset)
-		if promoteErr != nil {
-			promoteErr = fmt.Errorf(
-				"rename_restore_failed: could not promote %s → %s: %w",
-				restorePath,
-				sourceDataset,
-				promoteErr,
-			)
-		}
-	}
-	if promoteErr != nil {
-		restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, promoteErr)
-		s.finalizeRestoreEvent(&event, restoreErr, output)
-		return restoreErr
-	}
-	if err := s.clearRestoreStagingProperties(ctx, sourceDataset, stagingIdentity); err != nil {
-		restoreErr = s.rollbackRestorePromotionAfterError(
-			sourceDataset,
-			backupDataset,
-			destinationExisted,
-			fmt.Errorf("restore_activation_failed: %w", err),
-		)
-		s.finalizeRestoreEvent(&event, restoreErr, output)
-		return restoreErr
-	}
-
-	// Step 5: Fix ZFS properties for the restored dataset.
-	if err := s.fixRestoredProperties(ctx, sourceDataset); err != nil {
-		restoreErr = s.rollbackRestorePromotionAfterError(
-			sourceDataset,
-			backupDataset,
-			destinationExisted,
-			fmt.Errorf("restore_activation_failed: %w", err),
-		)
-		s.finalizeRestoreEvent(&event, restoreErr, output)
-		return restoreErr
-	}
-
-	// Step 6: If this is a jail dataset, reconcile jail metadata/config from restored jail.json.
-	// The ZFS restore succeeded — metadata reconciliation failure does not
-	// roll back the data. The error is surfaced in the event output.
-	if err := s.reconcileRestoredJailFromDataset(ctx, sourceDataset); err != nil {
-		output += "\n" + fmt.Sprintf("jail_metadata_reconcile_failed: %v", err)
+	} else if err := s.reconcileRestoredJailFromDatasetWithOptions(ctx, request.destination, request.restoreNetwork); err != nil {
+		// The restored data stays; only the jail's records are behind.
+		s.appendRestoreOutput(ctx, fmt.Sprintf("jail_metadata_reconcile_failed: %v", err))
 		logger.L.Warn().
 			Err(err).
-			Str("dataset", sourceDataset).
+			Str("dataset", request.destination).
 			Msg("restore_jail_metadata_reconcile_failed_data_intact")
 	}
-
-	activeRemoteDataset := remoteDatasetForJob(job)
-	if _, activationErr := s.activateTargetGenerationsForRestore(
-		ctx,
-		&job.Target,
-		[]restoreTargetGenerationSelection{{
-			ActiveDataset:   activeRemoteDataset,
-			SelectedDataset: remoteDataset,
-		}},
-	); activationErr != nil {
-		restoreErr = s.rollbackRestorePromotionAfterError(
-			sourceDataset,
-			backupDataset,
-			destinationExisted,
-			activationErr,
-		)
-		s.finalizeRestoreEvent(&event, restoreErr, output)
-		return restoreErr
-	}
-	activeDestSuffix := relativeDatasetSuffix(job.Target.BackupRoot, activeRemoteDataset)
-	if metaErr := s.syncTargetBackupJobMetadata(ctx, job, sourceDataset, activeDestSuffix); metaErr != nil {
-		output += "\n" + metaErr.Error()
-	}
-
-	// Only remove the ownership-proven rollback archive after activation and
-	// metadata reconciliation have completed. Ordinary recursive destruction is
-	// intentionally used by cleanupRestoreBackupDataset; dependent clones keep
-	// the archive in place and surface a warning instead of being destroyed.
-	if strings.TrimSpace(backupDataset) != "" {
-		if cleanupErr := s.cleanupRestoreBackupDataset(ctx, backupDataset); cleanupErr != nil {
-			warning := fmt.Sprintf(
-				"restore_backup_cleanup_pending: dataset=%s retained=true error=%v",
-				backupDataset,
-				cleanupErr,
-			)
-			if strings.TrimSpace(output) == "" {
-				output = warning
-			} else {
-				output = strings.TrimRight(output, "\n") + "\n" + warning
-			}
-			logger.L.Warn().
-				Err(cleanupErr).
-				Str("backup_dataset", backupDataset).
-				Msg("failed_to_cleanup_restore_backup_dataset")
+	if request.job != nil {
+		activeSuffix := relativeDatasetSuffix(request.target.BackupRoot, remoteDatasetForJob(request.job))
+		if err := s.syncTargetBackupJobMetadata(ctx, request.job, request.destination, activeSuffix); err != nil {
+			s.appendRestoreOutput(ctx, err.Error())
 		}
 	}
-	if scheduleErr := s.advanceBackupJobScheduleAfterRestore(job); scheduleErr != nil {
-		warning := fmt.Sprintf("restore_backup_schedule_advance_failed: %v", scheduleErr)
-		if strings.TrimSpace(output) == "" {
-			output = warning
-		} else {
-			output = strings.TrimRight(output, "\n") + "\n" + warning
+	s.cleanupRestoreArchives(ctx, applied)
+	if fence != nil {
+		if err := fence.release(); err != nil {
+			return fmt.Errorf("release_jail_restore_fence_failed: %w", err)
 		}
-		logger.L.Warn().Err(scheduleErr).Uint("job_id", job.ID).Msg("failed_to_advance_backup_schedule_after_restore")
+		fence = nil
 	}
-	if jailRestoreFence != nil {
-		if releaseErr := jailRestoreFence.release(); releaseErr != nil {
-			restoreErr = fmt.Errorf("release_jail_restore_fence_failed: %w", releaseErr)
-			s.finalizeRestoreEvent(&event, restoreErr, output)
-			return restoreErr
-		}
-		jailRestoreFence = nil
-	}
+	return nil
+}
 
-	s.finalizeRestoreEvent(&event, nil, output)
+// restoreDatasetRoot receives a planned root into a staging dataset next to
+// destination, verifies it and swaps it in. A replaced dataset stays archived
+// in the result until the caller removes it or rolls back.
+func (s *Service) restoreDatasetRoot(
+	ctx context.Context,
+	request restoreRequest,
+	plan remoteRestoreDatasetPlan,
+	destination string,
+) (restored restoredDatasetBackup, retErr error) {
+	target := request.target
+	releaseDownloadStorage, err := s.DownloadStorage.TryMutation(destination)
+	if err != nil {
+		return restored, err
+	}
+	defer releaseDownloadStorage()
+	endpoint, err := canonicalZeltaSnapshotEndpoint(target, plan.resolvedRemoteDataset, plan.snapshot)
+	if err != nil {
+		return restored, err
+	}
+	s.appendRestoreOutput(ctx, fmt.Sprintf("dataset_restore_start: %s -> %s", endpoint, destination))
+	defer func() {
+		if retErr != nil {
+			s.appendRestoreOutput(ctx, fmt.Sprintf("dataset_restore_failed: %s -> %s: %v", endpoint, destination, retErr))
+			return
+		}
+		s.appendRestoreOutput(ctx, fmt.Sprintf("dataset_restore_complete: %s -> %s", endpoint, destination))
+	}()
+
+	restorePath := destination + ".restoring"
+	identity := newRestoreStagingIdentity(request.jobID(), target.ID, destination)
+	env, err := s.buildZeltaEnv(target)
+	if err != nil {
+		return restored, err
+	}
+	receiveTop, err := identity.receiveTopOptions()
+	if err != nil {
+		return restored, err
+	}
+	env = setEnvValue(env, "ZELTA_RECV_TOP", receiveTop)
+	env = setEnvValue(env, "ZELTA_LOG_LEVEL", "3")
+	if err := s.recheckRemoteRestoreDatasetPlan(ctx, target, plan); err != nil {
+		return restored, fmt.Errorf("restore_preflight_recheck_failed: %w", err)
+	}
 
 	logger.L.Info().
-		Uint("job_id", job.ID).
-		Str("snapshot", snapshot).
-		Str("dataset", sourceDataset).
-		Msg("zelta_restore_completed")
+		Uint("target_id", target.ID).
+		Str("remote", endpoint).
+		Str("local", destination).
+		Msg("starting_zelta_restore")
+	output, err := s.pullRestore(
+		ctx, target, env, func(line string) { s.appendRestoreOutput(ctx, line) },
+		destination, endpoint, plan.snapshot, restorePath,
+		identity, plan.expectedManifest, plan.restoreRecursive,
+	)
+	if err == nil {
+		var staged bool
+		if staged, err = s.localDatasetExists(ctx, restorePath); err != nil {
+			err = fmt.Errorf("verify_restored_dataset_failed: %w", err)
+		} else if !staged {
+			err = zeltaRecvMissingError(restorePath, output)
+		} else {
+			err = s.verifyRestoreManifest(ctx, restorePath, plan.snapshot, plan.expectedManifest, plan.restoreRecursive)
+		}
+	}
+	// Checked again after the long receive, before anything local changes.
+	if err == nil && request.kind == clusterModels.BackupJobModeDataset {
+		err = s.requireNoManagedGuestsWithinRestore(ctx, destination)
+	}
+	if err != nil {
+		logger.L.Warn().
+			Err(err).
+			Str("restore_path", restorePath).
+			Str("zelta_output", output).
+			Msg("zelta_restore_failed")
+		return restored, s.cleanupOwnedRestoreStagingAfterError(restorePath, identity, err)
+	}
 
-	return nil
+	restored.destination = destination
+	if request.newGuest != nil {
+		err = s.promoteRestoredDatasetAsNew(ctx, restorePath, destination)
+	} else {
+		restored.backup, err = s.promoteRestoredDataset(ctx, restorePath, destination)
+	}
+	if err != nil {
+		err = fmt.Errorf("rename_restore_failed: could not promote %s → %s: %w", restorePath, destination, err)
+		return restored, s.cleanupOwnedRestoreStagingAfterError(restorePath, identity, err)
+	}
+	if err = s.clearRestoreStagingProperties(ctx, destination, identity); err == nil {
+		err = s.fixRestoredProperties(ctx, destination)
+	}
+	if err != nil {
+		return restored, s.rollbackRestoreAfterError(
+			[]restoredDatasetBackup{restored},
+			fmt.Errorf("restore_activation_failed: %w", err),
+		)
+	}
+	logger.L.Info().
+		Uint("target_id", target.ID).
+		Str("dataset", destination).
+		Str("snapshot", plan.snapshot).
+		Msg("zelta_restore_completed")
+	return restored, nil
+}
+
+func (s *Service) appendRestoreOutput(ctx context.Context, line string) {
+	execution := restoreExecutionFromContext(ctx)
+	if err := s.AppendBackupEventOutput(execution.EventID, line); err != nil {
+		logger.L.Warn().Err(err).Uint("event_id", execution.EventID).Msg("append_restore_event_output_failed")
+	}
 }
 
 type restoreGuestFence struct {
@@ -1099,54 +1009,6 @@ func formatRestoreDatasetSuffix(suffix string) string {
 	return suffix
 }
 
-func (s *Service) runRestoreVMJob(
-	ctx context.Context,
-	job *clusterModels.BackupJob,
-	snapshot string,
-	remoteDataset string,
-	sourceDataset string,
-) error {
-	if strings.TrimSpace(remoteDataset) == "" {
-		remoteDataset = remoteDatasetForJob(job)
-	}
-	remoteDataset = strings.TrimSpace(remoteDataset)
-	if !datasetWithinRoot(job.Target.BackupRoot, remoteDataset) {
-		return fmt.Errorf("remote_dataset_outside_backup_root")
-	}
-	if guestType, guestID := backupJobGuestIdentity(job); guestType != "" && guestID > 0 {
-		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, guestType, guestID, s.localNodeID())
-		if leaseErr != nil {
-			return fmt.Errorf("pre_restore_lease_check_failed: %w", leaseErr)
-		}
-		if !allowed {
-			return fmt.Errorf("lease_lost_before_restore: ownership transferred to another node")
-		}
-	}
-	snapshot, err := normalizeSnapshotName(snapshot)
-	if err != nil {
-		return err
-	}
-
-	restoreNetwork := true
-	payload := restoreFromTargetPayload{
-		TargetID:           job.TargetID,
-		RemoteDataset:      remoteDataset,
-		Snapshot:           strings.TrimSpace(snapshot),
-		DestinationDataset: normalizeRestoreDestinationDataset(sourceDataset),
-		RestoreNetwork:     &restoreNetwork,
-	}
-
-	jobID := job.ID
-	if err := s.runRestoreFromTargetVM(ctx, &job.Target, payload, &jobID); err != nil {
-		return err
-	}
-	// No target metadata resync: the activated generation keeps its properties.
-	if scheduleErr := s.advanceBackupJobScheduleAfterRestore(job); scheduleErr != nil {
-		logger.L.Warn().Err(scheduleErr).Uint("job_id", job.ID).Msg("failed_to_advance_backup_schedule_after_restore")
-	}
-	return nil
-}
-
 // fixRestoredProperties corrects ZFS properties after a restore so the dataset
 // behaves like the original (not readonly, correct mountpoint, canmount=on).
 // For encrypted datasets, it ensures the key file is present and loads the key
@@ -1243,10 +1105,10 @@ func (s *Service) registerRestoreJob() {
 	db.QueueRegisterJSON(restoreJobQueueName, s.handleRestoreJobQueue)
 }
 
-func (s *Service) handleRestoreJobQueue(ctx context.Context, payload restoreJobPayload) (retErr error) {
+func (s *Service) handleRestoreJobQueue(ctx context.Context, payload restoreJobPayload) error {
+	defer s.releaseReservedJob(payload.JobID)
 	admittedCtx, release, err := s.enterMutation(ctx)
 	if err != nil {
-		s.releaseReservedJob(payload.JobID)
 		return err
 	}
 	defer release()
@@ -1270,44 +1132,18 @@ func (s *Service) handleRestoreJobQueue(ctx context.Context, payload restoreJobP
 		string(requestBytes),
 	)
 	if err != nil {
-		s.releaseReservedJob(payload.JobID)
 		return err
 	}
 	if !execute {
-		s.releaseReservedJob(payload.JobID)
 		_ = s.reconcileRestoreEventWithoutExecution(handle.Token)
 		return nil
 	}
-	defer s.releaseReservedJob(payload.JobID)
-
-	var event *clusterModels.BackupEvent
-	var runErr error
-	outcomeReady := false
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			runErr = fmt.Errorf("panic_in_restore_job: %v", recovered)
-			outcomeReady = true
-			logger.L.Error().
-				Interface("panic", recovered).
-				Uint("job_id", payload.JobID).
-				Str("stack", string(debug.Stack())).
-				Msg("queued_restore_job_panicked")
-		}
-		if !outcomeReady {
-			return
-		}
-		if event == nil || event.ID == 0 {
-			retErr = errors.Join(retErr, runErr)
-			return
-		}
-		if err := s.finalizeRestoreEventByID(event.ID, runErr, ""); err != nil {
-			retErr = errors.Join(retErr, err)
-			return
-		}
-		if err := s.finishDurableBackupJobOperation(handle); err != nil {
-			retErr = errors.Join(retErr, err)
-		}
-	}()
+	// A redelivered message leaves the delivery that's still running alone.
+	if !s.beginJob(payload.JobID) {
+		logger.L.Info().Uint("job_id", payload.JobID).Msg("queued_restore_job_duplicate_discarded")
+		return nil
+	}
+	defer s.releaseJob(payload.JobID)
 
 	var job clusterModels.BackupJob
 	jobErr := s.DB.Preload("Target").First(&job, payload.JobID).Error
@@ -1328,54 +1164,90 @@ func (s *Service) handleRestoreJobQueue(ctx context.Context, payload restoreJobP
 		}
 		spec.TargetEndpoint = destinationDataset
 	}
-	execution := restoreExecution{
-		EventID:     payload.EventID,
-		OperationID: handle.Token,
-		Audit: db.AsyncAuditRef{
-			RecordID:    payload.AuditRecordID,
-			OperationID: handle.Token,
-		},
+	execution := newRestoreExecution(payload.EventID, handle.Token, payload.AuditRecordID)
+	finish := func() error { return s.finishDurableBackupJobOperation(handle) }
+	return s.runQueuedRestore(ctx, execution, spec, finish, func(ctx context.Context) error {
+		if jobErr != nil {
+			return jobErr
+		}
+		if s.restoreJobRun != nil {
+			return s.restoreJobRun(ctx, &job, payload.Snapshot, payload.RemoteDataset)
+		}
+		return s.runRestoreJob(ctx, &job, payload.Snapshot, payload.RemoteDataset)
+	})
+}
+
+func newRestoreExecution(eventID uint, operationID string, auditRecordID uint) restoreExecution {
+	return restoreExecution{
+		EventID:     eventID,
+		OperationID: operationID,
+		Audit:       db.AsyncAuditRef{RecordID: auditRecordID, OperationID: operationID},
 	}
-	event, err = s.restoreEventForExecution(execution, spec)
+}
+
+// runQueuedRestore runs a restore whose durable operation this node holds. Its
+// outcome is recorded on the event before finish releases the operation; a
+// failed restore consumes the queue message, only control failures keep it.
+func (s *Service) runQueuedRestore(
+	ctx context.Context,
+	execution restoreExecution,
+	spec restoreEventSpec,
+	finish func() error,
+	run func(context.Context) error,
+) (retErr error) {
+	var event *clusterModels.BackupEvent
+	var runErr error
+	outcomeReady := false
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			runErr = fmt.Errorf("panic_in_restore: %v", recovered)
+			outcomeReady = true
+			logger.L.Error().
+				Interface("panic", recovered).
+				Str("operation_id", execution.OperationID).
+				Str("stack", string(debug.Stack())).
+				Msg("queued_restore_panicked")
+		}
+		if !outcomeReady {
+			return
+		}
+		if event == nil || event.ID == 0 {
+			retErr = errors.Join(retErr, runErr)
+			return
+		}
+		if err := s.finalizeRestoreEventByID(event.ID, runErr, ""); err != nil {
+			retErr = errors.Join(retErr, err)
+			return
+		}
+		if err := finish(); err != nil {
+			retErr = errors.Join(retErr, err)
+		}
+	}()
+
+	event, err := s.restoreEventForExecution(execution, spec)
 	if err != nil {
 		return err
 	}
 	execution.EventID = event.ID
 	if restoreEventTerminal(event.Status) {
 		s.finalizeRestoreAuditForEvent(event)
-		return s.finishDurableBackupJobOperation(handle)
+		return finish()
 	}
-	started, err := s.beginRestoreEvent(event.ID, handle.Token)
+	started, err := s.beginRestoreEvent(event.ID, execution.OperationID)
 	if err != nil {
 		return err
 	}
 	if !started {
-		return s.finishDurableBackupJobOperation(handle)
+		return finish()
 	}
 	stopHeartbeat := s.startBackupEventHeartbeat(ctx, event.ID, time.Minute)
 	defer stopHeartbeat()
-	runCtx := withRestoreExecution(ctx, execution)
 
 	outcomeReady = true
-	runErr = jobErr
-	if runErr == nil {
-		if s.restoreJobRun != nil {
-			runErr = s.restoreJobRun(runCtx, &job, payload.Snapshot, payload.RemoteDataset)
-		} else {
-			runErr = s.runRestoreJob(runCtx, &job, payload.Snapshot, payload.RemoteDataset)
-		}
-	}
-	if isJobAlreadyRunningErr(runErr) {
-		outcomeReady = false
-		logger.L.Info().Uint("job_id", payload.JobID).Msg("queued_restore_job_duplicate_discarded")
-		return nil
-	}
+	runErr = run(withRestoreExecution(ctx, execution))
 	if runErr != nil {
-		logger.L.Warn().Err(runErr).Uint("job_id", payload.JobID).Msg("queued_restore_job_failed")
+		logger.L.Warn().Err(runErr).Str("operation_id", execution.OperationID).Msg("queued_restore_failed")
 	}
-	// The common defer records the exact event/audit outcome before releasing
-	// the durable operation. Operational failures are consumed; only control
-	// failures retain the queue message.
 	return nil
 }
 

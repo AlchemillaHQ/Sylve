@@ -447,6 +447,31 @@ func TestNormalizeRestoredVMNetworksPreservesEffectiveAccessVLAN(t *testing.T) {
 	}
 }
 
+func TestUniqueRestoredGuestNameSuffixesTakenNames(t *testing.T) {
+	db := newZeltaServiceTestDB(t, &vmModels.VM{}, &jailModels.Jail{})
+	vms := []vmModels.VM{{RID: 106, Name: "migvm"}, {RID: 107, Name: "migvm-1"}}
+	if err := db.Create(&vms).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&jailModels.Jail{CTID: 105, Name: "migvm-2"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tt := range []struct {
+		name      string
+		currentID uint
+		want      string
+	}{
+		{name: "new guest", want: "migvm-2"},
+		{name: "same guest", currentID: vms[0].ID, want: "migvm"},
+	} {
+		got, err := uniqueRestoredGuestName(db, &vmModels.VM{}, "migvm", tt.currentID)
+		if err != nil || got != tt.want {
+			t.Fatalf("%s: name = %q, %v; want %q", tt.name, got, err, tt.want)
+		}
+	}
+}
+
 func TestReconcileRestoredVMSnapshotsKeepsGuestSnapshotsOnlyForMigration(t *testing.T) {
 	db := newZeltaServiceTestDB(t, &vmModels.VMSnapshot{})
 	root := "tank/sylve/virtual-machines/40"

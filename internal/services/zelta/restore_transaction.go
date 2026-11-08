@@ -17,6 +17,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -246,31 +247,33 @@ func (s *Service) cleanupOwnedRestoreStagingAfterError(
 	return restoreErrorWithCleanup(primary, s.cleanupOwnedRestoreStaging(ctx, dataset, identity))
 }
 
-func (s *Service) rollbackRestorePromotionAfterError(
-	destination string,
-	backupDataset string,
-	destinationExisted bool,
-	primary error,
-) error {
-	if primary == nil {
-		return nil
-	}
-
-	ctx, cancel := restoreRecoveryContext()
-	defer cancel()
-
-	var rollbackErr error
-	if strings.TrimSpace(backupDataset) != "" {
-		rollbackErr = s.rollbackPromotedDataset(ctx, destination, backupDataset)
-	} else if !destinationExisted {
-		rollbackErr = s.destroyLocalDatasetWithRetry(ctx, destination, true, 20, 250*time.Millisecond)
-	} else {
-		rollbackErr = fmt.Errorf("restore_backup_dataset_missing_after_promotion")
-	}
-	if rollbackErr != nil {
-		return fmt.Errorf("%w; restore_rollback_failed: %v", primary, rollbackErr)
+// A replaced dataset is renamed back; one that didn't exist before is destroyed.
+func (s *Service) rollbackRestoreAfterError(applied []restoredDatasetBackup, primary error) error {
+	if err := s.rollbackRestoredDatasetBackups(applied); err != nil {
+		return fmt.Errorf("%w; restore_rollback_failed: %v", primary, err)
 	}
 	return primary
+}
+
+// The archives only back a rollback, so one that can't be removed is reported
+// and kept.
+func (s *Service) cleanupRestoreArchives(ctx context.Context, applied []restoredDatasetBackup) {
+	for _, entry := range applied {
+		if entry.backup == "" {
+			continue
+		}
+		if err := s.cleanupRestoreBackupDataset(ctx, entry.backup); err != nil {
+			s.appendRestoreOutput(ctx, fmt.Sprintf(
+				"restore_backup_cleanup_pending: dataset=%s retained=true error=%v",
+				entry.backup,
+				err,
+			))
+			logger.L.Warn().
+				Err(err).
+				Str("backup_dataset", entry.backup).
+				Msg("failed_to_cleanup_restore_backup_dataset")
+		}
+	}
 }
 
 type restoredDatasetBackup struct {

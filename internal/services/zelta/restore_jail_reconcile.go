@@ -305,7 +305,7 @@ func (s *Service) upsertRestoredJailState(
 		}
 		existingFound = lookup.RowsAffected > 0
 
-		resolvedName, err := s.ensureUniqueRestoredJailName(tx, name, ctid, existing.ID)
+		resolvedName, err := uniqueRestoredGuestName(tx, &jailModels.Jail{}, name, existing.ID)
 		if err != nil {
 			return err
 		}
@@ -935,27 +935,19 @@ func (s *Service) ensureUniqueRestoredObjectName(tx *gorm.DB, base string) (stri
 	}
 }
 
-func (s *Service) ensureUniqueRestoredJailName(tx *gorm.DB, name string, ctid uint, currentID uint) (string, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		name = fmt.Sprintf("jail-%d", ctid)
-	}
-
-	base := name
-	candidate := base
+// uniqueRestoredGuestName keeps a restored guest's name, with a -N suffix while
+// another guest of its kind (model) holds it.
+func uniqueRestoredGuestName(tx *gorm.DB, model any, name string, currentID uint) (string, error) {
+	candidate := name
 	for i := 1; ; i++ {
-		var existing jailModels.Jail
-		lookup := tx.Where("name = ?", candidate).Limit(1).Find(&existing)
-		if lookup.Error != nil {
-			return "", fmt.Errorf("failed_to_validate_restored_jail_name: %w", lookup.Error)
+		var count int64
+		if err := tx.Model(model).Where("name = ? AND id <> ?", candidate, currentID).Count(&count).Error; err != nil {
+			return "", fmt.Errorf("failed_to_validate_restored_guest_name: %w", err)
 		}
-		if lookup.RowsAffected == 0 {
+		if count == 0 {
 			return candidate, nil
 		}
-		if existing.ID == currentID {
-			return candidate, nil
-		}
-		candidate = fmt.Sprintf("%s-%d", base, i)
+		candidate = fmt.Sprintf("%s-%d", name, i)
 	}
 }
 
