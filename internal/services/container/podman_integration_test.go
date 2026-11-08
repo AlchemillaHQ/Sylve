@@ -224,9 +224,9 @@ func TestIntegrationContainerLifecycleRealPodman(t *testing.T) {
 	if !downloaded {
 		t.Fatal("a pull must report how much has downloaded")
 	}
-	if root, err := service.pullsRoot(ctx, pool); err != nil {
+	if downloads, err := service.downloads(ctx, pool); err != nil {
 		t.Fatal(err)
-	} else if left, _ := filepath.Glob(filepath.Join(root, ".pull-*")); len(left) > 0 {
+	} else if left, _ := os.ReadDir(downloads); len(left) > 0 {
 		t.Fatal("a pull's downloads must be removed", left)
 	}
 

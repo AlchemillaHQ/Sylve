@@ -5,6 +5,8 @@ package container
 import (
 	"cmp"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -392,7 +394,7 @@ func (s *Service) CatalogTemplate(ctx context.Context, source, id string) (conta
 	describe := func(variable catalogVariable) containerServiceInterfaces.CatalogVariable {
 		value := catalogDefault(variable.Default)
 		if generatedSecret(variable) && value == "" {
-			value = utils.GenerateRandomString(24)
+			value = catalogSecret(manifest, variable.Name)
 		}
 		item := containerServiceInterfaces.CatalogVariable{Name: variable.Name, Type: variable.Type, Default: value,
 			Optional: variable.Optional, Advanced: variable.Level == "advanced", Protocol: protocols[variable.Name], Values: variable.Values}
@@ -690,7 +692,7 @@ func (s *Service) RenderCatalogApp(ctx context.Context, source, id string, req c
 	}
 	for _, name := range secrets {
 		if r.values[name] == "" {
-			r.values[name] = utils.GenerateRandomString(24)
+			r.values[name] = catalogSecret(manifest, name)
 		}
 	}
 	if len(resolved.services) > 1 {
@@ -698,8 +700,8 @@ func (s *Service) RenderCatalogApp(ctx context.Context, source, id string, req c
 	}
 	names := resolved.names(app.ID, plan.Stack, r.expand)
 	for service, variable := range resolved.hostnames {
-		if name, ok := names[service]; ok && plan.Stack != "" {
-			r.values[variable], r.types[variable] = name, cmp.Or(r.types[variable], "string")
+		if _, ok := names[service]; ok && plan.Stack != "" {
+			r.values[variable], r.types[variable] = serviceHost(service), cmp.Or(r.types[variable], "string")
 		}
 	}
 	for _, variable := range variables {
@@ -724,7 +726,7 @@ func (s *Service) RenderCatalogApp(ctx context.Context, source, id string, req c
 			Spec: spec, StartAfterCreate: true, CatalogApp: source + "/" + id, Stack: plan.Stack}
 		switch {
 		case plan.Stack != "":
-			create.Network = plan.Stack
+			create.Network, create.StackTitle, create.Service = plan.Stack, app.Name, serviceHost(name)
 		case service.NetworkMode == "host":
 			create.Network, create.Ports = containerServiceInterfaces.HostNetwork, nil
 		}
@@ -968,4 +970,19 @@ func catalogName(name string) string {
 		name = name[:63]
 	}
 	return name
+}
+
+func serviceHost(service string) string {
+	return strings.ToLower(catalogName(service))
+}
+
+// catalogSecret is 32 random bytes in hex, as fjord makes them: apps asking for
+// a hex or base64 key take it. Login passwords stay short enough to type.
+func catalogSecret(manifest catalogManifest, name string) string {
+	if login := manifest.Fjord.Login; login != nil && login.Password == "${"+name+"}" {
+		return utils.GenerateRandomString(24)
+	}
+	key := make([]byte, 32)
+	_, _ = rand.Read(key)
+	return hex.EncodeToString(key)
 }

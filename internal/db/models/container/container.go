@@ -83,6 +83,8 @@ type Container struct {
 	WebHTTPS   bool   `json:"webHttps"`
 	CatalogApp string `json:"catalogApp"`
 	Stack      string `json:"stack" gorm:"index"`
+	StackTitle string `json:"stackTitle"`
+	Service    string `json:"service"`
 
 	RuntimeID       string    `json:"runtimeId"`
 	CreationPending bool      `json:"creationPending" gorm:"not null;default:false"`

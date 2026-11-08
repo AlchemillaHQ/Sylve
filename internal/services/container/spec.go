@@ -352,6 +352,10 @@ func newCreateSpec(record containerModels.Container, sources []string) createSpe
 		}
 		if record.Network.SwitchID == nil {
 			network.Aliases = []string{strings.ToLower(record.Name)}
+			// Stack members reach each other by service name, as in compose.
+			if record.Service != "" && record.Network.Name == record.Stack && record.Service != network.Aliases[0] {
+				network.Aliases = append(network.Aliases, record.Service)
+			}
 		}
 		spec.NetNS.Mode = "bridge"
 		spec.Networks = map[string]createNetwork{record.Network.PodmanName(): network}

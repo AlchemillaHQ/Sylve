@@ -301,6 +301,10 @@ func (s *Service) ensurePool(ctx context.Context, pool string) error {
 	if err != nil {
 		return err
 	}
+	downloads, err := s.downloads(ctx, pool)
+	if err != nil {
+		return err
+	}
 
 	poolRun := filepath.Join(runDir, pool)
 	containersConf := fmt.Sprintf(`[containers]
@@ -314,7 +318,8 @@ cni_plugin_dirs = [%q, %q]
 [engine]
 runtime = "ocijail"
 tmp_dir = %q
-`, s.path("cni", "net.d"), s.path("cni", "plugins"), cniPlugins, filepath.Join(poolRun, "libpod"))
+image_copy_tmp_dir = %q
+`, s.path("cni", "net.d"), s.path("cni", "plugins"), cniPlugins, filepath.Join(poolRun, "libpod"), downloads)
 	storageConf := fmt.Sprintf(`[storage]
 driver = "zfs"
 graphroot = %q

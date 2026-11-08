@@ -12,11 +12,12 @@ import type { SimpleJail } from '$lib/types/jail/jail';
 
 export type ResourceTreeView = 'server' | 'folder';
 export type ResourceTreeSortKey = 'id' | 'name';
-export type ResourceTreeState = 'active' | 'inactive' | 'orphan';
+export type ResourceTreeState = 'active' | 'inactive' | 'orphan' | 'partial';
 export type ResourceTreeResourceType =
 	| 'vm'
 	| 'jail'
 	| 'container'
+	| 'stack'
 	| 'jail-template'
 	| 'vm-template';
 export type ResourceTreeDensity = 'comfortable' | 'compact';
@@ -49,6 +50,9 @@ export interface ResourceTreeItem {
 	nodeHostname?: string;
 	nextGuestId?: number;
 	meta?: string;
+	stack?: string;
+	stackTitle?: string;
+	count?: number;
 	children?: ResourceTreeItem[];
 }
 
@@ -84,6 +88,7 @@ const resourceTypeRank: Record<ResourceTreeResourceType, number> = {
 	vm: 0,
 	jail: 1,
 	container: 2,
+	stack: 2,
 	'vm-template': 3,
 	'jail-template': 4
 };
@@ -191,21 +196,68 @@ function compareResources(
 	return nameCollator.compare(a.id, b.id);
 }
 
+export function stackMemberName(name: string, stack: string): string {
+	const prefix = `${stack}-`.toLowerCase();
+	return stack && name.length > prefix.length && name.toLowerCase().startsWith(prefix)
+		? name.slice(prefix.length)
+		: name;
+}
+
+function stacked(
+	resources: ResourceTreeResource[],
+	sortKey: ResourceTreeSortKey
+): ResourceTreeResource[] {
+	const stacks = new Map<string, ResourceTreeResource[]>();
+	const rest: ResourceTreeResource[] = [];
+	for (const resource of resources) {
+		if (resource.resourceType !== 'container' || !resource.stack) {
+			rest.push(resource);
+			continue;
+		}
+		const key = `${resource.nodeHostname}/${resource.stack}`;
+		stacks.set(key, [...(stacks.get(key) ?? []), resource]);
+	}
+	for (const members of stacks.values()) {
+		const [first] = members;
+		const title = first.stackTitle || first.stack || '';
+		const running = members.filter((member) => member.state === 'active').length;
+		rest.push({
+			id: `stack-${first.nodeHostname}-${first.stack}`,
+			label: title,
+			icon: 'lucide--layers',
+			resourceType: 'stack',
+			resourceId: Math.min(...members.map((member) => member.resourceId)),
+			sortId: Math.min(...members.map((member) => member.sortId)),
+			sortName: title,
+			nodeHostname: first.nodeHostname,
+			meta: first.meta,
+			stack: first.stack,
+			stackTitle: first.stackTitle,
+			state: running === members.length ? 'active' : running > 0 ? 'partial' : 'inactive',
+			children: members
+				.map((member) => ({ ...member, meta: undefined }))
+				.sort((a, b) => compareResources(a, b, sortKey))
+		});
+	}
+	return rest;
+}
+
 function sortedResources(
 	resources: ResourceTreeResource[],
 	sortKey: ResourceTreeSortKey
 ): ResourceTreeResource[] {
-	return [...resources].sort((a, b) => compareResources(a, b, sortKey));
+	return stacked(resources, sortKey).sort((a, b) => compareResources(a, b, sortKey));
 }
 
 function group(
 	id: string,
 	label: string,
 	icon: string,
-	children: ResourceTreeItem[]
+	children: ResourceTreeItem[],
+	count?: number
 ): ResourceTreeItem | null {
 	if (children.length === 0) return null;
-	return { id, label, icon, children };
+	return { id, label, icon, children, count };
 }
 
 function compactGroups(groups: Array<ResourceTreeItem | null>): ResourceTreeItem[] {
@@ -244,7 +296,8 @@ function buildServerNodeChildren(
 				`server:${node.id}:containers`,
 				'Containers',
 				'lucide--container',
-				sortedResources(containerResources, preferences.sortKey)
+				sortedResources(containerResources, preferences.sortKey),
+				containerResources.length
 			),
 			preferences.groupTemplates
 				? group(
@@ -356,7 +409,8 @@ function buildFolderView(
 			'folder:containers',
 			'Containers',
 			'lucide--container',
-			sortedResources(containerResources, preferences.sortKey)
+			sortedResources(containerResources, preferences.sortKey),
+			containerResources.length
 		),
 		preferences.groupTemplates
 			? group(

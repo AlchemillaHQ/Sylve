@@ -40,6 +40,7 @@ func (s *Service) ListImages(ctx context.Context, pool string) ([]containerServi
 	var entries []struct {
 		ID      string   `json:"Id"`
 		Names   []string `json:"Names"`
+		History []string `json:"History"`
 		Size    int64    `json:"Size"`
 		Created int64    `json:"Created"`
 	}
@@ -47,7 +48,12 @@ func (s *Service) ListImages(ctx context.Context, pool string) ([]containerServi
 		return nil, err
 	}
 	for _, entry := range entries {
-		images = append(images, containerServiceInterfaces.Image{ID: entry.ID, Names: entry.Names, Size: entry.Size, Created: time.Unix(entry.Created, 0)})
+		image := containerServiceInterfaces.Image{ID: entry.ID, Names: entry.Names, Size: entry.Size, Created: time.Unix(entry.Created, 0)}
+		// A newer pull took the tag; podman remembers the name it had.
+		if len(entry.Names) == 0 && len(entry.History) > 0 {
+			image.Previous = entry.History[0]
+		}
+		images = append(images, image)
 	}
 	return images, nil
 }
@@ -76,8 +82,7 @@ func (s *Service) PruneImages(ctx context.Context, pool string) error {
 	if err := s.requireUsablePool(ctx, pool); err != nil {
 		return err
 	}
-	_, err := s.podman(ctx, pool, nil, "image", "prune", "--all", "--force")
-	return err
+	return s.api(ctx, pool, "prune", http.MethodPost, "/images/prune?all=true", nil, nil)
 }
 
 func (s *Service) ListRegistryCredentials(ctx context.Context) ([]containerModels.RegistryCredential, error) {

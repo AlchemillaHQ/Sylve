@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -130,7 +131,8 @@ func (s *Service) Create(ctx context.Context, req containerServiceInterfaces.Cre
 
 	record := containerModels.Container{OCID: req.OCID, Name: req.Name, Description: req.Description, Pool: req.Pool,
 		Cores: req.Cores, Memory: req.Memory, StartAtBoot: req.StartAtBoot, StartOrder: req.StartOrder,
-		WebPort: req.WebPort, WebHTTPS: req.WebHTTPS, CatalogApp: req.CatalogApp, Stack: req.Stack, CreationPending: true}
+		WebPort: req.WebPort, WebHTTPS: req.WebHTTPS, CatalogApp: req.CatalogApp, Stack: req.Stack, StackTitle: req.StackTitle,
+		Service: req.Service, CreationPending: true}
 	applySpec(&record, spec, network)
 	if err := s.DB.WithContext(ctx).Omit("Network").Create(&record).Error; err != nil {
 		return err
@@ -209,15 +211,13 @@ func (s *Service) ensureImage(ctx context.Context, record *containerModels.Conta
 }
 
 func (s *Service) pullImage(ctx context.Context, pool, image, system string) error {
-	root, err := s.pullsRoot(ctx, pool)
+	downloads, err := s.downloads(ctx, pool)
 	if err != nil {
 		return err
 	}
-	downloads, err := os.MkdirTemp(root, ".pull-")
-	if err != nil {
+	if err := os.MkdirAll(downloads, 0o700); err != nil {
 		return err
 	}
-	defer os.RemoveAll(downloads)
 	defer reportPull(ctx, image, downloads)()
 
 	candidates := []string{system}
@@ -225,19 +225,47 @@ func (s *Service) pullImage(ctx context.Context, pool, image, system string) err
 		candidates = []string{"freebsd", "linux"}
 	}
 	for _, candidate := range candidates {
-		if _, err = s.podman(ctx, pool, []string{"TMPDIR=" + downloads}, "pull", "--platform", candidate+"/"+runtime.GOARCH, image); err == nil {
+		query := url.Values{"reference": {image}, "os": {candidate}, "arch": {runtime.GOARCH}, "policy": {"always"}}
+		if err = s.pull(ctx, pool, query); err == nil {
 			return nil
 		}
 	}
 	return err
 }
 
-func (s *Service) pullsRoot(ctx context.Context, pool string) (string, error) {
+// pull goes through the pool's service: podman processes pulling side by side
+// force-unmount and clean up layers the others are still writing.
+func (s *Service) pull(ctx context.Context, pool string, query url.Values) error {
+	response, err := s.request(ctx, pool, "pull", http.MethodPost, "/images/pull?"+query.Encode(), nil)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	decoder := json.NewDecoder(response.Body)
+	for {
+		var report struct {
+			Error string `json:"error"`
+		}
+		if err := decoder.Decode(&report); err == io.EOF {
+			return nil
+		} else if err != nil {
+			return fmt.Errorf("podman_pull_failed: %w", err)
+		}
+		if report.Error != "" {
+			return fmt.Errorf("podman_pull_failed: %s", report.Error)
+		}
+	}
+}
+
+// downloads is where the pool's service keeps the layers it's pulling: on the
+// pool, as images outgrow /var/tmp.
+func (s *Service) downloads(ctx context.Context, pool string) (string, error) {
 	dataset, err := s.GZFS.ZFS.Get(ctx, pool+"/"+path.Dir(containerModels.ImagesDataset), false)
 	if err != nil {
 		return "", err
 	}
-	return storagezfs.FilesystemMountpoint(dataset)
+	root, err := storagezfs.FilesystemMountpoint(dataset)
+	return filepath.Join(root, ".pull-downloads"), err
 }
 
 func reportPull(ctx context.Context, image, downloads string) func() {

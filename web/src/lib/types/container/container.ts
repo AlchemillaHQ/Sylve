@@ -84,6 +84,8 @@ export const ContainerSchema = z.object({
 	webHttps: z.boolean().catch(false),
 	catalogApp: z.string().catch(''),
 	stack: z.string().catch(''),
+	stackTitle: z.string().catch(''),
+	service: z.string().catch(''),
 	runtimeId: z.string(),
 	creationPending: z.boolean()
 });
@@ -94,6 +96,7 @@ export const SimpleContainerSchema = z.object({
 	ocId: z.number().int(),
 	name: z.string(),
 	stack: z.string().catch(''),
+	stackTitle: z.string().catch(''),
 	state: z.string()
 });
 
@@ -131,6 +134,7 @@ export const ContainerStatsBootstrapSchema = z.object({
 export const ContainerImageSchema = z.object({
 	id: z.string(),
 	names: list(z.string()),
+	previous: z.string().catch(''),
 	size: z.number(),
 	created: z.string()
 });
@@ -228,6 +232,8 @@ export interface ContainerCreateRequest extends ContainerSpec {
 	webHttps: boolean;
 	catalogApp: string;
 	stack?: string;
+	stackTitle?: string;
+	service?: string;
 }
 
 export interface ContainerOptions {

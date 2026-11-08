@@ -400,7 +400,7 @@ under sponsorship from the FreeBSD Foundation.
 											label="Name"
 											value={form.name}
 											placeholder=""
-											hint="The stack's other containers reach it by this name"
+											hint="The stack's other containers reach it as {form.service || form.name}"
 											disabled
 										/>
 									{:else}

@@ -5,6 +5,7 @@ package container
 import (
 	"cmp"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -75,6 +76,21 @@ func TestCreateSpecIsWhatPodmanCreateFlagsWouldSend(t *testing.T) {
 		"mounts": [{"destination": "/data", "type": "nullfs", "source": "/tank/sylve/containers/7/data", "options": ["ro"]}],
 		"umask": "0022", "restart_policy": "on-failure", "restart_tries": 3,
 		"entrypoint": ["/entry"], "command": ["nginx", "-g", "daemon off;"]}`, runtime.GOARCH))
+
+	stack := &containerModels.Network{ID: 2, Name: "weavestream", Bridge: "sylc2"}
+	member := containerModels.Container{OCID: 9, Name: "API", Image: "api", OS: "freebsd", Network: stack,
+		Stack: "weavestream", Service: "api", Restart: "no", StopTimeout: 10}
+	if aliases := newCreateSpec(member, nil).Networks["sylve-weavestream"].Aliases; !slices.Equal(aliases, []string{"api"}) {
+		t.Fatal("a stack member answers to its service name, once", aliases)
+	}
+	member.Name = "Backend"
+	if aliases := newCreateSpec(member, nil).Networks["sylve-weavestream"].Aliases; !slices.Equal(aliases, []string{"backend", "api"}) {
+		t.Fatal("renamed, a stack member still answers to its service name", aliases)
+	}
+	member.Network = network
+	if aliases := newCreateSpec(member, nil).Networks["sylve-default"].Aliases; !slices.Equal(aliases, []string{"backend"}) {
+		t.Fatal("service names stay on the stack's own network", aliases)
+	}
 
 	record = containerModels.Container{OCID: 8, Name: "Host", Image: "redis", OS: "freebsd", Entrypoint: []string{},
 		Restart: "no", StopTimeout: 5}
@@ -390,10 +406,10 @@ func TestCatalogChoicesAddCompanionContainers(t *testing.T) {
 		t.Fatal("a stack's containers share its network, the companion started first", postgres.Name, gitea.Name, postgres.Network)
 	}
 	app, db := envOf(gitea), envOf(postgres)
-	if app["GITEA__database__DB_TYPE"] != "postgres" || app["GITEA__database__HOST"] != "gitea-postgres" ||
-		app["GITEA__database__NAME"] != "gitea" || len(app["GITEA__database__PASSWD"]) != 24 ||
+	if app["GITEA__database__DB_TYPE"] != "postgres" || app["GITEA__database__HOST"] != "postgres" ||
+		app["GITEA__database__NAME"] != "gitea" || len(app["GITEA__database__PASSWD"]) != 64 ||
 		db["POSTGRES_PASSWORD"] != app["GITEA__database__PASSWD"] || db["POSTGRES_DB"] != "gitea" || db["POSTGRES_USER"] != "gitea" {
-		t.Fatal("the companion is found by name and shares the generated password", app, db)
+		t.Fatal("the companion is found by service name and shares the generated password", app, db)
 	}
 	data := containerModels.Mount{Type: containerModels.MountVolume, Source: "data", Target: "/var/lib/postgresql/data", Owner: "1000:1000"}
 	if !slices.Contains(postgres.Mounts, data) || postgres.Annotations["org.freebsd.jail.allow.sysvipc"] != "true" {
@@ -465,7 +481,10 @@ func TestEveryCatalogAppRenders(t *testing.T) {
 	bichon, wireguard, assistant := specs["daemonless/bichon"], specs["daemonless/transmission-wireguard"], specs["daemonless/home-assistant"]
 	for feature, ok := range map[string]bool{
 		"long-form ports":   slices.Equal(bichon.Ports, []containerModels.Port{{Protocol: "tcp", HostPort: 15630, ContainerPort: 15630}}),
-		"generated secrets": len(bichon.Env) == 4 && bichon.Env[3].Name == "BICHON_ENCRYPT_PASSWORD" && len(bichon.Env[3].Value) == 24,
+		"generated secrets": len(bichon.Env) == 4 && bichon.Env[3].Name == "BICHON_ENCRYPT_PASSWORD" && len(bichon.Env[3].Value) == 64,
+		"typeable login passwords": slices.ContainsFunc(specs["daemonless/paperless-ngx"].Env, func(env containerModels.EnvVar) bool {
+			return env.Name == "PAPERLESS_ADMIN_PASSWORD" && len(env.Value) == 24
+		}),
 		"jail annotations":  wireguard.Annotations["org.freebsd.jail.vnet"] == "new",
 		"udp ports":         slices.Contains(wireguard.Ports, containerModels.Port{Protocol: "udp", HostPort: 51413, ContainerPort: 51413}),
 		"host network":      assistant.Network == containerServiceInterfaces.HostNetwork && len(assistant.Ports) == 0,
@@ -602,9 +621,12 @@ func TestCatalogStacksRenderTheirContainers(t *testing.T) {
 		containers[create.Name] = create
 	}
 	server, database := envOf(containers["immich-server"]), envOf(containers["immich-database"])
-	if server["DB_HOSTNAME"] != "immich-database" || server["REDIS_HOSTNAME"] != "immich-redis" ||
+	if server["DB_HOSTNAME"] != "database" || server["REDIS_HOSTNAME"] != "redis" ||
 		server["IMMICH_MACHINE_LEARNING_URL"] != "http://immich-machine-learning:3003" {
-		t.Fatal("containers find each other by name", server)
+		t.Fatal("containers find each other by service name, which renaming them keeps", server)
+	}
+	if create := containers["immich-database"]; create.Service != "database" || create.StackTitle != "Immich" {
+		t.Fatal("stack members keep their service and the stack its title", create.Service, create.StackTitle)
 	}
 	if server["DB_PASSWORD"] == "" || server["DB_PASSWORD"] != database["POSTGRES_PASSWORD"] {
 		t.Fatal("the server is given every setting, as its .env, and shares the generated password", server["DB_PASSWORD"], database["POSTGRES_PASSWORD"])
@@ -666,5 +688,20 @@ func TestStacksTakeFreeIDsAndShareANetwork(t *testing.T) {
 	}
 	if _, err := service.PrepareStack(ctx, request); err == nil || !strings.Contains(err.Error(), "catalog_stack_exists") {
 		t.Fatal("a stack is created once", err)
+	}
+
+	if err := service.RenameStack(ctx, "web", "  Web App "); err != nil {
+		t.Fatal(err)
+	}
+	var titles []string
+	if err := service.DB.Model(&containerModels.Container{}).Order("oc_id").Pluck("stack_title", &titles).Error; err != nil ||
+		!slices.Equal(titles, []string{"Web App", ""}) {
+		t.Fatal("renaming a stack titles its members only", titles, err)
+	}
+	if err := service.RenameStack(ctx, "missing", "x"); !errors.Is(err, ErrNotFound) {
+		t.Fatal("only existing stacks are renamed", err)
+	}
+	if err := service.RenameStack(ctx, "", "x"); !errors.Is(err, ErrNotFound) {
+		t.Fatal("containers outside stacks have no stack to rename", err)
 	}
 }

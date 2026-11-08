@@ -3,12 +3,14 @@
 package container
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"path"
 	"slices"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
@@ -105,19 +107,38 @@ func (s *Service) createStack(ctx context.Context, req containerServiceInterface
 	kept := make([]bool, len(req.Containers))
 	errs := make([]error, len(req.Containers))
 	report, _ := ctx.Value(progressKey{}).(func(string))
+	var (
+		mu      sync.Mutex
+		failing string
+	)
+	// A failure shows at once, though the rollback waits for the others: their
+	// downloads are kept for a retry.
+	say := func(message string) {
+		mu.Lock()
+		defer mu.Unlock()
+		if report == nil {
+			return
+		}
+		if failing != "" {
+			message = failing + " failed; rolling back once the others finish (" + message + ")"
+		}
+		report(message)
+	}
 	var wg sync.WaitGroup
 	for i, create := range req.Containers {
 		dataset, err := s.GZFS.ZFS.Get(ctx, containerModels.VolumesDataset(create.Pool, create.OCID), false)
 		kept[i] = err == nil && dataset != nil
 		create.StartAfterCreate = false
-		member := context.WithValue(ctx, progressKey{}, func(message string) {
-			if report != nil {
-				report(create.Name + ": " + message)
-			}
-		})
+		member := context.WithValue(ctx, progressKey{}, func(message string) { say(create.Name + ": " + message) })
 		wg.Go(func() {
 			errs[i] = s.Create(member, create)
 			created[i] = errs[i] == nil
+			if errs[i] != nil {
+				mu.Lock()
+				failing = cmp.Or(failing, create.Name)
+				mu.Unlock()
+				say(create.Name + ": " + errs[i].Error())
+			}
 		})
 	}
 	wg.Wait()
@@ -156,6 +177,26 @@ func (s *Service) ocidFree(ctx context.Context, ocid uint) bool {
 		return false
 	}
 	return s.identity == nil || s.identity.RequireGuestIDAvailable(ctx, ocid) == nil
+}
+
+func (s *Service) RenameStack(ctx context.Context, stack, title string) error {
+	if title = strings.TrimSpace(title); utf8.RuneCountInString(title) > 63 {
+		return fmt.Errorf("invalid_stack_title")
+	}
+	var ocids []uint
+	if err := s.DB.WithContext(ctx).Model(&containerModels.Container{}).Where("stack = ?", stack).Pluck("oc_id", &ocids).Error; err != nil {
+		return err
+	}
+	if stack == "" || len(ocids) == 0 {
+		return ErrNotFound
+	}
+	if err := s.DB.WithContext(ctx).Model(&containerModels.Container{}).Where("stack = ?", stack).Update("stack_title", title).Error; err != nil {
+		return err
+	}
+	for _, ocid := range ocids {
+		s.changed(ocid)
+	}
+	return nil
 }
 
 func (s *Service) RemoveEmptyStack(ctx context.Context, stack string) error {

@@ -133,7 +133,8 @@ func ListContainersSimple(service containerServiceInterfaces.ContainerServiceInt
 		}
 		simple := make([]containerServiceInterfaces.SimpleList, len(items))
 		for i, item := range items {
-			simple[i] = containerServiceInterfaces.SimpleList{OCID: item.OCID, Name: item.Name, Stack: item.Stack, State: item.State}
+			simple[i] = containerServiceInterfaces.SimpleList{OCID: item.OCID, Name: item.Name, Stack: item.Stack,
+				StackTitle: item.StackTitle, State: item.State}
 		}
 		respond(c, http.StatusOK, "containers_listed", simple)
 	}
@@ -304,6 +305,31 @@ func UpdateContainerOptions(service containerServiceInterfaces.ContainerServiceI
 			return
 		}
 		respond(c, http.StatusOK, "container_options_updated", nil)
+	}
+}
+
+// @Summary Rename a container stack
+// @Description Change the name a stack is shown under; empty shows its own name again
+// @Tags Container
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param stack path string true "Stack"
+// @Param request body containerServiceInterfaces.StackTitleRequest true "Title"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Router /container/stack/{stack} [patch]
+func RenameContainerStack(service containerServiceInterfaces.ContainerServiceInterface) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req containerServiceInterfaces.StackTitleRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			fail(c, http.StatusBadRequest, "invalid_request_data", err)
+			return
+		}
+		if err := service.RenameStack(c.Request.Context(), c.Param("stack"), req.Title); err != nil {
+			failService(c, "failed_to_rename_container_stack", err)
+			return
+		}
+		respond(c, http.StatusOK, "container_stack_renamed", nil)
 	}
 }
 

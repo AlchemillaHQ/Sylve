@@ -7,6 +7,7 @@
 		buildResourceTree,
 		collectResourceTreeIds,
 		filterResourceTree,
+		stackMemberName,
 		type ResourceTreeNodeInput,
 		type ResourceTreeItem,
 		type ResourceTreePreferences,
@@ -226,7 +227,9 @@
 					resourceId: container.ocId,
 					resourceType: 'container' as const,
 					nodeHostname: n.hostname,
-					label: `${container.name} (${container.ocId})`,
+					label: `${stackMemberName(container.name, container.stack)} (${container.ocId})`,
+					stack: container.stack,
+					stackTitle: container.stackTitle,
 					icon: 'lucide--container',
 					href: `/${nodeLabel}/container/${container.ocId}/summary`,
 					state: (container.state === 'running' ? 'active' : 'inactive') as 'active' | 'inactive'

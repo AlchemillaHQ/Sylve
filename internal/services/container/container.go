@@ -145,8 +145,8 @@ func (s *Service) Startup(ctx context.Context) error {
 		return err
 	}
 	for _, pool := range basic.Pools {
-		if root, err := s.pullsRoot(ctx, pool); err == nil {
-			stale, _ := filepath.Glob(filepath.Join(root, ".pull-*"))
+		if downloads, err := s.downloads(ctx, pool); err == nil {
+			stale, _ := filepath.Glob(filepath.Join(filepath.Dir(downloads), ".pull-*"))
 			for _, dir := range stale {
 				_ = os.RemoveAll(dir)
 			}

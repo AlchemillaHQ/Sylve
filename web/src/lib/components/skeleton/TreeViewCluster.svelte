@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { containerAction } from '$lib/api/container/container';
+	import { containerAction, renameContainerStack } from '$lib/api/container/container';
 	import { convertJailToTemplate, deleteJailTemplate, jailAction } from '$lib/api/jail/jail';
 	import CreateJailFromTemplate from '$lib/components/custom/Jail/Template/Create.svelte';
 	import ViewJailTemplate from '$lib/components/custom/Jail/Template/View.svelte';
@@ -28,7 +28,8 @@
 	import {
 		isResourceTreeGroup,
 		type ResourceTreeDensity,
-		type ResourceTreeItem
+		type ResourceTreeItem,
+		type ResourceTreeState
 	} from '$lib/resource-tree';
 	import type { ActiveLifecycleGuest } from '$lib/types/task/lifecycle';
 	import { removeStaleCacheByRID } from '$lib/utils/vm/vm';
@@ -79,6 +80,7 @@
 
 	const handleLabelClick = (e: Event) => {
 		e.preventDefault();
+		if (item.resourceType === 'stack') onToggleId(item.id);
 		if (!item.href) return;
 		const href =
 			item.resourceType === 'vm' ||
@@ -102,9 +104,9 @@
 		onToggleId(item.id);
 	};
 
-	function statusDotClass(state?: 'active' | 'inactive' | 'orphan'): string | null {
+	function statusDotClass(state?: ResourceTreeState): string | null {
 		if (state === 'active') return 'bg-green-500';
-		if (state === 'orphan') return 'bg-amber-500';
+		if (state === 'orphan' || state === 'partial') return 'bg-amber-500';
 		if (state === 'inactive') return 'bg-neutral-500';
 		return null;
 	}
@@ -128,11 +130,18 @@
 	}
 
 	let activeUrl = $derived(page.url.pathname);
-	let isActive = $derived(isItemActive(item, activeUrl));
+	let isStack = $derived(item.resourceType === 'stack');
+	// An open stack leaves the highlight to the member being viewed.
+	let isActive = $derived((!isStack || !isOpen) && isItemActive(item, activeUrl));
+	let stackTitle = $derived.by(() => {
+		const running = (item.children ?? []).filter((child) => child.state === 'active').length;
+		return `${item.label} · ${running} of ${item.children?.length ?? 0} running`;
+	});
 	let hasContextMenu = $derived(
 		item.resourceType === 'vm' ||
 			item.resourceType === 'jail' ||
 			item.resourceType === 'container' ||
+			isStack ||
 			item.resourceType === 'jail-template' ||
 			item.resourceType === 'vm-template'
 	);
@@ -150,6 +159,31 @@
 	let convertTemplateName = $state('');
 	let deleteVMOpen = $state(false);
 	let deleteVMLoading = $state(false);
+	let renameStackOpen = $state(false);
+	let renameStackLoading = $state(false);
+	let renameStackTitle = $state('');
+	let renameStackContent = $state<HTMLElement | null>(null);
+
+	const handleRenameStack = async () => {
+		if (renameStackLoading || !item.stack || !item.nodeHostname) return;
+		renameStackLoading = true;
+		try {
+			const result = await renameContainerStack(
+				item.stack,
+				renameStackTitle.trim(),
+				item.nodeHostname
+			);
+			if (result.status === 'error') {
+				handleAPIError(result);
+				toast.error('Failed to rename stack', { position: 'bottom-center' });
+				return;
+			}
+			renameStackOpen = false;
+			reload.leftPanel = true;
+		} finally {
+			renameStackLoading = false;
+		}
+	};
 
 	function baseGuestName(label: string): string {
 		return label.replace(/\s*\((?:CT|VM)?\s*\d+\)\s*$/i, '').trim();
@@ -409,7 +443,8 @@
 			<div class="flex min-w-0 items-center gap-1.5">
 				<span class={`icon-[${item.icon}] size-3.5 shrink-0`}></span>
 				<span class="truncate text-[11px] font-semibold tracking-wide uppercase">{item.label}</span>
-				<span class="text-muted-foreground/70 text-[10px] font-normal">{item.children?.length}</span
+				<span class="text-muted-foreground/70 text-[10px] font-normal"
+					>{item.count ?? item.children?.length}</span
 				>
 			</div>
 			<div class="flex size-5 shrink-0 items-center justify-center">
@@ -427,7 +462,7 @@
 				onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleLabelClick(e) : null)}
 			>
 				<div class="flex min-w-0 items-center space-x-1 text-sm">
-					{#if item.icon === 'material-symbols--monitor-outline' || item.icon === 'hugeicons--prison' || item.icon === 'lucide--container'}
+					{#if item.icon === 'material-symbols--monitor-outline' || item.icon === 'hugeicons--prison' || item.icon === 'lucide--container' || isStack}
 						<div class="flex items-center space-x-1 text-sm">
 							<div class="relative">
 								<span
@@ -449,7 +484,7 @@
 					{/if}
 					<p
 						class="font-inter cursor-pointer truncate whitespace-nowrap"
-						title={item.meta ? `${item.label} · ${item.meta}` : item.label}
+						title={isStack ? stackTitle : item.meta ? `${item.label} · ${item.meta}` : item.label}
 					>
 						{item.label}
 						{#if item.meta}
@@ -461,6 +496,9 @@
 
 				{#if item.children && item.children.length > 0}
 					<div class="flex shrink-0 items-center gap-0.5">
+						{#if isStack}
+							<span class="text-muted-foreground/70 text-[10px]">{item.children.length}</span>
+						{/if}
 						<span
 							role="button"
 							tabindex="0"
@@ -612,6 +650,17 @@
 							Start
 						</ContextMenu.Item>
 					{/if}
+				{:else if isStack}
+					<ContextMenu.Item
+						class="gap-2"
+						onclick={() => {
+							renameStackTitle = item.label;
+							renameStackOpen = true;
+						}}
+					>
+						<span class="icon-[mdi--rename-outline] h-4 w-4"></span>
+						Rename
+					</ContextMenu.Item>
 				{:else if item.resourceType === 'jail-template'}
 					<ContextMenu.Item class="gap-2" onclick={() => (viewTemplateOpen = true)}>
 						<span class="icon-[mdi--eye-outline] h-4 w-4"></span>
@@ -766,6 +815,47 @@
 						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
 					{:else}
 						{item.resourceType === 'vm' ? 'Create Template' : 'Convert'}
+					{/if}
+				</Button>
+			</Dialog.Footer>
+		</Dialog.Content>
+	</Dialog.Root>
+{/if}
+
+{#if isStack}
+	<Dialog.Root bind:open={renameStackOpen}>
+		<Dialog.Content
+			bind:ref={renameStackContent}
+			class="max-w-md"
+			onOpenAutoFocus={(event) => {
+				event.preventDefault();
+				renameStackContent?.querySelector<HTMLElement>('input')?.focus({ preventScroll: true });
+			}}
+		>
+			<Dialog.Header>
+				<Dialog.Title>
+					<div class="flex items-center gap-2">
+						<span class="icon-[lucide--layers]"></span>
+						<span>Rename Stack</span>
+					</div>
+				</Dialog.Title>
+			</Dialog.Header>
+
+			<CustomValueInput
+				label="Name"
+				placeholder={item.stack}
+				hint="Only changes how the stack is shown; leave empty for {item.stack}"
+				bind:value={renameStackTitle}
+				disabled={renameStackLoading}
+				classes="space-y-2"
+			/>
+
+			<Dialog.Footer>
+				<Button size="sm" onclick={() => void handleRenameStack()} disabled={renameStackLoading}>
+					{#if renameStackLoading}
+						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+					{:else}
+						Rename
 					{/if}
 				</Button>
 			</Dialog.Footer>

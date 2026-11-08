@@ -87,7 +87,9 @@ export const CatalogRenderedSchema = ContainerSchema.pick({
 	webPort: true,
 	webHttps: true,
 	catalogApp: true,
-	stack: true
+	stack: true,
+	stackTitle: true,
+	service: true
 }).extend({
 	os: z.enum(['', 'freebsd', 'linux']).catch(''),
 	network: z.string(),

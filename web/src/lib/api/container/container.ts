@@ -152,6 +152,20 @@ export async function updateContainerOptions(
 	});
 }
 
+export async function renameContainerStack(
+	stack: string,
+	title: string,
+	hostname?: string
+): Promise<APIResponse> {
+	return await apiRequestResult(
+		`/container/stack/${encodeURIComponent(stack)}`,
+		APIResponseSchema,
+		'PATCH',
+		{ title },
+		{ hostname }
+	);
+}
+
 export async function getContainerLogs(
 	ocId: number,
 	options?: NodeAPIDataRequestOptions

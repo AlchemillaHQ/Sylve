@@ -51,7 +51,9 @@ under sponsorship from the FreeBSD Foundation.
 				['OS', container.os === 'freebsd' ? 'FreeBSD' : 'Linux'],
 				['Image', container.image],
 				['Pool', container.pool],
-				...(container.stack ? [['Stack', container.stack] as [string, string]] : []),
+				...(container.stack
+					? [['Stack', container.stackTitle || container.stack] as [string, string]]
+					: []),
 				['Podman ID', short(container.runtimeId)]
 			];
 		}

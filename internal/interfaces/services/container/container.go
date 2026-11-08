@@ -65,6 +65,8 @@ type CreateRequest struct {
 	WebHTTPS         bool   `json:"webHttps"`
 	CatalogApp       string `json:"catalogApp"`
 	Stack            string `json:"stack"`
+	StackTitle       string `json:"stackTitle"`
+	Service          string `json:"service"`
 }
 
 type CatalogPlan struct {
@@ -91,6 +93,10 @@ type OptionsRequest struct {
 	Memory      *uint64 `json:"memory"`
 	StartAtBoot *bool   `json:"startAtBoot"`
 	StartOrder  *int    `json:"startOrder"`
+}
+
+type StackTitleRequest struct {
+	Title string `json:"title"`
 }
 
 type NetworkRequest struct {
@@ -135,10 +141,11 @@ type ListItem struct {
 }
 
 type SimpleList struct {
-	OCID  uint   `json:"ocId"`
-	Name  string `json:"name"`
-	Stack string `json:"stack"`
-	State string `json:"state"`
+	OCID       uint   `json:"ocId"`
+	Name       string `json:"name"`
+	Stack      string `json:"stack"`
+	StackTitle string `json:"stackTitle"`
+	State      string `json:"state"`
 }
 
 type Detail struct {
@@ -149,10 +156,11 @@ type Detail struct {
 }
 
 type Image struct {
-	ID      string    `json:"id"`
-	Names   []string  `json:"names"`
-	Size    int64     `json:"size"`
-	Created time.Time `json:"created"`
+	ID       string    `json:"id"`
+	Names    []string  `json:"names"`
+	Previous string    `json:"previous,omitempty"`
+	Size     int64     `json:"size"`
+	Created  time.Time `json:"created"`
 }
 
 type CatalogApp struct {
@@ -244,6 +252,7 @@ type ContainerServiceInterface interface {
 	Command(ctx context.Context, ocid uint, args ...string) (*exec.Cmd, error)
 	Console(ctx context.Context, ocid uint, shell string, rows, cols uint16) (Console, error)
 	UpdateOptions(ctx context.Context, ocid uint, req OptionsRequest) error
+	RenameStack(ctx context.Context, stack, title string) error
 
 	UsedPorts(ctx context.Context, exceptOCID uint) ([]UsedPort, error)
 

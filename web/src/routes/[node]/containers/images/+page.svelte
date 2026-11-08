@@ -15,6 +15,7 @@
 	import type { ContainerImage } from '$lib/types/container/container';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { describeContainerError, toastContainerError } from '$lib/utils/container/errors';
+	import { escapeHTML } from '$lib/utils/string';
 	import { convertDbTime } from '$lib/utils/time';
 	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -43,7 +44,16 @@
 
 	let table = $derived({
 		columns: [
-			{ field: 'name', title: 'Name' },
+			{
+				field: 'name',
+				title: 'Name',
+				formatter: (cell: CellComponent) => {
+					const name = escapeHTML(cell.getValue());
+					return cell.getRow().getData().untagged
+						? `<span class="text-muted-foreground">${name}</span> <span class="ml-1 rounded border px-1 text-xs" title="A newer pull of this tag replaced it; Prune removes it">Untagged</span>`
+						: name;
+				}
+			},
 			{
 				field: 'id',
 				title: 'ID',
@@ -62,7 +72,8 @@
 		],
 		rows: images.current.map((image) => ({
 			id: image.id,
-			name: image.names[0] ?? '<none>',
+			name: image.names[0] ?? (image.previous || '<none>'),
+			untagged: image.names.length === 0,
 			size: image.size,
 			created: image.created
 		}))
