@@ -581,7 +581,7 @@ func (s *Service) EnqueueRestoreFromTarget(
 		targetID,
 		handle.Token,
 		restoreEventSpec{
-			SourceDataset:  payload.RemoteDataset + payload.Snapshot,
+			SourceDataset:  restoreEventSource(&target, payload.RemoteDataset, payload.Snapshot),
 			TargetEndpoint: payload.DestinationDataset,
 		},
 	)
@@ -622,10 +622,7 @@ func (s *Service) finalizeRestoreFromTargetAdmissionFailure(
 	admissionErr error,
 ) error {
 	execution := newRestoreExecution(payload.EventID, handle.Token, payload.AuditRecordID)
-	event, err := s.restoreEventForExecution(execution, restoreEventSpec{
-		SourceDataset:  payload.RemoteDataset + payload.Snapshot,
-		TargetEndpoint: payload.DestinationDataset,
-	})
+	event, err := s.restoreEventForExecution(execution, s.targetRestoreEventSpec(payload))
 	if err != nil {
 		return errors.Join(admissionErr, err)
 	}
@@ -669,11 +666,8 @@ func (s *Service) handleRestoreFromTargetQueue(
 	defer s.releaseActiveBackupTargetRestoreToken(handle.Token)
 
 	execution := newRestoreExecution(payload.EventID, handle.Token, payload.AuditRecordID)
-	spec := restoreEventSpec{
-		SourceDataset:  payload.RemoteDataset + payload.Snapshot,
-		TargetEndpoint: payload.DestinationDataset,
-	}
 	finish := func() error { return s.finishDurableBackupTargetRestoreOperation(handle) }
+	spec := s.targetRestoreEventSpec(payload)
 	return s.runQueuedRestore(ctx, execution, spec, finish, func(ctx context.Context) error {
 		target, _, releaseTargetKey, err := s.getRestoreTargetWithKey(payload.TargetID)
 		if err != nil {

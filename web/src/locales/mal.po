@@ -455,6 +455,7 @@ msgstr "ജയിൽ - വിവരണം അപ്‌ഡേറ്റ് ചെ�
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/console/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Jail"
 msgstr "ജയിൽ"
@@ -526,6 +527,8 @@ msgstr "ബാഡ് റിക്വസ്റ്റ്"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -574,6 +577,7 @@ msgstr "ഉപയോക്താവ്"
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/[node]/system/updates/history/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Action"
 msgstr "നടപടി"
 
@@ -602,7 +606,6 @@ msgstr "നടപടി"
 #: src/routes/[node]/system/updates/packages/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
@@ -1661,6 +1664,7 @@ msgstr "ലീഡർ നോഡ്"
 #: src/lib/components/custom/Dialog/ValueViewer.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -2960,23 +2964,19 @@ msgid "Delete Volume(s)"
 msgstr "വോള്യങ്ങൾ ഇല്ലാതാക്കുക"
 
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Error copied to clipboard"
 msgstr "പിശക് ക്ലിപ്പ്ബോർഡിലേക്ക് പകർത്തി"
 
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Failed to copy error"
 msgstr "പിശക് പകർത്തുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #. 0: task.guestId
 #. 0: task.guestId
-#. 0: jailMatch[1]
 #: src/lib/components/custom/Jail/Create/CreationProgress.svelte
 #: src/lib/components/custom/Jail/Create/CreationProgress.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Jail {0}"
 msgstr "ജയിൽ {0}"
 
@@ -3009,10 +3009,6 @@ msgstr "പരാജയപ്പെട്ടു"
 msgid "Interrupted"
 msgstr "തടസ്സപ്പെട്ടു"
 
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Failed to load event progress"
-msgstr "ഇവന്റ് പുരോഗതി ലോഡ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
-
 #: src/lib/components/custom/Container/Spec.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
@@ -3029,8 +3025,6 @@ msgstr "ഇവന്റ് പുരോഗതി ലോഡ് ചെയ്യു
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Source"
 msgstr "ഉറവിടം"
 
@@ -3053,8 +3047,6 @@ msgstr "ലക്ഷ്യം"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Mode"
 msgstr "മോഡ്"
 
@@ -3075,15 +3067,10 @@ msgstr "ബാക്കപ്പ്"
 #: src/lib/components/custom/System/Updates/Operation.svelte
 #: src/routes/[node]/system/updates/history/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Completed"
 msgstr "പൂർത്തിയായി"
-
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Backup Target Diverged"
-msgstr "ബാക്കപ്പ് ലക്ഷ്യം വ്യതിചലിച്ചു"
 
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "All Jobs"
@@ -3099,13 +3086,8 @@ msgid "Select node"
 msgstr "നോഡ് തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 msgid "View Progress"
 msgstr "പുരോഗതി കാണുക"
-
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Event Progress <0/>"
-msgstr "ഇവന്റ് പുരോഗതി <0/>"
 
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Transfer"
@@ -3119,12 +3101,10 @@ msgstr "നീക്കി"
 msgid "Total"
 msgstr "ആകെ"
 
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Progress"
 msgstr "പുരോഗതി"
 
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Loading progress..."
 msgstr "പുരോഗതി ലോഡ് ചെയ്യുന്നു..."
@@ -3270,8 +3250,12 @@ msgstr "തരംതാഴ്ത്തുന്നു"
 msgid "Promoting"
 msgstr "സ്ഥാനക്കയറ്റം നൽകുന്നു"
 
+#. 0: details.eventId
+#. 0: details.eventId
 #. 0: selectedEvent.id
 #. 0: selectedEvent.id
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Event #{0}"
@@ -9084,6 +9068,8 @@ msgstr ""
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Log"
 msgstr ""
 
@@ -13369,14 +13355,6 @@ msgid "Finalizing"
 msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
-msgid "Transferred"
-msgstr ""
-
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Stream estimate"
-msgstr ""
-
-#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Transfer complete. Verifying and committing the backup."
 msgstr ""
 
@@ -13436,7 +13414,9 @@ msgid "Error details"
 msgstr ""
 
 #. 0: copyLabel.toLowerCase()
+#. 0: what.toLowerCase()
 #: src/lib/components/custom/Dialog/DetailBlock.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Failed to copy {0}"
 msgstr ""
 
@@ -13458,6 +13438,7 @@ msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/ZFS/pools/Scrub.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Duration"
 msgstr ""
 
@@ -19209,6 +19190,7 @@ msgstr ""
 
 #: src/lib/components/custom/iSCSI/ExtraConfig.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Loading..."
 msgstr ""
 
@@ -23573,4 +23555,43 @@ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 msgid "Datasets under <0/> can't be used."
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Deleted job"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Guest / Dataset"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Job"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Failed to load the event"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Restore point"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "From"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "To"
+msgstr ""
+
+#. 0: formatBytesBinary(eventDetails.current.totalBytes)
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "of about {0}"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "No output recorded."
 msgstr ""

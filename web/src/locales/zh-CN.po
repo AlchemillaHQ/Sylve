@@ -455,6 +455,7 @@ msgstr "Jail - 更新描述"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/console/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Jail"
 msgstr "Jail"
@@ -526,6 +527,8 @@ msgstr "错误请求"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -574,6 +577,7 @@ msgstr "用户"
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/[node]/system/updates/history/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Action"
 msgstr "操作"
 
@@ -602,7 +606,6 @@ msgstr "操作"
 #: src/routes/[node]/system/updates/packages/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
@@ -1661,6 +1664,7 @@ msgstr "主节点"
 #: src/lib/components/custom/Dialog/ValueViewer.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -2960,23 +2964,19 @@ msgid "Delete Volume(s)"
 msgstr "删除卷"
 
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Error copied to clipboard"
 msgstr "错误已复制到剪贴板"
 
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Failed to copy error"
 msgstr "复制错误失败"
 
 #. 0: task.guestId
 #. 0: task.guestId
-#. 0: jailMatch[1]
 #: src/lib/components/custom/Jail/Create/CreationProgress.svelte
 #: src/lib/components/custom/Jail/Create/CreationProgress.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Jail {0}"
 msgstr "Jail {0}"
 
@@ -3009,10 +3009,6 @@ msgstr "失败"
 msgid "Interrupted"
 msgstr "已中断"
 
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Failed to load event progress"
-msgstr "加载事件进度失败"
-
 #: src/lib/components/custom/Container/Spec.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
@@ -3029,8 +3025,6 @@ msgstr "加载事件进度失败"
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Source"
 msgstr "源"
 
@@ -3053,8 +3047,6 @@ msgstr "目标"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Mode"
 msgstr "模式"
 
@@ -3075,15 +3067,10 @@ msgstr "备份"
 #: src/lib/components/custom/System/Updates/Operation.svelte
 #: src/routes/[node]/system/updates/history/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Completed"
 msgstr "已完成"
-
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Backup Target Diverged"
-msgstr "备份目标已分叉"
 
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "All Jobs"
@@ -3099,13 +3086,8 @@ msgid "Select node"
 msgstr "选择节点"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 msgid "View Progress"
 msgstr "查看进度"
-
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Event Progress <0/>"
-msgstr "事件进度 <0/>"
 
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Transfer"
@@ -3119,12 +3101,10 @@ msgstr "已移动"
 msgid "Total"
 msgstr "总计"
 
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Progress"
 msgstr "进度"
 
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Loading progress..."
 msgstr "正在加载进度..."
@@ -3270,8 +3250,12 @@ msgstr "降级中"
 msgid "Promoting"
 msgstr "升级中"
 
+#. 0: details.eventId
+#. 0: details.eventId
 #. 0: selectedEvent.id
 #. 0: selectedEvent.id
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Event #{0}"
@@ -9081,6 +9065,8 @@ msgstr "刷新计数器"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Log"
 msgstr "日志"
 
@@ -13366,14 +13352,6 @@ msgid "Finalizing"
 msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
-msgid "Transferred"
-msgstr ""
-
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Stream estimate"
-msgstr ""
-
-#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Transfer complete. Verifying and committing the backup."
 msgstr ""
 
@@ -13433,7 +13411,9 @@ msgid "Error details"
 msgstr ""
 
 #. 0: copyLabel.toLowerCase()
+#. 0: what.toLowerCase()
 #: src/lib/components/custom/Dialog/DetailBlock.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Failed to copy {0}"
 msgstr ""
 
@@ -13455,6 +13435,7 @@ msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/ZFS/pools/Scrub.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Duration"
 msgstr ""
 
@@ -19206,6 +19187,7 @@ msgstr ""
 
 #: src/lib/components/custom/iSCSI/ExtraConfig.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Loading..."
 msgstr ""
 
@@ -23570,4 +23552,43 @@ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 msgid "Datasets under <0/> can't be used."
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Deleted job"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Guest / Dataset"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Job"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Failed to load the event"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Restore point"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "From"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "To"
+msgstr ""
+
+#. 0: formatBytesBinary(eventDetails.current.totalBytes)
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "of about {0}"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "No output recorded."
 msgstr ""

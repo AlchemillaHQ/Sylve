@@ -199,10 +199,7 @@ func (s *Service) EnqueueRestoreJob(ctx context.Context, jobID uint, snapshot st
 		return err
 	}
 
-	eventSource := job.Name + normalizedSnapshot
-	if job.Mode == clusterModels.BackupJobModeVM {
-		eventSource = remoteDataset + normalizedSnapshot
-	}
+	eventSource := restoreEventSource(&job.Target, remoteDataset, normalizedSnapshot)
 	jobIDCopy := job.ID
 	execution, event, observabilityErr := s.prepareRestoreObservability(
 		ctx,
@@ -1162,10 +1159,7 @@ func (s *Service) handleRestoreJobQueue(ctx context.Context, payload restoreJobP
 		if job.Mode == clusterModels.BackupJobModeJail {
 			destinationDataset = strings.TrimSpace(job.JailRootDataset)
 		}
-		spec.SourceDataset = job.Name + payload.Snapshot
-		if job.Mode == clusterModels.BackupJobModeVM {
-			spec.SourceDataset = payload.RemoteDataset + payload.Snapshot
-		}
+		spec.SourceDataset = restoreEventSource(&job.Target, payload.RemoteDataset, payload.Snapshot)
 		spec.TargetEndpoint = destinationDataset
 	}
 	execution := newRestoreExecution(payload.EventID, handle.Token, payload.AuditRecordID)

@@ -455,6 +455,7 @@ msgstr "Jail - Update Description"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/console/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Jail"
 msgstr "Jail"
@@ -526,6 +527,8 @@ msgstr "Bad Request"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -574,6 +577,7 @@ msgstr "User"
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/[node]/system/updates/history/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Action"
 msgstr "Action"
 
@@ -602,7 +606,6 @@ msgstr "Action"
 #: src/routes/[node]/system/updates/packages/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
@@ -1661,6 +1664,7 @@ msgstr "Leader Node"
 #: src/lib/components/custom/Dialog/ValueViewer.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -2960,23 +2964,19 @@ msgid "Delete Volume(s)"
 msgstr "Delete Volume(s)"
 
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Error copied to clipboard"
 msgstr "Error copied to clipboard"
 
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Failed to copy error"
 msgstr "Failed to copy error"
 
 #. 0: task.guestId
 #. 0: task.guestId
-#. 0: jailMatch[1]
 #: src/lib/components/custom/Jail/Create/CreationProgress.svelte
 #: src/lib/components/custom/Jail/Create/CreationProgress.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Jail {0}"
 msgstr "Jail {0}"
 
@@ -3009,10 +3009,6 @@ msgstr "Failed"
 msgid "Interrupted"
 msgstr "Interrupted"
 
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Failed to load event progress"
-msgstr "Failed to load event progress"
-
 #: src/lib/components/custom/Container/Spec.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
@@ -3029,8 +3025,6 @@ msgstr "Failed to load event progress"
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Source"
 msgstr "Source"
 
@@ -3053,8 +3047,6 @@ msgstr "Target"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Mode"
 msgstr "Mode"
 
@@ -3075,15 +3067,10 @@ msgstr "Backup"
 #: src/lib/components/custom/System/Updates/Operation.svelte
 #: src/routes/[node]/system/updates/history/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Completed"
 msgstr "Completed"
-
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Backup Target Diverged"
-msgstr "Backup Target Diverged"
 
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "All Jobs"
@@ -3099,13 +3086,8 @@ msgid "Select node"
 msgstr "Select node"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/routes/datacenter/backups/events/+page.svelte
 msgid "View Progress"
 msgstr "View Progress"
-
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Event Progress <0/>"
-msgstr "Event Progress <0/>"
 
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Transfer"
@@ -3119,12 +3101,10 @@ msgstr "Moved"
 msgid "Total"
 msgstr "Total"
 
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Progress"
 msgstr "Progress"
 
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Loading progress..."
 msgstr "Loading progress..."
@@ -3270,8 +3250,12 @@ msgstr "Demoting"
 msgid "Promoting"
 msgstr "Promoting"
 
+#. 0: details.eventId
+#. 0: details.eventId
 #. 0: selectedEvent.id
 #. 0: selectedEvent.id
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Event #{0}"
@@ -9084,6 +9068,8 @@ msgstr "Refresh Counters"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Log"
 msgstr "Log"
 
@@ -13369,14 +13355,6 @@ msgid "Finalizing"
 msgstr "Finalizing"
 
 #: src/routes/datacenter/backups/events/+page.svelte
-msgid "Transferred"
-msgstr "Transferred"
-
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Stream estimate"
-msgstr "Stream estimate"
-
-#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Transfer complete. Verifying and committing the backup."
 msgstr "Transfer complete. Verifying and committing the backup."
 
@@ -13436,7 +13414,9 @@ msgid "Error details"
 msgstr "Error details"
 
 #. 0: copyLabel.toLowerCase()
+#. 0: what.toLowerCase()
 #: src/lib/components/custom/Dialog/DetailBlock.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Failed to copy {0}"
 msgstr "Failed to copy {0}"
 
@@ -13458,6 +13438,7 @@ msgstr "Record ID"
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/ZFS/pools/Scrub.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Duration"
 msgstr "Duration"
 
@@ -19209,6 +19190,7 @@ msgstr "Target Settings"
 
 #: src/lib/components/custom/iSCSI/ExtraConfig.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Loading..."
 msgstr "Loading..."
 
@@ -23578,3 +23560,42 @@ msgstr "The VM's main disk goes to the selected pool. Disks on other pools keep 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 msgid "Datasets under <0/> can't be used."
 msgstr "Datasets under <0/> can't be used."
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Deleted job"
+msgstr "Deleted job"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Guest / Dataset"
+msgstr "Guest / Dataset"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Job"
+msgstr "Job"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Failed to load the event"
+msgstr "Failed to load the event"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Restore point"
+msgstr "Restore point"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "From"
+msgstr "From"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "To"
+msgstr "To"
+
+#. 0: formatBytesBinary(eventDetails.current.totalBytes)
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "of about {0}"
+msgstr "of about {0}"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "No output recorded."
+msgstr "No output recorded."

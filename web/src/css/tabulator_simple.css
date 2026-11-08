@@ -1505,7 +1505,7 @@ body.tabulator-print-fullscreen-hide > *:not(.tabulator-print-fullscreen) {
 }
 
 .tabulator .tabulator-header .tabulator-col {
-	@apply bg-background;
+	@apply border-border bg-background;
 }
 
 @media (hover: hover) and (pointer: fine) {

@@ -1628,9 +1628,10 @@ func (s *Service) ListLocalBackupEventsPaginated(page, size int, sortField, sort
 		}
 	}
 
+	// Logs can run to megabytes; the event's own endpoint serves them.
 	var events []clusterModels.BackupEvent
 	offset := (page - 1) * size
-	if err := query.Order(orderClause).Offset(offset).Limit(size).Find(&events).Error; err != nil {
+	if err := query.Omit("output").Order(orderClause).Offset(offset).Limit(size).Find(&events).Error; err != nil {
 		return nil, err
 	}
 

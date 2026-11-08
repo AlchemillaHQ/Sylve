@@ -42,6 +42,23 @@ type restoreEventSpec struct {
 	TargetEndpoint string
 }
 
+// restoreEventSource records where a restore reads from the way a backup
+// event records where it writes: user@host:dataset, here with @snapshot.
+func restoreEventSource(target *clusterModels.BackupTarget, remoteDataset, snapshot string) string {
+	if endpoint, err := canonicalZeltaSnapshotEndpoint(target, remoteDataset, snapshot); err == nil {
+		return endpoint
+	}
+	return remoteDataset + snapshot
+}
+
+func (s *Service) targetRestoreEventSpec(payload restoreFromTargetPayload) restoreEventSpec {
+	source := payload.RemoteDataset + payload.Snapshot
+	if target, err := s.getRestoreTarget(payload.TargetID); err == nil {
+		source = restoreEventSource(&target, payload.RemoteDataset, payload.Snapshot)
+	}
+	return restoreEventSpec{SourceDataset: source, TargetEndpoint: payload.DestinationDataset}
+}
+
 func withRestoreExecution(ctx context.Context, execution restoreExecution) context.Context {
 	if ctx == nil {
 		ctx = context.Background()

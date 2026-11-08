@@ -8,19 +8,23 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { storage } from '$lib';
-	import type { BackupEvent, BackupEventProgress, BackupJob } from '$lib/types/cluster/backups';
+	import type {
+		BackupEvent,
+		BackupEventProgress,
+		BackupGuestKind,
+		BackupJob,
+		BackupTarget
+	} from '$lib/types/cluster/backups';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { ClusterDetails, ClusterNode } from '$lib/types/cluster/cluster';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { convertDbTime } from '$lib/utils/time';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
+	import { escapeHTML } from '$lib/utils/string';
 	import { resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 	import { renderWithIcon } from '$lib/utils/table';
-	import { getJailsResult } from '$lib/api/jail/jail';
-	import type { Jail, JailStorage } from '$lib/types/jail/jail';
-	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	let filterJobId = $state('');
 	let reload = $state(false);
@@ -38,7 +42,12 @@
 		for (const job of jobs.current) currentJobs[job.id] = job;
 		return currentJobs;
 	});
-	let jobsLoading = $derived(jobs.loading);
+
+	// Jobs carry their targets; the targets list itself waits on a cluster-wide
+	// barrier, which is too slow to hold the table for.
+	let jobTargets = $derived(
+		jobs.current.flatMap((job): BackupTarget[] => (job.target ? [job.target] : []))
+	);
 
 	type NodeContext = {
 		details: ClusterDetails | null;
@@ -80,77 +89,29 @@
 		selectedNodeId = value;
 		initialNodeSelectionDone = true;
 		activeRows = null;
-		progressModal.open = false;
+		details.open = false;
 	}
 
-	let selectedNodeHostname = $derived(
-		nodeContext.current?.nodes.find((node) => node.nodeUUID === selectedNodeId)?.hostname.trim() ||
-			''
-	);
-	type NodeJails = {
-		nodeId: string;
-		hostname: string;
-		jails: Jail[];
-	};
-	let jailsResource = resource(
-		[() => selectedNodeId, () => selectedNodeHostname],
-		async ([nodeId, hostname], _, { signal }): Promise<NodeJails> => {
-			if (!nodeId || !hostname) return { nodeId, hostname, jails: [] };
-
-			const result = await getJailsResult({ hostname, signal });
-			if (isAPIResponse(result)) return { nodeId, hostname, jails: [] };
-
-			await updateCache('jail-list', result, hostname);
-			return { nodeId, hostname, jails: result };
-		},
-		{ initialValue: { nodeId: '', hostname: '', jails: [] } as NodeJails }
-	);
-	let jails = $derived(jailsResource.current.jails);
-	let jailsLoading = $derived(jailsResource.loading);
-	// Tabulator fetches on mount, so wait for the formatter data it will capture.
-	let eventsTableReady = $derived(
-		initialNodeSelectionDone &&
-			!jobsLoading &&
-			(!selectedNodeId ||
-				(!jailsLoading &&
-					jailsResource.current.nodeId === selectedNodeId &&
-					jailsResource.current.hostname === selectedNodeHostname))
-	);
-	let progressEventId = $state(0);
-	let progressNodeId = $state('');
-	let progressModal = $state({
-		open: false,
-		error: ''
-	});
-
-	let errorModal = $state({
-		id: 0,
-		open: false,
-		error: ''
-	});
-
-	function openErrorModal(id: number, error: string) {
-		errorModal.id = id;
-		errorModal.error = error;
-		errorModal.open = true;
-	}
-
-	async function copyErrorFromModal() {
-		if (!errorModal.error) return;
-		try {
-			await navigator.clipboard.writeText(errorModal.error);
-			toast.success('Error copied to clipboard', { duration: 2000, position: 'bottom-center' });
-		} catch (_err) {
-			toast.error('Failed to copy error', { duration: 2000, position: 'bottom-center' });
+	// Events live on the node that ran them, which for a job is its runner.
+	function handleJobSelection(value: string) {
+		const runner = jobsById[Number(value)]?.runnerNodeId || '';
+		if (runner && nodeContext.current?.nodes.some((node) => node.nodeUUID === runner)) {
+			handleNodeSelection(runner);
 		}
+		reload = true;
 	}
+
+	// Tabulator fetches on mount, so wait for the data its formatters read.
+	let eventsTableReady = $derived(initialNodeSelectionDone && !jobs.loading);
+
+	const kindIcons: Record<BackupGuestKind, string> = {
+		jail: 'hugeicons:prison',
+		vm: 'material-symbols:monitor-outline-rounded',
+		dataset: 'mdi:database-outline'
+	};
 
 	function parseEndpoint(raw: string): { host: string; dataset: string; snapshot: string } {
 		const value = (raw || '').trim();
-		if (!value) {
-			return { host: '', dataset: '', snapshot: '' };
-		}
-
 		let host = '';
 		let datasetWithSnapshot = value;
 		const colonIndex = value.indexOf(':');
@@ -170,6 +131,7 @@
 		return { host, dataset, snapshot };
 	}
 
+	// Backup snapshots end in their creation time in base 36 (bk_..._<time>).
 	function formatSnapshotLabel(snapshot: string): string {
 		const raw = (snapshot || '').trim();
 		if (!raw) return '';
@@ -179,257 +141,78 @@
 			return legacy.replace('_', ' ').replace(/\./g, ':');
 		}
 
-		const normalized = raw.toLowerCase();
-		const token = normalized.startsWith('gen-')
-			? normalized.slice(4)
-			: normalized.includes('_')
-				? normalized.split('_').pop() || ''
-				: '';
-
-		if (!token || !/^[0-9a-z]+$/.test(token)) {
-			return legacy;
-		}
-
-		const parsed = Number.parseInt(token, 36);
-		if (!Number.isFinite(parsed) || Number.isNaN(parsed) || parsed <= 0) {
-			return legacy;
-		}
-
+		const token = raw.toLowerCase().split('_').pop() || '';
+		const parsed = /^[0-9a-z]+$/.test(token) ? Number.parseInt(token, 36) : NaN;
 		const timestamp = new Date(parsed);
-		if (Number.isNaN(timestamp.getTime())) {
+		if (!raw.includes('_') || Number.isNaN(timestamp.getTime()) || parsed <= 0) {
 			return legacy;
 		}
-
 		return convertDbTime(timestamp.toISOString());
 	}
 
-	function compactDatasetLabel(dataset: string): string {
-		const trimmed = (dataset || '').trim();
-		if (!trimmed) return '';
-
-		const jailMatch = trimmed.match(/\/jails\/(\d+)(?:$|\/)/);
-		if (jailMatch) return `Jail ${jailMatch[1]}`;
-
-		const vmMatch = trimmed.match(/\/virtual-machines\/(\d+)(?:$|\/)/);
-		if (vmMatch) return `VM ${vmMatch[1]}`;
-
-		const segments = trimmed.split('/').filter(Boolean);
-		if (segments.length <= 2) return trimmed;
-		return segments.slice(-2).join('/');
+	// Backups read the local dataset and write to the target; restores the reverse.
+	function eventEnds(event: BackupEvent): { local: string; remote: string } {
+		return event.mode === 'restore'
+			? { local: event.targetEndpoint, remote: event.sourceDataset }
+			: { local: event.sourceDataset, remote: event.targetEndpoint };
 	}
 
-	function stripBackupLineage(dataset: string): string {
-		const segments = (dataset || '').trim().split('/').filter(Boolean);
-		const lineageIndex = segments.findIndex(
-			(segment, index) =>
-				/^(?:j|job)-[^/]+$/i.test(segment) && segments[index + 1]?.toLowerCase() === 'active'
+	function eventJob(event: BackupEvent): BackupJob | undefined {
+		return event.jobId ? jobsById[event.jobId] : undefined;
+	}
+
+	function eventGuest(event: BackupEvent): { icon: string; label: string } {
+		const job = eventJob(event);
+		const local = parseEndpoint(eventEnds(event).local).dataset;
+		const match = local.match(/(?:^|\/)(jails|virtual-machines)\/(\d+)(?:$|\/)/);
+		const kind: BackupGuestKind =
+			job?.mode ?? (match ? (match[1] === 'jails' ? 'jail' : 'vm') : 'dataset');
+		if (kind !== 'dataset' && match) {
+			const name = job?.friendlySrc || (kind === 'jail' ? 'Jail' : 'VM');
+			return { icon: kindIcons[kind], label: `${name} · ${match[2]}` };
+		}
+		return { icon: kindIcons.dataset, label: job?.friendlySrc || job?.sourceDataset || local };
+	}
+
+	function eventTargetName(event: BackupEvent): string {
+		const job = eventJob(event);
+		if (job?.target?.name) return job.target.name;
+		const { host, dataset } = parseEndpoint(eventEnds(event).remote);
+		const target = jobTargets.find(
+			(candidate) =>
+				(!host || candidate.sshHost === host) &&
+				(dataset === candidate.backupRoot || dataset.startsWith(`${candidate.backupRoot}/`))
 		);
-		if (lineageIndex >= 0) segments.splice(lineageIndex, 2);
-		return segments.join('/');
+		return target?.name || host || '-';
 	}
 
-	function resolveJailName(dataset: string, currentJails: Jail[]): string {
-		for (const jail of currentJails) {
-			const baseStorage = jail.storages?.find((storage: JailStorage) => storage.isBase);
-			if (!baseStorage) continue;
-
-			const jailDataset = `${baseStorage.pool}/sylve/jails/${jail.ctId}`;
-			if (jailDataset === dataset) {
-				return jail.name || '';
-			}
-		}
-		return '';
+	function eventJobName(event: BackupEvent): string {
+		if (!event.jobId) return '-';
+		return eventJob(event)?.name || 'Deleted job';
 	}
 
-	function compactEventEndpoint(
-		raw: string,
-		currentJails: Jail[],
-		includeSnapshot: boolean
-	): { icon: string; label: string } {
-		const endpoint = parseEndpoint(raw);
-		if (!endpoint.dataset) {
-			return { icon: 'material-symbols:files', label: '' };
-		}
-
-		const jailName = resolveJailName(endpoint.dataset, currentJails);
-		let icon = 'material-symbols:files';
-		let label = jailName || compactDatasetLabel(endpoint.dataset);
-
-		if (jailName || /\/jails\/\d+(?:$|\/)/.test(endpoint.dataset)) {
-			icon = 'hugeicons:prison';
-		} else if (/\/virtual-machines\/\d+(?:$|\/)/.test(endpoint.dataset)) {
-			icon = 'material-symbols:monitor-outline';
-		}
-
-		if (includeSnapshot && endpoint.snapshot) {
-			label = `${label} @ ${formatSnapshotLabel(endpoint.snapshot)}`;
-		}
-
-		return { icon, label };
+	function eventRestorePoint(event: BackupEvent): string {
+		if (event.mode !== 'restore') return '';
+		return formatSnapshotLabel(parseEndpoint(event.sourceDataset).snapshot);
 	}
 
-	type EventEndpointDisplay = {
-		icon: string;
-		label: string;
-		title: string;
-	};
-
-	function appendSnapshotLabel(label: string, snapshot: string): string {
-		const formatted = formatSnapshotLabel(snapshot);
-		if (!formatted) return label;
-		return label ? `${label} @ ${formatted}` : `@ ${formatted}`;
+	function formatDuration(event: BackupEvent): string {
+		if (!event.completedAt) return '-';
+		const elapsed = (Date.parse(event.completedAt) - Date.parse(event.startedAt)) / 1000;
+		if (!Number.isFinite(elapsed)) return '-';
+		const seconds = Math.max(0, Math.round(elapsed));
+		if (seconds < 60) return `${seconds} s`;
+		const minutes = Math.floor(seconds / 60);
+		if (minutes < 60) return `${minutes} m ${seconds % 60} s`;
+		return `${Math.floor(minutes / 60)} h ${minutes % 60} m`;
 	}
 
-	function backupJobGuestId(job: BackupJob): number {
-		const dataset =
-			job.mode === 'jail'
-				? job.jailRootDataset || job.sourceDataset
-				: job.sourceDataset || job.jailRootDataset;
-		const pattern =
-			job.mode === 'jail'
-				? /(?:^|\/)jails\/(\d+)(?:$|[/.])/
-				: /(?:^|\/)virtual-machines\/(\d+)(?:$|[/.])/;
-		const match = dataset.match(pattern);
-		if (!match) return 0;
-
-		const id = Number.parseInt(match[1], 10);
-		return Number.isNaN(id) ? 0 : id;
-	}
-
-	function backupJobSourceDisplay(
-		job: BackupJob,
-		raw: string,
-		currentJails: Jail[]
-	): EventEndpointDisplay {
-		const endpoint = parseEndpoint(raw);
-		if (job.mode === 'dataset') {
-			return {
-				icon: 'material-symbols:files',
-				label: appendSnapshotLabel(endpoint.dataset || job.sourceDataset, endpoint.snapshot),
-				title: raw
-			};
-		}
-
-		const guestId = backupJobGuestId(job);
-		const idPrefix = job.mode === 'jail' ? 'CT' : 'RID';
-		const fallback = compactEventEndpoint(raw, currentJails, false);
-		const friendlySource = (job.friendlySrc || '').trim();
-		let label = friendlySource || (guestId > 0 ? String(guestId) : fallback.label);
-		if (guestId > 0) {
-			label =
-				label && label !== String(guestId)
-					? `${label} (${idPrefix} ${guestId})`
-					: `${idPrefix} ${guestId}`;
-		}
-
-		return {
-			icon: job.mode === 'jail' ? 'hugeicons:prison' : 'material-symbols:monitor-outline',
-			label: appendSnapshotLabel(label, endpoint.snapshot),
-			title: raw
-		};
-	}
-
-	function backupJobRemoteEndpoint(job: BackupJob): string {
-		const target = job.target;
-		if (!target) return '';
-
-		const root = (target.backupRoot || '').trim().replace(/\/+$/, '');
-		const suffix = (job.destSuffix || '').trim().replace(/^\/+/, '');
-		const dataset = [root, suffix].filter(Boolean).join('/');
-		if (!dataset) return '';
-
-		const host = (target.sshHost || '').trim();
-		return host ? `${host}:${dataset}` : dataset;
-	}
-
-	function backupTargetDisplay(
-		job: BackupJob,
-		rawTarget: string,
-		workloadRaw: string,
-		currentJails: Jail[]
-	): EventEndpointDisplay {
-		const endpoint = parseEndpoint(rawTarget);
-		const targetName = (job.target?.name || '').trim();
-
-		if (job.mode === 'dataset') {
-			const dataset = stripBackupLineage(endpoint.dataset);
-			return {
-				icon: 'material-symbols:files',
-				label: appendSnapshotLabel(
-					[targetName, dataset].filter(Boolean).join(' · '),
-					endpoint.snapshot
-				),
-				title: rawTarget
-			};
-		}
-
-		const workload = backupJobSourceDisplay(job, workloadRaw, currentJails);
-		return {
-			icon: workload.icon,
-			label: appendSnapshotLabel(
-				[targetName, workload.label].filter(Boolean).join(' · '),
-				endpoint.snapshot
-			),
-			title: rawTarget
-		};
-	}
-
-	function rawBackupTargetDisplay(raw: string): EventEndpointDisplay {
-		const endpoint = parseEndpoint(raw);
-		const dataset = stripBackupLineage(endpoint.dataset);
-		const label = endpoint.host && dataset ? `${endpoint.host}:${dataset}` : dataset;
-		let icon = 'material-symbols:files';
-		if (/\/jails\/\d+(?:$|\/)/.test(dataset)) {
-			icon = 'hugeicons:prison';
-		} else if (/\/virtual-machines\/\d+(?:$|\/)/.test(dataset)) {
-			icon = 'material-symbols:monitor-outline';
-		}
-
-		return { icon, label: appendSnapshotLabel(label, endpoint.snapshot), title: raw };
-	}
-
-	function resolveEventEndpoints(
-		event: BackupEvent,
-		currentJobs: Record<number, BackupJob>,
-		currentJails: Jail[]
-	): { source: EventEndpointDisplay; target: EventEndpointDisplay } {
-		const job = event.jobId ? currentJobs[event.jobId] : undefined;
-		if (!job) {
-			const source =
-				event.mode === 'restore'
-					? rawBackupTargetDisplay(event.sourceDataset)
-					: compactEventEndpoint(event.sourceDataset, currentJails, true);
-			const target =
-				event.mode === 'restore'
-					? compactEventEndpoint(event.targetEndpoint, currentJails, false)
-					: rawBackupTargetDisplay(event.targetEndpoint);
-			return {
-				source: { ...source, title: event.sourceDataset },
-				target: { ...target, title: event.targetEndpoint }
-			};
-		}
-
-		if (event.mode === 'restore') {
-			const snapshot = parseEndpoint(event.sourceDataset).snapshot;
-			const remoteEndpoint = backupJobRemoteEndpoint(job);
-			const restoreSource = remoteEndpoint
-				? `${remoteEndpoint}${snapshot ? `@${snapshot}` : ''}`
-				: event.sourceDataset;
-			return {
-				source: backupTargetDisplay(job, restoreSource, event.targetEndpoint, currentJails),
-				target: backupJobSourceDisplay(job, event.targetEndpoint, currentJails)
-			};
-		}
-
-		return {
-			source: backupJobSourceDisplay(job, event.sourceDataset, currentJails),
-			target: backupTargetDisplay(job, event.targetEndpoint, event.sourceDataset, currentJails)
-		};
-	}
-
-	function renderEventEndpoint(cell: CellComponent, endpoint: EventEndpointDisplay): string {
-		cell.getElement().title = endpoint.title;
-		return renderWithIcon(endpoint.icon, endpoint.label);
+	// Errors start with a code (backup_target_diverged: ...); the code alone reads better.
+	function errorSummary(error: string): string {
+		const code = error.split(':')[0].trim();
+		if (!/^[a-z0-9_]+$/.test(code)) return error;
+		const words = code.replace(/_/g, ' ');
+		return words.charAt(0).toUpperCase() + words.slice(1);
 	}
 
 	function eventStatusMeta(status: string | null | undefined): {
@@ -439,17 +222,9 @@
 	} {
 		switch ((status || '').toLowerCase()) {
 			case 'success':
-				return {
-					icon: 'mdi:check-circle-outline',
-					label: 'Success',
-					className: 'text-green-500'
-				};
+				return { icon: 'mdi:check-circle-outline', label: 'Success', className: 'text-green-500' };
 			case 'failed':
-				return {
-					icon: 'mdi:close-circle-outline',
-					label: 'Failed',
-					className: 'text-red-500'
-				};
+				return { icon: 'mdi:close-circle-outline', label: 'Failed', className: 'text-red-500' };
 			case 'interrupted':
 				return {
 					icon: 'mdi:alert-circle-outline',
@@ -457,17 +232,9 @@
 					className: 'text-orange-500'
 				};
 			case 'queued':
-				return {
-					icon: 'mdi:clock-outline',
-					label: 'Queued',
-					className: 'text-blue-500'
-				};
+				return { icon: 'mdi:clock-outline', label: 'Queued', className: 'text-blue-500' };
 			case 'running':
-				return {
-					icon: 'mdi:progress-clock',
-					label: 'Running',
-					className: 'text-yellow-500'
-				};
+				return { icon: 'mdi:progress-clock', label: 'Running', className: 'text-yellow-500' };
 			default:
 				return {
 					icon: 'mdi:help-circle-outline',
@@ -477,263 +244,93 @@
 		}
 	}
 
+	function actionMeta(mode: string): { icon: string; label: string } {
+		return mode === 'restore'
+			? { icon: 'ic:baseline-restore', label: 'Restore' }
+			: { icon: 'material-symbols:backup-outline', label: 'Backup' };
+	}
+
 	function iconClass(icon: string): string {
 		const [set, name] = icon.split(':');
 		return set && name ? `icon-[${set}--${name}]` : '';
 	}
 
-	function selectedRowId(): number {
-		if (!activeRows || activeRows.length !== 1) return 0;
-		const parsed = Number(activeRows[0].id);
-		if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-		return parsed;
+	function rowEvent(cell: CellComponent): BackupEvent {
+		return cell.getRow().getData() as BackupEvent;
 	}
 
-	let query = $state('');
-	let activeRows: Row[] | null = $state(null);
-
-	let selectedRunningEventId = $derived.by(() => {
-		if (!activeRows || activeRows.length !== 1) return 0;
-		const row = activeRows[0];
-		if (row.status !== 'running') return 0;
-		const parsed = Number(row.id);
-		if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-		return parsed;
-	});
-
-	const progressEvent = resource(
-		[() => progressEventId, () => progressNodeId],
-		async ([eventId, nodeId]) => {
-			if (eventId <= 0) return null;
-
-			try {
-				const res = await getBackupEventProgress(eventId, nodeId);
-				progressModal.error = '';
-				return res;
-			} catch (e: unknown) {
-				progressModal.error =
-					(e as { message?: string })?.message || 'Failed to load event progress';
-				return null;
+	const eventColumns: Column[] = [
+		{
+			field: 'status',
+			title: 'Status',
+			formatter: (cell: CellComponent) => {
+				const meta = eventStatusMeta(cell.getValue());
+				return renderWithIcon(meta.icon, meta.label, meta.className);
 			}
 		},
-		{ initialValue: null as BackupEventProgress | null }
-	);
-
-	let progressNumber = $derived.by(() => {
-		const current = progressEvent.current;
-		if (!current) return 0;
-
-		const status = (current.event?.status || '').toLowerCase();
-		if (status === 'success') {
-			return 100;
-		}
-
-		const percent = current.progressPercent;
-		if (percent !== null && percent !== undefined && Number.isFinite(percent)) {
-			return Math.max(0, Math.min(100, percent));
-		}
-
-		const moved = current.movedBytes;
-		const total = current.totalBytes;
-		if (
-			moved !== null &&
-			moved !== undefined &&
-			total !== null &&
-			total !== undefined &&
-			total > 0
-		) {
-			return Math.max(0, Math.min(100, (moved / total) * 100));
-		}
-
-		return 0;
-	});
-
-	let progressHasData = $derived.by(() => {
-		const current = progressEvent.current;
-		if (!current) return false;
-
-		const status = (current.event?.status || '').toLowerCase();
-		if (status === 'success') {
-			return true;
-		}
-
-		const percent = current.progressPercent;
-		if (percent !== null && percent !== undefined && Number.isFinite(percent)) {
-			return true;
-		}
-
-		const moved = current.movedBytes;
-		const total = current.totalBytes;
-		return (
-			moved !== null && moved !== undefined && total !== null && total !== undefined && total > 0
-		);
-	});
-
-	let progressPercentLabel = $derived.by(() =>
-		progressHasData ? `${Math.round(progressNumber)}%` : '-'
-	);
-
-	useInterval(2000, {
-		callback: () => {
-			if (!storage.visible || !progressModal.open || progressEventId <= 0) return;
-
-			const status = progressEvent.current?.event?.status;
-			if (!status || status === 'running') {
-				progressEvent.refetch();
+		{
+			field: 'mode',
+			title: 'Action',
+			formatter: (cell: CellComponent) => {
+				const meta = actionMeta(cell.getValue());
+				return renderWithIcon(meta.icon, meta.label);
+			}
+		},
+		{
+			field: 'sourceDataset',
+			title: 'Guest / Dataset',
+			headerSort: false,
+			formatter: (cell: CellComponent) => {
+				const event = rowEvent(cell);
+				const guest = eventGuest(event);
+				cell.getElement().title = parseEndpoint(eventEnds(event).local).dataset;
+				return renderWithIcon(guest.icon, escapeHTML(guest.label));
+			}
+		},
+		{
+			field: 'targetEndpoint',
+			title: 'Target',
+			headerSort: false,
+			formatter: (cell: CellComponent) => {
+				const event = rowEvent(cell);
+				cell.getElement().title = eventEnds(event).remote;
+				return escapeHTML(eventTargetName(event));
+			}
+		},
+		{
+			field: 'jobId',
+			title: 'Job',
+			headerSort: false,
+			formatter: (cell: CellComponent) => escapeHTML(eventJobName(rowEvent(cell)))
+		},
+		{
+			field: 'startedAt',
+			title: 'Started',
+			formatter: (cell: CellComponent) => convertDbTime(cell.getValue())
+		},
+		{
+			field: 'completedAt',
+			title: 'Duration',
+			headerSort: false,
+			formatter: (cell: CellComponent) => formatDuration(rowEvent(cell))
+		},
+		{
+			field: 'error',
+			title: 'Error',
+			formatter: (cell: CellComponent) => {
+				const value = String(cell.getValue() || '');
+				if (!value) return '';
+				cell.getElement().title = value;
+				return renderWithIcon(
+					'mdi:alert-circle-outline',
+					escapeHTML(errorSummary(value)),
+					'text-red-500'
+				);
 			}
 		}
-	});
+	];
 
-	async function openProgressModal() {
-		const eventId = selectedRowId();
-		if (eventId <= 0) return;
-
-		progressEventId = eventId;
-		progressNodeId = selectedNodeId;
-		progressModal.open = true;
-		progressModal.error = '';
-		await progressEvent.refetch();
-	}
-
-	let closeTimeout: ReturnType<typeof setTimeout> | null = null;
-
-	watch(
-		() => progressModal.open,
-		(open) => {
-			if (!open) {
-				activeRows = null;
-				closeTimeout = setTimeout(() => {
-					progressEventId = 0;
-					progressNodeId = '';
-					progressModal.error = '';
-					closeTimeout = null;
-				}, 200);
-			} else if (closeTimeout) {
-				clearTimeout(closeTimeout);
-				closeTimeout = null;
-			}
-		}
-	);
-
-	watch(
-		() => reload,
-		(isReloading) => {
-			if (isReloading) {
-				activeRows = null;
-			}
-		}
-	);
-
-	watch(
-		[() => progressModal.open, () => progressEvent.current?.event?.status],
-		([open, status]) => {
-			if (open && status && status !== 'running') {
-				reload = true;
-			}
-		}
-	);
-
-	let eventColumns = $derived.by((): Column[] => {
-		const currentJails = jails;
-		const currentJobs = jobsById;
-
-		return [
-			{ field: 'id', title: 'ID' },
-			{
-				field: 'status',
-				title: 'Status',
-				formatter: (cell: CellComponent) => {
-					const value = cell.getValue();
-					const meta = eventStatusMeta(value);
-					return renderWithIcon(meta.icon, meta.label, meta.className);
-				}
-			},
-			{
-				field: 'sourceDataset',
-				title: 'Source',
-				formatter: (cell: CellComponent) => {
-					const event = cell.getRow().getData() as BackupEvent;
-					if (!event.sourceDataset) return '';
-					const endpoints = resolveEventEndpoints(event, currentJobs, currentJails);
-					return renderEventEndpoint(cell, endpoints.source);
-				}
-			},
-			{
-				field: 'targetEndpoint',
-				title: 'Target',
-				formatter: (cell: CellComponent) => {
-					const event = cell.getRow().getData() as BackupEvent;
-					if (!event.targetEndpoint) return '';
-					const endpoints = resolveEventEndpoints(event, currentJobs, currentJails);
-					return renderEventEndpoint(cell, endpoints.target);
-				}
-			},
-			{
-				field: 'mode',
-				title: 'Mode',
-				formatter: (cell: CellComponent) => {
-					const value = cell.getValue();
-
-					if (value === 'restore') {
-						return renderWithIcon('ic:baseline-restore', 'Restore');
-					} else if (value === 'jail' || value === 'vm' || value === 'dataset') {
-						return renderWithIcon('material-symbols:backup-outline', `Backup`);
-					}
-
-					return value;
-				}
-			},
-			{
-				field: 'startedAt',
-				title: 'Started',
-				formatter: (cell: CellComponent) => convertDbTime(cell.getValue())
-			},
-			{
-				field: 'completedAt',
-				title: 'Completed',
-				formatter: (cell: CellComponent) => {
-					const value = cell.getValue();
-					return value ? convertDbTime(value) : '-';
-				}
-			},
-			{
-				field: 'error',
-				title: 'Error',
-				cellClick: (_event: UIEvent, cell: CellComponent) => {
-					const row = cell.getRow().getData();
-					const id = row.id;
-					const value = String(cell.getValue() || '');
-					if (!value) return;
-					openErrorModal(id, value);
-				},
-				formatter: (cell: CellComponent) => {
-					const value = cell.getValue();
-					let v = '';
-					let icon = '';
-					if (value) {
-						switch (value) {
-							case 'backup_target_diverged':
-								v = 'Backup Target Diverged';
-								icon = 'game-icons:divergence';
-								break;
-							default:
-								v = value;
-								icon = 'mdi:alert-circle-outline';
-						}
-					} else {
-						return '-';
-					}
-
-					return renderWithIcon(icon, v, value ? 'text-red-500' : 'text-green-500');
-				}
-			}
-		];
-	});
-
-	let tableData = $derived({
-		rows: [],
-		columns: eventColumns
-	});
+	const tableData = { rows: [], columns: eventColumns };
 
 	let extraParams = $derived.by((): Record<string, string | number> => {
 		const params: Record<string, string | number> = {};
@@ -761,11 +358,128 @@
 			label: node.nodeUUID === currentNodeId ? `${node.hostname} (Current)` : node.hostname
 		}));
 	});
+
+	let query = $state('');
+	let activeRows: Row[] | null = $state(null);
+
+	let details = $state({ open: false, eventId: 0, nodeId: '', error: '' });
+
+	const eventDetails = resource(
+		[() => details.eventId, () => details.nodeId],
+		async ([eventId, nodeId]) => {
+			if (eventId <= 0) return null;
+			try {
+				const res = await getBackupEventProgress(eventId, nodeId);
+				details.error = '';
+				return res;
+			} catch (e: unknown) {
+				details.error = (e as { message?: string })?.message || 'Failed to load the event';
+				return null;
+			}
+		},
+		{ initialValue: null as BackupEventProgress | null }
+	);
+
+	watch(
+		() => activeRows,
+		(rows) => {
+			if (!rows || rows.length !== 1) return;
+			const eventId = Number(rows[0].id);
+			if (!Number.isFinite(eventId) || eventId <= 0) return;
+			details.eventId = eventId;
+			details.nodeId = selectedNodeId;
+			details.error = '';
+			details.open = true;
+		}
+	);
+
+	let closeTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	watch(
+		() => details.open,
+		(open) => {
+			if (open) {
+				if (closeTimeout) clearTimeout(closeTimeout);
+				closeTimeout = null;
+				return;
+			}
+			activeRows = null;
+			closeTimeout = setTimeout(() => {
+				details.eventId = 0;
+				details.nodeId = '';
+				details.error = '';
+				closeTimeout = null;
+			}, 200);
+		}
+	);
+
+	function eventActive(status: string | undefined): boolean {
+		return status === 'running' || status === 'queued';
+	}
+
+	useInterval(2000, {
+		callback: () => {
+			if (!storage.visible || !details.open || details.eventId <= 0) return;
+			if (eventActive(eventDetails.current?.event?.status)) eventDetails.refetch();
+		}
+	});
+
+	// A run that finishes while it's open shows its outcome in the table too.
+	let watchedStatus = '';
+	watch(
+		() => eventDetails.current?.event?.status,
+		(status) => {
+			if (details.open && eventActive(watchedStatus) && status && !eventActive(status)) {
+				reload = true;
+			}
+			watchedStatus = status || '';
+		}
+	);
+
+	watch(
+		() => reload,
+		(isReloading) => {
+			if (isReloading) activeRows = null;
+		}
+	);
+
+	let progressPercent = $derived.by((): number | null => {
+		const current = eventDetails.current;
+		if (!current) return null;
+		if (current.event?.status === 'success') return 100;
+		const percent = current.progressPercent;
+		if (percent !== null && percent !== undefined && Number.isFinite(percent)) {
+			return Math.max(0, Math.min(100, percent));
+		}
+		const { movedBytes: moved, totalBytes: total } = current;
+		if (
+			moved !== null &&
+			moved !== undefined &&
+			total !== null &&
+			total !== undefined &&
+			total > 0
+		) {
+			return Math.max(0, Math.min(100, (moved / total) * 100));
+		}
+		return null;
+	});
+
+	async function copyText(text: string, what: string) {
+		try {
+			await navigator.clipboard.writeText(text);
+			toast.success(`${what} copied to clipboard`, { duration: 2000, position: 'bottom-center' });
+		} catch (_err) {
+			toast.error(`Failed to copy ${what.toLowerCase()}`, {
+				duration: 2000,
+				position: 'bottom-center'
+			});
+		}
+	}
 </script>
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center justify-between border-b p-2">
-		<div class="flex items-center gap-2 flex-1">
+		<div class="flex flex-1 items-center gap-2">
 			<Search bind:query />
 
 			{#if nodeOptions.length > 0}
@@ -785,20 +499,11 @@
 				placeholder="Filter by job"
 				options={jobOptions}
 				bind:value={filterJobId}
-				onChange={() => (reload = true)}
+				onChange={handleJobSelection}
 				classes={{
 					trigger: '!h-6 text-sm'
 				}}
 			/>
-
-			{#if selectedRunningEventId > 0}
-				<Button onclick={openProgressModal} size="sm" variant="outline" class="h-6 shrink-0">
-					<div class="flex items-center">
-						<span class="icon-[mdi--chart-line] mr-1 h-4 w-4"></span>
-						<span>View Progress</span>
-					</div>
-				</Button>
-			{/if}
 		</div>
 
 		<Button
@@ -830,147 +535,152 @@
 	</div>
 </div>
 
-<Dialog.Root bind:open={progressModal.open}>
-	<Dialog.Content class="w-[min(640px,95vw)] p-5" showCloseButton={true}>
-		<Dialog.Header>
-			<Dialog.Title class="flex items-center gap-2">
-				<span class="icon-[mdi--chart-line] h-5 w-5"></span>
-				<span>
-					Event Progress
-					{#if progressEvent.current?.event}
-						#{progressEvent.current.event.id}
-					{:else if progressEventId > 0}
-						#{progressEventId}
-					{/if}
-				</span>
-			</Dialog.Title>
-		</Dialog.Header>
-
-		{#if progressModal.error}
+<Dialog.Root bind:open={details.open}>
+	<Dialog.Content class="w-[min(760px,95vw)] max-w-none! p-5" showCloseButton={true}>
+		{#if details.error}
+			<Dialog.Header>
+				<Dialog.Title>Event #{details.eventId}</Dialog.Title>
+			</Dialog.Header>
 			<div class="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">
-				{progressModal.error}
+				{details.error}
 			</div>
-		{:else if progressEvent.current?.event}
-			{@const event = progressEvent.current.event}
-			{@const endpoints = resolveEventEndpoints(event, jobsById, jails)}
-			{@const source = endpoints.source}
-			{@const target = endpoints.target}
-			{@const finalizing = progressEvent.current.phase === 'finalizing'}
+		{:else if eventDetails.current?.event}
+			{@const event = eventDetails.current.event}
+			{@const action = actionMeta(event.mode)}
+			{@const guest = eventGuest(event)}
+			{@const restorePoint = eventRestorePoint(event)}
+			{@const finalizing = eventDetails.current.phase === 'finalizing'}
 			{@const status = finalizing
 				? { icon: 'mdi:sync', label: 'Finalizing', className: 'text-blue-500' }
 				: eventStatusMeta(event.status)}
-			<div class="grid gap-4 py-2 text-sm">
-				<div class="overflow-hidden rounded-md border bg-background">
+			<Dialog.Header>
+				<Dialog.Title class="flex items-center gap-2">
+					<span class={iconClass(action.icon) + ' h-5 w-5'}></span>
+					<span>{action.label} #{event.id}</span>
+					<span class={`ml-2 inline-flex items-center gap-1 text-sm ${status.className}`}>
+						<span class={iconClass(status.icon) + ' h-4 w-4'}></span>
+						<span>{status.label}</span>
+					</span>
+				</Dialog.Title>
+			</Dialog.Header>
+
+			<div class="grid max-h-[70vh] gap-4 overflow-y-auto py-1 text-sm">
+				<div class="overflow-hidden rounded-md border">
 					<table class="w-full text-sm">
-						<tbody>
-							<tr class="border-b">
-								<td class="p-2 text-muted-foreground">Status</td>
-								<td class="p-2 text-right">
-									<span class={`inline-flex items-center gap-1 ${status.className}`}>
-										<span class={iconClass(status.icon) + ' h-4 w-4'}></span>
-										<span>{status.label}</span>
+						<tbody class="[&>tr:not(:last-child)]:border-b">
+							<tr>
+								<td class="w-40 p-2 text-muted-foreground">Guest / Dataset</td>
+								<td class="p-2">
+									<span class="inline-flex items-center gap-1.5">
+										<span class={iconClass(guest.icon) + ' h-4 w-4 shrink-0'}></span>
+										<span>{guest.label}</span>
 									</span>
 								</td>
 							</tr>
-							<tr class="border-b">
-								<td class="p-2 text-muted-foreground">Mode</td>
-								<td class="p-2 text-right">{event.mode || '-'}</td>
-							</tr>
-							<tr class="border-b">
-								<td class="p-2 text-muted-foreground">Source</td>
-								<td class="p-2 text-right" title={source.title}>{source.label || '-'}</td>
-							</tr>
-							<tr class="border-b">
+							<tr>
 								<td class="p-2 text-muted-foreground">Target</td>
-								<td class="p-2 text-right" title={target.title}>{target.label || '-'}</td>
+								<td class="p-2">{eventTargetName(event)}</td>
 							</tr>
-							<tr class="border-b">
+							<tr>
+								<td class="p-2 text-muted-foreground">Job</td>
+								<td class="p-2">{eventJobName(event)}</td>
+							</tr>
+							{#if restorePoint}
+								<tr>
+									<td class="p-2 text-muted-foreground">Restore point</td>
+									<td class="p-2">{restorePoint}</td>
+								</tr>
+							{/if}
+							<tr>
 								<td class="p-2 text-muted-foreground">Started</td>
-								<td class="p-2 text-right">{convertDbTime(event.startedAt)}</td>
+								<td class="p-2">{convertDbTime(event.startedAt)}</td>
 							</tr>
 							<tr>
 								<td class="p-2 text-muted-foreground">Completed</td>
-								<td class="p-2 text-right">
+								<td class="p-2">
 									{event.completedAt ? convertDbTime(event.completedAt) : '-'}
+									{#if event.completedAt}
+										<span class="text-muted-foreground">({formatDuration(event)})</span>
+									{/if}
 								</td>
+							</tr>
+							<tr>
+								<td class="p-2 text-muted-foreground">From</td>
+								<td class="break-all p-2 font-mono text-xs">{event.sourceDataset || '-'}</td>
+							</tr>
+							<tr>
+								<td class="p-2 text-muted-foreground">To</td>
+								<td class="break-all p-2 font-mono text-xs">{event.targetEndpoint || '-'}</td>
 							</tr>
 						</tbody>
 					</table>
 				</div>
 
-				<div class="rounded-md border bg-muted/20 p-3">
-					<div class="mb-2 flex items-center justify-between text-sm">
-						<p class="font-medium">Transfer</p>
+				{#if eventActive(event.status) || eventDetails.current.movedBytes}
+					<div class="rounded-md border p-3">
+						<div class="mb-2 flex items-center justify-between">
+							<span class="font-medium">Transfer</span>
+							<span class="text-muted-foreground">
+								{eventDetails.current.movedBytes
+									? formatBytesBinary(eventDetails.current.movedBytes)
+									: '-'}
+								{#if eventDetails.current.totalBytes}
+									of about {formatBytesBinary(eventDetails.current.totalBytes)}
+								{/if}
+								{#if progressPercent !== null}
+									· {Math.round(progressPercent)}%
+								{/if}
+							</span>
+						</div>
+						<Progress value={progressPercent ?? 0} max={100} class="h-2 w-full" />
+						{#if finalizing}
+							<p class="mt-2 text-xs text-muted-foreground">
+								Transfer complete. Verifying and committing the backup.
+							</p>
+						{/if}
 					</div>
+				{/if}
 
-					<div class="mb-3 overflow-hidden rounded-md border bg-background">
-						<table class="w-full text-sm">
-							<tbody>
-								<tr class="border-b">
-									<td class="p-2 text-muted-foreground">Transferred</td>
-									<td class="p-2 text-right">
-										{#if progressEvent.current.movedBytes !== null && progressEvent.current.movedBytes !== undefined}
-											{formatBytesBinary(progressEvent.current.movedBytes)}
-										{:else}
-											-
-										{/if}
-									</td>
-								</tr>
-								<tr class="border-b">
-									<td class="p-2 text-muted-foreground">Stream estimate</td>
-									<td class="p-2 text-right">
-										{#if progressEvent.current.totalBytes !== null && progressEvent.current.totalBytes !== undefined}
-											{formatBytesBinary(progressEvent.current.totalBytes)}
-										{:else}
-											-
-										{/if}
-									</td>
-								</tr>
-								<tr>
-									<td class="p-2 text-muted-foreground">Progress</td>
-									<td class="p-2 text-right">
-										<code class="rounded bg-muted px-1 py-0.5">{progressPercentLabel}</code>
-									</td>
-								</tr>
-							</tbody>
-						</table>
+				{#if event.error}
+					<div class="rounded-md border border-red-500/30 bg-red-500/10 p-3">
+						<div class="mb-2 flex items-center justify-between">
+							<span class="font-medium text-red-500">Error</span>
+							<Button
+								size="sm"
+								variant="outline"
+								class="h-6"
+								onclick={() => copyText(event.error || '', 'Error')}
+							>
+								Copy
+							</Button>
+						</div>
+						<pre class="m-0 whitespace-pre-wrap break-all text-xs text-red-500">{event.error}</pre>
 					</div>
+				{/if}
 
-					<Progress value={progressNumber} max={100} class="h-2 w-full" />
-					{#if finalizing}
-						<p class="mt-2 text-xs text-muted-foreground">
-							Transfer complete. Verifying and committing the backup.
-						</p>
-					{/if}
+				<div class="rounded-md border">
+					<div class="flex items-center justify-between border-b p-2">
+						<span class="font-medium">Log</span>
+						<Button
+							size="sm"
+							variant="outline"
+							class="h-6"
+							disabled={!event.output}
+							onclick={() => copyText(event.output || '', 'Log')}
+						>
+							Copy
+						</Button>
+					</div>
+					<pre
+						class="m-0 max-h-72 overflow-auto whitespace-pre-wrap break-all bg-muted/30 p-2 font-mono text-xs">{event.output ||
+							'No output recorded.'}</pre>
 				</div>
 			</div>
 		{:else}
-			<p class="py-4 text-sm text-muted-foreground">Loading progress...</p>
+			<Dialog.Header>
+				<Dialog.Title>Event #{details.eventId}</Dialog.Title>
+			</Dialog.Header>
+			<p class="py-4 text-sm text-muted-foreground">Loading...</p>
 		{/if}
-	</Dialog.Content>
-</Dialog.Root>
-
-<Dialog.Root bind:open={errorModal.open}>
-	<Dialog.Content class="p-5" showCloseButton={true}>
-		<Dialog.Header>
-			<Dialog.Title>
-				<SpanWithIcon
-					icon="icon-[mdi--alert-circle-outline]"
-					size="h-5 w-5"
-					title={`#${errorModal.id} Event - Error Details`}
-					gap="gap-2 mt-1"
-				/>
-			</Dialog.Title>
-		</Dialog.Header>
-
-		<div class="max-h-[60vh] overflow-auto rounded-md border bg-muted/20 p-3">
-			<pre class="m-0 whitespace-pre-wrap wrap-break-word text-sm">{errorModal.error || '-'}</pre>
-		</div>
-
-		<Dialog.Footer>
-			<Button onclick={copyErrorFromModal}>
-				<span>Copy</span>
-			</Button>
-		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

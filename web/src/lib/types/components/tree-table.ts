@@ -20,6 +20,7 @@ export interface Column {
 	minWidth?: number | string;
 	widthGrow?: number;
 	sorter?: string;
+	headerSort?: boolean;
 	headerFilter?: boolean | string;
 	headerFilterPlaceholder?: string;
 }
