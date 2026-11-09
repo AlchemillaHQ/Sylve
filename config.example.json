@@ -35,5 +35,9 @@
         "maxFileBytes": 68719476736,
         "maxConcurrentTransfers": 2
     },
+    "metrics": {
+        "enabled": false,
+        "token": ""
+    },
     "trustedProxies": []
 }

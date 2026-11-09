@@ -46,6 +46,7 @@ import (
 	vmHandlers "github.com/alchemillahq/sylve/internal/handlers/vm"
 	vncHandler "github.com/alchemillahq/sylve/internal/handlers/vnc"
 	zfsHandlers "github.com/alchemillahq/sylve/internal/handlers/zfs"
+	"github.com/alchemillahq/sylve/internal/metrics"
 	authServicePkg "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/certificates"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
@@ -127,6 +128,13 @@ func RegisterRoutes(r *gin.Engine,
 	migrationService *migration.Service,
 	telemetryDB *gorm.DB,
 ) {
+	sources := metrics.Sources{Jails: jailService.MetricsSnapshot, VMs: libvirtService.MetricsSnapshot, ZFS: zfsService.MetricsSnapshot}
+	if lifecycleService.Container != nil {
+		sources.Containers = lifecycleService.Container.MetricsSnapshot
+	}
+	// Reserve the path even when disabled so the UI fallback cannot return HTML.
+	r.Any("/metrics", gin.WrapH(metrics.NewHandler(config.GetMetricsConfig(), sources)))
+
 	api := r.Group("/api")
 	api.Use(middleware.ClusterMutationAdmission(clusterService))
 	api.Use(clusterHandlers.StampAppliedIndex(clusterService))

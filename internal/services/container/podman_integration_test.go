@@ -153,8 +153,8 @@ func TestIntegrationContainerLifecycleRealPodman(t *testing.T) {
 	if got := rules(detail.RuntimeID); racct && (!strings.Contains(got, "pcpu:deny=100") || !strings.Contains(got, "memoryuse:deny=268435456")) {
 		t.Fatal("limits not applied", got)
 	}
-	if cpu, memory, err := usage(ctx, detail.Container); racct && (err != nil || memory <= 0 || cpu < 0) {
-		t.Fatal("usage unavailable", cpu, memory, err)
+	if current, err := readUsage(ctx, detail.RuntimeID); racct && (err != nil || current.memory <= 0) {
+		t.Fatal("usage unavailable", current, err)
 	}
 
 	spec := containerServiceInterfaces.SpecOf(detail.Container)

@@ -7004,6 +7004,31 @@
                 }
             }
         },
+        "/container/updates/check": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Ask each image's registry for its tag's digest now, instead of at the next scheduled check",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Container"
+                ],
+                "summary": "Check for container image updates",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/container/{ocid}": {
             "get": {
                 "security": [
@@ -39417,6 +39442,10 @@
                 "title": {
                     "type": "string"
                 },
+                "updateDigest": {
+                    "description": "UpdateDigest is the newer digest the image's tag points at in its\nregistry, found by the update check; empty when it's current or unknown.",
+                    "type": "string"
+                },
                 "updatedAt": {
                     "type": "string"
                 },
@@ -39624,6 +39653,10 @@
                 "title": {
                     "type": "string"
                 },
+                "updateDigest": {
+                    "description": "UpdateDigest is the newer digest the image's tag points at in its\nregistry, found by the update check; empty when it's current or unknown.",
+                    "type": "string"
+                },
                 "updatedAt": {
                     "type": "string"
                 },
@@ -39729,6 +39762,9 @@
                 },
                 "title": {
                     "type": "string"
+                },
+                "update": {
+                    "type": "boolean"
                 }
             }
         },

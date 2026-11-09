@@ -23,6 +23,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/metrics"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	cpuid "github.com/klauspost/cpuid/v2"
@@ -246,8 +247,18 @@ func (s *Service) refreshLiveStates() ([]jailServiceInterfaces.State, error) {
 }
 
 func (s *Service) refreshLiveStatesLocked() ([]jailServiceInterfaces.State, error) {
+	var guests []metrics.Jail
+	success := false
+	defer func() {
+		if success {
+			s.metricsCache.Store(guests, true)
+		} else {
+			s.metricsCache.Fail()
+		}
+	}()
+
 	var jails []jailModels.Jail
-	if err := s.DB.Select("id, ct_id, resource_limits, cpu_set, cores").Find(&jails).Error; err != nil {
+	if err := s.DB.Select("id, ct_id, name, hostname, resource_limits, cpu_set, cores, memory, creation_pending").Find(&jails).Error; err != nil {
 		return nil, fmt.Errorf("failed to load jails: %w", err)
 	}
 
@@ -272,6 +283,7 @@ func (s *Service) refreshLiveStatesLocked() ([]jailServiceInterfaces.State, erro
 	cache := make(map[uint]jailServiceInterfaces.State, len(jails))
 
 	for _, jail := range jails {
+		allowedCores := jailCPUCapacity(jail)
 		state := jailServiceInterfaces.State{
 			CTID:   jail.CTID,
 			State:  "INACTIVE",
@@ -283,23 +295,6 @@ func (s *Service) refreshLiveStatesLocked() ([]jailServiceInterfaces.State, erro
 		if runtime, found := runtimeByName[ctidHash]; found && runtime.JID >= 0 {
 			usage, ok := stateByJID[runtime.JID]
 			if ok {
-				allowedCores := float64(0)
-				if jail.ResourceLimits != nil && *jail.ResourceLimits {
-					if len(jail.CPUSet) > 0 {
-						allowedCores = float64(len(jail.CPUSet))
-					} else if jail.Cores > 0 {
-						allowedCores = float64(jail.Cores)
-					}
-				}
-
-				if allowedCores == 0 {
-					allowedCores = float64(cpuid.CPU.LogicalCores)
-				}
-
-				if allowedCores <= 0 {
-					allowedCores = 1
-				}
-
 				normalized := usage.TotalCPU / allowedCores
 				if normalized > 100 {
 					normalized = 100
@@ -314,6 +309,15 @@ func (s *Service) refreshLiveStatesLocked() ([]jailServiceInterfaces.State, erro
 
 		states = append(states, state)
 		cache[state.CTID] = state
+		if !jail.CreationPending {
+			guests = append(guests, metrics.Jail{
+				CTID: jail.CTID, Name: jail.Name, Hostname: jail.Hostname,
+				Running: state.State == "ACTIVE", CPUUsageRatio: state.PCPU / 100,
+				CPUCores: allowedCores, MemoryRSS: state.Memory,
+				ResourceLimits: jail.ResourceLimits != nil && *jail.ResourceLimits,
+				MemoryLimit:    jail.Memory,
+			})
+		}
 	}
 
 	s.liveStateMutex.Lock()
@@ -325,7 +329,24 @@ func (s *Service) refreshLiveStatesLocked() ([]jailServiceInterfaces.State, erro
 		return states[i].CTID < states[j].CTID
 	})
 
+	success = true
 	return states, nil
+}
+
+func jailCPUCapacity(jail jailModels.Jail) float64 {
+	if jail.ResourceLimits != nil && *jail.ResourceLimits {
+		if len(jail.CPUSet) > 0 {
+			return float64(len(jail.CPUSet))
+		}
+		if jail.Cores > 0 {
+			return float64(jail.Cores)
+		}
+	}
+	return float64(max(1, cpuid.CPU.LogicalCores))
+}
+
+func (s *Service) MetricsSnapshot() metrics.Snapshot[metrics.Jail] {
+	return s.metricsCache.Snapshot()
 }
 
 func aggregateJailUsage(runtimeByName map[string]jailRuntime, usageByJID map[int]psUsage) map[int]psUsage {

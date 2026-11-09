@@ -58,6 +58,11 @@ type UploadsConfig struct {
 	MaxConcurrentTransfers int64 `json:"maxConcurrentTransfers"`
 }
 
+type MetricsConfig struct {
+	Enabled bool   `json:"enabled"`
+	Token   string `json:"token"`
+}
+
 type SylveConfig struct {
 	Environment    Environment     `json:"environment"`
 	ProxyToVite    bool            `json:"proxyToVite"`
@@ -76,6 +81,7 @@ type SylveConfig struct {
 	Jails          JailsConfig     `json:"jails"`
 	ZFS            ZFSConfig       `json:"zfs"`
 	Uploads        UploadsConfig   `json:"uploads"`
+	Metrics        MetricsConfig   `json:"metrics"`
 	TrustedProxies []string        `json:"trustedProxies"`
 }
 

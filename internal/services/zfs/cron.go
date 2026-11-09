@@ -12,9 +12,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/metrics"
 	"gorm.io/gorm"
 )
 
@@ -23,9 +25,19 @@ func (s *Service) StoreStats() {
 	defer cancel()
 
 	now := time.Now().UTC()
-	arcStat, arcErr := collectARCStats(now)
+	readARC := s.readARCStats
+	if readARC == nil {
+		readARC = collectARCStats
+	}
+	arcStat, arcErr := readARC(now)
 	if arcErr != nil {
 		logger.L.Debug().Err(arcErr).Msg("zfs_cron: ARC telemetry unavailable")
+		s.arcMetricsCache.Fail()
+	} else {
+		s.arcMetricsCache.Store([]metrics.ZFSARC{{
+			Size: arcStat.Size, TargetSize: arcStat.TargetSize, MinSize: arcStat.MinSize, MaxSize: arcStat.MaxSize,
+			Hits: arcStat.Hits, Misses: arcStat.Misses,
+		}}, true)
 	}
 
 	s.poolTelemetryMutex.Lock()
@@ -40,12 +52,14 @@ func (s *Service) StoreStats() {
 	}
 
 	stats := make([]infoModels.ZPoolHistorical, 0, len(scope.pools))
+	poolMetrics := make([]metrics.ZFSPool, 0, len(scope.pools))
 	for _, pool := range scope.pools {
 		if pool == nil {
 			continue
 		}
 
 		ioStat := s.getPoolIOStat(pool.Name, now)
+		poolMetrics = append(poolMetrics, poolMetricsSample(pool, ioStat))
 		stats = append(stats, infoModels.ZPoolHistorical{
 			Name:                   pool.Name,
 			GUID:                   pool.PoolGUID,
@@ -72,6 +86,19 @@ func (s *Service) StoreStats() {
 			IntervalSeconds:        poolIOSampleIntervalSeconds,
 			CreatedAt:              now,
 		})
+	}
+	if err != nil {
+		s.poolMetricsCache.Fail()
+	} else {
+		s.poolMetricsCache.Store(poolMetrics, true)
+	}
+
+	if config.GetMetricsConfig().Enabled {
+		if err != nil {
+			s.datasetMetricsCache.Fail()
+		} else if time.Since(s.datasetMetricsCache.CollectedAt()) >= datasetMetricsInterval {
+			s.collectDatasetMetrics(ctx, scope)
+		}
 	}
 
 	if len(stats) == 0 && arcErr != nil {

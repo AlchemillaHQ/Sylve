@@ -14,11 +14,14 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/alchemillahq/gzfs"
+	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
+	"github.com/alchemillahq/sylve/internal/metrics"
 
 	"gorm.io/gorm"
 )
@@ -43,6 +46,10 @@ type Service struct {
 	StorageTopologyGuard      func(context.Context, ...string) (func(), error)
 	ReleasePool               func(pool string)
 	listHostPools             func(context.Context) ([]*gzfs.ZPool, error)
+	readARCStats              func(time.Time) (infoModels.ZFSARCHistorical, error)
+	poolMetricsCache          metrics.Cache[metrics.ZFSPool]
+	datasetMetricsCache       metrics.Cache[metrics.ZFSDataset]
+	arcMetricsCache           metrics.Cache[metrics.ZFSARC]
 	scrubDriver               poolScrubBackend
 	scrubJobsReady            atomic.Bool
 	scrubJobEnqueue           func(context.Context, poolScrubSchedulerJob) error

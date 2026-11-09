@@ -36,6 +36,7 @@ import (
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/metrics"
 	notifier "github.com/alchemillahq/sylve/internal/notifications"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/storage/mount"
@@ -66,6 +67,7 @@ type Service struct {
 	liveStateRefreshMutex sync.Mutex
 	liveStateByCTID       map[uint]jailServiceInterfaces.State
 	liveStateUpdatedAt    time.Time
+	metricsCache          metrics.Cache[metrics.Jail]
 	hashCacheMutex        sync.RWMutex
 	ctidHashByCTID        map[uint]string
 

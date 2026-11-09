@@ -1,0 +1,221 @@
+---
+title: Prometheus Metrics
+description: Scrape Sylve jail, VM, container, and ZFS metrics with Prometheus or VictoriaMetrics and visualize them in Grafana.
+---
+
+Sylve exposes local jail, VM, container, and ZFS measurements at `GET /metrics` on its management listener. Prometheus or VictoriaMetrics collects and stores these measurements; Grafana queries that store through its Prometheus data source.
+
+## Enable the endpoint
+
+To require authentication, generate a dedicated scrape token:
+
+```sh
+openssl rand -hex 32
+```
+
+Add a `metrics` section to your existing `config.json`, replacing the placeholder with the generated token, then restart Sylve:
+
+```json
+"metrics": {
+    "enabled": true,
+    "token": "<a-random-scrape-token>"
+}
+```
+
+The endpoint defaults to disabled and returns HTTP 404. Set `token` to an empty string (or omit it) to allow unauthenticated scrapes:
+
+```json
+"metrics": {
+    "enabled": true,
+    "token": ""
+}
+```
+
+When a nonempty token is configured, requests must send `Authorization: Bearer <token>`. Missing or incorrect credentials receive HTTP 401. Tokens must contain no whitespace. The scrape token is separate from login sessions and cluster credentials and only authorizes metrics access.
+
+Use the node's HTTPS management address when scraping. Token changes take effect after restarting Sylve.
+
+## Configure a scraper
+
+For token-authenticated scrapes, save the token in a file readable by the scraper, then add this job to its Prometheus-compatible scrape configuration:
+
+```yaml
+scrape_configs:
+  - job_name: sylve
+    scrape_interval: 15s
+    scheme: https
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /config/sylve-metrics.token
+    # For a private CA, configure tls_config.ca_file with the trusted CA PEM.
+    static_configs:
+      - targets: ['sylve.example.com:8181']
+```
+
+If Sylve's metrics token is empty, omit the `authorization` block. Scrape each Sylve node directly. Each endpoint reports its local node, and the scraper adds `job` and `instance` labels to distinguish nodes.
+
+For the **Daemonless VictoriaMetrics** catalog app, place the scrape configuration at `/config/prometheus.yml` inside the container. Configure Grafana's **Prometheus** data source with the VictoriaMetrics address, for example `http://victoriametrics.example.com:8428`. With Prometheus, use its server address instead.
+
+## Grafana dashboard
+
+Sylve provides a ready-made [Grafana dashboard](/grafana/sylve-node.json) for Grafana 10 or later. In Grafana, open **Dashboards**, choose **New** and then **Import**, and upload `sylve-node.json`. After importing, pick your Prometheus or VictoriaMetrics data source from the dashboard's **Data source** selector; the **Node** and **Pool** selectors narrow the view to specific nodes and pools.
+
+| Section | Contents |
+| --- | --- |
+| Overview | Collector health, running and total jails, VMs and containers, unhealthy pools, ARC hit ratio and pending image updates |
+| ZFS pools | Pool state table, capacity, IOPS, throughput and latency |
+| Jails, Virtual machines, Containers | CPU and memory of each running guest |
+| ARC | Size against target and maximum, and hit ratio |
+| Guest inventory | Tables of every jail, VM and container with state, CPU, memory and limits |
+| Datasets | Largest datasets, quota usage and a table of every filesystem and zvol |
+
+**Guest inventory** and **Datasets** are collapsed by default, so the dashboard stays fast on nodes with many guests or datasets; Grafana only queries them once expanded. Pool, ARC and dataset legends include the scrape `instance` label, because several nodes commonly share pool names such as `zroot`.
+
+## Collection and freshness
+
+Scrapes read thread-safe in-memory snapshots. Collection happens in the background, so a scrape performs no host commands or database writes.
+
+| Collector | Source and cadence |
+| --- | --- |
+| `jails` | Existing jail monitoring, every 5 seconds |
+| `vms` | Existing VM monitoring, roughly every 16 seconds |
+| `containers` | RACCT usage of each container's jail, every 15 seconds while metrics are enabled |
+| `zfs_pools` | Managed-pool inventory and properties, every 10 seconds |
+| `zfs_datasets` | Recursive filesystem and zvol listings on managed pools, every 30 to 40 seconds while metrics are enabled; a failed listing is retried on the next 10-second pass |
+| `zfs_arc` | Host-wide ARC sysctls, every 10 seconds |
+
+`sylve_collector_success{collector="..."}` is 1 when the latest collection succeeded and is fresh. It is 0 before monitoring starts, after a collection failure, when the snapshot expires, or while the corresponding service is disabled. `sylve_collector_last_success_timestamp_seconds` gives the Unix timestamp of the last fully successful collection, or 0 before the first success. For `vms`, a failure means the database or libvirt connection was unavailable; a single VM that could not be measured is reported by `sylve_vm_collection_success` instead.
+
+Measurements are omitted once they are more than 60 seconds old. When a collection fails outright, the previous measurements remain available with a collection-success value of 0 until they reach that age, so a transient error does not leave gaps. A partial failure, such as one pool's dataset listing failing, exposes the successfully collected results alongside a collection-success value of 0. Deleted resources disappear after the next successful collection. Collection health is independent of HTTP scrape success: `up` can be 1 while a Sylve collector reports 0.
+
+Pool I/O has its own freshness check: samples expire after 30 seconds based on the original `zpool iostat` sample time. `sylve_zfs_pool_io_collection_success` reports whether a recent sample is available. Unavailable I/O and optional ZFS properties are omitted rather than reported as zero.
+
+## Jail metrics
+
+Jail measurements use the `ctid` label. Names and hostnames appear in the information metric.
+
+| Metric | Meaning |
+| --- | --- |
+| `sylve_jail_info` | CTID, name and hostname |
+| `sylve_jail_running` | Running = 1, stopped = 0 |
+| `sylve_jail_cpu_usage_ratio` | CPU utilization normalized to allowed cores, capped at 1 |
+| `sylve_jail_cpu_cores` | Core count used for normalization |
+| `sylve_jail_memory_rss_bytes` | Summed process RSS, including descendant jails; shared pages can be counted repeatedly |
+| `sylve_jail_resource_limits_enabled` | Whether resource limits are configured |
+| `sylve_jail_memory_limit_bytes` | Configured limit; omitted when unlimited |
+
+Stopped jails remain in the inventory with zero CPU and RSS measurements.
+
+## VM metrics
+
+VM measurements use the `rid` label. Names appear in the information metric.
+
+| Metric | Meaning |
+| --- | --- |
+| `sylve_vm_info` | RID and name |
+| `sylve_vm_running`, `sylve_vm_state` | Running flag and one-hot libvirt state |
+| `sylve_vm_cpu_seconds_total` | Cumulative CPU seconds; resets on guest restart |
+| `sylve_vm_memory_rss_bytes` | Host bhyve process RSS, rather than guest application memory usage |
+| `sylve_vm_memory_configured_bytes`, `sylve_vm_vcpus` | Configured memory and vCPU count |
+| `sylve_vm_collection_success` | Whether the latest measurements for this VM were collected successfully |
+
+Stopped VMs remain in the inventory. CPU and RSS measurements are omitted while stopped or unavailable. VM CPU time is a counter; use `rate()` to calculate utilization.
+
+## Container metrics
+
+Container measurements use the `ocid` label. Names, images, pools and stacks appear in the information metric. Usage comes from RACCT, so `sylve_collector_success{collector="containers"}` reports 0 on hosts where RACCT is disabled.
+
+| Metric | Meaning |
+| --- | --- |
+| `sylve_container_info` | OCID, name, image, pool and stack |
+| `sylve_container_running` | Running = 1, stopped = 0 |
+| `sylve_container_cpu_seconds_total` | Cumulative CPU time of the container's jail in whole seconds; can reset when the container restarts |
+| `sylve_container_cpu_cores` | Configured core limit, or host logical cores when unlimited |
+| `sylve_container_memory_rss_bytes` | Resident memory of the container's jail |
+| `sylve_container_memory_limit_bytes` | Configured limit; omitted when unlimited |
+| `sylve_container_image_update_available` | Whether the registry has a newer digest for the container's image tag |
+
+Stopped containers remain in the inventory. CPU and memory measurements are omitted while stopped. Because RACCT reports CPU time in whole seconds, use `rate()` over a few minutes for a smooth utilization graph.
+
+## ZFS metrics
+
+### Pools
+
+Pool measurements use the `pool` label and cover imported pools selected for management in Sylve.
+
+| Metric | Meaning |
+| --- | --- |
+| `sylve_zfs_pool_info` | Pool name and GUID |
+| `sylve_zfs_pool_health` | One-hot health with a `state` label; the current state is 1 and other states are 0 |
+| `sylve_zfs_pool_size_bytes`, `sylve_zfs_pool_allocated_bytes`, `sylve_zfs_pool_free_bytes` | Total, allocated and free pool space |
+| `sylve_zfs_pool_fragmentation_ratio` | Fragmentation from 0 to 1 |
+| `sylve_zfs_pool_dedup_ratio` | Deduplication ratio |
+| `sylve_zfs_pool_io_collection_success` | Whether a recent pool I/O sample is available |
+| `sylve_zfs_pool_read_operations_per_second`, `sylve_zfs_pool_write_operations_per_second` | Logical read and write IOPS |
+| `sylve_zfs_pool_read_bytes_per_second`, `sylve_zfs_pool_write_bytes_per_second` | Logical read and write throughput |
+| `sylve_zfs_pool_read_latency_seconds`, `sylve_zfs_pool_write_latency_seconds` | Average total wait time, including queueing and device service, where supported |
+
+Health states are `ONLINE`, `DEGRADED`, `FAULTED`, `OFFLINE`, `REMOVED`, `UNAVAIL`, `CORRUPT_DATA`, and `UNKNOWN`. I/O values describe the latest 10-second `zpool iostat` interval. These are **gauges containing rates**, so use them directly rather than applying `rate()`.
+
+### Filesystems and zvols
+
+Dataset measurements use `pool` and `dataset` labels. They cover filesystems and zvols on managed pools, including pool-root filesystems. Container image layer datasets under `<pool>/sylve/containers/images` are excluded; the usage of the `images` dataset itself includes them.
+
+| Metric | Meaning |
+| --- | --- |
+| `sylve_zfs_dataset_info` | Pool, dataset path, GUID and type (`filesystem` or `volume`) |
+| `sylve_zfs_dataset_used_bytes` | Space consumed by a dataset and its descendants |
+| `sylve_zfs_dataset_available_bytes` | Space available to the dataset |
+| `sylve_zfs_dataset_referenced_bytes` | Data accessible by the dataset |
+| `sylve_zfs_dataset_logical_used_bytes` | Logical space consumed, ignoring compression and copies |
+| `sylve_zfs_dataset_quota_bytes` | Filesystem quota; omitted when unlimited or unavailable |
+| `sylve_zfs_dataset_volume_size_bytes` | Logical zvol size |
+| `sylve_zfs_dataset_compression_ratio` | Compression ratio |
+
+Individual snapshots are excluded. Dataset usage can include descendants and snapshots, so summing parent and child dataset usage double-counts space. Use pool capacity metrics for total pool utilization.
+
+### ARC
+
+ARC measurements are host-wide and include activity from every pool on the node.
+
+| Metric | Meaning |
+| --- | --- |
+| `sylve_zfs_arc_size_bytes` | Current ARC size |
+| `sylve_zfs_arc_target_size_bytes` | Adaptive target size |
+| `sylve_zfs_arc_min_size_bytes`, `sylve_zfs_arc_max_size_bytes` | Minimum and maximum target sizes |
+| `sylve_zfs_arc_hits_total`, `sylve_zfs_arc_misses_total` | Cache-hit and cache-miss counters since ZFS initialization |
+
+## Example Grafana queries
+
+VM CPU utilization as a percentage of configured vCPUs:
+
+```promql
+100 * rate(sylve_vm_cpu_seconds_total[5m]) / sylve_vm_vcpus
+```
+
+Container CPU utilization as a percentage of available cores:
+
+```promql
+100 * rate(sylve_container_cpu_seconds_total[5m]) / sylve_container_cpu_cores
+```
+
+Pool capacity used, as a percentage:
+
+```promql
+100 * sylve_zfs_pool_allocated_bytes / sylve_zfs_pool_size_bytes
+```
+
+ARC cache-hit ratio:
+
+```promql
+rate(sylve_zfs_arc_hits_total[5m])
+/
+(rate(sylve_zfs_arc_hits_total[5m]) + rate(sylve_zfs_arc_misses_total[5m]))
+```
+
+Collectors requiring attention:
+
+```promql
+sylve_collector_success == 0
+```

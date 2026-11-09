@@ -91,7 +91,7 @@ func twoPassInfo(vcpus uint16, maxMemKB uint64) func(libvirt.Domain) (vmUsageDom
 		if calls[domain.Name] > 1 {
 			cpuTime += 1_000_000_000
 		}
-		return vmUsageDomainInfo{vcpus: vcpus, cpuTime: cpuTime, maxMemKB: maxMemKB}, nil
+		return vmUsageDomainInfo{state: libvirt.DomainRunning, vcpus: vcpus, cpuTime: cpuTime, maxMemKB: maxMemKB}, nil
 	}
 }
 
@@ -223,6 +223,9 @@ func TestStoreVMUsageDropsSampleForDeletedGuest(t *testing.T) {
 	if count != 0 {
 		t.Fatalf("stats rows = %d, want none for a guest deleted mid-pass", count)
 	}
+	if snapshot := service.MetricsSnapshot(); len(snapshot.Items) != 0 {
+		t.Fatalf("deleted guest was exported: %+v", snapshot)
+	}
 }
 
 func TestStoreVMUsageDropsSampleForReusedRID(t *testing.T) {
@@ -257,6 +260,88 @@ func TestStoreVMUsageDropsSampleForReusedRID(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("stats rows = %d, want none for a reused RID", count)
+	}
+	if snapshot := service.MetricsSnapshot(); len(snapshot.Items) != 0 {
+		t.Fatalf("previous guest was exported for reused RID: %+v", snapshot)
+	}
+}
+
+func TestVMMetricsKeepIdleCPUAndPartialMeasurements(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		state       libvirt.DomainState
+		memoryErr   error
+		lookupErr   error
+		wantState   string
+		wantSuccess bool
+		wantCPU     bool
+		wantMemory  bool
+	}{
+		{name: "idle running", state: libvirt.DomainRunning, wantState: "running", wantSuccess: true, wantCPU: true, wantMemory: true},
+		{name: "RSS unavailable", state: libvirt.DomainRunning, memoryErr: errors.New("unavailable"), wantState: "running", wantCPU: true},
+		{name: "stopped", state: libvirt.DomainShutoff, wantState: "shutoff", wantSuccess: true},
+		{name: "lookup failed", lookupErr: errors.New("unavailable")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service, vms := newVMUsageTestService(t, 101)
+			if err := service.DB.Model(&vms[0]).Updates(map[string]any{"ram": 4 << 30, "cpu_sockets": 1, "cpu_cores": 2, "cpu_threads": 2}).Error; err != nil {
+				t.Fatal(err)
+			}
+			waits, memoryReads := 0, 0
+			stubVMUsageSleep(t, &waits)
+			service.vmUsageSource = fakeVMUsageSource{
+				lookupErr: tc.lookupErr,
+				info: func(libvirt.Domain) (vmUsageDomainInfo, error) {
+					return vmUsageDomainInfo{state: tc.state, cpuTime: 12500000000, vcpus: 4, maxMemKB: 4 << 20}, nil
+				},
+				memory: func(libvirt.Domain) (uint64, uint64, error) {
+					memoryReads++
+					return 1 << 20, 4 << 20, tc.memoryErr
+				},
+			}
+			if err := service.StoreVMUsage(); err != nil {
+				t.Fatal(err)
+			}
+			snapshot := service.MetricsSnapshot()
+			if len(snapshot.Items) != 1 || !snapshot.Success {
+				t.Fatalf("unexpected snapshot: %+v", snapshot)
+			}
+			guest := snapshot.Items[0]
+			if guest.Name != "vm-101" || guest.RID != 101 || guest.MemoryConfigured != 4<<30 || guest.VCPUs != 4 || guest.State != tc.wantState || guest.Success != tc.wantSuccess || guest.CPUSeconds.Available != tc.wantCPU || guest.MemoryRSS.Available != tc.wantMemory {
+				t.Fatalf("unexpected guest measurements: %+v", guest)
+			}
+			if tc.wantCPU && guest.CPUSeconds.Value != 12.5 {
+				t.Fatalf("CPU seconds = %v, want 12.5 despite no CPU delta", guest.CPUSeconds.Value)
+			}
+			if tc.wantMemory && guest.MemoryRSS.Value != 1<<30 {
+				t.Fatalf("RSS bytes = %v, want 1 GiB", guest.MemoryRSS.Value)
+			}
+			if tc.state == libvirt.DomainShutoff && memoryReads != 0 {
+				t.Fatal("stopped VM queried memory stats")
+			}
+		})
+	}
+}
+
+func TestVMMetricsConnectionFailureKeepsLastGoodMeasurements(t *testing.T) {
+	service, _ := newVMUsageTestService(t, 101)
+	waits := 0
+	stubVMUsageSleep(t, &waits)
+	service.vmUsageSource = fakeVMUsageSource{
+		info:   twoPassInfo(2, 4<<20),
+		memory: func(libvirt.Domain) (uint64, uint64, error) { return 1 << 20, 4 << 20, nil },
+	}
+	if err := service.StoreVMUsage(); err != nil {
+		t.Fatal(err)
+	}
+	previous := service.MetricsSnapshot()
+	service.vmUsageSource = fakeVMUsageSource{ensureErr: errors.New("disconnected")}
+	if err := service.StoreVMUsage(); err == nil {
+		t.Fatal("expected connection failure")
+	}
+	snapshot := service.MetricsSnapshot()
+	if snapshot.Success || len(snapshot.Items) != 1 || snapshot.CollectedAt != previous.CollectedAt || snapshot.LastSuccessAt != previous.LastSuccessAt {
+		t.Fatalf("connection failure did not keep the last good metrics: %+v", snapshot)
 	}
 }
 

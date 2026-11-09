@@ -290,6 +290,7 @@ func TestRefreshLiveStatesFailureDoesNotInitializeOrEraseCache(t *testing.T) {
 	if _, err := service.GetStates(); err != nil {
 		t.Fatal(err)
 	}
+	previous := service.MetricsSnapshot()
 	jailStatsReadPSUsageByJID = func(*Service) (map[int]psUsage, error) { return nil, readErr }
 	if _, err := service.refreshLiveStates(); !errors.Is(err, readErr) {
 		t.Fatalf("refresh error = %v, want %v", err, readErr)
@@ -297,5 +298,61 @@ func TestRefreshLiveStatesFailureDoesNotInitializeOrEraseCache(t *testing.T) {
 	states, err := service.GetStates()
 	if err != nil || len(states) != 1 || states[0].State != "ACTIVE" {
 		t.Fatalf("failed refresh erased the cached state: %v, err=%v", states, err)
+	}
+	metrics := service.MetricsSnapshot()
+	if metrics.Success || len(metrics.Items) != 1 || metrics.CollectedAt != previous.CollectedAt || metrics.LastSuccessAt != previous.LastSuccessAt {
+		t.Fatalf("failed refresh did not keep the last good metrics: %+v", metrics)
+	}
+}
+
+func TestJailMetricsIncludeManagedStoppedGuestsAndDropDeletedGuests(t *testing.T) {
+	saveJailStatsReaders(t)
+	database := testutil.NewSQLiteTestDB(t, &jailModels.Jail{})
+	limited := true
+	jails := []jailModels.Jail{
+		{CTID: 101, Name: "running", Hostname: "web.local", ResourceLimits: &limited, CPUSet: []int{0, 1}, Memory: 1 << 30},
+		{CTID: 102, Name: "stopped"},
+		{CTID: 103, Name: "pending", CreationPending: true},
+	}
+	if err := database.Create(&jails).Error; err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{DB: database, ctidHashByCTID: map[uint]string{101: "managed", 102: "stopped", 103: "pending"}}
+	jailStatsReadRuntimes = func(*Service) (map[string]jailRuntime, error) {
+		return map[string]jailRuntime{"managed": {JID: 7}, "managed.child": {JID: 8, Parent: 7}, "unmanaged": {JID: 9}}, nil
+	}
+	jailStatsReadPSUsageByJID = func(*Service) (map[int]psUsage, error) {
+		return map[int]psUsage{7: {TotalCPU: 25, TotalRSS: 512}, 8: {TotalCPU: 25, TotalRSS: 512}, 9: {TotalCPU: 100, TotalRSS: 9999}}, nil
+	}
+	if _, err := service.refreshLiveStates(); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := service.MetricsSnapshot()
+	if !snapshot.Success || snapshot.LastSuccessAt.IsZero() || len(snapshot.Items) != 2 {
+		t.Fatalf("unexpected snapshot: %+v", snapshot)
+	}
+	for _, guest := range snapshot.Items {
+		switch guest.CTID {
+		case 101:
+			if guest.Name != "running" || guest.Hostname != "web.local" || !guest.Running || guest.CPUUsageRatio != .25 || guest.CPUCores != 2 || guest.MemoryRSS != 1<<20 || guest.MemoryLimit != 1<<30 || !guest.ResourceLimits {
+				t.Fatalf("running guest metrics: %+v", guest)
+			}
+		case 102:
+			if guest.Running || guest.CPUUsageRatio != 0 || guest.MemoryRSS != 0 {
+				t.Fatalf("stopped guest metrics: %+v", guest)
+			}
+		default:
+			t.Fatalf("unexpected guest: %+v", guest)
+		}
+	}
+	if err := database.Delete(&jails[0]).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.refreshLiveStates(); err != nil {
+		t.Fatal(err)
+	}
+	snapshot = service.MetricsSnapshot()
+	if len(snapshot.Items) != 1 || snapshot.Items[0].CTID != 102 {
+		t.Fatalf("deleted guest was retained: %+v", snapshot)
 	}
 }

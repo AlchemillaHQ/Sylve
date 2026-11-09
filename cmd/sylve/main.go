@@ -452,7 +452,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	r := gin.Default()
 	r.Use(gzip.Gzip(
 		gzip.BestSpeed,
-		gzip.WithExcludedPaths([]string{"/api/utilities/downloads", "/api/nodes/"}),
+		gzip.WithExcludedPaths([]string{"/api/utilities/downloads", "/api/nodes/", "/metrics"}),
 	))
 
 	handlers.RegisterRoutes(r,

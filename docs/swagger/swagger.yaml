@@ -5739,6 +5739,11 @@ definitions:
         type: integer
       title:
         type: string
+      updateDigest:
+        description: |-
+          UpdateDigest is the newer digest the image's tag points at in its
+          registry, found by the update check; empty when it's current or unknown.
+        type: string
       updatedAt:
         type: string
       user:
@@ -5876,6 +5881,11 @@ definitions:
         type: integer
       title:
         type: string
+      updateDigest:
+        description: |-
+          UpdateDigest is the newer digest the image's tag points at in its
+          registry, found by the update check; empty when it's current or unknown.
+        type: string
       updatedAt:
         type: string
       user:
@@ -5946,6 +5956,8 @@ definitions:
         type: string
       title:
         type: string
+      update:
+        type: boolean
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_container.Spec:
     properties:
@@ -17126,6 +17138,22 @@ paths:
       security:
       - BearerAuth: []
       summary: Rename a container stack
+      tags:
+      - Container
+  /container/updates/check:
+    post:
+      description: Ask each image's registry for its tag's digest now, instead of
+        at the next scheduled check
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Check for container image updates
       tags:
       - Container
   /directory-services/active-directory:

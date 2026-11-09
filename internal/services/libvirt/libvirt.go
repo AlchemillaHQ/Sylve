@@ -28,6 +28,7 @@ import (
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/metrics"
 	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
@@ -55,6 +56,7 @@ type Service struct {
 	vmTemplateTargetCreateMu sync.Mutex
 
 	vmUsageSource        vmUsageDomainSource
+	metricsCache         metrics.Cache[metrics.VM]
 	vmUsageRetentionMu   sync.Mutex
 	lastVMUsageRetention time.Time
 

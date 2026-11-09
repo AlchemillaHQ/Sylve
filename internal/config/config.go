@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"unicode"
 
 	"github.com/alchemillahq/sylve/internal"
 	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
@@ -72,6 +73,9 @@ func ReadConfig(path string) (*internal.SylveConfig, error) {
 	}
 	if err := json.NewDecoder(file).Decode(cfg); err != nil {
 		return nil, fmt.Errorf("decode config: %w", err)
+	}
+	if cfg.Metrics.Enabled && strings.IndexFunc(cfg.Metrics.Token, unicode.IsSpace) >= 0 {
+		return nil, fmt.Errorf("metrics.token must contain no whitespace when metrics are enabled")
 	}
 	return cfg, nil
 }
@@ -140,6 +144,13 @@ func GetUploadsConfig() internal.UploadsConfig {
 	}
 
 	return uploads
+}
+
+func GetMetricsConfig() internal.MetricsConfig {
+	if ParsedConfig == nil {
+		return internal.MetricsConfig{}
+	}
+	return ParsedConfig.Metrics
 }
 
 func GetDataPath() (string, error) {

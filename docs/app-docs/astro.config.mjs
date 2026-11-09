@@ -148,6 +148,7 @@ export default defineConfig({
                                 'guides/node/notes',
                                 'guides/node/terminal',
                                 'guides/node/first-boot-bootstrap',
+                                'guides/node/metrics',
                                 {
                                     label: 'Network',
                                     collapsed: true,

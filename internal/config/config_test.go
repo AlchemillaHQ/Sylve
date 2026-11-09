@@ -71,6 +71,29 @@ func TestReadConfigReturnsDecodeErrors(t *testing.T) {
 	}
 }
 
+func TestReadConfigMetricsAuthentication(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		body    string
+		invalid bool
+	}{
+		{name: "empty token", body: `{"metrics":{"enabled":true,"token":""}}`},
+		{name: "whitespace", body: `{"metrics":{"enabled":true,"token":"bad token"}}`, invalid: true},
+		{name: "configured", body: `{"metrics":{"enabled":true,"token":"scrape-token"}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.json")
+			if err := os.WriteFile(path, []byte(tc.body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := ReadConfig(path)
+			if (err != nil) != tc.invalid {
+				t.Fatalf("invalid=%t, err=%v", tc.invalid, err)
+			}
+		})
+	}
+}
+
 func TestReadConfigDefaultsPAMDisabled(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	if err := os.WriteFile(configPath, []byte(`{}`), 0o600); err != nil {

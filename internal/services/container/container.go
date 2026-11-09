@@ -30,6 +30,7 @@ import (
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	containerServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/container"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/metrics"
 	"gorm.io/gorm"
 )
 
@@ -56,6 +57,7 @@ type Service struct {
 	stateMu          sync.Mutex
 	states           map[string]containerServiceInterfaces.State
 	monitorOnce      sync.Once
+	metricsCache     metrics.Cache[metrics.Container]
 }
 
 func NewContainerService(db *gorm.DB, gzfs *gzfs.Client) (*Service, error) {
@@ -362,7 +364,9 @@ func (s *Service) Get(ctx context.Context, ocid uint) (containerServiceInterface
 		}
 	}
 	if detail.Runtime != nil && detail.Runtime.State == "running" {
-		detail.CPUUsage, detail.MemoryUsage, _ = usage(ctx, record)
+		if current, err := readUsage(ctx, record.RuntimeID); err == nil && current.memory > 0 {
+			detail.CPUUsage, detail.MemoryUsage, _ = usagePercent(record, current)
+		}
 	}
 	return detail, nil
 }
