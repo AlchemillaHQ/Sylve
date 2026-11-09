@@ -22,22 +22,44 @@ import (
 )
 
 type jailFileSnapshot struct {
-	path    string
-	data    []byte
-	mode    os.FileMode
-	existed bool
+	root     string
+	path     string
+	data     []byte
+	link     string
+	mode     os.FileMode
+	existed  bool
+	metadata bool
 }
 
-func captureJailFile(path string) (jailFileSnapshot, error) {
+func captureJailFile(mountPoint, path string) (jailFileSnapshot, error) {
 	snapshot := jailFileSnapshot{path: path}
-	info, err := os.Stat(path)
+	stat := os.Stat
+	read := os.ReadFile
+	if rel, err := filepath.Rel(mountPoint, path); err == nil && filepath.IsLocal(rel) {
+		snapshot.root = mountPoint
+		snapshot.metadata = rel == filepath.Join(".sylve", "jail.json")
+		stat = func(path string) (os.FileInfo, error) { return utils.LstatUnder(mountPoint, path) }
+		read = func(path string) ([]byte, error) { return utils.ReadFileUnder(mountPoint, path) }
+	}
+	info, err := stat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return snapshot, nil
 	}
 	if err != nil {
 		return snapshot, fmt.Errorf("failed_to_stat_jail_file: %w", err)
 	}
-	data, err := os.ReadFile(path)
+	// A guest's own symlink (Linux jails often link etc/resolv.conf into /run) is kept as a link,
+	// never followed from the host.
+	if info.Mode()&os.ModeSymlink != 0 {
+		link, err := utils.ReadlinkUnder(mountPoint, path)
+		if err != nil {
+			return snapshot, fmt.Errorf("failed_to_read_jail_file_link: %w", err)
+		}
+		snapshot.link = link
+		snapshot.existed = true
+		return snapshot, nil
+	}
+	data, err := read(path)
 	if err != nil {
 		return snapshot, fmt.Errorf("failed_to_read_jail_file: %w", err)
 	}
@@ -47,7 +69,7 @@ func captureJailFile(path string) (jailFileSnapshot, error) {
 	return snapshot, nil
 }
 
-func captureJailFiles(paths []string) ([]jailFileSnapshot, error) {
+func captureJailFiles(mountPoint string, paths []string) ([]jailFileSnapshot, error) {
 	seen := make(map[string]struct{}, len(paths))
 	snapshots := make([]jailFileSnapshot, 0, len(paths))
 	for _, path := range paths {
@@ -59,7 +81,7 @@ func captureJailFiles(paths []string) ([]jailFileSnapshot, error) {
 		}
 		seen[path] = struct{}{}
 
-		snapshot, err := captureJailFile(path)
+		snapshot, err := captureJailFile(mountPoint, path)
 		if err != nil {
 			return nil, err
 		}
@@ -71,17 +93,44 @@ func captureJailFiles(paths []string) ([]jailFileSnapshot, error) {
 func restoreJailFiles(snapshots []jailFileSnapshot) error {
 	var restoreErr error
 	for _, snapshot := range snapshots {
+		// A jail.json that didn't exist before is left in place; the next start rewrites it.
+		if snapshot.metadata {
+			if snapshot.existed && snapshot.link == "" {
+				if err := WriteJailMetadata(snapshot.root, snapshot.data); err != nil {
+					restoreErr = errors.Join(restoreErr, fmt.Errorf("failed_to_restore_jail_file: %w", err))
+				}
+			}
+			continue
+		}
+		mkdirAll, write, remove := os.MkdirAll, utils.AtomicWriteFile, os.Remove
+		if root := snapshot.root; root != "" {
+			mkdirAll = func(path string, perm os.FileMode) error { return utils.MkdirAllUnder(root, path, perm) }
+			write = func(path string, data []byte, perm os.FileMode) error {
+				return utils.WriteFileUnder(root, path, data, perm)
+			}
+			remove = func(path string) error { return utils.RemoveUnder(root, path) }
+		}
 		if snapshot.existed {
-			if err := os.MkdirAll(filepath.Dir(snapshot.path), 0o755); err != nil {
+			if err := mkdirAll(filepath.Dir(snapshot.path), 0o755); err != nil {
 				restoreErr = errors.Join(restoreErr, fmt.Errorf("failed_to_prepare_jail_file_restore: %w", err))
 				continue
 			}
-			if err := utils.AtomicWriteFile(snapshot.path, snapshot.data, snapshot.mode); err != nil {
+			if snapshot.link != "" {
+				if err := remove(snapshot.path); err != nil && !errors.Is(err, os.ErrNotExist) {
+					restoreErr = errors.Join(restoreErr, fmt.Errorf("failed_to_restore_jail_file: %w", err))
+					continue
+				}
+				if err := utils.SymlinkUnder(snapshot.root, snapshot.link, snapshot.path); err != nil {
+					restoreErr = errors.Join(restoreErr, fmt.Errorf("failed_to_restore_jail_file: %w", err))
+				}
+				continue
+			}
+			if err := write(snapshot.path, snapshot.data, snapshot.mode); err != nil {
 				restoreErr = errors.Join(restoreErr, fmt.Errorf("failed_to_restore_jail_file: %w", err))
 			}
 			continue
 		}
-		if err := os.Remove(snapshot.path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := remove(snapshot.path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			restoreErr = errors.Join(restoreErr, fmt.Errorf("failed_to_remove_new_jail_file: %w", err))
 		}
 	}

@@ -1157,10 +1157,10 @@ func (s *Service) createJailFromTemplateTarget(
 
 	if strings.TrimSpace(createdJail.ResolvConf) != "" {
 		resolvPath := filepath.Join(mountPoint, "etc", "resolv.conf")
-		if err := os.MkdirAll(filepath.Dir(resolvPath), 0755); err != nil {
+		if err := utils.MkdirAllUnder(mountPoint, filepath.Dir(resolvPath), 0755); err != nil {
 			return fmt.Errorf("failed_to_prepare_resolv_path: %w", err)
 		}
-		if err := os.WriteFile(resolvPath, []byte(createdJail.ResolvConf), 0644); err != nil {
+		if err := utils.WriteFileUnder(mountPoint, resolvPath, []byte(createdJail.ResolvConf), 0644); err != nil {
 			return fmt.Errorf("failed_to_write_template_resolv_conf: %w", err)
 		}
 	}
@@ -1181,7 +1181,7 @@ func (s *Service) createJailFromTemplateTarget(
 	}
 
 	sylveDir := filepath.Join(mountPoint, ".sylve")
-	if err := os.MkdirAll(sylveDir, 0755); err != nil {
+	if err := utils.MkdirAllUnder(mountPoint, sylveDir, 0755); err != nil {
 		return fmt.Errorf("failed_to_create_jail_metadata_directory: %w", err)
 	}
 

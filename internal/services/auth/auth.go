@@ -591,41 +591,33 @@ func (s *Service) ValidateScopedJWT(tokenString, expectedScope string) (serviceI
 	}, nil
 }
 
-func (s *Service) InitSecret(name string, shaRounds int) error {
-	uuid, err := utils.GetSystemUUID()
-	if err != nil {
-		return fmt.Errorf("failed to get device UUID: %w", err)
-	}
-
-	secret := utils.SHA256(uuid, shaRounds)
-
+func (s *Service) InitSecret(name string) error {
 	var systemSecret models.SystemSecrets
-	err = s.DB.Where("name = ?", name).First(&systemSecret).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			newSecret := models.SystemSecrets{
-				Name: name,
-				Data: secret,
-			}
-			if err := s.DB.Create(&newSecret).Error; err != nil {
-				return fmt.Errorf("failed to create %s: %w", name, err)
-			}
-			logger.L.Debug().Msgf("Created new %s", name)
-		} else {
-			return fmt.Errorf("error fetching %s: %w", name, err)
+	err := s.DB.Where("name = ?", name).First(&systemSecret).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if err := s.DB.Create(&models.SystemSecrets{Name: name, Data: utils.GenerateRandomString(64)}).Error; err != nil {
+			return fmt.Errorf("failed to create %s: %w", name, err)
 		}
-	} else {
-		if systemSecret.Data != secret {
-			if err := s.DB.Model(&systemSecret).Update("data", secret).Error; err != nil {
-				return fmt.Errorf("failed to update %s: %w", name, err)
-			}
-			logger.L.Debug().Msgf("Updated existing %s", name)
-		} else {
-			logger.L.Debug().Msgf("%s is up to date", name)
-		}
+		return nil
 	}
-
+	if err != nil {
+		return fmt.Errorf("error fetching %s: %w", name, err)
+	}
+	if systemSecret.Data != "" && !isHostUUIDSecret(systemSecret.Data) {
+		return nil
+	}
+	if err := s.DB.Model(&systemSecret).Update("data", utils.GenerateRandomString(64)).Error; err != nil {
+		return fmt.Errorf("failed to update %s: %w", name, err)
+	}
+	logger.L.Info().Msgf("Replaced host-derived %s", name)
 	return nil
+}
+
+// Older builds derived the secret from kern.hostuuid, which is also the cluster node ID and
+// isn't secret.
+func isHostUUIDSecret(data string) bool {
+	uuid, err := utils.GetSystemUUID()
+	return err == nil && data == utils.SHA256(uuid, 6)
 }
 
 func (s *Service) ClearExpiredJWTTokens(ctx context.Context) {

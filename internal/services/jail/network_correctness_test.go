@@ -36,8 +36,8 @@ type jailNetworkSyncFixture struct {
 
 func newJailNetworkSyncFixture(t *testing.T, jailType jailModels.JailType, ctID uint) *jailNetworkSyncFixture {
 	t.Helper()
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
-	mountPoint := t.TempDir()
+	t.Setenv("SYLVE_DATA_PATH", tempDir(t))
+	mountPoint := tempDir(t)
 	if err := os.MkdirAll(filepath.Join(mountPoint, "etc"), 0o755); err != nil {
 		t.Fatalf("create jail etc directory: %v", err)
 	}

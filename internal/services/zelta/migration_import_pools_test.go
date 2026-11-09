@@ -56,6 +56,7 @@ func TestRemapMigratedVMMetadataPoolsMovesOnlyTheVMsOwnDatasets(t *testing.T) {
 
 func TestRebaseMigratedJailFstabFollowsTheNewRootMountpoint(t *testing.T) {
 	mountPoint := t.TempDir()
+	t.Cleanup(func() { _ = exec.Command("chflags", "-R", "noschg", mountPoint).Run() })
 	meta := &restoredJailMetadata{
 		Jail: jailModels.Jail{
 			CTID:  23,

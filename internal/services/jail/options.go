@@ -122,17 +122,6 @@ func (s *Service) mutateJailOption(
 	return mutation(jail)
 }
 
-func (s *Service) jailOptionJSONPath(jail *jailModels.Jail) (string, error) {
-	if jail == nil {
-		return "", fmt.Errorf("jail_not_found")
-	}
-	mountPoint, err := s.resolveJailRoot(context.Background(), jail)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(mountPoint, ".sylve", "jail.json"), nil
-}
-
 type jailOptionPersistence struct {
 	paths            []string
 	writeFiles       func() error
@@ -146,13 +135,16 @@ func (s *Service) persistJailOptionMutation(
 	jail *jailModels.Jail,
 	persistence jailOptionPersistence,
 ) error {
-	paths := append([]string{}, persistence.paths...)
-	jsonPath, err := s.jailOptionJSONPath(jail)
+	if jail == nil {
+		return fmt.Errorf("jail_not_found")
+	}
+	mountPoint, err := s.resolveJailRoot(context.Background(), jail)
 	if err != nil {
 		return err
 	}
-	paths = append(paths, jsonPath)
-	snapshots, err := captureJailFiles(paths)
+	paths := append([]string{}, persistence.paths...)
+	paths = append(paths, filepath.Join(mountPoint, ".sylve", "jail.json"))
+	snapshots, err := captureJailFiles(mountPoint, paths)
 	if err != nil {
 		return err
 	}
@@ -1132,15 +1124,15 @@ func (s *Service) ModifyResolvConf(ctID uint, resolvConf string) error {
 			paths: []string{resolvPath},
 			writeFiles: func() error {
 				if resolvConf == "" {
-					if err := utils.DeleteFileIfExists(resolvPath); err != nil {
+					if err := utils.RemoveUnder(mountPoint, resolvPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 						return fmt.Errorf("failed_to_delete_resolv_conf_file: %w", err)
 					}
 					return nil
 				}
-				if err := os.MkdirAll(filepath.Dir(resolvPath), 0o755); err != nil {
+				if err := utils.MkdirAllUnder(mountPoint, filepath.Dir(resolvPath), 0o755); err != nil {
 					return fmt.Errorf("failed_to_prepare_resolv_conf_path: %w", err)
 				}
-				if err := utils.AtomicWriteFile(resolvPath, []byte(resolvConf), 0o644); err != nil {
+				if err := utils.WriteFileUnder(mountPoint, resolvPath, []byte(resolvConf), 0o644); err != nil {
 					return fmt.Errorf("failed_to_write_resolv_conf_file: %w", err)
 				}
 				return nil
@@ -1331,6 +1323,7 @@ func (s *Service) ModifyMetadata(ctID uint, meta, env string) error {
 type jailHookFileWrite struct {
 	path    string
 	content string
+	inJail  bool
 }
 
 func (s *Service) ModifyLifecycleHooks(ctID uint, hooks jailServiceInterfaces.Hooks) error {
@@ -1387,7 +1380,7 @@ func (s *Service) ModifyLifecycleHooks(ctID uint, hooks jailServiceInterfaces.Ho
 			writes = append(writes, jailHookFileWrite{path: target.hostPath, content: next})
 			paths = append(paths, target.hostPath)
 			if target.inJailPath != "" {
-				writes = append(writes, jailHookFileWrite{path: target.inJailPath, content: next})
+				writes = append(writes, jailHookFileWrite{path: target.inJailPath, content: next, inJail: true})
 				paths = append(paths, target.inJailPath)
 			}
 			shouldWire[target.phase] = s.hasHookBody(next)
@@ -1407,11 +1400,17 @@ func (s *Service) ModifyLifecycleHooks(ctID uint, hooks jailServiceInterfaces.Ho
 				if err := os.MkdirAll(hostScriptsDir, 0o755); err != nil {
 					return fmt.Errorf("failed_to_create_host_scripts_dir: %w", err)
 				}
-				if err := os.MkdirAll(inJailScriptsDir, 0o755); err != nil {
+				if err := utils.MkdirAllUnder(mountPoint, inJailScriptsDir, 0o755); err != nil {
 					return fmt.Errorf("failed_to_create_in_jail_scripts_dir: %w", err)
 				}
 				for _, write := range writes {
-					if err := utils.AtomicWriteFile(write.path, []byte(write.content), 0o755); err != nil {
+					var err error
+					if write.inJail {
+						err = utils.WriteFileUnder(mountPoint, write.path, []byte(write.content), 0o755)
+					} else {
+						err = utils.AtomicWriteFile(write.path, []byte(write.content), 0o755)
+					}
+					if err != nil {
 						return fmt.Errorf("failed_to_write_hook_script(%s): %w", write.path, err)
 					}
 				}

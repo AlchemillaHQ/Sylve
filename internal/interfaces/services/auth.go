@@ -85,7 +85,7 @@ type AuthServiceInterface interface {
 	VerifyTokenInDb(token string) bool
 	ValidateToken(tokenString string) (CustomClaims, error)
 	ValidateScopedJWT(tokenString, expectedScope string) (ScopedValidationResult, error)
-	InitSecret(name string, shaRounds int) error
+	InitSecret(name string) error
 	ClearExpiredJWTTokens(ctx context.Context)
 	GetTokenBySHA256(hash string) (string, error)
 	IsValidClusterKey(clusterKey string) bool

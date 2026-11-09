@@ -25,8 +25,6 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
-const sfImmutable = 0x00020000
-
 type integrationRoot struct {
 	root     string
 	pkgDBDir string

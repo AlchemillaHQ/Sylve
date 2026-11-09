@@ -27,6 +27,7 @@ import (
 	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	jailService "github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
 
@@ -196,7 +197,7 @@ func (s *Service) readLocalRestoredJailMetadata(ctx context.Context, dataset str
 	}
 
 	metaPath := filepath.Join(strings.TrimSuffix(mountPoint, "/"), ".sylve", "jail.json")
-	raw, err := os.ReadFile(metaPath)
+	raw, err := utils.ReadFileUnder(mountPoint, metaPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, mountPoint, nil

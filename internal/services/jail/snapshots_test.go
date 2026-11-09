@@ -132,7 +132,7 @@ func newJailSnapshotTestService(runner *jailSnapshotRunner) *Service {
 }
 
 func TestCreateJailSnapshotHoldsNetworkGuardsThroughZFSSnapshot(t *testing.T) {
-	dataPath := t.TempDir()
+	dataPath := tempDir(t)
 	t.Setenv("SYLVE_DATA_PATH", dataPath)
 	db := testutil.NewSQLiteTestDB(t,
 		&clusterModels.ReplicationPolicy{},
@@ -186,7 +186,7 @@ func TestCreateJailSnapshotHoldsNetworkGuardsThroughZFSSnapshot(t *testing.T) {
 	}
 	runner := &jailSnapshotRunner{
 		datasets: map[string]jailSnapshotRunnerDataset{
-			root: {datasetType: gzfs.DatasetTypeFilesystem, mountPoint: t.TempDir(), pool: "tank"},
+			root: {datasetType: gzfs.DatasetTypeFilesystem, mountPoint: tempDir(t), pool: "tank"},
 		},
 		snapshotStarted: snapshotStarted,
 		releaseSnapshot: releaseSnapshot,

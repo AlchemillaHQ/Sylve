@@ -50,7 +50,7 @@ func TestGetSimpleJailByCTIDDoesNotDependOnDatabaseIDOrServiceToggle(t *testing.
 
 func TestUpdateDescriptionUsesCTIDAndPreservesEmptyValue(t *testing.T) {
 	requireSystemUUIDOrSkip(t)
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	t.Setenv("SYLVE_DATA_PATH", tempDir(t))
 	db := testutil.NewSQLiteTestDB(
 		t,
 		&jailModels.Jail{},
@@ -67,7 +67,7 @@ func TestUpdateDescriptionUsesCTIDAndPreservesEmptyValue(t *testing.T) {
 	}
 
 	service := &Service{DB: db}
-	mountPoint := t.TempDir()
+	mountPoint := tempDir(t)
 	attachJailRootTestFixture(t, service, db, guest.ID, guest.CTID, mountPoint)
 	writeJailRootConfigTestFixture(t, service, guest.CTID, guest.Name, mountPoint)
 	if err := service.UpdateDescription(guest.CTID, ""); err != nil {

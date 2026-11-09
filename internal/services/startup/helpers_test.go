@@ -43,7 +43,7 @@ type startupTestAuth struct {
 	serviceInterfaces.AuthServiceInterface
 }
 
-func (*startupTestAuth) InitSecret(string, int) error { return nil }
+func (*startupTestAuth) InitSecret(string) error { return nil }
 
 func isolateStartupEffects(t *testing.T) {
 	t.Helper()

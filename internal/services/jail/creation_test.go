@@ -57,12 +57,12 @@ func newCreationTestDB(t *testing.T) *gorm.DB {
 
 func newCreationTestService(t *testing.T) (*Service, *jailCreateTestZFSRunner, jailServiceInterfaces.CreateJailRequest, uint) {
 	t.Helper()
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	t.Setenv("SYLVE_DATA_PATH", tempDir(t))
 	db := newCreationTestDB(t)
 	runner := newJailCreateTestZFSRunner(t, nil)
 	svc := newJailCreateTestService(db, runner, "testpool")
 	svc.SetGuestIdentityCoordinator(newStandaloneGuestIdentityCoordinator(t, db, "creation-node"))
-	base := t.TempDir()
+	base := tempDir(t)
 	seedCreationRoot(t, base)
 	seedBaseDownload(t, db, "creation-base", base)
 	req := jailCreateRequest(830, "testpool", "creation-base")
@@ -201,9 +201,9 @@ func TestCreationRollbackRetainsUnownedDatasetAndConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	name := "testpool/sylve/jails/830"
-	runner.datasets[name] = jailCreateTestZFSDataset{guid: "foreign-guid", owner: "another-operation", mountpoint: t.TempDir()}
+	runner.datasets[name] = jailCreateTestZFSDataset{guid: "foreign-guid", owner: "another-operation", mountpoint: tempDir(t)}
 	state.Datasets = []creationDataset{{Name: name, GUID: "foreign-guid"}}
-	state.ConfigDir = t.TempDir()
+	state.ConfigDir = tempDir(t)
 	marker := filepath.Join(state.ConfigDir, ".creation-operation")
 	if err := os.WriteFile(marker, []byte("another-operation"), 0600); err != nil {
 		t.Fatal(err)
@@ -253,13 +253,13 @@ func TestCreationOwnershipJournalDoesNotExposeReservationInTaskPayload(t *testin
 func TestValidateCopiedRootRejectsConfigurationSymlinks(t *testing.T) {
 	for _, target := range []string{"etc/rc.conf", "etc/resolv.conf", "usr/local/sylve/scripts/start.sh", "usr/local/sylve/scripts/stop.sh", ".sylve/jail.json"} {
 		t.Run(target, func(t *testing.T) {
-			root := t.TempDir()
+			root := tempDir(t)
 			seedCreationRoot(t, root)
 			path := filepath.Join(root, target)
 			if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Symlink(filepath.Join(t.TempDir(), "host-file"), path); err != nil {
+			if err := os.Symlink(filepath.Join(tempDir(t), "host-file"), path); err != nil {
 				t.Fatal(err)
 			}
 			if err := validateCopiedRoot(root, "freebsd"); err == nil || !strings.Contains(err.Error(), "unsafe_configuration_path") {
@@ -307,7 +307,7 @@ func TestJailCreationRejectsIncompleteAndProtectedSources(t *testing.T) {
 
 func TestCreationStagingCleanupRetainsUnownedDirectories(t *testing.T) {
 	for _, foreignMarker := range []bool{false, true} {
-		dir := t.TempDir()
+		dir := tempDir(t)
 		if foreignMarker {
 			if err := os.WriteFile(filepath.Join(dir, ".creation-operation"), []byte("foreign"), 0600); err != nil {
 				t.Fatal(err)
@@ -323,7 +323,7 @@ func TestCreationStagingCleanupRetainsUnownedDirectories(t *testing.T) {
 }
 
 func TestCurrentZFSSourceRejectsExternalUserlandMounts(t *testing.T) {
-	root := t.TempDir()
+	root := tempDir(t)
 	seedCreationRoot(t, root)
 	if err := os.Mkdir(filepath.Join(root, "lib"), 0755); err != nil {
 		t.Fatal(err)
@@ -342,7 +342,7 @@ func TestCurrentZFSSourceRejectsExternalUserlandMounts(t *testing.T) {
 }
 
 func TestZFSSourceRejectsSubdirectoryRootAndRunningForeignJail(t *testing.T) {
-	root := t.TempDir()
+	root := tempDir(t)
 	seedCreationRoot(t, filepath.Join(root, "root"))
 	if err := validateCopiedRoot(root, "freebsd"); err == nil {
 		t.Fatal("manager container with subdirectory root accepted")
@@ -363,9 +363,9 @@ func TestCreationRollbackRetainsUnknownChildrenAndOtherPools(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := "testpool/sylve/jails/830"
-	runner.datasets[root] = jailCreateTestZFSDataset{guid: "ours", owner: op.ID, mountpoint: t.TempDir()}
-	runner.datasets[root+"/foreign"] = jailCreateTestZFSDataset{guid: "unknown", mountpoint: t.TempDir()}
-	runner.datasets["anotherpool/sylve/jails/830"] = jailCreateTestZFSDataset{guid: "other-pool", mountpoint: t.TempDir()}
+	runner.datasets[root] = jailCreateTestZFSDataset{guid: "ours", owner: op.ID, mountpoint: tempDir(t)}
+	runner.datasets[root+"/foreign"] = jailCreateTestZFSDataset{guid: "unknown", mountpoint: tempDir(t)}
+	runner.datasets["anotherpool/sylve/jails/830"] = jailCreateTestZFSDataset{guid: "other-pool", mountpoint: tempDir(t)}
 	state.Datasets = []creationDataset{{Name: root, GUID: "ours"}}
 	if err := svc.failCreation(t.Context(), op, state, fmt.Errorf("injected_failure")); err == nil {
 		t.Fatal("unknown descendant cleanup succeeded")
@@ -414,7 +414,7 @@ func TestFilterZFSSourcesKeepsExternalAndCanonicalJailRootCandidates(t *testing.
 	var datasets []*gzfs.Dataset
 	var mounts string
 	add := func(name string, root bool) *gzfs.Dataset {
-		mountpoint := t.TempDir()
+		mountpoint := tempDir(t)
 		if root {
 			seedCreationRoot(t, mountpoint)
 		}
@@ -448,7 +448,7 @@ func TestFilterZFSSourcesKeepsExternalAndCanonicalJailRootCandidates(t *testing.
 	unmounted := add("tank/unmounted", true)
 	mounts = strings.ReplaceAll(mounts, fmt.Sprintf("%s %s zfs rw 0 0\n", unmounted.Name, unmounted.Mountpoint), "")
 	unsafe := add("tank/unsafe-config", true)
-	if err := os.Symlink(filepath.Join(t.TempDir(), "host-config"), filepath.Join(unsafe.Mountpoint, "etc", "rc.conf")); err != nil {
+	if err := os.Symlink(filepath.Join(tempDir(t), "host-config"), filepath.Join(unsafe.Mountpoint, "etc", "rc.conf")); err != nil {
 		t.Fatal(err)
 	}
 	sources := filterZFSSources(datasets, mounts)
@@ -467,8 +467,8 @@ func newOrphanZFSSourceFixture(t *testing.T) (*Service, *jailCreateTestZFSRunner
 	t.Helper()
 	svc, runner, _, _ := newCreationTestService(t)
 	svc.creationRunningPaths = func(context.Context) ([]string, error) { return nil, nil }
-	runner.datasets["testpool/sylve/jails"] = jailCreateTestZFSDataset{guid: "destination-parent", mountpoint: t.TempDir()}
-	root := t.TempDir()
+	runner.datasets["testpool/sylve/jails"] = jailCreateTestZFSDataset{guid: "destination-parent", mountpoint: tempDir(t)}
+	root := tempDir(t)
 	seedCreationRoot(t, root)
 	childMount := filepath.Join(root, "var", "app")
 	if err := os.MkdirAll(childMount, 0755); err != nil {
@@ -684,7 +684,7 @@ func TestOrphanZFSSourceRechecksRegistrationAfterDiscovery(t *testing.T) {
 func TestFilterZFSSourcesRequiresSelfContainedChildTrees(t *testing.T) {
 	for _, scenario := range []string{"valid", "encrypted-child", "readonly-child", "volume-child", "unmounted-child", "outside-child", "external-bin", "external-lib"} {
 		t.Run(scenario, func(t *testing.T) {
-			root := t.TempDir()
+			root := tempDir(t)
 			seedCreationRoot(t, root)
 			if err := os.Mkdir(filepath.Join(root, "lib"), 0755); err != nil {
 				t.Fatal(err)
@@ -701,7 +701,7 @@ func TestFilterZFSSourcesRequiresSelfContainedChildTrees(t *testing.T) {
 			case "volume-child":
 				child.Type = gzfs.DatasetTypeVolume
 			case "outside-child":
-				child.Mountpoint = t.TempDir()
+				child.Mountpoint = tempDir(t)
 			}
 			if err := os.MkdirAll(child.Mountpoint, 0755); err != nil {
 				t.Fatal(err)

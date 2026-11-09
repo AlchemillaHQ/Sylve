@@ -204,7 +204,7 @@ func (s *Service) captureJailNetworkFiles(ctID uint, jail *jailModels.Jail) ([]j
 	}
 	paths = append(paths, filepath.Join(mountPoint, ".sylve", "jail.json"))
 
-	return captureJailFiles(paths)
+	return captureJailFiles(mountPoint, paths)
 }
 
 func jailNetworkMutationFailure(primary error, snapshots []jailFileSnapshot, compensate func() error) error {
@@ -1183,7 +1183,7 @@ func (s *Service) SyncNetwork(ctID uint, jail jailModels.Jail) error {
 	rcConfContent := ""
 	if jail.Type == jailModels.JailTypeFreeBSD {
 		rcConfPath = filepath.Join(mountPoint, "etc", "rc.conf")
-		rcConf, readErr := os.ReadFile(rcConfPath)
+		rcConf, readErr := utils.ReadFileUnder(mountPoint, rcConfPath)
 		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
 			return fmt.Errorf("failed_to_read_rc_conf: %w", readErr)
 		}
@@ -1382,7 +1382,7 @@ func (s *Service) SyncNetwork(ctID uint, jail jailModels.Jail) error {
 		}
 	}
 	if rcConfPath != "" {
-		if err := utils.AtomicWriteFile(rcConfPath, []byte(replaceJailNetworkRCConfBlock(rcConfContent, ctidHash, rcConfLines)), 0o644); err != nil {
+		if err := utils.WriteFileUnder(mountPoint, rcConfPath, []byte(replaceJailNetworkRCConfBlock(rcConfContent, ctidHash, rcConfLines)), 0o644); err != nil {
 			return fmt.Errorf("failed_to_write_rc_conf: %w", err)
 		}
 	}

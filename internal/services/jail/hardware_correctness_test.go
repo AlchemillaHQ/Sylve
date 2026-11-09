@@ -66,7 +66,7 @@ func newJailHardwareTestService(
 ) (*Service, string, string) {
 	t.Helper()
 	requireSystemUUIDOrSkip(t)
-	dataPath := t.TempDir()
+	dataPath := tempDir(t)
 	t.Setenv("SYLVE_DATA_PATH", dataPath)
 
 	db := testutil.NewSQLiteTestDB(
@@ -104,7 +104,7 @@ func newJailHardwareTestService(
 	}
 	configPath := filepath.Join(jailDir, fmt.Sprintf("%d.conf", ctID))
 	postStartPath := filepath.Join(scriptsDir, "post-start.sh")
-	mountPoint := t.TempDir()
+	mountPoint := tempDir(t)
 	configContent := fmt.Sprintf(
 		"%s%s {\n\tpath = %q;\n}\n",
 		JAIL_CONF_PREAMBLE,

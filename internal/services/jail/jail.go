@@ -986,13 +986,13 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string) (str
 	// Inside-jail scripts dir: /usr/local/sylve/scripts
 	jailScriptsRelDir := filepath.Join("usr", "local", "sylve", "scripts")
 	jailScriptsFsDir := filepath.Join(mountPoint, jailScriptsRelDir)
-	if err := os.MkdirAll(jailScriptsFsDir, 0755); err != nil {
+	if err := utils.MkdirAllUnder(mountPoint, jailScriptsFsDir, 0755); err != nil {
 		return "", fmt.Errorf("failed_to_create_in_jail_scripts_directory: %w", err)
 	}
 
 	logPath := filepath.Join(jailDir, fmt.Sprintf("%d.log", ctid))
 
-	writeScript := func(path, content string, executable bool) error {
+	writeScript := func(root, path, content string) error {
 		// If completely empty, just write a minimal shell script
 		if strings.TrimSpace(content) == "" {
 			content = "#!/bin/sh\n"
@@ -1009,12 +1009,10 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string) (str
 			}
 		}
 
-		mode := os.FileMode(0644)
-		if executable {
-			mode = 0755
+		if root != "" {
+			return utils.WriteFileUnder(root, path, []byte(content), 0755)
 		}
-
-		return os.WriteFile(path, []byte(content), mode)
+		return os.WriteFile(path, []byte(content), 0755)
 	}
 
 	var cfg string
@@ -1104,7 +1102,7 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string) (str
 
 	// prestart: host environment
 	preStartHostPath := filepath.Join(hostScriptsDir, "pre-start.sh")
-	if err := writeScript(preStartHostPath, preStartCfg, true); err != nil {
+	if err := writeScript("", preStartHostPath, preStartCfg); err != nil {
 		return "", fmt.Errorf("failed_to_write_pre_start_script: %w", err)
 	}
 	if preStartCfg != "" {
@@ -1113,17 +1111,17 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string) (str
 
 	// start: jail environment -> needs inside-jail path
 	startHostPath := filepath.Join(hostScriptsDir, "start.sh")
-	if err := writeScript(startHostPath, startCfg, true); err != nil {
+	if err := writeScript("", startHostPath, startCfg); err != nil {
 		return "", fmt.Errorf("failed_to_write_start_script: %w", err)
 	}
 	startJailFsPath := filepath.Join(jailScriptsFsDir, "start.sh")
-	if err := writeScript(startJailFsPath, startCfg, true); err != nil {
+	if err := writeScript(mountPoint, startJailFsPath, startCfg); err != nil {
 		return "", fmt.Errorf("failed_to_write_in_jail_start_script: %w", err)
 	}
 
 	// poststart: host environment
 	postStartHostPath := filepath.Join(hostScriptsDir, "post-start.sh")
-	if err := writeScript(postStartHostPath, postStartCfg, true); err != nil {
+	if err := writeScript("", postStartHostPath, postStartCfg); err != nil {
 		return "", fmt.Errorf("failed_to_write_post_start_script: %w", err)
 	}
 	if postStartCfg != "" {
@@ -1132,7 +1130,7 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string) (str
 
 	// prestop: host environment
 	preStopHostPath := filepath.Join(hostScriptsDir, "pre-stop.sh")
-	if err := writeScript(preStopHostPath, preStopCfg, true); err != nil {
+	if err := writeScript("", preStopHostPath, preStopCfg); err != nil {
 		return "", fmt.Errorf("failed_to_write_pre_stop_script: %w", err)
 	}
 	if preStopCfg != "" {
@@ -1141,17 +1139,17 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string) (str
 
 	// stop: jail environment -> needs inside-jail path
 	stopHostPath := filepath.Join(hostScriptsDir, "stop.sh")
-	if err := writeScript(stopHostPath, stopCfg, true); err != nil {
+	if err := writeScript("", stopHostPath, stopCfg); err != nil {
 		return "", fmt.Errorf("failed_to_write_stop_script: %w", err)
 	}
 	stopJailFsPath := filepath.Join(jailScriptsFsDir, "stop.sh")
-	if err := writeScript(stopJailFsPath, stopCfg, true); err != nil {
+	if err := writeScript(mountPoint, stopJailFsPath, stopCfg); err != nil {
 		return "", fmt.Errorf("failed_to_write_in_jail_stop_script: %w", err)
 	}
 
 	// poststop: host environment
 	postStopHostPath := filepath.Join(hostScriptsDir, "post-stop.sh")
-	if err := writeScript(postStopHostPath, postStopCfg, true); err != nil {
+	if err := writeScript("", postStopHostPath, postStopCfg); err != nil {
 		return "", fmt.Errorf("failed_to_write_post_stop_script: %w", err)
 	}
 	if postStopCfg != "" {
@@ -1617,12 +1615,12 @@ func (s *Service) createJail(ctx context.Context, data jailServiceInterfaces.Cre
 
 	if strings.TrimSpace(jail.ResolvConf) != "" {
 		resolvPath := filepath.Join(mountPoint, "etc", "resolv.conf")
-		if err = os.MkdirAll(filepath.Dir(resolvPath), 0755); err != nil {
+		if err = utils.MkdirAllUnder(mountPoint, filepath.Dir(resolvPath), 0755); err != nil {
 			err = fmt.Errorf("failed_to_prepare_resolv_conf_path: %w", err)
 			return
 		}
 
-		if err = os.WriteFile(resolvPath, []byte(jail.ResolvConf), 0644); err != nil {
+		if err = utils.WriteFileUnder(mountPoint, resolvPath, []byte(jail.ResolvConf), 0644); err != nil {
 			err = fmt.Errorf("failed_to_write_resolv_conf_file: %w", err)
 			return
 		}
@@ -1648,7 +1646,7 @@ func (s *Service) createJail(ctx context.Context, data jailServiceInterfaces.Cre
 	}
 
 	sylveDir := filepath.Join(mountPoint, ".sylve")
-	if err = os.MkdirAll(sylveDir, 0755); err != nil {
+	if err = utils.MkdirAllUnder(mountPoint, sylveDir, 0755); err != nil {
 		err = fmt.Errorf("failed_to_create_sylve_directory: %w", err)
 		return
 	}
@@ -2228,18 +2226,12 @@ func (s *Service) WriteJailJSON(ctId uint) error {
 		return err
 	}
 
-	sylveDir := filepath.Join(mountPoint, ".sylve")
-	if err := os.MkdirAll(sylveDir, 0755); err != nil {
-		return fmt.Errorf("failed_to_create_.sylve_directory: %w", err)
-	}
-
-	jailJsonPath := filepath.Join(sylveDir, "jail.json")
 	jailJsonData, err := marshalJailJSON(jail, mountPoint)
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_jail_to_json: %w", err)
 	}
 
-	if err := utils.WriteFileIfChanged(jailJsonPath, jailJsonData, 0644); err != nil {
+	if err := WriteJailMetadata(mountPoint, jailJsonData); err != nil {
 		return fmt.Errorf("failed_to_write_jail_json_file: %w", err)
 	}
 

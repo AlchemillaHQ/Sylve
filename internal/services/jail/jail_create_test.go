@@ -95,7 +95,7 @@ type jailCreateTestZFSRunner struct {
 
 func newJailCreateTestZFSRunner(t *testing.T, existingDatasets []string) *jailCreateTestZFSRunner {
 	t.Helper()
-	mountRoot := t.TempDir()
+	mountRoot := tempDir(t)
 	datasets := make(map[string]jailCreateTestZFSDataset, len(existingDatasets))
 	for i, datasetName := range existingDatasets {
 		mountpoint := filepath.Join(mountRoot, filepath.FromSlash(strings.TrimPrefix(datasetName, "/")))
@@ -348,7 +348,7 @@ func seedSwitch(t *testing.T, db *gorm.DB, name string) {
 func seedBaseDownload(t *testing.T, db *gorm.DB, uuid string, extractedPath string) {
 	t.Helper()
 	if os.Getenv("SYLVE_DATA_PATH") == "" {
-		t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+		t.Setenv("SYLVE_DATA_PATH", tempDir(t))
 	}
 	managedPath := filepath.Join(os.Getenv("SYLVE_DATA_PATH"), "downloads", "extracted", uuid)
 	if err := os.MkdirAll(filepath.Dir(managedPath), 0755); err != nil {
@@ -391,8 +391,8 @@ func jailCreateRequest(ctid uint, pool string, baseUUID string) jailServiceInter
 }
 
 func TestCreateJailConfigStartsAndStopsFreeBSDRC(t *testing.T) {
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
-	mountPoint := t.TempDir()
+	t.Setenv("SYLVE_DATA_PATH", tempDir(t))
+	mountPoint := tempDir(t)
 	if err := os.MkdirAll(filepath.Join(mountPoint, "etc"), 0755); err != nil {
 		t.Fatalf("create test jail etc directory: %v", err)
 	}
@@ -422,9 +422,9 @@ func TestCreateJailConfigStartsAndStopsFreeBSDRC(t *testing.T) {
 }
 
 func TestCreateJailConfigCustomStartStopReplaceFreeBSDDefaults(t *testing.T) {
-	dataPath := t.TempDir()
+	dataPath := tempDir(t)
 	t.Setenv("SYLVE_DATA_PATH", dataPath)
-	mountPoint := t.TempDir()
+	mountPoint := tempDir(t)
 	db := testutil.NewSQLiteTestDB(t, &jailModels.Jail{})
 	service := &Service{DB: db, ctidHashByCTID: make(map[uint]string)}
 
@@ -469,12 +469,12 @@ func TestCreateJailConfigCustomStartStopReplaceFreeBSDDefaults(t *testing.T) {
 }
 
 func TestCreateJailConfigNormalizesLegacyDefaultsAndLeavesLinuxUnwired(t *testing.T) {
-	dataPath := t.TempDir()
+	dataPath := tempDir(t)
 	t.Setenv("SYLVE_DATA_PATH", dataPath)
 	db := testutil.NewSQLiteTestDB(t, &jailModels.Jail{})
 	service := &Service{DB: db, ctidHashByCTID: make(map[uint]string)}
 
-	freeBSDMount := t.TempDir()
+	freeBSDMount := tempDir(t)
 	freeBSDConfig, err := service.CreateJailConfig(jailModels.Jail{
 		CTID: 703,
 		Name: "config-legacy-lifecycle",
@@ -502,7 +502,7 @@ func TestCreateJailConfigNormalizesLegacyDefaultsAndLeavesLinuxUnwired(t *testin
 		CTID: 704,
 		Name: "config-linux-lifecycle",
 		Type: jailModels.JailTypeLinux,
-	}, t.TempDir())
+	}, tempDir(t))
 	if err != nil {
 		t.Fatalf("CreateJailConfig Linux: %v", err)
 	}
@@ -518,7 +518,7 @@ func TestCreateJailConfigNormalizesLegacyDefaultsAndLeavesLinuxUnwired(t *testin
 			{Phase: jailModels.JailHookPhaseStart, Enabled: true, Script: "echo linux-start"},
 			{Phase: jailModels.JailHookPhaseStop, Enabled: true, Script: "echo linux-stop"},
 		},
-	}, t.TempDir())
+	}, tempDir(t))
 	if err != nil {
 		t.Fatalf("CreateJailConfig Linux custom: %v", err)
 	}
@@ -596,7 +596,7 @@ func TestValidateCreate(t *testing.T) {
 			}
 			svc := newJailCreateTestService(db, newJailCreateTestZFSRunner(t, datasets), "tank")
 
-			baseDir := filepath.Join(t.TempDir(), "base")
+			baseDir := filepath.Join(tempDir(t), "base")
 			if err := os.MkdirAll(baseDir, 0755); err != nil {
 				t.Fatalf("failed to create base directory: %v", err)
 			}
@@ -668,7 +668,7 @@ func TestCreateJailStopsBeforeProvisioningWhenGuestIDCheckFails(t *testing.T) {
 	checker := &guestIdentityCheckerStub{err: fmt.Errorf("guest_id_already_in_use")}
 	svc.SetGuestIdentityAvailabilityChecker(checker)
 
-	baseDir := filepath.Join(t.TempDir(), "base")
+	baseDir := filepath.Join(tempDir(t), "base")
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		t.Fatalf("create base directory: %v", err)
 	}
@@ -703,7 +703,7 @@ func TestCreateJail_FailsWhenBaseIsNotDirectoryBeforeProvisioningSideEffects(t *
 	runner := newJailCreateTestZFSRunner(t, nil)
 	svc := newJailCreateTestService(db, runner, "tank")
 
-	baseFile := filepath.Join(t.TempDir(), "base-file")
+	baseFile := filepath.Join(tempDir(t), "base-file")
 	if err := os.WriteFile(baseFile, []byte("not-a-directory"), 0644); err != nil {
 		t.Fatalf("failed to create base file: %v", err)
 	}
@@ -727,7 +727,7 @@ func TestCreateJail_FailsWhenBaseIsNotDirectoryBeforeProvisioningSideEffects(t *
 }
 
 func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	t.Setenv("SYLVE_DATA_PATH", tempDir(t))
 
 	db := testutil.NewSQLiteTestDB(
 		t,
@@ -745,7 +745,7 @@ func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tmp := t.TempDir()
+	tmp := tempDir(t)
 	const pool = "testpool-linux-resolv"
 
 	baseDir := filepath.Join(tmp, "base")
@@ -810,7 +810,7 @@ func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
 }
 
 func TestCreateJailSerializesConcurrentSameCTIDRequests(t *testing.T) {
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	t.Setenv("SYLVE_DATA_PATH", tempDir(t))
 
 	db := testutil.NewSQLiteTestDB(
 		t,
@@ -822,7 +822,7 @@ func TestCreateJailSerializesConcurrentSameCTIDRequests(t *testing.T) {
 		&jailModels.JailSnapshot{},
 		&utilitiesModels.Downloads{},
 	)
-	tmp := t.TempDir()
+	tmp := tempDir(t)
 	const pool = "testpool-concurrent"
 	baseDir := filepath.Join(tmp, "base")
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
@@ -951,7 +951,7 @@ func TestValidateCreate_RejectsBootstrapNewerThanHost(t *testing.T) {
 }
 
 func TestCreationRollback_RemovesOwnedArtifactsAndOnlyAutoCreatedMACs(t *testing.T) {
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	t.Setenv("SYLVE_DATA_PATH", tempDir(t))
 
 	db := testutil.NewSQLiteTestDB(
 		t,
@@ -1104,7 +1104,7 @@ func TestCreationRollback_RemovesOwnedArtifactsAndOnlyAutoCreatedMACs(t *testing
 }
 
 func TestCreateJail_PostCommitFailureCleansResidualArtifacts(t *testing.T) {
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	t.Setenv("SYLVE_DATA_PATH", tempDir(t))
 
 	db := testutil.NewSQLiteTestDB(
 		t,
@@ -1127,7 +1127,7 @@ func TestCreateJail_PostCommitFailureCleansResidualArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tmp := t.TempDir()
+	tmp := tempDir(t)
 	const pool = "testpool-post-commit-failure"
 
 	const ctid uint = 760

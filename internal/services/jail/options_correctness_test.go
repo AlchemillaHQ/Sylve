@@ -46,7 +46,7 @@ func newJailOptionsTestService(
 ) (*Service, *jailModels.Jail, string, string) {
 	t.Helper()
 	requireSystemUUIDOrSkip(t)
-	dataPath := t.TempDir()
+	dataPath := tempDir(t)
 	t.Setenv("SYLVE_DATA_PATH", dataPath)
 
 	db := testutil.NewSQLiteTestDB(
@@ -76,7 +76,7 @@ func newJailOptionsTestService(
 	}
 
 	jailDir := filepath.Join(dataPath, "jails", strconv.FormatUint(uint64(ctID), 10))
-	mountPoint := filepath.Join(t.TempDir(), "rootfs")
+	mountPoint := filepath.Join(tempDir(t), "rootfs")
 	if err := os.MkdirAll(filepath.Join(jailDir, "scripts"), 0o755); err != nil {
 		t.Fatalf("create jail directory: %v", err)
 	}
@@ -556,7 +556,7 @@ func TestJailDevFSRuleRemovalReloadsAndPreservesUnrelatedRules(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(withRuleset), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	devFSPath := filepath.Join(t.TempDir(), "devfs.rules")
+	devFSPath := filepath.Join(tempDir(t), "devfs.rules")
 	devFSBefore := `[devfsrules_jails=4]
 add include $devfsrules_hide_all
 
@@ -611,7 +611,7 @@ func TestJailDevFSReloadFailureCompensatesDatabaseAndFiles(t *testing.T) {
 		record.AllowedOptions = []string{"allow.mount.devfs"}
 		record.DevFSRuleset = "old-rule"
 	})
-	devFSPath := filepath.Join(t.TempDir(), "devfs.rules")
+	devFSPath := filepath.Join(tempDir(t), "devfs.rules")
 	devFSBefore := "[base=1]\nadd path 'null' unhide\n\n\n[unrelated=2]\nadd path 'zero' unhide\n"
 	if err := os.WriteFile(devFSPath, []byte(devFSBefore), 0o644); err != nil {
 		t.Fatal(err)

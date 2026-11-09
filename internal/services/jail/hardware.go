@@ -461,7 +461,7 @@ func (s *Service) captureJailHardwareFiles(
 	}
 	paths = append(paths, filepath.Join(mountPoint, ".sylve", "jail.json"))
 
-	return captureJailFiles(paths)
+	return captureJailFiles(mountPoint, paths)
 }
 
 func updateJailHardwareColumns(db *gorm.DB, ctID uint, state jailHardwareState) error {

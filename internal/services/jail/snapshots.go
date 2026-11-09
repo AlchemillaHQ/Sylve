@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -26,13 +25,11 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
 
-var (
-	invalidSnapshotNameChars = regexp.MustCompile(`[^A-Za-z0-9._:-]+`)
-	jailSnapshotPathPattern  = regexp.MustCompile(`path\s*=\s*["']([^"']+)["']`)
-)
+var invalidSnapshotNameChars = regexp.MustCompile(`[^A-Za-z0-9._:-]+`)
 
 const (
 	jailSnapshotCleanupTimeout  = 2 * time.Minute
@@ -46,12 +43,11 @@ type JailSnapshotRollbackResult struct {
 }
 
 type jailSnapshotRestorePlan struct {
-	Restored            jailModels.Jail
-	RootDataset         string
-	MountPoint          string
-	Targets             []string
-	HostConfigAvailable bool
-	Warnings            []string
+	Restored    jailModels.Jail
+	RootDataset string
+	MountPoint  string
+	Targets     []string
+	Warnings    []string
 }
 
 func detachedJailSnapshotContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
@@ -134,10 +130,6 @@ func (s *Service) CreateJailSnapshot(
 
 	if err := s.writeJailJSONAtMountPoint(ctID, mountPoint); err != nil {
 		return nil, fmt.Errorf("failed_to_write_jail_json_before_snapshot: %w", err)
-	}
-
-	if err := s.stageHostConfigIntoDataset(ctID, mountPoint); err != nil {
-		return nil, fmt.Errorf("failed_to_stage_jail_host_config: %w", err)
 	}
 
 	snapToken := sanitizeSnapshotToken(name)
@@ -316,12 +308,12 @@ func (s *Service) RollbackJailSnapshot(
 		return result, err
 	}
 
-	if err := s.restoreHostConfigFromDataset(ctID, plan.MountPoint, plan.HostConfigAvailable); err != nil {
-		return result, fmt.Errorf("failed_to_restore_jail_host_config: %w", err)
-	}
-
 	if err := s.restoreJailDatabaseFromSnapshot(ctID, plan.Restored); err != nil {
 		return result, fmt.Errorf("failed_to_restore_jail_config_from_snapshot: %w", err)
+	}
+
+	if err := s.rewriteJailHostConfig(ctID, plan.MountPoint); err != nil {
+		return result, fmt.Errorf("failed_to_restore_jail_host_config: %w", err)
 	}
 
 	if err := s.DB.
@@ -586,11 +578,7 @@ func (s *Service) writeJailJSONAtMountPoint(ctID uint, mountPoint string) error 
 		return fmt.Errorf("failed_to_marshal_jail_to_json: %w", err)
 	}
 
-	sylveDir := filepath.Join(mountPoint, ".sylve")
-	if err := os.MkdirAll(sylveDir, 0755); err != nil {
-		return fmt.Errorf("failed_to_create_.sylve_directory: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(sylveDir, "jail.json"), data, 0644); err != nil {
+	if err := WriteJailMetadata(mountPoint, data); err != nil {
 		return fmt.Errorf("failed_to_write_jail_json_file: %w", err)
 	}
 	return nil
@@ -750,7 +738,7 @@ func (s *Service) preflightJailSnapshotRestore(
 		return plan, fmt.Errorf("invalid_snapshot_name")
 	}
 	snapshotRoot := filepath.Join(mountPoint, ".zfs", "snapshot", snapshotName)
-	metadata, err := os.ReadFile(filepath.Join(snapshotRoot, ".sylve", "jail.json"))
+	metadata, err := utils.ReadFileUnder(snapshotRoot, filepath.Join(snapshotRoot, ".sylve", "jail.json"))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return plan, fmt.Errorf("snapshot_jail_json_not_found")
@@ -787,47 +775,6 @@ func (s *Service) preflightJailSnapshotRestore(
 	restored.Networks, err = s.normalizeRestoredJailSnapshotNetworks(restored.Networks)
 	if err != nil {
 		return plan, err
-	}
-
-	hostConfigRoot := filepath.Join(snapshotRoot, ".sylve", "host-config")
-	hostConfigInfo, err := os.Stat(hostConfigRoot)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return plan, fmt.Errorf("snapshot_host_config_missing")
-		}
-		return plan, fmt.Errorf("snapshot_host_config_invalid: %w", err)
-	} else {
-		if !hostConfigInfo.IsDir() {
-			return plan, fmt.Errorf("snapshot_host_config_invalid: staging path is not a directory")
-		}
-		confPath := filepath.Join(hostConfigRoot, fmt.Sprintf("%d.conf", ctID))
-		confInfo, statErr := os.Stat(confPath)
-		if statErr != nil {
-			if os.IsNotExist(statErr) {
-				return plan, fmt.Errorf("snapshot_jail_conf_not_found")
-			}
-			return plan, fmt.Errorf("snapshot_host_config_invalid: %w", statErr)
-		}
-		if !confInfo.Mode().IsRegular() {
-			return plan, fmt.Errorf("snapshot_host_config_invalid: jail config is not a regular file")
-		}
-		confData, readErr := os.ReadFile(confPath)
-		if readErr != nil {
-			return plan, fmt.Errorf("snapshot_host_config_invalid: %w", readErr)
-		}
-		matches := jailSnapshotPathPattern.FindSubmatch(confData)
-		if len(matches) < 2 {
-			return plan, fmt.Errorf("snapshot_host_config_invalid: jail path is missing")
-		}
-		savedMountPoint, savedUsable := usableJailSnapshotMountpoint(string(matches[1]))
-		if !savedUsable || savedMountPoint != mountPoint {
-			return plan, fmt.Errorf(
-				"jail_snapshot_mountpoint_mismatch: dataset=%s snapshot=%s",
-				mountPoint,
-				savedMountPoint,
-			)
-		}
-		plan.HostConfigAvailable = true
 	}
 
 	plan.Restored = restored
@@ -1148,171 +1095,27 @@ func isDatasetNotFoundError(err error) bool {
 		strings.Contains(msg, "not found")
 }
 
-func (s *Service) stageHostConfigIntoDataset(ctID uint, mountPoint string) error {
-	mountPoint, usable := usableJailSnapshotMountpoint(mountPoint)
-	if !usable {
-		return fmt.Errorf("jail_snapshot_mountpoint_unusable")
+// The jail can write its own dataset, so rollback rebuilds the host-side config from the restored
+// settings rather than copying any out of the snapshot.
+func (s *Service) rewriteJailHostConfig(ctID uint, mountPoint string) error {
+	jail, err := s.GetJailByCTID(ctID)
+	if err != nil {
+		return err
+	}
+	if err := s.RemoveDevfsRulesForCTID(ctID); err != nil {
+		return err
 	}
 	jailsPath, err := config.GetJailsPath()
 	if err != nil {
 		return fmt.Errorf("failed_to_get_jails_path: %w", err)
 	}
-
 	jailDir := filepath.Join(jailsPath, fmt.Sprintf("%d", ctID))
-	stagingRoot := filepath.Join(mountPoint, ".sylve", "host-config")
-	if err := os.RemoveAll(stagingRoot); err != nil {
-		return fmt.Errorf("failed_to_reset_snapshot_staging_directory: %w", err)
+	if err := os.WriteFile(filepath.Join(jailDir, "fstab"), []byte(jail.Fstab), 0644); err != nil {
+		return fmt.Errorf("failed_to_write_jail_fstab: %w", err)
 	}
-	if err := os.MkdirAll(stagingRoot, 0755); err != nil {
-		return fmt.Errorf("failed_to_create_snapshot_staging_directory: %w", err)
-	}
-
-	confPath := filepath.Join(jailDir, fmt.Sprintf("%d.conf", ctID))
-	if err := copyFile(confPath, filepath.Join(stagingRoot, fmt.Sprintf("%d.conf", ctID))); err != nil {
-		return fmt.Errorf("failed_to_stage_jail_conf: %w", err)
-	}
-
-	fstabPath := filepath.Join(jailDir, "fstab")
-	if _, err := os.Stat(fstabPath); err == nil {
-		if err := copyFile(fstabPath, filepath.Join(stagingRoot, "fstab")); err != nil {
-			return fmt.Errorf("failed_to_stage_jail_fstab: %w", err)
-		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("failed_to_stat_jail_fstab: %w", err)
-	}
-
-	scriptsPath := filepath.Join(jailDir, "scripts")
-	if info, err := os.Stat(scriptsPath); err == nil {
-		if !info.IsDir() {
-			return fmt.Errorf("failed_to_stage_jail_scripts: scripts path is not a directory")
-		}
-		if err := copyDir(scriptsPath, filepath.Join(stagingRoot, "scripts")); err != nil {
-			return fmt.Errorf("failed_to_stage_jail_scripts: %w", err)
-		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("failed_to_stat_jail_scripts: %w", err)
-	}
-
-	return nil
-}
-
-func (s *Service) restoreHostConfigFromDataset(ctID uint, mountPoint string, available bool) error {
-	if !available {
-		return nil
-	}
-	mountPoint, usable := usableJailSnapshotMountpoint(mountPoint)
-	if !usable {
-		return fmt.Errorf("jail_snapshot_mountpoint_unusable")
-	}
-	jailsPath, err := config.GetJailsPath()
-	if err != nil {
-		return fmt.Errorf("failed_to_get_jails_path: %w", err)
-	}
-
-	jailDir := filepath.Join(jailsPath, fmt.Sprintf("%d", ctID))
-	if err := os.MkdirAll(jailDir, 0755); err != nil {
-		return fmt.Errorf("failed_to_create_jail_config_directory: %w", err)
-	}
-
-	stagingRoot := filepath.Join(mountPoint, ".sylve", "host-config")
-	if _, err := os.Stat(stagingRoot); err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("failed_to_stat_snapshot_staging_directory: %w", err)
-	}
-
-	confSource := filepath.Join(stagingRoot, fmt.Sprintf("%d.conf", ctID))
-	if err := copyFile(confSource, filepath.Join(jailDir, fmt.Sprintf("%d.conf", ctID))); err != nil {
-		return fmt.Errorf("failed_to_restore_jail_conf: %w", err)
-	}
-
-	fstabSource := filepath.Join(stagingRoot, "fstab")
-	if _, err := os.Stat(fstabSource); err == nil {
-		if err := copyFile(fstabSource, filepath.Join(jailDir, "fstab")); err != nil {
-			return fmt.Errorf("failed_to_restore_jail_fstab: %w", err)
-		}
-	} else if os.IsNotExist(err) {
-		if err := os.Remove(filepath.Join(jailDir, "fstab")); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("failed_to_remove_jail_fstab: %w", err)
-		}
-	} else {
-		return fmt.Errorf("failed_to_stat_snapshot_jail_fstab: %w", err)
-	}
-
-	hostScripts := filepath.Join(jailDir, "scripts")
-	if err := os.RemoveAll(hostScripts); err != nil {
-		return fmt.Errorf("failed_to_reset_host_scripts_directory: %w", err)
-	}
-	scriptsSource := filepath.Join(stagingRoot, "scripts")
-	if info, err := os.Stat(scriptsSource); err == nil {
-		if !info.IsDir() {
-			return fmt.Errorf("failed_to_restore_jail_scripts: snapshot scripts path is not a directory")
-		}
-		if err := copyDir(scriptsSource, hostScripts); err != nil {
-			return fmt.Errorf("failed_to_restore_jail_scripts: %w", err)
-		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("failed_to_stat_snapshot_jail_scripts: %w", err)
-	}
-
-	return nil
-}
-
-func copyDir(srcDir string, dstDir string) error {
-	if err := os.MkdirAll(dstDir, 0755); err != nil {
-		return err
-	}
-
-	entries, err := os.ReadDir(srcDir)
+	cfg, err := s.CreateJailConfig(*jail, mountPoint)
 	if err != nil {
 		return err
 	}
-
-	for _, entry := range entries {
-		srcPath := filepath.Join(srcDir, entry.Name())
-		dstPath := filepath.Join(dstDir, entry.Name())
-
-		if entry.IsDir() {
-			if err := copyDir(srcPath, dstPath); err != nil {
-				return err
-			}
-			continue
-		}
-
-		if err := copyFile(srcPath, dstPath); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func copyFile(src string, dst string) error {
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
-
-	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
-		return err
-	}
-
-	srcInfo, err := srcFile.Stat()
-	if err != nil {
-		return err
-	}
-
-	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, srcInfo.Mode())
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
-
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return err
-	}
-
-	return nil
+	return os.WriteFile(filepath.Join(jailDir, fmt.Sprintf("%d.conf", ctID)), []byte(cfg), 0644)
 }

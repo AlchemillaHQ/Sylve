@@ -96,7 +96,7 @@ func NewStartupService(db *gorm.DB,
 }
 
 func (s *Service) InitKeys(authService serviceInterfaces.AuthServiceInterface) error {
-	if err := authService.InitSecret("JWTSecret", 6); err != nil {
+	if err := authService.InitSecret("JWTSecret"); err != nil {
 		return err
 	}
 

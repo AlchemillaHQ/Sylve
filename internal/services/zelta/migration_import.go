@@ -542,11 +542,7 @@ func (s *Service) writeJailMetadataToDisk(meta *restoredJailMetadata, mountPoint
 		return fmt.Errorf("failed_to_marshal_jail_metadata: %w", err)
 	}
 
-	metaPath := filepath.Join(strings.TrimSuffix(mountPoint, "/"), ".sylve", "jail.json")
-	if err := os.MkdirAll(filepath.Dir(metaPath), 0755); err != nil {
-		return fmt.Errorf("failed_to_create_metadata_dir: %w", err)
-	}
-	if err := os.WriteFile(metaPath, raw, 0644); err != nil {
+	if err := jailService.WriteJailMetadata(mountPoint, raw); err != nil {
 		return fmt.Errorf("failed_to_write_jail_metadata_file: %w", err)
 	}
 

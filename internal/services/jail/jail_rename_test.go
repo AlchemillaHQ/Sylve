@@ -28,7 +28,7 @@ func requireSystemUUIDOrSkip(t *testing.T) {
 
 func TestUpdateNameRenamesJailAndTemplateSourceName(t *testing.T) {
 	requireSystemUUIDOrSkip(t)
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	t.Setenv("SYLVE_DATA_PATH", tempDir(t))
 
 	db := testutil.NewSQLiteTestDB(
 		t,
@@ -47,7 +47,7 @@ func TestUpdateNameRenamesJailAndTemplateSourceName(t *testing.T) {
 	if err := db.Create(&jail).Error; err != nil {
 		t.Fatalf("failed seeding jail: %v", err)
 	}
-	mountPoint := t.TempDir()
+	mountPoint := tempDir(t)
 	attachJailRootTestFixture(t, svc, db, jail.ID, jail.CTID, mountPoint)
 	writeJailRootConfigTestFixture(t, svc, jail.CTID, jail.Name, mountPoint)
 
@@ -88,7 +88,7 @@ func TestUpdateNameRenamesJailAndTemplateSourceName(t *testing.T) {
 
 func TestUpdateNameRejectsInvalidOrDuplicateName(t *testing.T) {
 	requireSystemUUIDOrSkip(t)
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	t.Setenv("SYLVE_DATA_PATH", tempDir(t))
 
 	db := testutil.NewSQLiteTestDB(
 		t,
@@ -118,7 +118,7 @@ func TestUpdateNameRejectsInvalidOrDuplicateName(t *testing.T) {
 
 func TestUpdateNameDeniedWhenReplicationLeaseNotOwned(t *testing.T) {
 	requireSystemUUIDOrSkip(t)
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	t.Setenv("SYLVE_DATA_PATH", tempDir(t))
 
 	db := testutil.NewSQLiteTestDB(
 		t,

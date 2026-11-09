@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/h2non/filetype"
@@ -441,13 +442,21 @@ type writtenFile struct {
 var writtenFiles sync.Map
 
 func WriteFileIfChanged(path string, data []byte, perm os.FileMode) error {
+	return WriteIfChanged(path, data,
+		func() (os.FileInfo, error) { return os.Stat(path) },
+		func() ([]byte, error) { return os.ReadFile(path) },
+		func() error { return AtomicWriteFile(path, data, perm) })
+}
+
+// WriteIfChanged calls write unless path already holds data. stat failing forces the write.
+func WriteIfChanged(path string, data []byte, stat func() (os.FileInfo, error), read func() ([]byte, error), write func() error) error {
 	sum := sha256.Sum256(data)
 	remember := func() {
-		if info, err := os.Stat(path); err == nil {
+		if info, err := stat(); err == nil {
 			writtenFiles.Store(path, writtenFile{info.Size(), info.ModTime(), sum})
 		}
 	}
-	if info, err := os.Stat(path); err == nil {
+	if info, err := stat(); err == nil {
 		// Reading to compare is itself a write on an atime=on dataset, so trust
 		// the file we wrote last if it is still untouched.
 		if last, ok := writtenFiles.Load(path); ok {
@@ -456,16 +465,145 @@ func WriteFileIfChanged(path string, data []byte, perm os.FileMode) error {
 				return nil
 			}
 		}
-		if current, err := os.ReadFile(path); err == nil && bytes.Equal(current, data) {
+		if current, err := read(); err == nil && bytes.Equal(current, data) {
 			remember()
 			return nil
 		}
 	}
-	if err := AtomicWriteFile(path, data, perm); err != nil {
+	if err := write(); err != nil {
 		return err
 	}
 	remember()
 	return nil
+}
+
+// The *Under helpers are for trees a guest controls, such as a jail's root: they resolve path
+// through os.Root, so a symlink the guest planted can't send a host read, write or delete
+// outside root.
+func openUnder(root, path string) (*os.Root, string, error) {
+	rel, err := filepath.Rel(root, path)
+	if err != nil || !filepath.IsLocal(rel) {
+		return nil, "", fmt.Errorf("path_outside_root: %s", path)
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, "", err
+	}
+	return r, rel, nil
+}
+
+const maxGuestFileBytes = 16 << 20
+
+// Nonblocking open and the regular-file check keep a guest's FIFO or device from hanging the
+// read.
+func readRegularIn(r *os.Root, name string) ([]byte, error) {
+	f, err := r.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("not_a_regular_file: %s", name)
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxGuestFileBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxGuestFileBytes {
+		return nil, fmt.Errorf("file_too_large: %s", name)
+	}
+	return data, nil
+}
+
+func atomicWriteIn(r *os.Root, name string, data []byte, perm os.FileMode) error {
+	tmp := filepath.Join(filepath.Dir(name), ".tmp-"+GenerateRandomString(12))
+	f, err := r.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	defer r.Remove(tmp)
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := r.Chmod(tmp, perm); err != nil {
+		return err
+	}
+	return r.Rename(tmp, name)
+}
+
+func LstatUnder(root, path string) (os.FileInfo, error) {
+	r, rel, err := openUnder(root, path)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return r.Lstat(rel)
+}
+
+func ReadlinkUnder(root, path string) (string, error) {
+	r, rel, err := openUnder(root, path)
+	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+	return r.Readlink(rel)
+}
+
+func SymlinkUnder(root, target, path string) error {
+	r, rel, err := openUnder(root, path)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	return r.Symlink(target, rel)
+}
+
+func ReadFileUnder(root, path string) ([]byte, error) {
+	r, rel, err := openUnder(root, path)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return readRegularIn(r, rel)
+}
+
+func WriteFileUnder(root, path string, data []byte, perm os.FileMode) error {
+	r, rel, err := openUnder(root, path)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	return atomicWriteIn(r, rel, data, perm)
+}
+
+func MkdirAllUnder(root, path string, perm os.FileMode) error {
+	r, rel, err := openUnder(root, path)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	return r.MkdirAll(rel, perm)
+}
+
+func RemoveUnder(root, path string) error {
+	r, rel, err := openUnder(root, path)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	return r.Remove(rel)
 }
 
 func ReadLastLines(path string, maxLines int) (string, error) {
