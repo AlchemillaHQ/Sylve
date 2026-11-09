@@ -139,16 +139,15 @@ under sponsorship from the FreeBSD Foundation.
 			.map((other) => Number(settings.values[other.name]));
 
 	async function configure() {
-		if (!selected) return;
+		if (!selected || busy) return;
 		busy = true;
 		error = '';
 		const result = await getCatalogTemplate(selected.source, selected.id, node);
-		busy = false;
 		if (isAPIResponse(result)) {
+			busy = false;
 			error = getAPIErrorText(result);
 			return;
 		}
-		template = result;
 		const asks = result.choices.flatMap((choice) => choice.options.flatMap((option) => option.ask));
 		let stack = result.stack;
 		if (stack) {
@@ -165,6 +164,8 @@ under sponsorship from the FreeBSD Foundation.
 			stack
 		};
 		showAdvanced = false;
+		template = result;
+		busy = false;
 		await tick();
 		content
 			?.querySelector<HTMLElement>('input:not([type="checkbox"]), textarea')
