@@ -8,7 +8,11 @@
 
 package clusterModels
 
-import "time"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"time"
+)
 
 type EncryptionKey struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
@@ -17,4 +21,19 @@ type EncryptionKey struct {
 	KeyFormat string    `gorm:"default:passphrase" json:"keyFormat"`
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
+}
+
+type EncryptionKeyRemoval struct {
+	UUID    string `json:"uuid"`
+	KeyHash string `json:"keyHash"`
+}
+
+type EncryptionKeyTombstone struct {
+	UUID    string `gorm:"primaryKey"`
+	KeyHash string `gorm:"not null"`
+}
+
+func EncryptionKeyHash(keyData string) string {
+	sum := sha256.Sum256([]byte(keyData))
+	return hex.EncodeToString(sum[:])
 }

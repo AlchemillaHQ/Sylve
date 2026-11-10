@@ -12982,16 +12982,6 @@ msgstr "Test in progress"
 msgid "Encryption Passphrase (Optional)"
 msgstr "Encryption Passphrase (Optional)"
 
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
-msgid "Required only when the key is not already registered"
-msgstr "Required only when the key is not already registered"
-
-#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
-#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
-msgid "A supplied passphrase is saved in the cluster key store for automated recovery."
-msgstr "A supplied passphrase is saved in the cluster key store for automated recovery."
-
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 msgid "<0/> History"
 msgstr "<0/> History"
@@ -24568,3 +24558,18 @@ msgstr "Unlock"
 #: src/routes/datacenter/permissions/users/+page.svelte
 msgid "Lock"
 msgstr "Lock"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Not needed if a key on this node already unlocks it"
+msgstr "Not needed if a key on this node already unlocks it"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Remember Passphrase"
+msgstr "Remember Passphrase"
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "A remembered passphrase is kept in the cluster key store so later restores unlock on their own. Otherwise it's used for this restore only."
+msgstr "A remembered passphrase is kept in the cluster key store so later restores unlock on their own. Otherwise it's used for this restore only."

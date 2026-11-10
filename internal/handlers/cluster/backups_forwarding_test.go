@@ -65,6 +65,7 @@ type backupRestoreHandlerStub struct {
 	registeredKeys   []string
 	enqueuedJobs     []uint
 	enqueuedSnapshot []string
+	enqueuedKeys     []string
 	registerErr      error
 	enqueueErr       error
 }
@@ -76,11 +77,12 @@ func (s *backupRestoreHandlerStub) RegisterRestoreEncryptionKey(key, format stri
 	return s.registerErr
 }
 
-func (s *backupRestoreHandlerStub) EnqueueRestoreJob(_ context.Context, jobID uint, snapshot string) error {
+func (s *backupRestoreHandlerStub) EnqueueRestoreJob(_ context.Context, jobID uint, snapshot, passphrase string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.enqueuedJobs = append(s.enqueuedJobs, jobID)
 	s.enqueuedSnapshot = append(s.enqueuedSnapshot, snapshot)
+	s.enqueuedKeys = append(s.enqueuedKeys, passphrase)
 	return s.enqueueErr
 }
 
@@ -343,11 +345,15 @@ func TestBackupRestoreForwardsThroughEveryNonRunnerAndOnlyRunnerEnqueues(t *test
 		nodes[ingressIndex].service.AuthService = auth
 		router := newBackupRestoreForwardRouter(nodes[ingressIndex].service, ingressRestore, 77, "alice", "sylve")
 		requestID := fmt.Sprintf("restore-request-%d", ingressIndex)
+		remember := ingressIndex == 0
 		response := performBackupForwardRequest(
 			t,
 			router,
 			"/api/cluster/backups/jobs/61/restore",
-			[]byte(`{"snapshot":"@bk_j1_c1_test","encryptionKey":"secret","encryptionKeyFormat":"passphrase"}`),
+			[]byte(fmt.Sprintf(
+				`{"snapshot":"@bk_j1_c1_test","encryptionKey":"secret","encryptionKeyFormat":"passphrase","rememberEncryptionKey":%t}`,
+				remember,
+			)),
 			map[string]string{"X-Request-ID": requestID, "X-Correlation-ID": "audit-correlation"},
 		)
 		if response.Code != http.StatusAccepted {
@@ -367,8 +373,11 @@ func TestBackupRestoreForwardsThroughEveryNonRunnerAndOnlyRunnerEnqueues(t *test
 	if len(runnerRestore.enqueuedSnapshot) != 2 || runnerRestore.enqueuedSnapshot[0] != "@bk_j1_c1_test" {
 		t.Fatalf("runner snapshots = %v", runnerRestore.enqueuedSnapshot)
 	}
-	if len(runnerRestore.registeredKeys) != 2 || runnerRestore.registeredKeys[0] != "secret\x00passphrase" {
+	if len(runnerRestore.registeredKeys) != 1 || runnerRestore.registeredKeys[0] != "secret\x00passphrase" {
 		t.Fatalf("runner encryption key registration = %v", runnerRestore.registeredKeys)
+	}
+	if len(runnerRestore.enqueuedKeys) != 2 || runnerRestore.enqueuedKeys[0] != "" || runnerRestore.enqueuedKeys[1] != "secret" {
+		t.Fatalf("passphrases sent with the restores = %q", runnerRestore.enqueuedKeys)
 	}
 	if len(*forwarded) != 2 {
 		t.Fatalf("forwarded request count = %d", len(*forwarded))

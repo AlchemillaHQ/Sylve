@@ -80,7 +80,7 @@ func TestRestoreJobInvalidRemoteValuesHaveNoDurableSideEffects(t *testing.T) {
 		"tank/backups/../data@bk_j92_c1_valid",
 		"tank/backups-old/data@bk_j92_c1_valid",
 	} {
-		if err := service.EnqueueRestoreJob(context.Background(), job.ID, snapshot); err == nil {
+		if err := service.EnqueueRestoreJob(context.Background(), job.ID, snapshot, ""); err == nil {
 			t.Fatalf("accepted invalid snapshot %q", snapshot)
 		}
 	}
@@ -267,6 +267,7 @@ func TestRestoreEventAndAuditAreDurableBeforeQueuePublication(t *testing.T) {
 		"zroot/ordering",
 		true,
 		"00000000-1111-4222-8333-444444444444",
+		"",
 	); err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
@@ -293,6 +294,7 @@ func TestRestoreQueueFailureFinalizesPrecreatedEventAndAudit(t *testing.T) {
 		"zroot/queue-failure",
 		true,
 		"11111111-2222-4333-8444-555555555555",
+		"",
 	)
 	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("enqueue error = %v", err)
@@ -340,6 +342,7 @@ func TestAmbiguousQueueTimeoutCannotOverwriteFastWorkerOutcome(t *testing.T) {
 		"zroot/ambiguous",
 		true,
 		operationID,
+		"",
 	)
 	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("ambiguous enqueue result = %v", err)
@@ -364,6 +367,7 @@ func TestAmbiguousQueueTimeoutCannotOverwriteFastWorkerOutcome(t *testing.T) {
 		"zroot/ambiguous",
 		true,
 		operationID,
+		"",
 	); err != nil {
 		t.Fatalf("idempotent retry: %v", err)
 	}
@@ -394,6 +398,7 @@ func TestRestoreTargetQueuePanicIsTerminallyObserved(t *testing.T) {
 		"zroot/panic",
 		true,
 		"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+		"",
 	); err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
@@ -503,6 +508,7 @@ func TestRestoreTargetLookupFailureAfterAcceptanceIsObserved(t *testing.T) {
 		"zroot/target-deleted",
 		true,
 		"bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+		"",
 	); err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
@@ -546,6 +552,7 @@ func TestRestoreTargetDisableAfterAcceptanceIsObserved(t *testing.T) {
 		"zroot/target-disabled",
 		true,
 		"cccccccc-dddd-4eee-8fff-aaaaaaaaaaaa",
+		"",
 	); err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
@@ -609,6 +616,7 @@ func TestRestoreJobModesFinalizeTheirOwnEventAndAuditOnFailure(t *testing.T) {
 			internalDB.ContextWithAuditRecordID(context.Background(), audit.ID),
 			job.ID,
 			"@bk_j1_c1_failure",
+			"",
 		); err != nil {
 			t.Fatalf("enqueue %s: %v", job.Mode, err)
 		}

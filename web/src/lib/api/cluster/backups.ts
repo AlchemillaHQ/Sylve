@@ -58,6 +58,7 @@ export type RestoreFromTargetInput = {
 	operationId?: string;
 	encryptionKey?: string;
 	encryptionKeyFormat?: 'passphrase';
+	rememberEncryptionKey?: boolean;
 };
 
 export type BackupJobSnapshotsResult = {
@@ -210,7 +211,8 @@ export async function listBackupJobSnapshots(
 export async function restoreBackupJob(
 	jobId: number,
 	snapshot: string,
-	encryptionKey = ''
+	encryptionKey = '',
+	rememberEncryptionKey = false
 ): Promise<APIResponse> {
 	return await apiRequestResult(
 		`/cluster/backups/jobs/${jobId}/restore`,
@@ -219,7 +221,8 @@ export async function restoreBackupJob(
 		{
 			snapshot,
 			encryptionKey,
-			encryptionKeyFormat: 'passphrase'
+			encryptionKeyFormat: 'passphrase',
+			rememberEncryptionKey
 		}
 	);
 }

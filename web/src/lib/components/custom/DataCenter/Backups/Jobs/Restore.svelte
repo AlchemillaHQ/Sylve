@@ -6,6 +6,7 @@
 		restoreBackupJob
 	} from '$lib/api/cluster/backups';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
@@ -45,6 +46,7 @@
 	let selectedGeneration = $state('');
 	let selectedSnapshot = $state('');
 	let encryptionKey = $state('');
+	let rememberEncryptionKey = $state(false);
 	let error = $state('');
 	let olderSnapshotsError = $state('');
 	let nextSnapshotCursor = $state('');
@@ -156,6 +158,7 @@
 		selectedGeneration = '';
 		selectedSnapshot = '';
 		encryptionKey = '';
+		rememberEncryptionKey = false;
 		error = '';
 		olderSnapshotsError = '';
 		nextSnapshotCursor = '';
@@ -271,7 +274,12 @@
 				}
 			}
 
-			const response = await restoreBackupJob(selectedJob.id, selectedSnapshot, encryptionKey);
+			const response = await restoreBackupJob(
+				selectedJob.id,
+				selectedSnapshot,
+				encryptionKey,
+				rememberEncryptionKey
+			);
 			if (response.status === 'success') {
 				toast.success('Restore job started - check events for progress', {
 					position: 'bottom-center'
@@ -499,15 +507,19 @@
 					<div class="space-y-1">
 						<CustomValueInput
 							label="Encryption Passphrase (Optional)"
-							placeholder="Required only when the key is not already registered"
+							placeholder="Not needed if a key on this node already unlocks it"
 							type="password"
 							autocomplete="new-password"
 							bind:value={encryptionKey}
 							classes="space-y-1"
 						/>
-						<p class="text-xs text-muted-foreground">
-							A supplied passphrase is saved in the cluster key store for automated recovery.
-						</p>
+						<CustomCheckbox
+							label="Remember Passphrase"
+							title="A remembered passphrase is kept in the cluster key store so later restores unlock on their own. Otherwise it's used for this restore only."
+							bind:checked={rememberEncryptionKey}
+							disabled={!encryptionKey}
+							classes="flex items-center gap-2 pt-2"
+						/>
 					</div>
 				{/if}
 

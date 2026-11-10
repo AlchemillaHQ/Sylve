@@ -39,6 +39,12 @@ func (s *Service) PublishEncryptionKey(ctx context.Context, uuid, keyData, keyFo
 	})
 }
 
+func (s *Service) DeleteEncryptionKey(ctx context.Context, uuid, keyHash string) error {
+	return s.Propose(ctx, "encryption_key", "delete", clusterModels.EncryptionKeyRemoval{
+		UUID: strings.TrimSpace(uuid), KeyHash: keyHash,
+	})
+}
+
 func (s *Service) ListEncryptionKeys() ([]clusterModels.EncryptionKey, error) {
 	var keys []clusterModels.EncryptionKey
 	if err := s.DB.Order("id ASC").Find(&keys).Error; err != nil {

@@ -41,6 +41,7 @@ var proposable = map[string]func(data json.RawMessage) string{
 	"note/delete":                 nil,
 	"note/bulk_delete":            nil,
 	"encryption_key/upsert":       nil,
+	"encryption_key/delete":       nil,
 	"cluster_join_key/set":        nil,
 	"cluster_identity/initialize": nil,
 	"cluster_ssh_identity/upsert": func(data json.RawMessage) string {

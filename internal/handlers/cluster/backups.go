@@ -38,13 +38,25 @@ type backupJobRunService interface {
 
 type backupJobRestoreService interface {
 	RegisterRestoreEncryptionKey(string, string) error
-	EnqueueRestoreJob(context.Context, uint, string) error
+	EnqueueRestoreJob(context.Context, uint, string, string) error
 }
 
 type RestoreBackupJobRequest struct {
-	Snapshot            string `json:"snapshot"`
-	EncryptionKey       string `json:"encryptionKey"`
-	EncryptionKeyFormat string `json:"encryptionKeyFormat"`
+	Snapshot              string `json:"snapshot"`
+	EncryptionKey         string `json:"encryptionKey"`
+	EncryptionKeyFormat   string `json:"encryptionKeyFormat"`
+	RememberEncryptionKey bool   `json:"rememberEncryptionKey"`
+}
+
+func restorePassphrase(
+	zS interface{ RegisterRestoreEncryptionKey(string, string) error },
+	key, format string,
+	remember bool,
+) (string, error) {
+	if !remember {
+		return key, nil
+	}
+	return "", zS.RegisterRestoreEncryptionKey(key, format)
 }
 
 func canonicalRestoreSnapshot(raw string) (string, error) {
@@ -693,7 +705,8 @@ func RestoreBackupJob(cS *cluster.Service, zS backupJobRestoreService) gin.Handl
 			}
 		}
 
-		if err := zS.RegisterRestoreEncryptionKey(req.EncryptionKey, req.EncryptionKeyFormat); err != nil {
+		passphrase, err := restorePassphrase(zS, req.EncryptionKey, req.EncryptionKeyFormat, req.RememberEncryptionKey)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "restore_encryption_key_register_failed",
@@ -703,7 +716,7 @@ func RestoreBackupJob(cS *cluster.Service, zS backupJobRestoreService) gin.Handl
 			return
 		}
 
-		if err := zS.EnqueueRestoreJob(c.Request.Context(), job.ID, req.Snapshot); err != nil {
+		if err := zS.EnqueueRestoreJob(c.Request.Context(), job.ID, req.Snapshot, passphrase); err != nil {
 			errorText := strings.ToLower(err.Error())
 			if strings.Contains(errorText, "async_audit_") ||
 				strings.Contains(errorText, "restore_event_") {

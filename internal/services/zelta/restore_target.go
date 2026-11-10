@@ -37,6 +37,7 @@ type restoreFromTargetPayload struct {
 	HolderNodeID       string `json:"holder_node_id,omitempty"`
 	EventID            uint   `json:"event_id,omitempty"`
 	AuditRecordID      uint   `json:"audit_record_id,omitempty"`
+	EncryptionKey      string `json:"encryption_key,omitempty"`
 }
 
 type BackupTargetDatasetInfo struct {
@@ -529,6 +530,7 @@ func (s *Service) EnqueueRestoreFromTarget(
 	remoteDataset, snapshot, destinationDataset string,
 	restoreNetwork bool,
 	operationID string,
+	passphrase string,
 ) error {
 	if targetID == 0 {
 		return fmt.Errorf("invalid_target_id")
@@ -570,6 +572,7 @@ func (s *Service) EnqueueRestoreFromTarget(
 		Snapshot:           snapshot,
 		DestinationDataset: destinationDataset,
 		RestoreNetwork:     &restoreNetwork,
+		EncryptionKey:      passphrase,
 	}, operationID)
 	if err != nil {
 		return err
@@ -723,6 +726,7 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 		snapshot:       snapshot,
 		destination:    destination,
 		restoreNetwork: payload.RestoreNetwork == nil || *payload.RestoreNetwork,
+		passphrase:     payload.EncryptionKey,
 	}
 	if remoteKind, vmRID := inferRestoreDatasetKind(relativeDatasetSuffix(target.BackupRoot, remoteDataset)); remoteKind == clusterModels.BackupJobModeVM && vmRID > 0 {
 		request.kind = clusterModels.BackupJobModeVM

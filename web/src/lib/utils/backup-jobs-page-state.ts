@@ -139,7 +139,7 @@ export function resolveBackupJobsPageData(results: BackupJobsPageResults): Backu
 			: 'standalone';
 	const effectiveNodes =
 		clusterMode === 'standalone'
-			? [syntheticLocalNode(localNodeId, `${hostnameFromBasicInfo(results.basicInfo)} (Local)`)]
+			? [syntheticLocalNode(localNodeId, hostnameFromBasicInfo(results.basicInfo))]
 			: (nodes ?? []);
 
 	return {

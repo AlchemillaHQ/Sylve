@@ -11349,6 +11349,8 @@ definitions:
         type: string
       encryptionKeyFormat:
         type: string
+      rememberEncryptionKey:
+        type: boolean
       snapshot:
         type: string
     type: object
@@ -11362,6 +11364,8 @@ definitions:
         type: string
       operationId:
         type: string
+      rememberEncryptionKey:
+        type: boolean
       remoteDataset:
         type: string
       restoreNetwork:

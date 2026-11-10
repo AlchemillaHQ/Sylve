@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"runtime/debug"
 	"sort"
 	"strings"
@@ -55,6 +56,7 @@ type restoreJobPayload struct {
 	HolderNodeID   string `json:"holder_node_id,omitempty"`
 	EventID        uint   `json:"event_id,omitempty"`
 	AuditRecordID  uint   `json:"audit_record_id,omitempty"`
+	EncryptionKey  string `json:"encryption_key,omitempty"`
 }
 
 func backupJobSnapshotTarget(job *clusterModels.BackupJob) (clusterModels.BackupTarget, string, error) {
@@ -154,7 +156,7 @@ func (s *Service) ListRemoteSnapshotsPage(
 }
 
 // EnqueueRestoreJob enqueues a restore job for async execution via goqite.
-func (s *Service) EnqueueRestoreJob(ctx context.Context, jobID uint, snapshot string) error {
+func (s *Service) EnqueueRestoreJob(ctx context.Context, jobID uint, snapshot, passphrase string) error {
 	if jobID == 0 {
 		return fmt.Errorf("invalid_job_id")
 	}
@@ -227,6 +229,7 @@ func (s *Service) EnqueueRestoreJob(ctx context.Context, jobID uint, snapshot st
 		JobID: jobID, Snapshot: normalizedSnapshot, RemoteDataset: remoteDataset,
 		OperationToken: handle.Token, HolderNodeID: handle.HolderNodeID,
 		EventID: execution.EventID, AuditRecordID: execution.Audit.RecordID,
+		EncryptionKey: passphrase,
 	}
 	enqueueErr := error(nil)
 	if s.backupOperationEnqueue != nil {
@@ -259,6 +262,7 @@ type restoreRequest struct {
 	snapshot       string
 	destination    string
 	restoreNetwork bool
+	passphrase     string
 }
 
 func (r restoreRequest) jobID() *uint {
@@ -274,6 +278,7 @@ func (s *Service) runRestoreJob(
 	job *clusterModels.BackupJob,
 	snapshot string,
 	remoteDataset string,
+	passphrase string,
 ) error {
 	if job == nil || job.ID == 0 {
 		return fmt.Errorf("backup_job_required")
@@ -328,6 +333,7 @@ func (s *Service) runRestoreJob(
 		snapshot:       snapshot,
 		destination:    destination,
 		restoreNetwork: true,
+		passphrase:     passphrase,
 	}
 	if job.Mode == clusterModels.BackupJobModeVM {
 		err = s.runRestoreVM(ctx, request)
@@ -597,7 +603,7 @@ func (s *Service) restoreDatasetRoot(
 		return restored, s.cleanupOwnedRestoreStagingAfterError(restorePath, identity, err)
 	}
 	if err = s.clearRestoreStagingProperties(ctx, destination, identity); err == nil {
-		err = s.fixRestoredProperties(ctx, destination)
+		err = s.fixRestoredProperties(ctx, destination, restored.backup, request.passphrase)
 	}
 	if err != nil {
 		return restored, s.rollbackRestoreAfterError(
@@ -1010,12 +1016,7 @@ func formatRestoreDatasetSuffix(suffix string) string {
 	return suffix
 }
 
-// fixRestoredProperties corrects ZFS properties after a restore so the dataset
-// behaves like the original (not readonly, correct mountpoint, canmount=on).
-// For encrypted datasets, it ensures the key file is present and loads the key
-// before mounting. Walks all child datasets under the root to handle
-// independent encryption roots.
-func (s *Service) fixRestoredProperties(ctx context.Context, dataset string) error {
+func (s *Service) fixRestoredProperties(ctx context.Context, dataset, replaced, passphrase string) error {
 	dataset = normalizeDatasetPath(dataset)
 	if dataset == "" {
 		return nil
@@ -1057,15 +1058,15 @@ func (s *Service) fixRestoredProperties(ctx context.Context, dataset string) err
 		}
 
 		if ds.IsEncrypted() {
-			keyLoaded, err := s.ensureEncryptionKeyForDataset(ctx, ds)
-			if err != nil {
+			keys := s.restoredDatasetKeys(ctx, dsName, dataset, replaced)
+			keys.passphrase = passphrase
+			if err := s.unlockReceivedDataset(ctx, ds, keys); err != nil {
 				logger.L.Error().Err(err).Str("dataset", dsName).Msg("fix_restored_property_key_load_failed")
-				restoreErrors = append(restoreErrors, fmt.Errorf("restore_encryption_key_load_failed_for_%s: %w", dsName, err))
-				continue
-			}
-			if !keyLoaded {
-				logger.L.Error().Str("dataset", dsName).Msg("fix_restored_property_key_not_auto_loaded")
-				restoreErrors = append(restoreErrors, fmt.Errorf("restore_encryption_key_required_for_%s", dsName))
+				if errors.Is(err, errEncryptionKeyUnavailable) {
+					restoreErrors = append(restoreErrors, fmt.Errorf("restore_encryption_key_required_for_%s", dsName))
+				} else {
+					restoreErrors = append(restoreErrors, fmt.Errorf("restore_encryption_key_load_failed_for_%s: %w", dsName, err))
+				}
 				continue
 			}
 		}
@@ -1099,6 +1100,26 @@ func (s *Service) fixRestoredProperties(ctx context.Context, dataset string) err
 		}
 	}
 	return errors.Join(restoreErrors...)
+}
+
+func (s *Service) restoredDatasetKeys(ctx context.Context, name, root, replaced string) receivedKeys {
+	keys := receivedKeys{inherit: true}
+	if replaced == "" {
+		return keys
+	}
+	old, err := s.getLocalDataset(ctx, replaced+strings.TrimPrefix(name, root))
+	if err != nil || old == nil || !old.IsEncrypted() {
+		return keys
+	}
+	props, err := old.GetEncryptionProperties(ctx)
+	if err != nil || strings.TrimSpace(props.EncryptionRoot) != old.Name {
+		return keys
+	}
+	if path, ok := strings.CutPrefix(props.KeyLocation, "file://"); ok &&
+		filepath.Dir(path) == EncryptionKeyDirectory && !sylveKeyName(filepath.Base(path)) {
+		return keys
+	}
+	return receivedKeys{keylocation: props.KeyLocation}
 }
 
 // registerRestoreJob registers the restore queue handler with goqite.
@@ -1171,7 +1192,7 @@ func (s *Service) handleRestoreJobQueue(ctx context.Context, payload restoreJobP
 		if s.restoreJobRun != nil {
 			return s.restoreJobRun(ctx, &job, payload.Snapshot, payload.RemoteDataset)
 		}
-		return s.runRestoreJob(ctx, &job, payload.Snapshot, payload.RemoteDataset)
+		return s.runRestoreJob(ctx, &job, payload.Snapshot, payload.RemoteDataset, payload.EncryptionKey)
 	})
 }
 

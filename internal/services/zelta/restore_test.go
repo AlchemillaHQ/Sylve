@@ -273,7 +273,7 @@ func TestIntegrationListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 			t.Fatalf("uncommitted restore point was advertised: %+v", snapshot)
 		}
 	}
-	if err := svc.runRestoreJob(ctx, &loaded, "@"+interruptedName, remoteDS); err == nil ||
+	if err := svc.runRestoreJob(ctx, &loaded, "@"+interruptedName, remoteDS, ""); err == nil ||
 		!strings.Contains(err.Error(), "not_committed") {
 		t.Fatalf("uncommitted restore point error = %v", err)
 	}
@@ -437,7 +437,7 @@ func TestIntegrationRecursiveRestoreSnapshotCoverageRejectsIncompleteTreeWithEph
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	err := svc.runRestoreJob(ctx, &job, "@selected", "")
+	err := svc.runRestoreJob(ctx, &job, "@selected", "", "")
 	if err == nil {
 		t.Fatal("expected incomplete recursive snapshot coverage to fail")
 	}
@@ -532,7 +532,7 @@ func TestIntegrationRunNonrecursiveRestoreJobSelectedRootOnlyWithEphemeralZFS(t 
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	if err := service.runRestoreJob(ctx, &job, "@selected", ""); err != nil {
+	if err := service.runRestoreJob(ctx, &job, "@selected", "", ""); err != nil {
 		t.Fatalf("nonrecursive restore failed: %v", err)
 	}
 
@@ -722,7 +722,7 @@ func runQueuedTestRestoreJob(
 	spec := restoreEventSpec{JobID: &jobID, SourceDataset: job.Name + snapshot, TargetEndpoint: "test"}
 	finish := func() error { return nil }
 	if err := svc.runQueuedRestore(ctx, execution, spec, finish, func(ctx context.Context) error {
-		return svc.runRestoreJob(ctx, job, snapshot, "")
+		return svc.runRestoreJob(ctx, job, snapshot, "", "")
 	}); err != nil {
 		t.Fatalf("queued restore: %v", err)
 	}

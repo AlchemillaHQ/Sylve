@@ -80,6 +80,7 @@
 	let poolLoadRevision = 0;
 	let restoreNetwork = $state(true);
 	let encryptionKey = $state('');
+	let rememberEncryptionKey = $state(false);
 	let restoreOperationId = $state('');
 	let restoreOperationRequestKey = $state('');
 
@@ -356,6 +357,7 @@
 		loadingPools = false;
 		restoreNetwork = true;
 		encryptionKey = '';
+		rememberEncryptionKey = false;
 		restoreOperationId = '';
 		restoreOperationRequestKey = '';
 		datasets = [];
@@ -434,6 +436,7 @@
 		destinationGuestId = '';
 		restoreNetwork = true;
 		encryptionKey = '';
+		rememberEncryptionKey = false;
 		restoreOperationId = '';
 		restoreOperationRequestKey = '';
 		datasets = [];
@@ -783,7 +786,8 @@
 				restoreNetwork,
 				operationId: restoreOperationId,
 				encryptionKey,
-				encryptionKeyFormat: 'passphrase'
+				encryptionKeyFormat: 'passphrase',
+				rememberEncryptionKey
 			});
 
 			if (response.status === 'success') {
@@ -1024,15 +1028,19 @@
 				<div class="space-y-1">
 					<CustomValueInput
 						label="Encryption Passphrase (Optional)"
-						placeholder="Required only when the key is not already registered"
+						placeholder="Not needed if a key on this node already unlocks it"
 						type="password"
 						autocomplete="new-password"
 						bind:value={encryptionKey}
 						classes="space-y-1"
 					/>
-					<p class="text-xs text-muted-foreground">
-						A supplied passphrase is saved in the cluster key store for automated recovery.
-					</p>
+					<CustomCheckbox
+						label="Remember Passphrase"
+						title="A remembered passphrase is kept in the cluster key store so later restores unlock on their own. Otherwise it's used for this restore only."
+						bind:checked={rememberEncryptionKey}
+						disabled={!encryptionKey}
+						classes="flex items-center gap-2 pt-2"
+					/>
 				</div>
 			{/if}
 

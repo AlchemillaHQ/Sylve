@@ -58,6 +58,7 @@ func enqueueTargetRestoreWithOperationID(
 		destination,
 		true,
 		operationID,
+		"",
 	)
 }
 
@@ -86,6 +87,7 @@ func TestOOBRestoreInvalidRemoteValuesHaveNoDurableSideEffects(t *testing.T) {
 			test.snapshot,
 			test.destination,
 			true,
+			"",
 			"",
 		); err == nil {
 			t.Fatalf("accepted invalid request: %+v", test)

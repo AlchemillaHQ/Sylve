@@ -48705,6 +48705,9 @@
                 "encryptionKeyFormat": {
                     "type": "string"
                 },
+                "rememberEncryptionKey": {
+                    "type": "boolean"
+                },
                 "snapshot": {
                     "type": "string"
                 }
@@ -48724,6 +48727,9 @@
                 },
                 "operationId": {
                     "type": "string"
+                },
+                "rememberEncryptionKey": {
+                    "type": "boolean"
                 },
                 "remoteDataset": {
                     "type": "string"

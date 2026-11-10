@@ -125,7 +125,7 @@
 	});
 
 	function normalizedNodeHostname(value: string): string {
-		return value.trim().replace(/\s+\(Local\)$/, '');
+		return value.trim();
 	}
 
 	let scopedGuest = $derived(guestScope && guestScope.id > 0 ? guestScope : null);

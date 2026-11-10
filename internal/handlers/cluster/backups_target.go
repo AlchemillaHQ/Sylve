@@ -41,14 +41,15 @@ type backupTargetZelta interface {
 }
 
 type RestoreBackupTargetRequest struct {
-	RemoteDataset       string `json:"remoteDataset"`
-	Snapshot            string `json:"snapshot"`
-	DestinationDataset  string `json:"destinationDataset"`
-	RestoreNodeID       string `json:"restoreNodeId"`
-	RestoreNetwork      *bool  `json:"restoreNetwork"`
-	OperationID         string `json:"operationId"`
-	EncryptionKey       string `json:"encryptionKey"`
-	EncryptionKeyFormat string `json:"encryptionKeyFormat"`
+	RemoteDataset         string `json:"remoteDataset"`
+	Snapshot              string `json:"snapshot"`
+	DestinationDataset    string `json:"destinationDataset"`
+	RestoreNodeID         string `json:"restoreNodeId"`
+	RestoreNetwork        *bool  `json:"restoreNetwork"`
+	OperationID           string `json:"operationId"`
+	EncryptionKey         string `json:"encryptionKey"`
+	EncryptionKeyFormat   string `json:"encryptionKeyFormat"`
+	RememberEncryptionKey bool   `json:"rememberEncryptionKey"`
 }
 
 func writeBackupTargetMutationError(c *gin.Context, operation string, err error) {
@@ -885,14 +886,15 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 
 		if forOtherNode(cS, restoreNodeID) {
 			body, err := json.Marshal(map[string]any{
-				"remoteDataset":       strings.TrimSpace(req.RemoteDataset),
-				"snapshot":            strings.TrimSpace(req.Snapshot),
-				"destinationDataset":  strings.TrimSpace(req.DestinationDataset),
-				"restoreNodeId":       restoreNodeID,
-				"restoreNetwork":      restoreNetwork,
-				"operationId":         operationID,
-				"encryptionKey":       req.EncryptionKey,
-				"encryptionKeyFormat": req.EncryptionKeyFormat,
+				"remoteDataset":         strings.TrimSpace(req.RemoteDataset),
+				"snapshot":              strings.TrimSpace(req.Snapshot),
+				"destinationDataset":    strings.TrimSpace(req.DestinationDataset),
+				"restoreNodeId":         restoreNodeID,
+				"restoreNetwork":        restoreNetwork,
+				"operationId":           operationID,
+				"encryptionKey":         req.EncryptionKey,
+				"encryptionKeyFormat":   req.EncryptionKeyFormat,
+				"rememberEncryptionKey": req.RememberEncryptionKey,
 			})
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -904,7 +906,8 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 			return
 		}
 
-		if err := zS.RegisterRestoreEncryptionKey(req.EncryptionKey, req.EncryptionKeyFormat); err != nil {
+		passphrase, err := restorePassphrase(zS, req.EncryptionKey, req.EncryptionKeyFormat, req.RememberEncryptionKey)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "restore_encryption_key_register_failed",
@@ -922,6 +925,7 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 			req.DestinationDataset,
 			restoreNetwork,
 			operationID,
+			passphrase,
 		); err != nil {
 			if writeBackupTargetHostKeyError(c, err) {
 				return

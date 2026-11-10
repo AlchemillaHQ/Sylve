@@ -8762,12 +8762,12 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 		}
 
 		if ds.IsEncrypted() {
-			keyLoaded, err := s.ensureEncryptionKeyForDataset(ctx, ds)
+			err := s.unlockReceivedDataset(ctx, ds, receivedKeys{})
+			if errors.Is(err, errEncryptionKeyUnavailable) {
+				return fmt.Errorf("replication_encryption_key_not_available_for_%s: run 'zfs load-key %s' first", ds.Name, ds.Name)
+			}
 			if err != nil {
 				return fmt.Errorf("replication_encryption_key_failed_%s: %w", ds.Name, err)
-			}
-			if !keyLoaded {
-				return fmt.Errorf("replication_encryption_key_not_available_for_%s: run 'zfs load-key %s' first", ds.Name, ds.Name)
 			}
 		}
 

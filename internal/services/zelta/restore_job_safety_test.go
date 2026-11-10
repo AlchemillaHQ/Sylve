@@ -103,7 +103,7 @@ func TestRunRestoreJobRejectsPersistedNoncanonicalGuestRootsBeforeReceive(t *tes
 			}
 			tt.seed(t, service)
 
-			err := service.runRestoreJob(context.Background(), &tt.job, "@must-not-receive", "")
+			err := service.runRestoreJob(context.Background(), &tt.job, "@must-not-receive", "", "")
 			if err == nil || !strings.Contains(err.Error(), tt.wantError) ||
 				!strings.Contains(err.Error(), "restore_backup_job_safety_check_failed") {
 				t.Fatalf("restore safety error = %v, want %q", err, tt.wantError)

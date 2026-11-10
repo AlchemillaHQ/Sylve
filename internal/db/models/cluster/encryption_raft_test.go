@@ -90,3 +90,44 @@ func TestFSMDispatcherEncryptionKeyUpsertUpdatesExisting(t *testing.T) {
 		t.Fatalf("expected updated key data, got %q", stored.KeyData)
 	}
 }
+
+func TestFSMDispatcherEncryptionKeyDeleteLeavesTombstone(t *testing.T) {
+	db := newClusterModelTestDB(t, &EncryptionKey{})
+	fsm := NewFSMDispatcher(db)
+	RegisterDefaultHandlers(fsm)
+
+	for _, key := range []EncryptionKey{
+		{UUID: "zroot_sylve", KeyData: "copied-user-key", KeyFormat: "passphrase"},
+		{UUID: "changed", KeyData: "current-key", KeyFormat: "passphrase"},
+	} {
+		if err := db.Create(&key).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	remove := func(uuid, keyData string) {
+		t.Helper()
+		data, _ := json.Marshal(EncryptionKeyRemoval{UUID: uuid, KeyHash: EncryptionKeyHash(keyData)})
+		if err := applyFSMCommand(t, fsm, Command{Type: "encryption_key", Action: "delete", Data: data}); err != nil {
+			t.Fatalf("delete %s: %v", uuid, err)
+		}
+	}
+	remove("zroot_sylve", "copied-user-key")
+	remove("changed", "the-key-it-had-before")
+	remove("missing", "anything")
+
+	var keys []EncryptionKey
+	if err := db.Order("uuid").Find(&keys).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(keys) != 1 || keys[0].UUID != "changed" {
+		t.Fatalf("keys after delete = %+v, want only the changed key", keys)
+	}
+	var tombstones []EncryptionKeyTombstone
+	if err := db.Find(&tombstones).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(tombstones) != 1 || tombstones[0].UUID != "zroot_sylve" ||
+		tombstones[0].KeyHash != EncryptionKeyHash("copied-user-key") {
+		t.Fatalf("tombstones = %+v, want one for zroot_sylve", tombstones)
+	}
+}

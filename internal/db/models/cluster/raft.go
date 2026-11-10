@@ -117,7 +117,7 @@ func NewFSMDispatcher(db *gorm.DB) *FSMDispatcher {
 	if err := dropRetiredReplicatedState(db); err != nil {
 		logger.L.Error().Err(err).Msg("raft_fsm_retired_state_cleanup_failed")
 	}
-	if err := db.AutoMigrate(append(ReplicatedModels(), &FSMState{})...); err != nil {
+	if err := db.AutoMigrate(append(ReplicatedModels(), &FSMState{}, &EncryptionKeyTombstone{})...); err != nil {
 		logger.L.Error().Err(err).Msg("raft_fsm_state_migration_failed")
 	}
 	var state FSMState
@@ -681,6 +681,7 @@ func RegisterDefaultHandlers(f *FSMDispatcher) {
 	On(f, "cluster_join_key", "set", setClusterJoinKeyTxn)
 
 	On(f, "encryption_key", "upsert", upsertEncryptionKey)
+	OnSince(f, 2, "encryption_key", "delete", deleteEncryptionKey)
 
 	for _, action := range []string{"create", "update"} {
 		On(f, "replication_transition_event", action, func(db *gorm.DB, event *ReplicationTransitionEvent) error {
@@ -753,4 +754,24 @@ func upsertEncryptionKey(db *gorm.DB, key *EncryptionKey) error {
 		Columns:   []clause.Column{{Name: "uuid"}},
 		DoUpdates: clause.AssignmentColumns([]string{"key_data", "key_format"}),
 	}).Create(key).Error
+}
+
+func deleteEncryptionKey(db *gorm.DB, removal *EncryptionKeyRemoval) error {
+	if strings.TrimSpace(removal.UUID) == "" || strings.TrimSpace(removal.KeyHash) == "" {
+		return fmt.Errorf("encryption_key_removal_invalid")
+	}
+	var key EncryptionKey
+	if err := db.Where("uuid = ?", removal.UUID).Limit(1).Find(&key).Error; err != nil {
+		return err
+	}
+	if key.ID == 0 || EncryptionKeyHash(key.KeyData) != removal.KeyHash {
+		return nil
+	}
+	if err := db.Delete(&key).Error; err != nil {
+		return err
+	}
+	return db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "uuid"}},
+		DoUpdates: clause.AssignmentColumns([]string{"key_hash"}),
+	}).Create(&EncryptionKeyTombstone{UUID: removal.UUID, KeyHash: removal.KeyHash}).Error
 }
