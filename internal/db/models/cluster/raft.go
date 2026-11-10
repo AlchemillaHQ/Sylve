@@ -117,7 +117,7 @@ func NewFSMDispatcher(db *gorm.DB) *FSMDispatcher {
 	if err := dropRetiredReplicatedState(db); err != nil {
 		logger.L.Error().Err(err).Msg("raft_fsm_retired_state_cleanup_failed")
 	}
-	if err := db.AutoMigrate(append(ReplicatedModels(), &FSMState{}, &EncryptionKeyTombstone{})...); err != nil {
+	if err := db.AutoMigrate(append(ReplicatedModels(), &FSMState{})...); err != nil {
 		logger.L.Error().Err(err).Msg("raft_fsm_state_migration_failed")
 	}
 	var state FSMState

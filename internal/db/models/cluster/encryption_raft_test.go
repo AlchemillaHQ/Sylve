@@ -92,7 +92,7 @@ func TestFSMDispatcherEncryptionKeyUpsertUpdatesExisting(t *testing.T) {
 }
 
 func TestFSMDispatcherEncryptionKeyDeleteLeavesTombstone(t *testing.T) {
-	db := newClusterModelTestDB(t, &EncryptionKey{})
+	db := newClusterModelTestDB(t, &EncryptionKey{}, &EncryptionKeyTombstone{})
 	fsm := NewFSMDispatcher(db)
 	RegisterDefaultHandlers(fsm)
 
