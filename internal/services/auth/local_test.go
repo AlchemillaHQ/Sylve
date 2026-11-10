@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/system"
@@ -47,6 +48,10 @@ func newLocalTestService(t *testing.T) *Service {
 		&models.WebAuthnCredential{},
 		&models.WebAuthnChallenge{},
 		&models.PAMIdentity{},
+		&clusterModels.ACLGrant{},
+		&clusterModels.ACLRole{},
+		&clusterModels.SylveUser{},
+		&clusterModels.ACLGroup{},
 	)
 
 	// Prevent real system command execution during tests.
@@ -54,7 +59,9 @@ func newLocalTestService(t *testing.T) *Service {
 		return "", nil
 	}))
 
-	return newAuthService(db, fakePasswordHasher{})
+	service := newAuthService(db, fakePasswordHasher{})
+	useFSMProposer(t, service)
+	return service
 }
 
 func seedBasicSettings(t *testing.T, svc *Service) {
@@ -69,6 +76,8 @@ func seedBasicSettings(t *testing.T, svc *Service) {
 }
 
 type AvailableService = models.AvailableService
+
+func boolPtr(v bool) *bool { return &v }
 
 func seedUser(t *testing.T, svc *Service, u models.User) models.User {
 	t.Helper()
@@ -258,7 +267,6 @@ func TestEditUserCanChangeAdminPassword(t *testing.T) {
 	if err := svc.EditUser(u.ID, EditUserOpts{
 		Username: u.Username,
 		Password: newPassword,
-		Admin:    true,
 	}); err != nil {
 		t.Fatalf("change admin password: %v", err)
 	}
@@ -269,6 +277,9 @@ func TestEditUserCanChangeAdminPassword(t *testing.T) {
 	}
 	if !svc.passwordHasher.Verify(newPassword, updated.Password) {
 		t.Fatal("updated admin password does not verify")
+	}
+	if !updated.Admin {
+		t.Fatal("admin flag dropped by an edit that left it out")
 	}
 }
 
@@ -307,7 +318,7 @@ func TestEditUserCanClearEmail(t *testing.T) {
 		Source:   "local",
 	})
 
-	if err := svc.EditUser(u.ID, EditUserOpts{Username: "testuser", Email: "", Admin: false}); err != nil {
+	if err := svc.EditUser(u.ID, EditUserOpts{Username: "testuser", Email: "", Admin: boolPtr(false)}); err != nil {
 		t.Fatalf("clear email: %v", err)
 	}
 	found, err := svc.GetUserByID(u.ID)
@@ -324,7 +335,7 @@ func TestEditUserRejectsDuplicateUsernameBeforeMutation(t *testing.T) {
 	seedUser(t, svc, models.User{Username: "alice", Password: "hashed", Source: "local"})
 	bob := seedUser(t, svc, models.User{Username: "bob", Password: "hashed", Source: "local"})
 
-	err := svc.EditUser(bob.ID, EditUserOpts{Username: "alice", Admin: false})
+	err := svc.EditUser(bob.ID, EditUserOpts{Username: "alice", Admin: boolPtr(false)})
 	if err == nil || !strings.Contains(err.Error(), "username_already_exists") {
 		t.Fatalf("expected username_already_exists, got: %v", err)
 	}
@@ -573,7 +584,7 @@ func TestEditUserUpdatesFullNameAndAdmin(t *testing.T) {
 	err := svc.EditUser(u.ID, EditUserOpts{
 		Username: "testuser",
 		FullName: "New Name",
-		Admin:    true,
+		Admin:    boolPtr(true),
 	})
 
 	if err == nil {
@@ -670,7 +681,7 @@ func TestEditLocalUserRevokesOnlySecurityChanges(t *testing.T) {
 		{
 			name: "administrator change revokes sessions",
 			change: func(opts *EditUserOpts) {
-				opts.Admin = true
+				opts.Admin = boolPtr(true)
 			},
 		},
 		{
@@ -686,7 +697,7 @@ func TestEditLocalUserRevokesOnlySecurityChanges(t *testing.T) {
 			svc := newLocalTestService(t)
 			user := seedUser(t, svc, models.User{Username: "alice", Password: "old-hash", Source: "local"})
 			seedUserToken(t, svc, user.ID, "session-token")
-			opts := EditUserOpts{Username: user.Username, Admin: user.Admin}
+			opts := EditUserOpts{Username: user.Username, Admin: boolPtr(user.Admin)}
 			test.change(&opts)
 
 			if err := svc.EditUser(user.ID, opts); err != nil {
@@ -916,6 +927,7 @@ func TestCreateUserRejects(t *testing.T) {
 	}{
 		{"invalid email", models.User{Username: "john", Password: "password123", Email: "not-an-email"}, "invalid_email_format"},
 		{"empty username", models.User{Password: "password123"}, "invalid_username_length"},
+		{"reserved username", models.User{Username: "Admin", Password: "password123"}, "reserved_username"},
 		{"invalid username format", models.User{Username: "Bad User!", Password: "password123"}, "invalid_username_format"},
 		{"password too short", models.User{Username: "john", Password: "short"}, "invalid_password_length"},
 		{"empty password when not disabled", models.User{Username: "john"}, "invalid_password_length"},
@@ -949,13 +961,16 @@ func TestEditUserRejects(t *testing.T) {
 		{name: "admin username change", seed: &models.User{Username: "admin", Password: "hashed"}, opts: EditUserOpts{Username: "newadmin"}, wantErr: "cannot_change_admin_username"},
 		{
 			name: "demote admin", seed: &models.User{Username: "admin", Password: "hashed", Admin: true, Source: "local"},
-			opts: EditUserOpts{Username: "admin"}, wantErr: "cannot_demote_admin_user",
+			opts: EditUserOpts{Username: "admin", Admin: boolPtr(false)}, wantErr: "cannot_demote_admin_user",
 		},
 		{
 			name: "lock admin", seed: &models.User{Username: "admin", Password: "hashed", Admin: true, Source: "local"},
-			opts: EditUserOpts{Username: "admin", Admin: true, Locked: true}, wantErr: "cannot_lock_admin_user",
+			opts: EditUserOpts{Username: "admin", Admin: boolPtr(true), Locked: true}, wantErr: "cannot_lock_admin_user",
 		},
 		{name: "invalid username format", seed: testUser, opts: EditUserOpts{Username: "Bad User!"}, wantErr: "invalid_username_format"},
+		{name: "rename to root", seed: testUser, opts: EditUserOpts{Username: "root"}, wantErr: "reserved_username"},
+		{name: "rename to admin", seed: testUser, opts: EditUserOpts{Username: "ADMIN"}, wantErr: "reserved_username"},
+		{name: "rename to superuser", seed: testUser, opts: EditUserOpts{Username: "superuser"}, wantErr: "reserved_username"},
 		{name: "password too short", seed: testUser, opts: EditUserOpts{Username: "testuser", Password: "short"}, wantErr: "invalid_password_length"},
 		{name: "password too long", seed: testUser, opts: EditUserOpts{Username: "testuser", Password: strings.Repeat("a", 73)}, wantErr: "invalid_password_length"},
 		{name: "invalid email", seed: testUser, opts: EditUserOpts{Username: "testuser", Email: "bad-email"}, wantErr: "invalid_email_format"},

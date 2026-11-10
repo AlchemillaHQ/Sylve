@@ -78,6 +78,8 @@ func shouldRedactAuditPayload(path string) bool {
 		path == "/api/iscsi/config" ||
 		auditPathMatches(path, "/api/auth/login") ||
 		auditPathMatches(path, "/api/auth/passkeys/login") ||
+		auditPathMatches(path, "/api/auth/oidc") ||
+		auditPathMatches(path, "/api/auth/realms") ||
 		path == "/api/auth/passkeys/register/finish" ||
 		auditPathMatches(path, "/api/dynamic-dns") ||
 		auditPathMatches(path, "/api/certificates") ||
@@ -715,6 +717,11 @@ func persistRequestAuditResult(auditDB *gorm.DB, desired *infoModels.AuditRecord
 	})
 }
 
+// A sign-in has no session yet; its audit record takes the user from the token it issues.
+func isSignInPath(path string) bool {
+	return path == "/api/auth/login" || path == "/api/auth/passkeys/login/finish" || path == "/api/auth/oidc/callback"
+}
+
 func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Service) gin.HandlerFunc {
 	if telemetryDB == nil {
 		panic("request logger middleware requires a non-nil telemetry database")
@@ -741,9 +748,7 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 
 		redactPayload := shouldRedactAuditPayload(c.Request.URL.Path)
 		redactResponse := shouldRedactAuditResponse(c.Request.URL.Path)
-		captureResponse := !redactResponse ||
-			c.Request.URL.Path == "/api/auth/login" ||
-			c.Request.URL.Path == "/api/auth/passkeys/login/finish"
+		captureResponse := !redactResponse || isSignInPath(c.Request.URL.Path)
 		bw := &bodyWriter{
 			body:           bytes.NewBufferString(""),
 			ResponseWriter: c.Writer,
@@ -753,9 +758,9 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 
 		var claims claim
 		claims, err := getClaims(c, authService)
-		if err != nil && (c.Request.URL.Path == "/api/auth/login" ||
+		if err != nil && (isSignInPath(c.Request.URL.Path) ||
 			c.Request.URL.Path == "/api/auth/passkeys/login/begin" ||
-			c.Request.URL.Path == "/api/auth/passkeys/login/finish" ||
+			strings.HasPrefix(c.Request.URL.Path, "/api/auth/oidc/") ||
 			strings.HasPrefix(c.Request.URL.Path, "/api/cluster")) {
 
 			if strings.HasPrefix(c.Request.URL.Path, "/api/cluster") {
@@ -893,7 +898,7 @@ func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Serv
 		log.Ended = time.Now()
 		log.Duration = time.Since(log.Started)
 
-		if (c.Request.URL.Path == "/api/auth/login" || c.Request.URL.Path == "/api/auth/passkeys/login/finish") && cStatus == 200 {
+		if isSignInPath(c.Request.URL.Path) && cStatus == 200 {
 			var resBody struct {
 				Data struct {
 					Token string `json:"token"`

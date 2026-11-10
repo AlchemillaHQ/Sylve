@@ -212,7 +212,7 @@ func TestCreateJailHandlerReturnsCreatedIdentityAndLocation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	stub := &jailCoreHandlerStub{}
 	router := gin.New()
-	router.POST("/jail", CreateJail(stub, nil))
+	router.POST("/jail", CreateJail(stub, nil, nil))
 
 	request := httptest.NewRequest(
 		http.MethodPost,

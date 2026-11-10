@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	"github.com/alchemillahq/sylve/pkg/system"
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
@@ -44,7 +45,12 @@ type PasskeyCredentialInfo struct {
 }
 
 func IsPasskeyRegistrationEligible(user models.User) bool {
-	return user.Admin && strings.TrimSpace(user.Password) != ""
+	return strings.TrimSpace(user.Password) != ""
+}
+
+func (s *Service) passkeyRegistrationAllowed(user *models.User) bool {
+	_, err := s.loginRefusal(user)
+	return err == nil && IsPasskeyRegistrationEligible(*user)
 }
 
 func passkeyCredentialInfo(record models.WebAuthnCredential) PasskeyCredentialInfo {
@@ -228,7 +234,7 @@ func (s *Service) BeginPasskeyRegistration(userID uint, rpID, origin string) (st
 	if err != nil {
 		return "", nil, err
 	}
-	if !IsPasskeyRegistrationEligible(target) {
+	if !s.passkeyRegistrationAllowed(&target) {
 		return "", nil, fmt.Errorf("passkey_registration_not_allowed")
 	}
 	user, err := s.loadPasskeyUserCredentials(target)
@@ -286,7 +292,7 @@ func (s *Service) FinishPasskeyRegistration(requestID string, credentialRaw json
 	if err != nil {
 		return PasskeyCredentialInfo{}, err
 	}
-	if !IsPasskeyRegistrationEligible(target) {
+	if !s.passkeyRegistrationAllowed(&target) {
 		return PasskeyCredentialInfo{}, fmt.Errorf("passkey_registration_not_allowed")
 	}
 	user, err := s.loadPasskeyUserCredentials(target)
@@ -381,6 +387,22 @@ func (s *Service) BeginPasskeyLogin(rpID, origin string) (string, any, error) {
 	return requestID, assertion.Response, nil
 }
 
+func (s *Service) passkeySignInRefusal(user *models.User) error {
+	if _, err := s.loginRefusal(user); err != nil {
+		return err
+	}
+	if user.Locked {
+		return fmt.Errorf("account_locked")
+	}
+	// A passkey skips the host password, so a PAM account the host locked or removed stops here.
+	if user.Source == "pam" {
+		if usable, err := system.UnixUserUsable(user.Username); err != nil || !usable {
+			return fmt.Errorf("account_locked")
+		}
+	}
+	return nil
+}
+
 func (s *Service) FinishPasskeyLogin(requestID string, credentialRaw json.RawMessage, remember bool, rpID, origin string) (models.User, string, error) {
 	challenge, session, err := s.loadPasskeyChallenge(requestID, passkeyChallengeTypeLogin)
 	if err != nil {
@@ -437,11 +459,8 @@ func (s *Service) FinishPasskeyLogin(requestID string, credentialRaw json.RawMes
 		return models.User{}, "", fmt.Errorf("challenge_used")
 	}
 
-	if !loaded.model.Admin {
-		return models.User{}, "", fmt.Errorf("only_admin_allowed")
-	}
-	if loaded.model.Locked {
-		return models.User{}, "", fmt.Errorf("account_locked")
+	if err := s.passkeySignInRefusal(&loaded.model); err != nil {
+		return models.User{}, "", err
 	}
 
 	data, err := json.Marshal(validatedCredential)

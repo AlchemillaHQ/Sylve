@@ -15,7 +15,9 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
@@ -124,7 +126,7 @@ func ListBootstraps(jailService jailBootstrapService) gin.HandlerFunc {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /jail/bootstraps/{name} [delete]
-func DeleteBootstrap(jailService jailBootstrapService) gin.HandlerFunc {
+func DeleteBootstrap(jailService jailBootstrapService, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		pool := strings.TrimSpace(c.Query("pool"))
 		name := strings.TrimSpace(c.Param("name"))
@@ -135,6 +137,9 @@ func DeleteBootstrap(jailService jailBootstrapService) gin.HandlerFunc {
 				Error:   "query parameter 'pool' and path parameter 'name' are required",
 				Data:    nil,
 			})
+			return
+		}
+		if !middleware.Allowed(c, authService, auth.StoragePath(pool), auth.DatastoreAllocateTemplate) {
 			return
 		}
 
@@ -183,10 +188,14 @@ func DeleteBootstrap(jailService jailBootstrapService) gin.HandlerFunc {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /jail/bootstraps [post]
-func CreateBootstrap(jailService jailBootstrapService) gin.HandlerFunc {
+// Bootstraps are shared bases on a pool, like container images: template rights on that pool.
+func CreateBootstrap(jailService jailBootstrapService, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req jailServiceInterfaces.BootstrapRequest
 		if !bindJailJSON(c, &req, "invalid_request") {
+			return
+		}
+		if !middleware.Allowed(c, authService, auth.StoragePath(req.Pool), auth.DatastoreAllocateTemplate) {
 			return
 		}
 

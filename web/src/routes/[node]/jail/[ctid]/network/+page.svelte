@@ -18,13 +18,14 @@ under sponsorship from the FreeBSD Foundation.
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { allowed, hostDetail, nodePath } from '$lib/stores/permissions.svelte';
 	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { Jail, JailState } from '$lib/types/jail/jail';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
-	import { ipGatewayFormatter, macFormatter } from '$lib/utils/jail/network';
+	import { ipGatewayFormatter, objectLabel } from '$lib/utils/jail/network';
 	import { formatVlanPolicy, vlanPolicyText } from '$lib/utils/network/vlan-format';
 	import { escapeHTML } from '$lib/utils/string';
 	import { resource } from 'runed';
@@ -109,7 +110,7 @@ under sponsorship from the FreeBSD Foundation.
 	const networkObjects = resource(
 		() => data.node,
 		async (hostname): Promise<ObjectResourceValue> => {
-			const result = await getNetworkObjects(hostname);
+			const result = await hostDetail(hostname, () => getNetworkObjects(hostname), []);
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
 				return {
@@ -136,6 +137,7 @@ under sponsorship from the FreeBSD Foundation.
 		networkObjects.current.identity === data.node ? networkObjects.current.value : []
 	);
 	let inherited = $derived(!!(currentJail?.inheritIPv4 || currentJail?.inheritIPv6));
+	let canInherit = $derived(allowed('Sys.Modify', nodePath(data.node)));
 	let inactive = $derived(
 		jailState.current?.ctId === data.ctId &&
 			jailState.current.state === 'INACTIVE' &&
@@ -182,30 +184,25 @@ under sponsorship from the FreeBSD Foundation.
 		];
 		if (!currentJail || inherited) return { rows: [], columns };
 
-		const rows: Row[] = currentJail.networks.map((network) => {
-			const switchName =
-				network.switchType === 'standard'
-					? currentSwitches.standard.find((item) => item.id === network.switchId)?.name || '-'
-					: currentSwitches.manual.find((item) => item.id === network.switchId)?.name || '-';
-			return {
-				id: network.id,
-				name: network.name,
-				switch: switchName,
-				mac: macFormatter(currentObjects, network.macId || 0),
-				vlanPolicy: vlanPolicyText(network.vlanPolicy) || '-',
-				vlanPolicyRaw: network.vlanPolicy,
-				ipv4: network.dhcp
-					? 'DHCP'
-					: network.ipv4Id
-						? ipGatewayFormatter(currentObjects, network.ipv4Id, network.ipv4GwId)
-						: '-',
-				ipv6: network.slaac
-					? 'SLAAC'
-					: network.ipv6Id
-						? ipGatewayFormatter(currentObjects, network.ipv6Id, network.ipv6GwId)
-						: '-'
-			};
-		});
+		// From the jail itself: the switch and object lists only have what the user may audit.
+		const rows: Row[] = currentJail.networks.map((network) => ({
+			id: network.id,
+			name: network.name,
+			switch: (network.standardSwitch ?? network.manualSwitch)?.name || '-',
+			mac: objectLabel(network.macObj),
+			vlanPolicy: vlanPolicyText(network.vlanPolicy) || '-',
+			vlanPolicyRaw: network.vlanPolicy,
+			ipv4: network.dhcp
+				? 'DHCP'
+				: network.ipv4Id
+					? ipGatewayFormatter(network.ipv4Obj, network.ipv4GwObj)
+					: '-',
+			ipv6: network.slaac
+				? 'SLAAC'
+				: network.ipv6Id
+					? ipGatewayFormatter(network.ipv6Obj, network.ipv6GwObj)
+					: '-'
+		}));
 		return { rows, columns };
 	});
 
@@ -261,8 +258,12 @@ under sponsorship from the FreeBSD Foundation.
 			onclick={() => (modals.inherit = true)}
 			size="sm"
 			variant="outline"
-			disabled={!inactive}
-			title={inactive ? 'Change network inheritance' : 'Stop the jail before changing its network'}
+			disabled={!inactive || !canInherit}
+			title={!canInherit
+				? 'Needs Sys.Modify on this node'
+				: inactive
+					? 'Change network inheritance'
+					: 'Stop the jail before changing its network'}
 			class="h-6.5 {activeRows.length > 0 ? 'hidden' : ''}"
 		>
 			<SpanWithIcon

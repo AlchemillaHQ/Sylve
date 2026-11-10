@@ -10,19 +10,23 @@ package authHandlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal"
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/testutil"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/pkg/system"
 	"github.com/gin-gonic/gin"
 )
@@ -39,6 +43,13 @@ func newTestAuthService(t *testing.T) *authService.Service {
 		&models.WebAuthnCredential{},
 		&models.WebAuthnChallenge{},
 		&models.PAMIdentity{},
+		&clusterModels.ACLGrant{},
+		&clusterModels.ACLRole{},
+		&clusterModels.SylveUser{},
+		&clusterModels.ACLGroup{},
+		&clusterModels.AuthRealm{},
+		&clusterModels.OIDCUser{},
+		&clusterModels.ClusterNode{},
 	)
 
 	// Prevent real system command execution during tests.
@@ -46,7 +57,21 @@ func newTestAuthService(t *testing.T) *authService.Service {
 		return "", nil
 	}))
 
-	return authService.NewAuthService(db).(*authService.Service)
+	svc := authService.NewAuthService(db).(*authService.Service)
+	fsm := clusterModels.NewFSMDispatcher(db)
+	clusterModels.RegisterDefaultHandlers(fsm)
+	svc.SetProposer(func(_ context.Context, commandType, action string, payload any) error {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		cmd := clusterModels.Command{Type: commandType, Action: action, Data: data}
+		if err := clusterModels.PrepareCommand(&cmd, time.Now()); err != nil {
+			return err
+		}
+		return fsm.ApplyLocal(cmd)
+	})
+	return svc
 }
 
 func setupRouter(svc *authService.Service) *gin.Engine {
@@ -121,6 +146,32 @@ func TestListUsersHandlerWithUsers(t *testing.T) {
 	}
 }
 
+func TestListUsersHandlerFlagsTakenNames(t *testing.T) {
+	svc := newTestAuthService(t)
+	for _, value := range []any{
+		&clusterModels.SylveUser{Username: "alice", Password: "hash-alice"},
+		&clusterModels.SylveUser{Username: "bob", Password: "hash-bob-elsewhere"},
+		&models.User{Username: "alice", Password: "hash-alice", Source: "local", Shared: true},
+		&models.User{Username: "bob", Password: "hash-bob-here", Source: "local"},
+		&models.User{Username: "admin", Password: "hash-admin", Source: "local"},
+	} {
+		if err := svc.DB.Create(value).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	w := performJSON(t, setupRouter(svc), http.MethodGet, "/auth/users?source=local", nil)
+	resp := testutil.DecodeJSONResponse[internal.APIResponse[[]PublicUser]](t, w)
+	got := map[string][2]bool{}
+	for _, user := range resp.Data {
+		got[user.Username] = [2]bool{user.Shared, user.NameTaken}
+	}
+	want := map[string][2]bool{"alice": {true, false}, "bob": {false, true}, "admin": {false, false}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("shared, nameTaken = %v, want %v", got, want)
+	}
+}
+
 func TestListUsersHandlerUsesPublicRepresentation(t *testing.T) {
 	svc := newTestAuthService(t)
 	if err := svc.DB.Create(&models.User{
@@ -179,7 +230,7 @@ func TestCreateUserHandlerMissingUsername(t *testing.T) {
 	}
 }
 
-func TestCreateUserHandlerMissingAdmin(t *testing.T) {
+func TestCreateUserHandlerWithoutAdmin(t *testing.T) {
 	svc := newTestAuthService(t)
 	router := setupRouter(svc)
 
@@ -188,8 +239,12 @@ func TestCreateUserHandlerMissingAdmin(t *testing.T) {
 		"password": "password123",
 	}
 	w := performJSON(t, router, "POST", "/auth/users", body)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	user, err := svc.GetUserByUsername("testuser")
+	if err != nil || user.Admin {
+		t.Fatalf("expected a non-admin user, got %+v (%v)", user, err)
 	}
 }
 
@@ -243,16 +298,25 @@ func TestEditUserHandlerInvalidID(t *testing.T) {
 	}
 }
 
-func TestEditUserHandlerMissingAdmin(t *testing.T) {
+func TestEditUserHandlerWithoutAdminKeepsFlag(t *testing.T) {
 	svc := newTestAuthService(t)
+	user := models.User{Username: "testuser", Password: "hashed", Admin: true, Source: "local"}
+	if err := svc.DB.Create(&user).Error; err != nil {
+		t.Fatalf("failed to seed user: %v", err)
+	}
 	router := setupRouter(svc)
 
 	body := map[string]any{
 		"username": "testuser",
+		"fullName": "Test User",
 	}
 	w := performJSON(t, router, "PUT", "/auth/users/1", body)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	updated, err := svc.GetUserByID(user.ID)
+	if err != nil || !updated.Admin || updated.FullName != "Test User" {
+		t.Fatalf("expected the admin flag kept, got %+v (%v)", updated, err)
 	}
 }
 

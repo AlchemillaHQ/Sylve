@@ -88,6 +88,7 @@ msgstr "ഓപ്ഷനുകൾ"
 #: src/routes/[node]/container/[ocid]/summary/+page.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/datacenter/+layout.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
 msgid "Notes"
 msgstr "കുറിപ്പുകൾ"
 
@@ -225,11 +226,12 @@ msgid "Authentication"
 msgstr "ഓതന്റിക്കേഷൻ"
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Users"
 msgstr "ഉപയോക്താക്കൾ"
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
-#: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Groups"
 msgstr "ഗ്രൂപ്പുകൾ"
 
@@ -266,6 +268,7 @@ msgstr "Difuse-sidebar"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/+layout.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
 msgid "Cluster"
 msgstr "ക്ലസ്റ്റർ"
 
@@ -556,11 +559,17 @@ msgid "Node"
 msgstr "നോഡ്"
 
 #: src/lib/components/custom/Container/Spec.svelte
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/container/[ocid]/options/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
 msgid "User"
 msgstr "ഉപയോക്താവ്"
 
@@ -582,6 +591,8 @@ msgid "Action"
 msgstr "നടപടി"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
@@ -613,8 +624,6 @@ msgstr "നടപടി"
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/summary/+page.svelte
-#: src/routes/datacenter/summary/+page.svelte
 msgid "Status"
 msgstr "സ്റ്റാറ്റസ്"
 
@@ -740,6 +749,7 @@ msgstr "ഒബ്‌ജക്റ്റ് ({0} പ്രോപ്പർട്ട
 #: src/lib/components/custom/DirectoryServices/Membership.svelte
 #: src/lib/components/custom/Login.svelte
 #: src/routes/[node]/containers/registries/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
 msgid "Username"
 msgstr "ഉപയോക്തൃനാമം"
 
@@ -758,6 +768,7 @@ msgstr "പാസ്‌വേഡ്"
 
 #: src/lib/components/custom/DirectoryServices/Realm.svelte
 #: src/lib/components/custom/Login.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/directory-services/kerberos/realms/+page.svelte
 msgid "Realm"
 msgstr "മേഖല"
@@ -869,7 +880,6 @@ msgstr "കുറിപ്പ് സൃഷ്ടിക്കുന്നതി�
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/authentication/groups/+page.svelte
 #: src/routes/[node]/authentication/groups/+page.svelte
-#: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
 #: src/routes/[node]/container/[ocid]/options/+page.svelte
 #: src/routes/[node]/container/[ocid]/options/+page.svelte
@@ -903,6 +913,13 @@ msgstr "കുറിപ്പ് സൃഷ്ടിക്കുന്നതി�
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/permissions/groups/+page.svelte
+#: src/routes/datacenter/permissions/groups/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/roles/+page.svelte
+#: src/routes/datacenter/permissions/roles/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
 msgid "Name"
 msgstr "പേര്"
 
@@ -953,12 +970,13 @@ msgstr "കാണുക"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/authentication/groups/+page.svelte
 #: src/routes/[node]/authentication/groups/+page.svelte
-#: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
 #: src/routes/[node]/container/[ocid]/+layout.svelte
 #: src/routes/[node]/container/[ocid]/+layout.svelte
@@ -997,6 +1015,11 @@ msgstr "കാണുക"
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/groups/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/roles/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Delete"
 msgstr "ഇല്ലാതാക്കുക"
@@ -1007,7 +1030,6 @@ msgstr "ഇല്ലാതാക്കുക"
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
-#: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
 #: src/routes/[node]/container/[ocid]/network/+page.svelte
 #: src/routes/[node]/container/[ocid]/storage/+page.svelte
@@ -1037,6 +1059,11 @@ msgstr "ഇല്ലാതാക്കുക"
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/groups/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/roles/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Edit"
 msgstr "തിരുത്തുക"
@@ -1054,7 +1081,6 @@ msgstr "മൊത്തമായി ഇല്ലാതാക്കുക"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/routes/[node]/authentication/groups/+page.svelte
-#: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
 #: src/routes/[node]/container/[ocid]/storage/+page.svelte
 #: src/routes/[node]/containers/networks/+page.svelte
@@ -1088,6 +1114,11 @@ msgstr "മൊത്തമായി ഇല്ലാതാക്കുക"
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/groups/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/roles/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "New"
 msgstr "പുതിയ"
@@ -1184,6 +1215,7 @@ msgstr "ഇതൊരു കുറിപ്പാണ്"
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/container/[ocid]/summary/+page.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
@@ -1193,6 +1225,10 @@ msgstr "ഇതൊരു കുറിപ്പാണ്"
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/groups/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/roles/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Save"
 msgstr "സംരക്ഷിക്കുക"
@@ -1392,74 +1428,75 @@ msgstr "കുറിപ്പ് നീക്കം ചെയ്തു"
 msgid "Notes deleted"
 msgstr "കുറിപ്പുകൾ നീക്കം ചെയ്തു"
 
-#: src/routes/datacenter/summary/+page.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 msgid "Health"
 msgstr "ആരോഗ്യം"
 
-#: src/routes/datacenter/summary/+page.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 msgid "Single Node"
 msgstr "സിംഗിൾ നോഡ്"
 
-#: src/routes/datacenter/summary/+page.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 msgid "Quorate: Yes"
 msgstr "കോറം: അതെ"
 
-#: src/routes/datacenter/summary/+page.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 msgid "Quorate: Yes (Degraded)"
 msgstr "കോറം: അതെ (ഡീഗ്രേഡഡ്)"
 
-#: src/routes/datacenter/summary/+page.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 msgid "Quorate: No"
 msgstr "കോറം: ഇല്ല"
 
-#: src/routes/datacenter/summary/+page.svelte
-#: src/routes/datacenter/summary/+page.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 msgid "Nodes"
 msgstr "നോഡുകൾ"
 
 #. 0: statusCounts.online || 0
-#: src/routes/datacenter/summary/+page.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 msgid "Online: {0}"
 msgstr "ഓൺലൈൻ: {0}"
 
-#: src/routes/datacenter/summary/+page.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 msgid "Online: 1"
 msgstr "ഓൺലൈൻ: 1"
 
 #. 0: statusCounts.offline || 0
-#: src/routes/datacenter/summary/+page.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 msgid "Offline: {0}"
 msgstr "ഓഫ്‌ലൈൻ: {0}"
 
-#: src/routes/datacenter/summary/+page.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 msgid "Offline: N/A"
 msgstr "ഓഫ്‌ലൈൻ: ലഭ്യമല്ല"
 
 #: src/lib/components/custom/Container/Create.svelte
 #: src/lib/components/custom/Container/Create.svelte
 #: src/lib/components/custom/Container/Create.svelte
-#: src/routes/datacenter/summary/+page.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 msgid "Resources"
 msgstr "വിഭവങ്ങൾ"
 
+#: src/lib/components/custom/DataCenter/Summary.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 #: src/routes/datacenter/cluster/+page.svelte
-#: src/routes/datacenter/summary/+page.svelte
-#: src/routes/datacenter/summary/+page.svelte
-#: src/routes/datacenter/summary/+page.svelte
 msgid "Disk"
 msgstr "ഡിസ്ക്"
 
 #. 0: metric
-#: src/routes/datacenter/summary/+page.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 msgid "Loading {0} chart..."
 msgstr "{0} ചാർട്ട് ലോഡ് ചെയ്യുന്നു..."
 
-#: src/routes/datacenter/summary/+page.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 msgid "Unable to load charts."
 msgstr "ചാർട്ടുകൾ ലോഡ് ചെയ്യാൻ സാധിച്ചില്ല"
 
 #: src/lib/components/custom/Container/GuestInformation.svelte
 #: src/lib/components/custom/Container/Spec.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/GlobalConfig/Config.svelte
@@ -1470,17 +1507,16 @@ msgstr "ചാർട്ടുകൾ ലോഡ് ചെയ്യാൻ സാധ
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
-#: src/routes/datacenter/summary/+page.svelte
 msgid "Hostname"
 msgstr "ഹോസ്റ്റ്നെയിം"
 
+#: src/lib/components/custom/DataCenter/Summary.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
-#: src/routes/datacenter/summary/+page.svelte
 msgid "ID"
 msgstr "ഐഡി"
 
-#: src/routes/datacenter/summary/+page.svelte
+#: src/lib/components/custom/DataCenter/Summary.svelte
 msgid "Last Ping"
 msgstr "അവസാന പിംഗ്"
 
@@ -1531,20 +1567,14 @@ msgstr "യൂസർ എഡിറ്റ് ചെയ്യുക - {0}"
 
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
-#: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
 msgid "E-Mail"
 msgstr "ഇമെയിൽ"
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Enter or generate password"
 msgstr "പാസ്‌വേഡ് നൽകുക അല്ലെങ്കിൽ സൃഷ്ടിക്കുക"
-
-#: src/lib/components/custom/Authentication/ImportUser.svelte
-#: src/lib/components/custom/Authentication/LocalUserForm.svelte
-#: src/lib/components/custom/Authentication/PamUserForm.svelte
-msgid "Admin"
-msgstr "അഡ്മിൻ"
 
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
@@ -1666,6 +1696,7 @@ msgstr "ലീഡർ നോഡ്"
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Copy"
@@ -1979,6 +2010,8 @@ msgstr "ആദ്യം മാറ്റം വരുത്തിയത്"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
 #: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/routes/[node]/container/[ocid]/network/+page.svelte
 #: src/routes/[node]/container/[ocid]/storage/+page.svelte
@@ -1996,6 +2029,9 @@ msgstr "ആദ്യം മാറ്റം വരുത്തിയത്"
 #: src/routes/[node]/system/notifications/transports/+page.svelte
 #: src/routes/[node]/system/tunables/+page.svelte
 #: src/routes/[node]/system/updates/packages/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/roles/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Type"
 msgstr "തരം"
@@ -2090,6 +2126,7 @@ msgstr "ഷെയർ നാമം നിലവിലുണ്ട്"
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/routes/datacenter/permissions/groups/+page.svelte
 msgid "Name is required"
 msgstr "പേര് ആവശ്യമാണ്"
 
@@ -2186,10 +2223,15 @@ msgstr "{0} തിരഞ്ഞെടുത്തു"
 msgid "Type to create"
 msgstr "സൃഷ്ടിക്കാൻ ടൈപ്പ് ചെയ്യുക"
 
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
 msgid "Add"
 msgstr "ചേർക്കുക"
 
@@ -2527,6 +2569,9 @@ msgstr "ZFS പൂളുകൾ"
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Enabled"
@@ -2578,6 +2623,8 @@ msgstr "പ്രവർത്തനക്ഷമം"
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Disabled"
 msgstr "പ്രവർത്തനരഹിതം"
@@ -2617,6 +2664,9 @@ msgstr "ZFS പൂളുകൾ അപ്‌ഡേറ്റ് ചെയ്തു
 #. 0: editModal.name
 #. 0: title
 #. 0: title
+#. 0: form.name
+#. 0: editor.realm.name
+#. 0: editor.name
 #: src/lib/components/custom/Container/Create.svelte
 #: src/lib/components/custom/Container/Properties.svelte
 #: src/lib/components/custom/Services/Certificates/Form.svelte
@@ -2629,6 +2679,9 @@ msgstr "ZFS പൂളുകൾ അപ്‌ഡേറ്റ് ചെയ്തു
 #: src/routes/[node]/system/tunables/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/datacenter/permissions/groups/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/roles/+page.svelte
 msgid "Edit {0}"
 msgstr "{0} എഡിറ്റ് ചെയ്യുക"
 
@@ -3286,6 +3339,8 @@ msgstr "വർക്ക്ലോഡ്"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Path"
@@ -3558,6 +3613,10 @@ msgstr "പരിശോധിക്കുക"
 #: src/routes/[node]/storage/nfs/settings/+page.svelte
 #: src/routes/[node]/storage/nfs/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/datacenter/permissions/groups/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/roles/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3597,8 +3656,6 @@ msgstr "മാനുവൽ ആയി തിരികെ മാറ്റുക"
 #: src/lib/components/custom/System/Updates/Monitoring.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/pools/Scrub.svelte
-#: src/routes/[node]/authentication/users/local/+page.svelte
-#: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
@@ -3606,6 +3663,8 @@ msgstr "മാനുവൽ ആയി തിരികെ മാറ്റുക"
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 #: src/routes/[node]/system/updates/packages/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
 msgid "Never"
 msgstr "ഒരിക്കലുമില്ല"
 
@@ -3854,6 +3913,8 @@ msgstr "ഫെയ്‌ൽബാക്ക്"
 #: src/routes/[node]/system/updates/packages/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Yes"
 msgstr "അതെ"
@@ -3888,6 +3949,8 @@ msgstr "അതെ"
 #: src/routes/[node]/system/updates/packages/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -6171,11 +6234,11 @@ msgid "Default Sylve Group (sylve_g)"
 msgstr "ഡിഫോൾട്ട് സിൽവ് ഗ്രൂപ്പ് (sylve_g)"
 
 #: src/routes/[node]/authentication/groups/+page.svelte
-#: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
 msgid "Created At"
 msgstr "സൃഷ്ടിച്ച സമയം"
 
@@ -6185,11 +6248,13 @@ msgid "Edit Users"
 msgstr "ഉപയോക്താക്കളെ തിരുത്തുക"
 
 #: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/datacenter/permissions/groups/+page.svelte
 msgid "New Group"
 msgstr "പുതിയ ഗ്രൂപ്പ്"
 
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/routes/datacenter/permissions/groups/+page.svelte
 msgid "Select users"
 msgstr "ഉപയോക്താക്കളെ തിരഞ്ഞെടുക്കുക"
 
@@ -6198,25 +6263,27 @@ msgid "Modify Users"
 msgstr "ഉപയോക്താക്കളെ മാറ്റുക"
 
 #: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/datacenter/permissions/groups/+page.svelte
 msgid "Failed to delete group"
 msgstr "ഗ്രൂപ്പ് ഇല്ലാതാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/datacenter/permissions/groups/+page.svelte
 msgid "Group deleted"
 msgstr "ഗ്രൂപ്പ് ഇല്ലാതാക്കി"
 
-#: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
 msgid "Last Usage"
 msgstr "അവസാന ഉപയോഗം"
 
-#: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
 msgid "Failed to delete user"
 msgstr "ഉപയോക്താവിനെ ഇല്ലാതാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
-#: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
 msgid "User deleted"
 msgstr "ഉപയോക്താവിനെ ഇല്ലാതാക്കി"
 
@@ -7682,10 +7749,10 @@ msgstr ""
 msgid "<0/> Passkey"
 msgstr ""
 
-#: src/routes/[node]/authentication/users/local/+page.svelte
-#: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
 msgid "Passkeys"
 msgstr ""
 
@@ -7748,6 +7815,8 @@ msgid "No passkeys registered."
 msgstr ""
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
 msgid "Label"
 msgstr ""
 
@@ -7945,10 +8014,14 @@ msgstr ""
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
-#: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/authentication/groups/+page.svelte
-#: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/groups/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/roles/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
 msgid "Deleting..."
 msgstr ""
 
@@ -10297,6 +10370,7 @@ msgstr ""
 
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
 msgid "Username is required"
 msgstr ""
 
@@ -10324,6 +10398,7 @@ msgstr ""
 
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
 msgid "Full Name"
 msgstr ""
 
@@ -10613,6 +10688,7 @@ msgstr ""
 #: src/lib/components/custom/Container/Spec.svelte
 #: src/lib/components/custom/Container/Spec.svelte
 #: src/lib/components/custom/Network/IfaceL3/Form.svelte
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/container/[ocid]/storage/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
@@ -10732,6 +10808,7 @@ msgstr ""
 #: src/routes/[node]/system/notifications/rules/+page.svelte
 #: src/routes/[node]/system/notifications/rules/+page.svelte
 #: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
 msgid "Email"
 msgstr ""
 
@@ -10981,8 +11058,8 @@ msgstr ""
 msgid "Importing…"
 msgstr ""
 
-#: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
 msgid "Cannot delete this user"
 msgstr ""
 
@@ -11355,10 +11432,6 @@ msgstr ""
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Capacity threshold (%)"
-msgstr ""
-
-#: src/routes/[node]/+layout.svelte
-msgid "Local"
 msgstr ""
 
 #: src/routes/[node]/services/certificates/+page.svelte
@@ -12016,6 +12089,7 @@ msgid "Remove the stale inventory entry for <span class=\"font-semibold\">{0}</s
 msgstr ""
 
 #: src/lib/components/custom/Network/IfaceL3/Form.svelte
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "Removing..."
 msgstr ""
@@ -15283,8 +15357,12 @@ msgstr ""
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
-#: src/routes/[node]/network/firewall/advanced/+page.svelte
 #: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/groups/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/roles/+page.svelte
 msgid "<0/> Saving..."
 msgstr ""
 
@@ -16807,8 +16885,8 @@ msgstr ""
 msgid "Creating Template"
 msgstr ""
 
-#: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/datacenter/permissions/users/+page.svelte
 msgid "View existing passkeys; registration is unavailable for this user"
 msgstr ""
 
@@ -19008,6 +19086,8 @@ msgstr ""
 #: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.ts
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
 msgid "Default"
 msgstr ""
 
@@ -19531,6 +19611,7 @@ msgid "Kerberos"
 msgstr ""
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Realms"
 msgstr ""
 
@@ -23662,4 +23743,824 @@ msgstr ""
 
 #: src/routes/[node]/container/[ocid]/summary/+page.svelte
 msgid "Updating Stack"
+msgstr ""
+
+#: src/routes/+error.svelte
+msgid "You don't have permission to view this page."
+msgstr ""
+
+#: src/routes/+error.svelte
+msgid "Ask an administrator for access."
+msgstr ""
+
+#: src/lib/stores/error-details.svelte.ts
+msgid "Only root or admin can do this"
+msgstr ""
+
+#. 0: privileges; 1: path
+#: src/lib/stores/error-details.svelte.ts
+msgid "Needs {0} on {1}"
+msgstr ""
+
+#: src/lib/stores/error-details.svelte.ts
+msgid "You don't have permission to do this"
+msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
+msgid "Permissions"
+msgstr ""
+
+#: src/routes/datacenter/+layout.svelte
+msgid "Grants"
+msgstr ""
+
+#: src/routes/datacenter/+layout.svelte
+msgid "Roles"
+msgstr ""
+
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Path, user or group and role are required"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+msgid "Failed to add grant"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Grant added"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "User or Group"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Role"
+msgstr ""
+
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Propagate"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Group"
+msgstr ""
+
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "New Grant"
+msgstr ""
+
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Propagate to everything below this path"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+msgid "<0/> Adding..."
+msgstr ""
+
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Failed to delete grant"
+msgstr ""
+
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Grant deleted"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+#: src/routes/datacenter/permissions/roles/+page.svelte
+msgid "Administrator"
+msgstr ""
+
+#: src/routes/datacenter/permissions/roles/+page.svelte
+#: src/routes/datacenter/permissions/roles/+page.svelte
+msgid "Privileges"
+msgstr ""
+
+#: src/routes/datacenter/permissions/roles/+page.svelte
+msgid "Built-in"
+msgstr ""
+
+#: src/routes/datacenter/permissions/roles/+page.svelte
+msgid "Custom"
+msgstr ""
+
+#: src/routes/datacenter/permissions/roles/+page.svelte
+msgid "Name and privileges are required"
+msgstr ""
+
+#: src/routes/datacenter/permissions/roles/+page.svelte
+msgid "Failed to save role"
+msgstr ""
+
+#: src/routes/datacenter/permissions/roles/+page.svelte
+msgid "Role saved"
+msgstr ""
+
+#: src/routes/datacenter/permissions/roles/+page.svelte
+msgid "New Role"
+msgstr ""
+
+#: src/routes/datacenter/permissions/roles/+page.svelte
+msgid "Operator"
+msgstr ""
+
+#. 0: activeRole.name
+#: src/routes/datacenter/permissions/roles/+page.svelte
+msgid "Delete the role {0}? Every grant of it is removed too."
+msgstr ""
+
+#: src/routes/datacenter/permissions/roles/+page.svelte
+msgid "Failed to delete role"
+msgstr ""
+
+#: src/routes/datacenter/permissions/roles/+page.svelte
+msgid "Role deleted"
+msgstr ""
+
+#: src/lib/stores/permissions.svelte.ts
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
+#: src/routes/datacenter/summary/+page.ts
+msgid "Sys.Audit"
+msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+msgid "Guest.Console"
+msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+msgid "Sys.Console"
+msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
+msgid "User.Modify"
+msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+msgid "Unix Groups"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Permission Role"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Permission Group"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Set"
+msgstr ""
+
+#. 0: upperMethod === 'POST' ? 'Set' \\: 'Delete'
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Permission Grant - {0}"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/routes/[node]/container/[ocid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Guest.PowerMgmt"
+msgstr ""
+
+#: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Header.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/routes/[node]/container/[ocid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Guest.Allocate"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Guest.Clone"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Guest.Migrate"
+msgstr ""
+
+#: src/routes/datacenter/summary/+page.svelte
+msgid "The datacenter summary needs host access."
+msgstr ""
+
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Pick a VM, jail or container you can use from the tree on the left."
+msgstr ""
+
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "This name is reserved"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+msgid "Username changed. Please sign in again."
+msgstr ""
+
+#. 0: role.name
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Custom role {0}"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "The cluster's permissions replace this node's"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "These are removed; root and admin keep full access:"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+msgid "Permissions.Modify"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+msgid "User or group and role are required"
+msgstr ""
+
+#. 0: path
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+msgid "Add a grant on {0}"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Select a user"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Select a group"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Select a role"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+msgid "Failed to remove grant"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/GuestGrants.svelte
+msgid "Grant removed"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Disable the target before deleting it"
+msgstr ""
+
+#. 0: hostname
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Node {0}"
+msgstr ""
+
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Failed to save grant"
+msgstr ""
+
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Failed to remove the old grant"
+msgstr ""
+
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Grant updated"
+msgstr ""
+
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Edit Grant"
+msgstr ""
+
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Select or type a path"
+msgstr ""
+
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Groups from Datacenter → Permissions → Groups"
+msgstr ""
+
+#: src/routes/datacenter/permissions/groups/+page.svelte
+#: src/routes/datacenter/permissions/groups/+page.svelte
+msgid "Members"
+msgstr ""
+
+#: src/routes/datacenter/permissions/groups/+page.svelte
+msgid "Failed to save group"
+msgstr ""
+
+#: src/routes/datacenter/permissions/groups/+page.svelte
+msgid "Group saved"
+msgstr ""
+
+#: src/routes/datacenter/permissions/groups/+page.svelte
+msgid "Users of this node; a PAM user is the same person on every node with that name"
+msgstr ""
+
+#. 0: activeGroup.name
+#: src/routes/datacenter/permissions/groups/+page.svelte
+msgid "Delete the group {0}? Every grant to it is removed too."
+msgstr ""
+
+#: src/routes/datacenter/permissions/roles/+page.svelte
+msgid "Select privileges"
+msgstr ""
+
+#: src/routes/datacenter/permissions/users/+page.svelte
+msgid "Scope"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Inherit network from the host · Needs Sys.Modify on this node"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Sys.Modify"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Needs Sys.Modify on this node"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "Network.Use"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
+msgid "Guest.Snapshot"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
+msgid "Guest.Snapshot.Rollback"
+msgstr ""
+
+#: src/routes/+layout.svelte
+msgid "The identity provider did not complete the sign-in"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Login - OpenID"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Login - OpenID - Start"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Realm - Discover"
+msgstr ""
+
+#. 0: realmUser[1]
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Realm - Add User - {0}"
+msgstr ""
+
+#. 0: oidcRealm.label
+#: src/lib/components/custom/Login.svelte
+msgid "Sign in with {0}"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "Everything: guests, storage, networks, the hosts, users and permissions. On a node it includes host settings that amount to root on that node. A few actions stay with root@pam and admin@sylve alone: forming and changing the cluster, resetting a node, the File Explorer, and editing those two accounts."
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "SysAdmin"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "Runs the hosts: view and change node settings, read logs, open the host console, and reboot or shut down. Changing node settings is as good as root on that node, so give it only to people you'd trust with root. It doesn't cover guests, users or permissions."
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "GuestAdmin"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "Full control of virtual machines, jails and containers: create and delete them, change their hardware and options, clone, migrate, snapshot and roll back, power and console. It can use storage and networks for them. Settings that reach the host itself (hooks, passthrough, raw options and the like) still need host admin rights."
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "GuestUser"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "Day-to-day use of guests: see them, start, stop and restart them, open their console, and edit cloud-init. It can't change their hardware or create and delete them."
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "DatastoreUser"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "Use storage: see pools, take space from them for guest disks and datasets, and add templates and images such as jail bootstraps and container images."
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "Auditor"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "Read-only: see guests, storage, networks and node status, and read the logs, without changing anything."
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "NoAccess"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "Takes everything away on the path it is granted on, and below it if propagated, whatever else applies there. Use it to carve an exception out of a broader grant."
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "Built-in Roles"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "A grant gives a user or a permission group a role on a path: the whole datacenter (/), a node, a guest, a storage pool or a switch. With Propagate it also applies to everything below that path."
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "A grant on a deeper path replaces what comes from above, a user's own grants replace their groups' on the same path, and NoAccess removes everything. root@pam and admin@sylve skip all of this."
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "ALL PRIVILEGES"
+msgstr ""
+
+#: src/lib/components/custom/Permissions/RoleGuide.svelte
+msgid "Need something in between? Create a custom role from any set of privileges."
+msgstr ""
+
+#. 0: selectedLabels.length - maxChips
+#: src/lib/components/ui/custom-input/combobox.svelte
+msgid "+{0} more"
+msgstr ""
+
+#: src/routes/datacenter/permissions/grants/+page.svelte
+msgid "Users of this node, or type name@realm (pam, sylve or an OpenID realm)"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Ask for credentials every time"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Ask for consent every time"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Let the user pick an account"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Never show the provider's pages"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Scopes"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Claims"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "ACR values"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Redirect URI copied"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "State"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Not default"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Issuer"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Client ID"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Auto-create"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Group mappings"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Discovery failed"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Name, issuer and client ID are required"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "A username claim is required"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Failed to save realm"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Realm saved"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Failed to add user"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "User added; their first sign-in binds them"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Add User"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "New OpenID Connect Realm"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "<0/> Provider"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "<0/> Sign-in"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "<0/> Group Mappings"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Users sign in as name@realm; fixed once created"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Company SSO"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Shown on the login page"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Issuer URL"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Fixed: a new provider is a new realm"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Client Secret"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Not used by a public client"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Unchanged"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "From the provider"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Public Client (No Secret)"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "CA Certificate"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Only for a provider behind a private CA (PEM)"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Redirect URI"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Register this at the provider. It's the address this browser reached Sylve at, so behind a reverse proxy it's the proxy's public address. Add the same path for every other address people sign in at."
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Provider discovery"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Reads the issuer's configuration. Only a real sign-in can check the secret."
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Discover"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Authorization"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Token"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "UserInfo"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Not listed"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Select scopes"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Username Claim"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Select a claim"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Names new users and matches pre-created ones; existing users keep their name"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Groups Claim"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Don't use the provider's groups"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "A list of group names, or an object whose keys are the names (Zitadel roles)"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Prompt"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Provider default"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Session Hours"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Changes at the provider are seen at the next sign-in"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "ACR Values"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Not required"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "The provider's ID token must carry one of these. Discover lists what it supports; leave empty for providers without acr"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Hosted Domains"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Any domain"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Google: only accounts of these Workspace domains (the hd claim) may sign in. Type a domain to add it; leave empty for other providers"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Default realm on the login page"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Create users on first sign-in"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Query UserInfo"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Members of a provider group join its permission group at their next sign-in."
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Provider Group"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "No group mappings"
+msgstr ""
+
+#. 0: activeRealm.label
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Add a {0} user"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Alice Example"
+msgstr ""
+
+#. 0: activeRealm.usernameClaim
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "The value of the {0} claim; the first sign-in with it binds the account"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Optional notes"
+msgstr ""
+
+#. 0: activeRealm.name
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Delete the realm {0}? Its users and their grants are removed too."
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Failed to delete realm"
+msgstr ""
+
+#: src/routes/datacenter/permissions/realms/+page.svelte
+msgid "Realm deleted"
+msgstr ""
+
+#: src/routes/datacenter/permissions/roles/+page.svelte
+msgid "Role Guide"
+msgstr ""
+
+#: src/routes/datacenter/permissions/users/+page.svelte
+msgid "Failed to update user"
+msgstr ""
+
+#: src/routes/datacenter/permissions/users/+page.svelte
+msgid "Unlock"
+msgstr ""
+
+#: src/routes/datacenter/permissions/users/+page.svelte
+msgid "Lock"
 msgstr ""

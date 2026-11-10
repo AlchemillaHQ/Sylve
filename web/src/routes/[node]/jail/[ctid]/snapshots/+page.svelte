@@ -16,6 +16,7 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { reload as apiReload } from '$lib/stores/api.svelte';
+	import { allowed } from '$lib/stores/permissions.svelte';
 	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { JailSnapshotRollbackResultSchema, type JailSnapshot } from '$lib/types/jail/snapshots';
@@ -42,6 +43,8 @@
 	}
 
 	let { data }: { data: Data } = $props();
+	let canSnapshot = $derived(allowed('Guest.Snapshot', `/jail/${data.ctId}`));
+	let canRollback = $derived(allowed('Guest.Snapshot.Rollback', `/jail/${data.ctId}`));
 
 	const initialSnapshots = () => data.snapshots;
 	const initialSnapshotIdentity = () => `${data.node}:${data.ctId}`;
@@ -362,7 +365,7 @@
 			onclick={() => {
 				createModal.open = true;
 			}}
-			disabled={createModal.creating || rollbacking || deleting}
+			disabled={createModal.creating || rollbacking || deleting || !canSnapshot}
 			size="sm"
 			class="h-6"
 		>
@@ -376,7 +379,7 @@
 				}}
 				size="sm"
 				variant="outline"
-				disabled={rollbacking || deleting}
+				disabled={rollbacking || deleting || !canRollback}
 				class="h-6.5"
 			>
 				<SpanWithIcon
@@ -393,7 +396,7 @@
 				}}
 				size="sm"
 				variant="outline"
-				disabled={rollbacking || deleting}
+				disabled={rollbacking || deleting || !canSnapshot}
 				class="h-6.5"
 			>
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-1" title="Delete" />

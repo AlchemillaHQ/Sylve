@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
@@ -340,6 +341,29 @@ func GetUnixUserInfo(username string) (uid int, shell string, err error) {
 		return 0, "", err
 	}
 	return info.UID, info.Shell, nil
+}
+
+func UnixUserUsable(username string) (bool, error) {
+	output, err := runCommand("/usr/sbin/pw", "usershow", "-n", username)
+	if err != nil {
+		lower := strings.ToLower(output + " " + err.Error())
+		if strings.Contains(lower, "no such user") || strings.Contains(lower, "exit status 67") {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to look up %s: %w", username, err)
+	}
+	parts := strings.Split(strings.TrimSpace(output), ":")
+	if len(parts) < 10 {
+		return false, fmt.Errorf("unexpected pw usershow output for %s", username)
+	}
+	if strings.HasPrefix(parts[1], "*LOCKED*") {
+		return false, nil
+	}
+	expire, err := strconv.ParseInt(parts[6], 10, 64)
+	if err != nil {
+		return false, fmt.Errorf("invalid account expiry for %s: %w", username, err)
+	}
+	return expire == 0 || time.Now().Unix() < expire, nil
 }
 
 // GetUnixUserInfoFull returns all available metadata for a Unix user by name.

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/hashicorp/raft"
 )
@@ -205,7 +206,7 @@ func TestIntegrationRaftSnapshotPreClusterState(t *testing.T) {
 
 	note := clusterModels.ClusterNote{ID: 1, Title: "note1", Content: "content1"}
 	seedDB.Create(&note)
-	option := clusterModels.ClusterOption{ID: 1, KeyboardLayout: "de"}
+	option := clusterModels.ClusterOption{ID: 1, KeyboardLayout: "de", ClusterID: "existing-cluster"}
 	seedDB.Create(&option)
 
 	target := clusterModels.BackupTarget{
@@ -425,6 +426,61 @@ func TestIntegrationRaftSnapshotPreClusterState(t *testing.T) {
 		}
 		return true
 	})
+}
+
+func TestIntegrationRaftJoinReplacesGrantsAndKeepsUsers(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 1)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	clusterGrant := clusterModels.ACLGrant{Path: "/", SubjectType: clusterModels.ACLSubjectUser, Subject: "alice@sylve", Role: "Auditor", Propagate: true}
+	for _, value := range []any{
+		&clusterGrant,
+		&clusterModels.SylveUser{Username: "alice", Password: "hash-a"},
+		&models.User{Username: "alice", Password: "hash-a", Source: "local", Shared: true},
+	} {
+		if err := leader.service.DB.Create(value).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := leader.service.snapshotPreClusterState(); err != nil {
+		t.Fatalf("snapshotPreClusterState failed: %v", err)
+	}
+
+	joiner := newClusterRaftTestNode(t, "node-2")
+	for _, value := range []any{
+		&clusterModels.ACLGrant{Path: "/", SubjectType: clusterModels.ACLSubjectUser, Subject: "bob@pam", Role: "Administrator", Propagate: true},
+		&clusterModels.ACLRole{Name: "Operator", Privileges: []string{"Guest.PowerMgmt"}},
+		&clusterModels.SylveUser{Username: "bob", Password: "hash-b"},
+		&models.User{Username: "bob", Password: "hash-b", Source: "local", Shared: true},
+	} {
+		if err := joiner.service.DB.Create(value).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := joiner.service.clearClusteredData(); err != nil {
+		t.Fatal(err)
+	}
+	nodes = append(nodes, joiner)
+	leader.transport.Connect(joiner.addr, joiner.transport)
+	joiner.transport.Connect(leader.addr, leader.transport)
+	if err := leader.raft.AddNonvoter(raft.ServerID(joiner.id), joiner.addr, 0, 5*time.Second).Error(); err != nil {
+		t.Fatalf("add joiner: %v", err)
+	}
+
+	waitForClusterCondition(t, 8*time.Second, "joiner has the cluster's grants only", func() bool {
+		var grants []clusterModels.ACLGrant
+		var roles int64
+		if joiner.service.DB.Find(&grants).Error != nil || joiner.service.DB.Model(&clusterModels.ACLRole{}).Count(&roles).Error != nil {
+			return false
+		}
+		return len(grants) == 1 && grants[0].Subject == clusterGrant.Subject && roles == 0
+	})
+	var users []models.User
+	if err := joiner.service.DB.Order("username").Find(&users).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 2 || users[0].Username != "alice" || !users[0].Shared || users[1].Username != "bob" || users[1].Shared {
+		t.Fatalf("joiner users = %+v, want the cluster's alice shared and its own bob kept unshared", users)
+	}
 }
 
 func TestIntegrationRaftWaitUntilLeader(t *testing.T) {

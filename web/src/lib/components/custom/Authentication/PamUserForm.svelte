@@ -22,7 +22,7 @@
 	import type { FileNode } from '$lib/types/system/file-explorer';
 	import { getEnabledServicesForHostname } from '$lib/utils/enabled-services';
 	import { handleAPIError, isAPIResponse, isRequestCancellation } from '$lib/utils/http';
-	import { isValidEmail, isValidUsername } from '$lib/utils/string';
+	import { isReservedUsername, isValidEmail, isValidUsername } from '$lib/utils/string';
 	import { watch } from 'runed';
 	import { onDestroy } from 'svelte';
 	import { toast } from 'svelte-sonner';
@@ -100,7 +100,6 @@
 			email: user?.email ?? '',
 			password: '',
 			confirmPassword: '',
-			admin: user?.admin ?? false,
 			confirmGuestActions: user?.confirmGuestActions ?? false,
 			uid: user?.uid ?? 0,
 			newPrimaryGroup: false,
@@ -344,11 +343,9 @@
 
 	function validate(): string {
 		if (!properties.username) return 'Username is required';
-		if (
-			!(edit && user && properties.username === user.username) &&
-			!isValidUsername(properties.username)
-		)
-			return 'Invalid username format';
+		const changed = !(edit && user && properties.username === user.username);
+		if (changed && isReservedUsername(properties.username)) return 'This name is reserved';
+		if (changed && !isValidUsername(properties.username)) return 'Invalid username format';
 		if (edit && user && users.some((u) => u.id !== user!.id && u.username === properties.username))
 			return 'Username already exists';
 		if (!edit && users.some((u) => u.username === properties.username))
@@ -415,7 +412,6 @@
 			username: properties.username,
 			email: properties.email,
 			password: properties.password,
-			admin: properties.admin,
 			confirmGuestActions: properties.confirmGuestActions,
 			uid: properties.uid,
 			newPrimaryGroup: properties.newPrimaryGroup,
@@ -756,10 +752,6 @@
 								{/if}
 							</div>
 							<div class="flex flex-wrap items-center gap-6">
-								<div class="flex items-center gap-2">
-									<Checkbox id="pam-admin" bind:checked={properties.admin} />
-									<Label for="pam-admin" class="cursor-pointer text-sm">Admin</Label>
-								</div>
 								<div class="flex items-center gap-2">
 									<Checkbox
 										id="pam-confirm-guest-actions"

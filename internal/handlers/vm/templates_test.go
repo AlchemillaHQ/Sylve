@@ -352,7 +352,7 @@ func TestCreateVMFromTemplateHandlerMappings(t *testing.T) {
 	t.Run("invalid body", func(t *testing.T) {
 		lifecycleSvc := setupVMTemplateLifecycle(t)
 		r := gin.New()
-		r.POST("/vm/templates/:templateId/vms", CreateVMFromTemplate(&mockVMTemplateService{}, lifecycleSvc))
+		r.POST("/vm/templates/:templateId/vms", CreateVMFromTemplate(&mockVMTemplateService{}, lifecycleSvc, nil))
 		rr := testutil.PerformJSONRequest(t, r, http.MethodPost, "/vm/templates/1/vms", []byte(`{"mode":`))
 		assertStatus(t, rr.Code, http.StatusBadRequest, rr.Body.String())
 	})
@@ -362,7 +362,7 @@ func TestCreateVMFromTemplateHandlerMappings(t *testing.T) {
 		r := gin.New()
 		r.POST("/vm/templates/:templateId/vms", func(c *gin.Context) {
 			c.Set("Username", "tester")
-			CreateVMFromTemplate(&mockVMTemplateService{}, lifecycleSvc)(c)
+			CreateVMFromTemplate(&mockVMTemplateService{}, lifecycleSvc, nil)(c)
 		})
 
 		rr := testutil.PerformJSONRequest(
@@ -401,7 +401,7 @@ func TestCreateVMFromTemplateHandlerMappings(t *testing.T) {
 		r := gin.New()
 		r.POST("/vm/templates/:templateId/vms", func(c *gin.Context) {
 			c.Set("Username", "tester")
-			CreateVMFromTemplate(&mockVMTemplateService{}, lifecycleSvc)(c)
+			CreateVMFromTemplate(&mockVMTemplateService{}, lifecycleSvc, nil)(c)
 		})
 
 		rr := testutil.PerformJSONRequest(t, r, http.MethodPost, "/vm/templates/1/vms", []byte(payload))
@@ -417,7 +417,7 @@ func TestCreateVMFromTemplateHandlerMappings(t *testing.T) {
 				preflightCreate: func(context.Context, uint, libvirtServiceInterfaces.CreateFromTemplateRequest) error {
 					return errText("failed_to_get_template_storage_dataset")
 				},
-			}, lifecycleSvc)(c)
+			}, lifecycleSvc, nil)(c)
 		})
 
 		rr := testutil.PerformJSONRequest(

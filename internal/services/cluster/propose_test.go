@@ -151,6 +151,8 @@ func routeTestPeerRequests(nodes []*clusterRaftTestNode) *testPeerNetwork {
 					})
 				case strings.Contains(err.Error(), "invalid_cluster_key"):
 					return respond(http.StatusForbidden, internal.APIResponse[any]{Status: "error", Message: "invalid_cluster_key", Error: err.Error()})
+				case strings.HasPrefix(err.Error(), "joining_node_users_taken"):
+					return respond(http.StatusConflict, internal.APIResponse[any]{Status: "error", Message: "joining_node_users_taken", Error: err.Error()})
 				default:
 					return respond(http.StatusServiceUnavailable, internal.APIResponse[any]{Status: "error", Message: "cluster_join_admission_unavailable", Error: err.Error()})
 				}
@@ -188,6 +190,30 @@ func TestIntegrationProposeFromFollower(t *testing.T) {
 	}
 	if err := follower.service.ProposeNoteDelete(t.Context(), 999); !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("delete of a missing note from a follower = %v, want gorm.ErrRecordNotFound", err)
+	}
+
+	// An old leader rejects new commands before it can check their protocol.
+	forward := follower.service.peerRequest
+	follower.service.peerRequest = func(context.Context, string, string, []byte, map[string]string) (int, []byte, error) {
+		t.Error("forwarded a new command to a protocol-1 leader")
+		return 0, nil, errors.New("raft_command_not_proposable: acl_role/set")
+	}
+	role := clusterModels.ACLRole{Name: "Operator", Privileges: []string{auth.SysAudit}}
+	if err := follower.service.Propose(t.Context(), "acl_role", "set", role); !errors.Is(err, ErrClusterProtocolOutdated) {
+		t.Fatalf("follower proposal with a protocol-1 leader = %v, want ErrClusterProtocolOutdated", err)
+	}
+	follower.service.peerRequest = forward
+	for _, observer := range nodes {
+		for _, member := range nodes {
+			recordCurrentProtocol(t, observer, member)
+		}
+	}
+	if err := follower.service.Propose(t.Context(), "acl_role", "set", role); err != nil {
+		t.Fatalf("follower proposal after all members upgraded: %v", err)
+	}
+	var stored clusterModels.ACLRole
+	if err := follower.service.DB.Where("name = ?", role.Name).First(&stored).Error; err != nil {
+		t.Fatalf("role on follower right after Propose: %v", err)
 	}
 }
 
@@ -234,6 +260,27 @@ func TestApplyPeerProposalTakesOnlyWhatProposeSends(t *testing.T) {
 	if err := service.Propose(t.Context(), "backup_job", "delete", map[string]uint{"id": 1}); err == nil ||
 		!strings.Contains(err.Error(), "raft_command_not_proposable") {
 		t.Fatalf("Propose of a command peers may not send = %v", err)
+	}
+}
+
+func TestProposeAppliesRealmCommandsStandalone(t *testing.T) {
+	service := withFSM(&Service{DB: newClusterServiceTestDB(t)})
+	realm := clusterModels.AuthRealm{Name: "company", Issuer: "https://idp.example", ClientID: "sylve", AutoCreate: true}
+	alice := clusterModels.OIDCUser{Realm: "company", Username: "alice", Subject: "sub-alice"}
+	for _, step := range []struct {
+		commandType, action string
+		payload             any
+	}{
+		{"auth_realm", "set", clusterModels.AuthRealmSet{AuthRealm: realm}},
+		{"oidc_user", "create", clusterModels.OIDCUser{Realm: "company", Username: "bob"}},
+		{"oidc_user", "login", alice},
+		{"oidc_user", "update", clusterModels.OIDCUser{Realm: "company", Username: "alice", Locked: true}},
+		{"oidc_user", "delete", alice},
+		{"auth_realm", "delete", realm},
+	} {
+		if err := service.Propose(t.Context(), step.commandType, step.action, step.payload); err != nil {
+			t.Fatalf("%s/%s: %v", step.commandType, step.action, err)
+		}
 	}
 }
 
@@ -297,6 +344,10 @@ func TestIntegrationLeaderWaitsForEveryMemberToKnowACommand(t *testing.T) {
 	if err := leader.service.ProposeNoteCreate(t.Context(), "baseline", "content"); err != nil {
 		t.Fatalf("baseline command held back: %v", err)
 	}
+	leader.service.reconcileClusterIdentity(t.Context())
+	if id, err := clusterModels.ReadClusterID(leader.service.DB); err != nil || id != "" {
+		t.Fatalf("identity with a protocol-1 member = %q, %v", id, err)
+	}
 	if err := leader.service.DB.Model(&clusterModels.ClusterNode{}).Where("node_uuid = ?", follower.id).
 		Update("protocol", 2).Error; err != nil {
 		t.Fatal(err)
@@ -304,6 +355,20 @@ func TestIntegrationLeaderWaitsForEveryMemberToKnowACommand(t *testing.T) {
 	if err := leader.service.apply("test", "since_2", struct{}{}); err != nil {
 		t.Fatalf("after the member upgraded = %v", err)
 	}
+	leader.service.reconcileClusterIdentity(t.Context())
+	id, err := clusterModels.ReadClusterID(leader.service.DB)
+	if err != nil || id == "" {
+		t.Fatalf("identity after the member upgraded = %q, %v", id, err)
+	}
+	index := leader.service.AppliedIndex()
+	leader.service.reconcileClusterIdentity(t.Context())
+	if leader.service.AppliedIndex() != index {
+		t.Fatal("repeated identity sync proposed another command")
+	}
+	waitForClusterCondition(t, time.Second, "cluster identity replicated", func() bool {
+		other, err := clusterModels.ReadClusterID(follower.service.DB)
+		return err == nil && other == id
+	})
 }
 
 func testNodePin(nodeID string) [32]byte {

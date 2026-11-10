@@ -161,6 +161,18 @@ func (s *Service) startLeave(ctx context.Context, keepGuests bool) error {
 	if strings.TrimSpace(record.ReaddressPhase) != "" {
 		return &ClusterLeaveError{Code: "cluster_readdress_in_progress"}
 	}
+	// Clusters formed before user provenance was recorded bind their copies before leaving.
+	if record.Enabled && !record.HasIncompleteJoin() {
+		var shared int64
+		if err := s.DB.Table("users").Where("source = ? AND shared", "local").Count(&shared).Error; err != nil {
+			return err
+		}
+		if shared > 0 {
+			if _, err := s.ensureClusterIdentity(ctx); err != nil {
+				return fmt.Errorf("cluster_leave_user_identity_unavailable: %w", err)
+			}
+		}
+	}
 	drainCtx, cancel := context.WithTimeout(ctx, leaveDrainTimeout)
 	err = s.DrainMutations(drainCtx)
 	cancel()

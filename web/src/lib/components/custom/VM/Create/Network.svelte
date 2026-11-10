@@ -14,6 +14,7 @@ under sponsorship from the FreeBSD Foundation.
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { SLIRP_SWITCH_NAME, type SwitchList } from '$lib/types/network/switch';
 	import { Label } from '$lib/components/ui/label/index.js';
+	import { allowed } from '$lib/stores/permissions.svelte';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { generateMACOptions } from '$lib/utils/network/object';
 
@@ -100,7 +101,9 @@ under sponsorship from the FreeBSD Foundation.
 <div class="flex flex-col gap-4 p-4">
 	<RadioGroup.Root bind:value={nwSwitch} class="border p-2">
 		<ScrollArea orientation="vertical" class="h-64 w-full max-w-full">
-			{@render radioItem(0, SLIRP_SWITCH_NAME, 'slirp')}
+			{#if allowed('Network.Use', `/switch/${SLIRP_SWITCH_NAME}`)}
+				{@render radioItem(0, SLIRP_SWITCH_NAME, 'slirp')}
+			{/if}
 
 			{#if switches && switches.standard}
 				{#each switches.standard ?? [] as sw (sw.id)}

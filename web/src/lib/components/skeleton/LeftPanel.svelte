@@ -26,6 +26,7 @@
 	} from '$lib/resource-tree';
 	import { onDestroy } from 'svelte';
 	import { resource, watch } from 'runed';
+	import { getNextGuestID } from '$lib/api/cluster/cluster';
 	import TreeViewCluster from './TreeViewCluster.svelte';
 
 	interface Props {
@@ -190,13 +191,13 @@
 		return [...jailCTIDs, ...vmCTIDs, ...containerIDs].sort((a, b) => a - b);
 	});
 
-	let nextGuestId = $derived.by(() => {
-		if (guestResourceIds.length === 0) {
-			return 100;
-		}
-
-		return Math.max(...guestResourceIds) + 1;
-	});
+	// Asked again whenever the guests change; the server also counts the ones this user can't see.
+	const nextGuestID = resource(
+		() => guestResourceIds.join(','),
+		async () => await getNextGuestID(),
+		{ initialValue: 100 }
+	);
+	let nextGuestId = $derived(nextGuestID.current);
 
 	let nodeResources = $derived.by((): ResourceTreeResource[] => {
 		return [

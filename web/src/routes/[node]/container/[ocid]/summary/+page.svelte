@@ -26,8 +26,8 @@
 		node: string;
 		ocId: number;
 		stats: ContainerStatsBootstrap | null;
-		ramInfo: RAMInfo;
-		cpuInfo: CPUInfo;
+		ramInfo: RAMInfo | null;
+		cpuInfo: CPUInfo | null;
 	}
 
 	let { data }: { data: Data } = $props();
@@ -205,7 +205,9 @@
 						<span class="icon-[solar--cpu-bold] mr-1 h-5 w-5"></span>
 						<span>CPU Usage</span>
 					</p>
-					<p class="ml-auto">{`${cpuUsage.toFixed(2)}% of ${cores} Core(s)`}</p>
+					<p class="ml-auto">
+						{`${cpuUsage.toFixed(2)}%`}{#if cores > 0}{` of ${cores} Core(s)`}{/if}
+					</p>
 				</div>
 				<Progress value={cpuUsage} max={100} class="ml-auto h-2" />
 			</div>
@@ -216,7 +218,9 @@
 						<span class="icon-[ph--memory] mr-1 h-5 w-5"></span>
 						<span>Memory Usage</span>
 					</p>
-					<p class="ml-auto">{`${memoryUsage.toFixed(2)}% of ${formatBytesBinary(memory)}`}</p>
+					<p class="ml-auto">
+						{`${memoryUsage.toFixed(2)}%`}{#if memory > 0}{` of ${formatBytesBinary(memory)}`}{/if}
+					</p>
 				</div>
 				<Progress value={memoryUsage} max={100} class="ml-auto h-2" />
 			</div>

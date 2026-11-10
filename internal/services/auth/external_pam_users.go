@@ -61,7 +61,7 @@ func (s *Service) editExternalPamUser(user *models.User, opts EditUserOpts) erro
 	updates := map[string]any{
 		"full_name":        opts.FullName,
 		"email":            opts.Email,
-		"admin":            opts.Admin,
+		"admin":            *opts.Admin,
 		"locked":           opts.Locked,
 		"disable_password": opts.DisablePassword,
 	}
@@ -75,7 +75,7 @@ func (s *Service) editExternalPamUser(user *models.User, opts EditUserOpts) erro
 		}
 		updates["password"] = hashed
 	}
-	revokeSessions := opts.Password != "" || opts.Admin != user.Admin ||
+	revokeSessions := opts.Password != "" || *opts.Admin != user.Admin ||
 		opts.Locked != user.Locked || opts.DisablePassword != user.DisablePassword
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(user).Updates(updates).Error; err != nil {

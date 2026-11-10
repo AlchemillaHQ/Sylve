@@ -809,6 +809,41 @@ func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
 	}
 }
 
+func TestCreateJailInheritsHostNetworkOnlyWithInheritSwitch(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", tempDir(t))
+	db := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{}, &jailModels.Jail{}, &jailModels.Storage{},
+		&jailModels.Network{}, &jailModels.JailHooks{}, &jailModels.JailStats{}, &jailModels.JailSnapshot{},
+		&vmModels.VM{}, &utilitiesModels.Downloads{})
+	if err := containerModels.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	baseDir := filepath.Join(tempDir(t), "base")
+	if err := os.MkdirAll(filepath.Join(baseDir, "etc"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	seedBaseDownload(t, db, "base-inherit", baseDir)
+	const pool = "testpool-inherit"
+	svc := newJailCreateTestService(db, newJailCreateTestZFSRunner(t, nil), pool)
+	svc.SetGuestIdentityCoordinator(newStandaloneGuestIdentityCoordinator(t, db, "standalone-node"))
+
+	on := true
+	for ctid, switchName := range map[uint]string{780: "none", 781: "Inherit"} {
+		req := jailCreateRequest(ctid, pool, "base-inherit")
+		req.SwitchName, req.InheritIPv4, req.InheritIPv6 = switchName, &on, &on
+		if err := svc.CreateJail(context.Background(), req); err != nil {
+			t.Fatalf("create with switch %s: %v", switchName, err)
+		}
+		var created jailModels.Jail
+		if err := db.Where("ct_id = ?", ctid).First(&created).Error; err != nil {
+			t.Fatal(err)
+		}
+		want := switchName == "Inherit"
+		if created.InheritIPv4 != want || created.InheritIPv6 != want {
+			t.Fatalf("switch %s: inherit = %v/%v, want %v", switchName, created.InheritIPv4, created.InheritIPv6, want)
+		}
+	}
+}
+
 func TestCreateJailSerializesConcurrentSameCTIDRequests(t *testing.T) {
 	t.Setenv("SYLVE_DATA_PATH", tempDir(t))
 

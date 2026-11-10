@@ -1,6 +1,7 @@
 import { getJailByCTID } from '$lib/api/jail/jail';
 import { getNetworkObjects } from '$lib/api/network/object';
 import { getSwitches } from '$lib/api/network/switch';
+import { hostDetail } from '$lib/stores/permissions.svelte';
 import { SEVEN_DAYS } from '$lib/utils.js';
 import type { APIResponse } from '$lib/types/common';
 import type { Jail } from '$lib/types/jail/jail';
@@ -26,12 +27,17 @@ export async function load({ params }) {
 			false,
 			node
 		),
-		cachedFetch(
-			'network-objects',
-			async () => await getNetworkObjects(node),
-			cacheDuration,
-			false,
-			node
+		hostDetail(
+			node,
+			() =>
+				cachedFetch(
+					'network-objects',
+					async () => await getNetworkObjects(node),
+					cacheDuration,
+					false,
+					node
+				),
+			[]
 		)
 	]);
 	const jailError = (isAPIResponse(jailResult) ? jailResult : null) as APIResponse | null;

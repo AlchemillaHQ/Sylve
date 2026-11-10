@@ -158,7 +158,7 @@
 			</Button>
 		{/if}
 	{:else}
-		{@const capacityAvailable = property === 'ram' ? !!data.ram : !!data.cpu}
+		{@const capacityAvailable = property === 'ram' ? !!data.ram : !data.cpuError}
 		<Button
 			onclick={() => {
 				modals[property] = true;
@@ -218,7 +218,7 @@
 	/>
 {/if}
 
-{#if modals.cpu && currentJail && data.cpu}
+{#if modals.cpu && currentJail}
 	<CPU
 		bind:open={modals.cpu}
 		cpu={data.cpu}

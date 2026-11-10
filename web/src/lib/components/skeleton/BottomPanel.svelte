@@ -206,6 +206,8 @@
 		'/api/auth/passkeys/login/finish': 'Login - Passkey - Finish',
 		'/api/auth/passkeys/register/begin': 'Passkey - Register - Begin',
 		'/api/auth/passkeys/register/finish': 'Passkey - Register - Finish',
+		'/api/auth/oidc/callback': 'Login - OpenID',
+		'/api/auth/oidc': 'Login - OpenID - Start',
 		'/api/auth/login': 'Login',
 		'/api/info/notes': 'Notes',
 		'/api/mdns/config': 'mDNS Config',
@@ -1382,6 +1384,43 @@
 		return label;
 	}
 
+	function permissionsActionLabel(
+		path: string,
+		method: string,
+		body: Record<string, unknown> | undefined
+	): string | null {
+		const upperMethod = method.toUpperCase();
+		const named = path.match(/^\/api\/auth\/(roles|acl-groups|realms)\/([^/]+)$/);
+		if (named && (upperMethod === 'PUT' || upperMethod === 'DELETE')) {
+			const kinds: Record<string, string> = {
+				roles: 'Permission Role',
+				'acl-groups': 'Permission Group',
+				realms: 'Realm'
+			};
+			return `${kinds[named[1]]} - ${upperMethod === 'PUT' ? 'Save' : 'Delete'} - ${named[2]}`;
+		}
+		if (path === '/api/auth/realms/discover' && upperMethod === 'POST') {
+			return 'Realm - Discover';
+		}
+		const realmUser = path.match(/^\/api\/auth\/realms\/([^/]+)\/users$/);
+		if (realmUser && upperMethod === 'POST') {
+			return `Realm - Add User - ${realmUser[1]}`;
+		}
+		if (path !== '/api/auth/grants' || (upperMethod !== 'POST' && upperMethod !== 'DELETE')) {
+			return null;
+		}
+
+		let label = `Permission Grant - ${upperMethod === 'POST' ? 'Set' : 'Delete'}`;
+		const role = auditText(body?.role);
+		const grantPath = auditText(body?.path);
+		const subject = auditText(body?.subject);
+		if (role && grantPath && subject) {
+			const who = body?.subjectType === 'group' ? `group ${subject}` : subject;
+			label += ` - ${role} on ${grantPath} for ${who}`;
+		}
+		return label;
+	}
+
 	type PasskeyAuditTarget = {
 		action: 'Register - Begin' | 'Register - Finish' | 'Delete';
 		userId?: number;
@@ -1661,6 +1700,15 @@
 					...(authGroupTarget.groupId ? { id: authGroupTarget.groupId } : {}),
 					...(authGroupTarget.name ? { name: authGroupTarget.name } : {})
 				};
+			}
+
+			const permissionsAction = permissionsActionLabel(
+				path,
+				method,
+				auditObject(recordCopy.action.body)
+			);
+			if (permissionsAction) {
+				resolvedAction = permissionsAction;
 			}
 
 			const passkeyTarget = passkeyAuditTarget(

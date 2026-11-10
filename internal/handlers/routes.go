@@ -140,7 +140,7 @@ func RegisterRoutes(r *gin.Engine,
 	api.Use(clusterHandlers.StampAppliedIndex(clusterService))
 	registerNodeRoute(api, clusterService, clusterService.MemberAPIHost, middleware.EnsureAuthenticated(authService))
 	uploadAdmission := semaphore.NewWeighted(config.GetUploadsConfig().MaxConcurrentTransfers)
-	api.GET("/auth/login/config", authHandlers.LoginConfigHandler())
+	api.GET("/auth/login/config", authHandlers.LoginConfigHandler(authService))
 	publicAuth := api.Group("/auth")
 	publicAuth.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
 	publicAuth.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
@@ -148,6 +148,8 @@ func RegisterRoutes(r *gin.Engine,
 		publicAuth.POST("/login", authHandlers.LoginHandler(authService))
 		publicAuth.POST("/passkeys/login/begin", authHandlers.BeginPasskeyLoginHandler(authService))
 		publicAuth.POST("/passkeys/login/finish", authHandlers.FinishPasskeyLoginHandler(authService))
+		publicAuth.POST("/oidc/:realm/start", authHandlers.StartOIDCLoginHandler(authService))
+		publicAuth.POST("/oidc/callback", authHandlers.OIDCCallbackHandler(authService))
 	}
 
 	health := api.Group("/health")
@@ -158,12 +160,11 @@ func RegisterRoutes(r *gin.Engine,
 
 	basic := api.Group("/basic")
 	basic.Use(middleware.EnsureAuthenticated(authService))
-	requireBasicAdmin := middleware.RequireLocalAdmin(authService)
 	{
 		basic.GET("/settings", basicHandlers.GetBasicSettings(systemService))
-		basic.POST("/initialize", requireBasicAdmin, basicHandlers.Initialize(systemService))
-		basic.GET("/initialize/host-state", requireBasicAdmin, basicHandlers.GetInitializeHostState(systemService, networkService))
-		basic.POST("/system/reboot", requireBasicAdmin, basicHandlers.RebootSystem(systemService))
+		basic.POST("/initialize", basicHandlers.Initialize(systemService))
+		basic.GET("/initialize/host-state", basicHandlers.GetInitializeHostState(systemService, networkService))
+		basic.POST("/system/reboot", basicHandlers.RebootSystem(systemService))
 	}
 
 	info := api.Group("/info")
@@ -194,26 +195,24 @@ func RegisterRoutes(r *gin.Engine,
 			notes.PUT("/:id", infoHandlers.NotesHandler(infoService))
 		}
 
-		info.GET("/audit-records", infoHandlers.AuditRecords(infoService))
+		info.GET("/audit-records", infoHandlers.AuditRecords(infoService, authService))
 		info.GET("/node", infoHandlers.NodeInfo(infoService))
 	}
 	hostTerminal := api.Group("/info")
 	hostTerminal.Use(middleware.EnsureAuthenticated(authService))
-	hostTerminal.Use(middleware.RequireLocalAdmin(authService))
 	hostTerminal.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	hostTerminal.GET("/terminal", infoHandlers.HandleHostTerminal)
 
 	if containerService := lifecycleService.Container; containerService != nil {
 		containers := api.Group("/container")
 		containers.Use(middleware.EnsureAuthenticated(authService))
-		containers.Use(middleware.RequireLocalAdminForWrites(authService))
 		containers.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 		{
-			containers.GET("", containerHandlers.ListContainers(containerService))
-			containers.GET("/simple", containerHandlers.ListContainersSimple(containerService))
-			containers.POST("", containerHandlers.CreateContainer(lifecycleService))
-			containers.POST("/stack", containerHandlers.CreateStack(lifecycleService))
-			containers.PATCH("/stack/:stack", containerHandlers.RenameContainerStack(containerService))
+			containers.GET("", containerHandlers.ListContainers(containerService, authService))
+			containers.GET("/simple", containerHandlers.ListContainersSimple(containerService, authService))
+			containers.POST("", containerHandlers.CreateContainer(lifecycleService, containerService, authService))
+			containers.POST("/stack", containerHandlers.CreateStack(lifecycleService, authService))
+			containers.PATCH("/stack/:stack", containerHandlers.RenameContainerStack(containerService, authService))
 			containers.POST("/updates/check", containerHandlers.CheckContainerUpdates(containerService))
 			containers.GET("/ports", containerHandlers.ListUsedPorts(containerService))
 			containers.GET("/networks", containerHandlers.ListNetworks(containerService))
@@ -232,15 +231,15 @@ func RegisterRoutes(r *gin.Engine,
 			containers.PUT("/registry-credentials", containerHandlers.SaveRegistryCredential(containerService))
 			containers.DELETE("/registry-credentials/:id", containerHandlers.DeleteRegistryCredential(containerService))
 			containers.GET("/:ocid", containerHandlers.GetContainer(containerService))
-			containers.PUT("/:ocid", containerHandlers.UpdateContainer(lifecycleService))
+			containers.PUT("/:ocid", containerHandlers.UpdateContainer(lifecycleService, containerService, authService))
 			containers.DELETE("/:ocid", containerHandlers.DeleteContainer(lifecycleService))
-			containers.PATCH("/:ocid/options", containerHandlers.UpdateContainerOptions(containerService))
+			containers.PATCH("/:ocid/options", containerHandlers.UpdateContainerOptions(containerService, authService))
 			containers.POST("/:ocid/actions/:action", containerHandlers.ContainerAction(lifecycleService))
 			containers.GET("/:ocid/logs", containerHandlers.GetContainerLogs(containerService))
 			containers.GET("/:ocid/image", containerHandlers.GetContainerImage(containerService))
 			containers.GET("/:ocid/stats", containerHandlers.GetContainerStatsBootstrap(containerService))
 			containers.GET("/:ocid/stats/:step", containerHandlers.GetContainerStats(containerService))
-			containers.GET("/:ocid/console", middleware.RequireLocalAdmin(authService), containerHandlers.HandleContainerConsole(containerService))
+			containers.GET("/:ocid/console", containerHandlers.HandleContainerConsole(containerService))
 		}
 	}
 
@@ -253,15 +252,14 @@ func RegisterRoutes(r *gin.Engine,
 		zfs.GET("/dashboard/history/delta", zfsHandlers.DashboardHistoryDelta(zfsService))
 		pools := zfs.Group("/pools")
 		{
-			pools.GET("", zfsHandlers.GetPools(zfsService, systemService))
+			pools.GET("", zfsHandlers.GetPools(zfsService, systemService, authService))
 			pools.GET("/disks-usage", zfsHandlers.GetDisksUsage(zfsService))
 			pools.POST("", zfsHandlers.CreatePool(infoService, zfsService))
 			pools.PATCH("/:guid", zfsHandlers.EditPool(infoService, zfsService))
 			pools.GET("/:guid/status", zfsHandlers.GetPoolStatus(zfsService))
-			pools.POST("/:guid/scrub", middleware.RequireLocalAdminForWrites(authService), zfsHandlers.ScrubPool(infoService, zfsService))
+			pools.POST("/:guid/scrub", zfsHandlers.ScrubPool(infoService, zfsService))
 			pools.GET("/:guid/scrub/runs", zfsHandlers.ListPoolScrubRuns(zfsService))
 			scrubSchedules := pools.Group("/scrub/schedules")
-			scrubSchedules.Use(middleware.RequireLocalAdminForWrites(authService))
 			scrubSchedules.GET("", zfsHandlers.ListPoolScrubSchedules(zfsService))
 			scrubSchedules.POST("", zfsHandlers.CreatePoolScrubSchedule(zfsService))
 			scrubSchedules.PUT("/:id", zfsHandlers.UpdatePoolScrubSchedule(zfsService))
@@ -276,7 +274,7 @@ func RegisterRoutes(r *gin.Engine,
 
 		datasets := zfs.Group("/datasets")
 		{
-			datasets.GET("", zfsHandlers.GetDatasets(zfsService))
+			datasets.GET("", zfsHandlers.GetDatasets(zfsService, authService))
 			datasets.GET("/paginated", zfsHandlers.GetPaginatedDatasets(zfsService))
 
 			datasets.POST("/snapshot", zfsHandlers.CreateSnapshot(zfsService))
@@ -337,7 +335,6 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		samba.GET("/config", sambaHandlers.GetGlobalConfig(sambaService))
 		samba.PUT("/config",
-			middleware.RequireLocalAdmin(authService),
 			sambaHandlers.SetGlobalConfig(sambaService),
 		)
 
@@ -353,7 +350,6 @@ func RegisterRoutes(r *gin.Engine,
 	if directoryService := sambaService.Directory; directoryService != nil {
 		recoveryGroup := api.Group("/directory-services/recovery")
 		recoveryGroup.Use(middleware.EnsureAuthenticated(authService))
-		recoveryGroup.Use(middleware.RequireLocalAdmin(authService))
 		recoveryGroup.Use(middleware.LimitRequestBody(directoryservices.MaxRecoveryRequestBytes))
 		recoveryGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 		recoveryGroup.GET("", directoryHandlers.GetRecoveryInfo(directoryService))
@@ -401,7 +397,6 @@ func RegisterRoutes(r *gin.Engine,
 
 	dynamicDNSGroup := api.Group("/dynamic-dns")
 	dynamicDNSGroup.Use(middleware.EnsureAuthenticated(authService))
-	dynamicDNSGroup.Use(middleware.RequireLocalAdminForWrites(authService))
 	dynamicDNSGroup.Use(middleware.LimitRequestBody(dynamicdns.MaxRequestBodyBytes))
 	dynamicDNSGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -414,7 +409,6 @@ func RegisterRoutes(r *gin.Engine,
 
 	certificateGroup := api.Group("/certificates")
 	certificateGroup.Use(middleware.EnsureAuthenticated(authService))
-	certificateGroup.Use(middleware.RequireLocalAdminForWrites(authService))
 	certificateGroup.Use(middleware.LimitRequestBody(certificates.MaxRequestBodyBytes))
 	certificateGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -427,12 +421,11 @@ func RegisterRoutes(r *gin.Engine,
 		certificateGroup.DELETE("/:id/activate", certificateHandlers.CancelActivation(certificateService))
 		certificateGroup.POST("/:id/renew", certificateHandlers.Renew(certificateService))
 		certificateGroup.POST("/:id/retry", certificateHandlers.Retry(certificateService))
-		certificateGroup.GET("/:id/archive", middleware.RequireLocalAdmin(authService), certificateHandlers.Download(certificateService))
+		certificateGroup.GET("/:id/archive", certificateHandlers.Download(certificateService))
 	}
 
 	nfsGroup := api.Group("/nfs")
 	nfsGroup.Use(middleware.EnsureAuthenticated(authService))
-	nfsGroup.Use(middleware.RequireLocalAdminForWrites(authService))
 	nfsGroup.Use(middleware.LimitRequestBody(nfs.MaxRequestBodyBytes))
 	nfsGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	nfsGroup.Use(func(c *gin.Context) {
@@ -455,11 +448,10 @@ func RegisterRoutes(r *gin.Engine,
 
 	iscsiGroup := api.Group("/iscsi")
 	iscsiGroup.Use(middleware.EnsureAuthenticated(authService))
-	iscsiGroup.Use(middleware.RequireLocalAdminForWrites(authService))
 	iscsiGroup.Use(middleware.LimitRequestBody(iscsi.MaxRequestBodyBytes))
 	iscsiGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
-		iscsiGroup.GET("/config", middleware.RequireLocalAdmin(authService), iscsiHandlers.GetConfig(iscsiService))
+		iscsiGroup.GET("/config", iscsiHandlers.GetConfig(iscsiService))
 		iscsiGroup.PUT("/config", iscsiHandlers.SetConfig(iscsiService))
 
 		iscsiGroup.GET("/initiators", iscsiHandlers.GetInitiators(iscsiService))
@@ -482,7 +474,6 @@ func RegisterRoutes(r *gin.Engine,
 
 	disk := api.Group("/disk")
 	disk.Use(middleware.EnsureAuthenticated(authService))
-	disk.Use(middleware.RequireLocalAdminForWrites(authService))
 	disk.Use(middleware.LimitRequestBody(diskServicePkg.MaxRequestBodyBytes))
 	disk.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -502,7 +493,6 @@ func RegisterRoutes(r *gin.Engine,
 
 	hostInterfaceL3Writes := api.Group("/network/interface")
 	hostInterfaceL3Writes.Use(middleware.EnsureAuthenticated(authService))
-	hostInterfaceL3Writes.Use(middleware.RequireLocalAdminForWrites(authService))
 	hostInterfaceL3Writes.Use(middleware.LimitRequestBody(networkServicePkg.MaxRequestBodyBytes))
 	hostInterfaceL3Writes.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	hostInterfaceL3Writes.Use(networkHandlers.RequireLocalHostOnly())
@@ -514,7 +504,6 @@ func RegisterRoutes(r *gin.Engine,
 
 	hostInterfaceL3Pending := api.Group("/network/host-ip")
 	hostInterfaceL3Pending.Use(middleware.EnsureAuthenticated(authService))
-	hostInterfaceL3Pending.Use(middleware.RequireLocalAdminForWrites(authService))
 	hostInterfaceL3Pending.Use(middleware.LimitRequestBody(networkServicePkg.MaxRequestBodyBytes))
 	hostInterfaceL3Pending.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	hostInterfaceL3Pending.Use(networkHandlers.RequireLocalHostOnly())
@@ -529,7 +518,6 @@ func RegisterRoutes(r *gin.Engine,
 	network.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		objects := network.Group("/object")
-		objects.Use(middleware.RequireLocalAdminForWrites(authService))
 		{
 			objects.GET("", networkHandlers.ListNetworkObjects(networkService))
 			objects.POST("", networkHandlers.CreateNetworkObject(networkService))
@@ -539,7 +527,6 @@ func RegisterRoutes(r *gin.Engine,
 		}
 
 		traffic := network.Group("/firewall/traffic")
-		traffic.Use(middleware.RequireLocalAdminForWrites(authService))
 		{
 			traffic.GET("", networkHandlers.ListFirewallTrafficRules(networkService))
 			traffic.GET("/counters", networkHandlers.ListFirewallTrafficRuleCounters(networkService))
@@ -551,7 +538,6 @@ func RegisterRoutes(r *gin.Engine,
 		}
 
 		nat := network.Group("/firewall/nat")
-		nat.Use(middleware.RequireLocalAdminForWrites(authService))
 		{
 			nat.GET("", networkHandlers.ListFirewallNATRules(networkService))
 			nat.GET("/counters", networkHandlers.ListFirewallNATRuleCounters(networkService))
@@ -562,10 +548,9 @@ func RegisterRoutes(r *gin.Engine,
 			nat.PUT("/:id", networkHandlers.EditFirewallNATRule(networkService))
 			nat.DELETE("/:id", networkHandlers.DeleteFirewallNATRule(networkService))
 		}
-		network.GET("/firewall/logs/live", middleware.RequireLocalAdmin(authService), networkHandlers.ListFirewallLiveHits(networkService))
+		network.GET("/firewall/logs/live", networkHandlers.ListFirewallLiveHits(networkService))
 
 		advanced := network.Group("/firewall/advanced")
-		advanced.Use(middleware.RequireLocalAdmin(authService))
 		{
 			advanced.GET("", networkHandlers.GetFirewallAdvancedSettings(networkService))
 			advanced.PUT("", networkHandlers.UpdateFirewallAdvancedSettings(networkService))
@@ -574,7 +559,6 @@ func RegisterRoutes(r *gin.Engine,
 		}
 
 		routes := network.Group("/route")
-		routes.Use(middleware.RequireLocalAdminForWrites(authService))
 		{
 			routes.GET("", networkHandlers.ListStaticRoutes(networkService))
 			routes.POST("", networkHandlers.CreateStaticRoute(networkService))
@@ -583,16 +567,14 @@ func RegisterRoutes(r *gin.Engine,
 		}
 
 		globalConfig := network.Group("/global-config")
-		globalConfig.Use(middleware.RequireLocalAdminForWrites(authService))
 		{
 			globalConfig.GET("", networkHandlers.GetNetworkGlobalConfig(networkService))
 			globalConfig.PUT("", networkHandlers.UpdateNetworkGlobalConfig(networkService))
 		}
 
 		wireGuardServer := network.Group("/wireguard/server")
-		wireGuardServer.Use(middleware.RequireLocalAdmin(authService))
 		{
-			wireGuardServer.GET("", networkHandlers.GetWireGuardServer(networkService))
+			wireGuardServer.GET("", networkHandlers.GetWireGuardServer(networkService, authService))
 			wireGuardServer.POST("", networkHandlers.InitWireGuardServer(networkService))
 			wireGuardServer.PUT("", networkHandlers.EditWireGuardServer(networkService))
 			wireGuardServer.PATCH("", networkHandlers.SetWireGuardServerEnabled(networkService))
@@ -605,9 +587,8 @@ func RegisterRoutes(r *gin.Engine,
 		}
 
 		wireGuardClients := network.Group("/wireguard/clients")
-		wireGuardClients.Use(middleware.RequireLocalAdmin(authService))
 		{
-			wireGuardClients.GET("", networkHandlers.GetWireGuardClients(networkService))
+			wireGuardClients.GET("", networkHandlers.GetWireGuardClients(networkService, authService))
 			wireGuardClients.POST("", networkHandlers.CreateWireGuardClient(networkService))
 			wireGuardClients.PUT("/:clientId", networkHandlers.EditWireGuardClient(networkService))
 			wireGuardClients.PATCH("/:clientId", networkHandlers.SetWireGuardClientEnabled(networkService))
@@ -619,18 +600,16 @@ func RegisterRoutes(r *gin.Engine,
 		network.GET("/interface/l3/pending", networkHandlers.GetHostInterfaceL3Pending(networkService))
 
 		manualSwitches := network.Group("/switch/manual")
-		manualSwitches.Use(middleware.RequireLocalAdmin(authService))
 		{
 			manualSwitches.POST("", networkHandlers.CreateManualSwitch(networkService))
 			manualSwitches.DELETE("/:id", networkHandlers.DeleteManualSwitch(networkService))
 		}
 
-		network.GET("/switch", networkHandlers.ListSwitches(networkService))
+		network.GET("/switch", networkHandlers.ListSwitches(networkService, authService))
 		network.GET("/switch/sync", networkHandlers.GetSwitchSyncStatus(networkService, bootstrapService))
-		network.POST("/switch/sync", middleware.RequireLocalAdmin(authService), networkHandlers.SyncSwitches(networkService, bootstrapService))
+		network.POST("/switch/sync", networkHandlers.SyncSwitches(networkService, bootstrapService))
 
 		standardSwitches := network.Group("/switch/standard")
-		standardSwitches.Use(middleware.RequireLocalAdmin(authService))
 		{
 			standardSwitches.POST("", networkHandlers.CreateStandardSwitch(networkService))
 			standardSwitches.PUT("/:id", networkHandlers.UpdateStandardSwitch(networkService))
@@ -638,14 +617,12 @@ func RegisterRoutes(r *gin.Engine,
 		}
 
 		dhcpConfig := network.Group("/dhcp/config")
-		dhcpConfig.Use(middleware.RequireLocalAdminForWrites(authService))
 		{
 			dhcpConfig.GET("", networkHandlers.GetDHCPConfig(networkService))
 			dhcpConfig.PUT("", networkHandlers.ModifyDHCPConfig(networkService))
 		}
 
 		dhcpRanges := network.Group("/dhcp/range")
-		dhcpRanges.Use(middleware.RequireLocalAdminForWrites(authService))
 		{
 			dhcpRanges.GET("", networkHandlers.GetDHCPRanges(networkService))
 			dhcpRanges.POST("", networkHandlers.CreateDHCPRange(networkService))
@@ -654,7 +631,6 @@ func RegisterRoutes(r *gin.Engine,
 		}
 
 		dhcpLeases := network.Group("/dhcp/lease")
-		dhcpLeases.Use(middleware.RequireLocalAdminForWrites(authService))
 		{
 			dhcpLeases.GET("", networkHandlers.GetDHCPLeases(networkService))
 			dhcpLeases.POST("", networkHandlers.CreateDHCPLease(networkService))
@@ -666,7 +642,6 @@ func RegisterRoutes(r *gin.Engine,
 
 	system := api.Group("/system")
 	system.Use(middleware.EnsureAuthenticated(authService))
-	system.Use(middleware.RequireLocalAdminForWrites(authService))
 
 	systemJSON := system.Group("")
 	systemJSON.Use(middleware.LimitRequestBody(systemServicePkg.MaxRequestBodyBytes))
@@ -684,12 +659,10 @@ func RegisterRoutes(r *gin.Engine,
 		systemJSON.GET("/tunables/remote", systemHandlers.TunablesRemote(systemService))
 		systemJSON.PUT("/tunables", systemHandlers.SetTunable(systemService))
 		hostUpdates := systemJSON.Group("/updates")
-		hostUpdates.Use(middleware.RequireLocalAdmin(authService))
 		systemHandlers.RegisterHostUpdateRoutes(hostUpdates, systemService.HostUpdates)
 	}
 
 	fileExplorer := system.Group("/file-explorer")
-	fileExplorer.Use(middleware.RequireLocalAdmin(authService))
 	{
 		fileExplorerCore := fileExplorer.Group("")
 		fileExplorerCore.Use(middleware.LimitRequestBody(systemServicePkg.MaxRequestBodyBytes))
@@ -719,17 +692,16 @@ func RegisterRoutes(r *gin.Engine,
 
 	vm := api.Group("/vm")
 	vm.Use(middleware.EnsureAuthenticated(authService))
-	vm.Use(middleware.RequireLocalAdminForWrites(authService))
 	vm.Use(middleware.LimitRequestBody(libvirt.MaxRequestBodyBytes))
 	vm.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		vm.POST("/:rid/migrations", migrationHandlers.MigrateVM(migrationService, lifecycleService))
 		vm.POST("/:rid/actions/:action", vmHandlers.VMActionHandler(libvirtService, lifecycleService))
-		vm.GET("/simple", vmHandlers.ListVMsSimple(libvirtService))
+		vm.GET("/simple", vmHandlers.ListVMsSimple(libvirtService, authService))
 		vm.GET("/templates", vmHandlers.ListVMTemplatesSimple(libvirtService))
 		vm.GET("/templates/:templateId", vmHandlers.GetVMTemplateByID(libvirtService))
 		vm.POST("/:rid/templates", vmHandlers.ConvertVMToTemplate(libvirtService, lifecycleService))
-		vm.POST("/templates/:templateId/vms", vmHandlers.CreateVMFromTemplate(libvirtService, lifecycleService))
+		vm.POST("/templates/:templateId/vms", vmHandlers.CreateVMFromTemplate(libvirtService, lifecycleService, authService))
 		vm.DELETE("/templates/:templateId", vmHandlers.DeleteVMTemplate(libvirtService, lifecycleService))
 		vm.GET("/simple/:rid", vmHandlers.GetSimpleVMByRID(libvirtService))
 		vm.GET("/:rid/snapshots", vmHandlers.ListVMSnapshots(libvirtService))
@@ -743,8 +715,8 @@ func RegisterRoutes(r *gin.Engine,
 			vmHandlers.DeleteVMSnapshot(libvirtService),
 		)
 		vm.GET("/:rid", vmHandlers.GetVMByRID(libvirtService))
-		vm.GET("", vmHandlers.ListVMs(libvirtService))
-		vm.POST("", vmHandlers.CreateVM(libvirtService))
+		vm.GET("", vmHandlers.ListVMs(libvirtService, authService))
+		vm.POST("", vmHandlers.CreateVM(libvirtService, authService))
 		vm.DELETE("/:rid/registration",
 			vmHandlers.RequireVMDeletionDetached(libvirtService, "rid"),
 			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "rid"),
@@ -763,13 +735,13 @@ func RegisterRoutes(r *gin.Engine,
 		vm.PATCH("/:rid/description", vmHandlers.UpdateVMDescription(libvirtService))
 		vm.PATCH("/:rid/name", vmHandlers.UpdateVMName(libvirtService, clusterService))
 
-		vm.POST("/:rid/storage", vmHandlers.StorageAttach(libvirtService))
-		vm.POST("/:rid/storage/from-image", vmHandlers.CreateStorageFromImage(libvirtService))
-		vm.PATCH("/:rid/storage/:storageId", vmHandlers.StorageUpdate(libvirtService))
+		vm.POST("/:rid/storage", vmHandlers.StorageAttach(libvirtService, authService))
+		vm.POST("/:rid/storage/from-image", vmHandlers.CreateStorageFromImage(libvirtService, authService))
+		vm.PATCH("/:rid/storage/:storageId", vmHandlers.StorageUpdate(libvirtService, authService))
 		vm.DELETE("/:rid/storage/:storageId", vmHandlers.StorageDetach(libvirtService))
 
-		vm.POST("/:rid/networks", vmHandlers.NetworkAttach(libvirtService))
-		vm.PATCH("/:rid/networks/:networkId", vmHandlers.NetworkUpdate(libvirtService))
+		vm.POST("/:rid/networks", vmHandlers.NetworkAttach(libvirtService, authService))
+		vm.PATCH("/:rid/networks/:networkId", vmHandlers.NetworkUpdate(libvirtService, authService))
 		vm.DELETE("/:rid/networks/:networkId", vmHandlers.NetworkDetach(libvirtService))
 
 		vm.PUT("/:rid/hardware/cpu", vmHandlers.ModifyCPU(libvirtService))
@@ -790,16 +762,15 @@ func RegisterRoutes(r *gin.Engine,
 		vm.PUT("/:rid/options/tpm", vmHandlers.ModifyTPM(libvirtService))
 		vm.GET("/:rid/guest-agent", vmHandlers.GetQemuGuestAgentInfo(libvirtService))
 
-		vm.GET("/:rid/console", middleware.RequireLocalAdmin(authService), vmHandlers.HandleLibvirtTerminalWebsocket(libvirtService))
+		vm.GET("/:rid/console", vmHandlers.HandleLibvirtTerminalWebsocket(libvirtService))
 	}
 
 	jail := api.Group("/jail")
 	jail.Use(middleware.EnsureAuthenticated(authService))
-	jail.Use(middleware.RequireLocalAdminForWrites(authService))
 	jail.Use(middleware.LimitRequestBody(jailServicePkg.MaxRequestBodyBytes))
 	jail.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
-		jail.GET("/simple", jailHandlers.ListJailsSimple(jailService))
+		jail.GET("/simple", jailHandlers.ListJailsSimple(jailService, authService))
 		packages := jail.Group("/:ctid/packages")
 		{
 			packages.GET("", jailHandlers.GetJailPackages(jailService))
@@ -811,21 +782,21 @@ func RegisterRoutes(r *gin.Engine,
 			packages.POST("/upgrade", jailHandlers.StartJailPackageOperation(jailService, "pkg-upgrade"))
 			packages.GET("/jobs/:taskId", jailHandlers.GetJailPackageJob(jailService, false))
 			packages.POST("/jobs/:taskId/cancel", jailHandlers.CancelJailPackageJob(jailService))
-			packages.GET("/jobs/:taskId/logs", middleware.RequireLocalAdmin(authService), jailHandlers.GetJailPackageJob(jailService, true))
+			packages.GET("/jobs/:taskId/logs", jailHandlers.GetJailPackageJob(jailService, true))
 			packages.GET("/monitoring", jailHandlers.JailPackageMonitoring(jailService, false))
 			packages.PUT("/monitoring", jailHandlers.JailPackageMonitoring(jailService, true))
 		}
 		jail.GET("/zfs-sources", jailHandlers.ListJailZFSSources(jailService))
 		jail.GET("/bootstraps", jailHandlers.ListBootstraps(jailService))
-		jail.POST("/bootstraps", jailHandlers.CreateBootstrap(jailService))
-		jail.DELETE("/bootstraps/:name", jailHandlers.DeleteBootstrap(jailService))
+		jail.POST("/bootstraps", jailHandlers.CreateBootstrap(jailService, authService))
+		jail.DELETE("/bootstraps/:name", jailHandlers.DeleteBootstrap(jailService, authService))
 		jail.GET("/templates", jailHandlers.ListJailTemplatesSimple(jailService))
 		jail.GET("/templates/:templateId", jailHandlers.GetJailTemplateByID(jailService))
 		jail.POST("/:ctid/templates", jailHandlers.ConvertJailToTemplate(jailService, lifecycleService))
-		jail.POST("/templates/:templateId/jails", jailHandlers.CreateJailFromTemplate(jailService, lifecycleService))
+		jail.POST("/templates/:templateId/jails", jailHandlers.CreateJailFromTemplate(jailService, lifecycleService, authService))
 		jail.DELETE("/templates/:templateId", jailHandlers.DeleteJailTemplate(jailService, lifecycleService))
 		jail.GET("/simple/:ctid", jailHandlers.GetSimpleJailByCTID(jailService))
-		jail.GET("", jailHandlers.ListJails(jailService))
+		jail.GET("", jailHandlers.ListJails(jailService, authService))
 		jail.GET("/:ctid/snapshots", jailHandlers.ListJailSnapshots(jailService))
 		jail.POST("/:ctid/snapshots", jailHandlers.CreateJailSnapshot(jailService))
 		jail.POST("/:ctid/snapshots/:snapshotId/rollback",
@@ -848,15 +819,14 @@ func RegisterRoutes(r *gin.Engine,
 		jail.GET("/:ctid/stats", jailHandlers.GetJailStatsBootstrap(jailService))
 		jail.GET("/:ctid/stats/:step", jailHandlers.GetJailStats(jailService))
 		jail.GET("/:ctid/console",
-			middleware.RequireLocalAdmin(authService),
 			jailHandlers.HandleJailTerminalWebsocket(jailService, lifecycleService),
 		)
 		jail.PUT("/:ctid/hardware/ram", jailHandlers.UpdateJailMemory(jailService))
 		jail.PUT("/:ctid/hardware/cpu", jailHandlers.UpdateJailCPU(jailService))
 		jail.PUT("/:ctid/hardware/resource-limits", jailHandlers.UpdateResourceLimits(jailService))
 
-		jail.POST("", jailHandlers.CreateJail(jailService, lifecycleService))
-		jail.POST("/validate", jailHandlers.ValidateCreateJail(jailService))
+		jail.POST("", jailHandlers.CreateJail(jailService, lifecycleService, authService))
+		jail.POST("/validate", jailHandlers.ValidateCreateJail(jailService, authService))
 		jail.DELETE("/:ctid",
 			jailHandlers.RequireJailDeletionDetached(jailService, "ctid"),
 			jailHandlers.RequireJailReplicationTopologyMutable(jailService, "ctid"),
@@ -864,8 +834,8 @@ func RegisterRoutes(r *gin.Engine,
 		)
 
 		jail.PUT("/:ctid/network/inheritance", jailHandlers.SetNetworkInheritance(jailService))
-		jail.POST("/:ctid/networks", jailHandlers.AddNetwork(jailService))
-		jail.PATCH("/:ctid/networks/:networkId", jailHandlers.EditNetwork(jailService))
+		jail.POST("/:ctid/networks", jailHandlers.AddNetwork(jailService, authService))
+		jail.PATCH("/:ctid/networks/:networkId", jailHandlers.EditNetwork(jailService, authService))
 		jail.DELETE("/:ctid/networks/:networkId", jailHandlers.DeleteNetwork(jailService))
 
 		jail.PUT("/:ctid/options/wol", jailHandlers.ModifyWakeOnLan(jailService))
@@ -882,7 +852,6 @@ func RegisterRoutes(r *gin.Engine,
 
 	utilities := api.Group("/utilities")
 	utilities.Use(middleware.EnsureAuthenticated(authService))
-	utilities.Use(middleware.RequireLocalAdminForWrites(authService))
 	utilities.POST(
 		"/downloader-uploads",
 		middleware.RequestLoggerMiddleware(telemetryDB, authService),
@@ -924,12 +893,12 @@ func RegisterRoutes(r *gin.Engine,
 		authSession.POST("/logout", authHandlers.LogoutHandler(authService))
 		authSession.POST("/sse-tokens", eventsHandlers.CreateSSEToken(authService))
 		authSession.GET("/preferences", authHandlers.GetUserPreferencesHandler(authService))
+		authSession.GET("/permissions", authHandlers.PermissionsHandler(authService))
 	}
 
 	authManagement := api.Group("/auth")
 	authManagement.Use(middleware.EnsureAuthenticated(authService))
 	authManagement.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
-	authManagement.Use(middleware.RequireLocalAdmin(authService))
 	authManagement.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 
 	events := api.Group("/events")
@@ -940,7 +909,6 @@ func RegisterRoutes(r *gin.Engine,
 
 	notifications := api.Group("/notifications")
 	notifications.Use(middleware.EnsureAuthenticated(authService))
-	notifications.Use(middleware.RequireLocalAdminForWrites(authService))
 	notifications.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		notifications.GET("", notificationsHandlers.List(notificationService))
@@ -951,11 +919,10 @@ func RegisterRoutes(r *gin.Engine,
 
 	notificationSettings := api.Group("/notifications")
 	notificationSettings.Use(middleware.EnsureAuthenticated(authService))
-	notificationSettings.Use(middleware.RequireLocalAdmin(authService))
 	notificationSettings.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
 	notificationSettings.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
-		notificationSettings.GET("/transports", notificationsHandlers.GetTransports(notificationService))
+		notificationSettings.GET("/transports", notificationsHandlers.GetTransports(notificationService, authService))
 		notificationSettings.POST("/transports", notificationsHandlers.CreateTransport(notificationService))
 		notificationSettings.PUT("/transports/:id", notificationsHandlers.UpdateTransport(notificationService))
 		notificationSettings.DELETE("/transports/:id", notificationsHandlers.DeleteTransport(notificationService))
@@ -999,6 +966,21 @@ func RegisterRoutes(r *gin.Engine,
 		passkeys.POST("/register/finish", authHandlers.FinishPasskeyRegistrationHandler(authService))
 	}
 
+	authManagement.GET("/grants", authHandlers.ListGrantsHandler(authService))
+	authManagement.POST("/grants", authHandlers.SetGrantHandler(authService))
+	authManagement.DELETE("/grants", authHandlers.DeleteGrantHandler(authService))
+	authManagement.GET("/roles", authHandlers.ListRolesHandler(authService))
+	authManagement.PUT("/roles/:name", authHandlers.SetRoleHandler(authService))
+	authManagement.DELETE("/roles/:name", authHandlers.DeleteRoleHandler(authService))
+	authManagement.GET("/acl-groups", authHandlers.ListACLGroupsHandler(authService))
+	authManagement.PUT("/acl-groups/:name", authHandlers.SetACLGroupHandler(authService))
+	authManagement.DELETE("/acl-groups/:name", authHandlers.DeleteACLGroupHandler(authService))
+	authManagement.GET("/realms", authHandlers.ListRealmsHandler(authService))
+	authManagement.PUT("/realms/:name", authHandlers.SetRealmHandler(authService))
+	authManagement.DELETE("/realms/:name", authHandlers.DeleteRealmHandler(authService))
+	authManagement.POST("/realms/discover", authHandlers.DiscoverRealmHandler(authService))
+	authManagement.POST("/realms/:name/users", authHandlers.CreateRealmUserHandler(authService))
+
 	leaderOnly := clusterHandlers.LeaderOnly(clusterService)
 
 	migrationHandlers.RegisterCalls(clusterService, zeltaService, libvirtService, jailService, systemService)
@@ -1025,7 +1007,6 @@ func RegisterRoutes(r *gin.Engine,
 	clusterLocal := api.Group("/cluster")
 	clusterLocal.Use(middleware.EnsureAuthenticated(authService))
 	clusterLocal.Use(middleware.RequireLocalSession())
-	clusterLocal.Use(middleware.RequireLocalAdmin(authService))
 	clusterLocal.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
 	clusterLocal.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
@@ -1046,14 +1027,14 @@ func RegisterRoutes(r *gin.Engine,
 	cluster.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
 	cluster.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
-		cluster.GET("/nodes", clusterHandlers.Nodes(clusterService))
-		cluster.GET("/resources", clusterHandlers.Resources(clusterService))
+		cluster.GET("/nodes", clusterHandlers.Nodes(clusterService, authService))
+		cluster.GET("/guest-ids/next", clusterHandlers.NextGuestID(clusterService))
+		cluster.GET("/resources", clusterHandlers.Resources(clusterService, authService))
 
 		cluster.GET("", clusterHandlers.GetCluster(clusterService))
 	}
 
 	clusterNotes := cluster.Group("/notes")
-	clusterNotes.Use(middleware.RequireLocalAdmin(authService))
 	{
 		clusterNotes.GET("", clusterHandlers.Notes(clusterService))
 		clusterNotes.POST("", clusterHandlers.CreateNote(clusterService))
@@ -1063,7 +1044,6 @@ func RegisterRoutes(r *gin.Engine,
 	}
 
 	clusterBackups := cluster.Group("/backups")
-	clusterBackups.Use(middleware.RequireLocalAdmin(authService))
 	{
 		targets := clusterBackups.Group("/targets")
 		{
@@ -1098,7 +1078,6 @@ func RegisterRoutes(r *gin.Engine,
 	}
 
 	clusterReplication := cluster.Group("/replication")
-	clusterReplication.Use(middleware.RequireLocalAdmin(authService))
 	{
 		clusterReplication.GET("/policies", clusterHandlers.ReplicationPolicies(clusterService))
 		clusterReplication.POST("/policies", leaderOnly, clusterHandlers.CreateReplicationPolicy(clusterService))
@@ -1114,21 +1093,19 @@ func RegisterRoutes(r *gin.Engine,
 
 	vnc := api.Group("/vnc")
 	vnc.Use(middleware.EnsureAuthenticated(authService))
-	vnc.Use(middleware.RequireLocalAdmin(authService))
 	vnc.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
-	vnc.GET("/:port", vncHandler.VNCProxyHandler(libvirtService))
+	vnc.GET("/:port", vncHandler.VNCProxyHandler(libvirtService, authService))
 
 	tasks := api.Group("/tasks")
 	tasks.Use(middleware.EnsureAuthenticated(authService))
-	tasks.Use(middleware.RequireLocalAdminForWrites(authService))
 	tasks.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		lifecycleTasks := tasks.Group("/lifecycle")
 		{
-			lifecycleTasks.GET("/active", taskHandlers.ActiveLifecycleTasks(lifecycleService))
-			lifecycleTasks.GET("/active/:guestType/:guestId", taskHandlers.ActiveLifecycleTaskForGuest(lifecycleService))
-			lifecycleTasks.GET("/recent", taskHandlers.RecentLifecycleTasks(lifecycleService))
-			lifecycleTasks.GET("/:taskId", taskHandlers.LifecycleTask(lifecycleService))
+			lifecycleTasks.GET("/active", taskHandlers.ActiveLifecycleTasks(lifecycleService, authService))
+			lifecycleTasks.GET("/active/:guestType/:guestId", taskHandlers.ActiveLifecycleTaskForGuest(lifecycleService, authService))
+			lifecycleTasks.GET("/recent", taskHandlers.RecentLifecycleTasks(lifecycleService, authService))
+			lifecycleTasks.GET("/:taskId", taskHandlers.LifecycleTask(lifecycleService, authService))
 		}
 
 		migrationTasks := tasks.Group("/migration")

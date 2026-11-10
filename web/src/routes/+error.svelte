@@ -18,19 +18,34 @@
 	let message = $derived(page.error?.message?.trim() || '');
 	let status = $derived(page.status ?? 500);
 	let notFound = $derived(status === 404 || message === 'Not Found');
+	let forbidden = $derived(
+		status === 403 || message === 'permission_denied' || message === 'superuser_required'
+	);
 	let readable = $derived(message !== '' && !genericMessages.has(message) && /\s/.test(message));
 	let headline = $derived(
-		readable
-			? message
-			: notFound
-				? 'This page does not exist.'
-				: 'Something went wrong while loading this page.'
+		forbidden
+			? "You don't have permission to view this page."
+			: readable
+				? message
+				: notFound
+					? 'This page does not exist.'
+					: 'Something went wrong while loading this page.'
 	);
 	let hint = $derived(
-		readable ? '' : notFound ? 'Use the sidebar to get back to a node.' : 'Try again in a moment.'
+		forbidden
+			? 'Ask an administrator for access.'
+			: readable
+				? ''
+				: notFound
+					? 'Use the sidebar to get back to a node.'
+					: 'Try again in a moment.'
 	);
 	let icon = $derived(
-		notFound ? 'icon-[mdi--file-question-outline]' : 'icon-[mdi--alert-circle-outline]'
+		forbidden
+			? 'icon-[mdi--lock-outline]'
+			: notFound
+				? 'icon-[mdi--file-question-outline]'
+				: 'icon-[mdi--alert-circle-outline]'
 	);
 	let showDetails = $state(false);
 </script>
@@ -46,7 +61,7 @@
 		{/if}
 	</div>
 	<div class="flex items-center gap-2">
-		{#if !notFound}
+		{#if !notFound && !forbidden}
 			<Button size="sm" onclick={() => window.location.reload()}>
 				<span class="icon-[mdi--refresh] h-4 w-4"></span>
 				Retry

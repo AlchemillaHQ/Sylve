@@ -63,6 +63,7 @@ func vmHardwareErrorStatus(err error) int {
 		"calculated_core_out_of_range", "duplicate_core_across_sockets",
 		"cpu_pinning_exceeds_logical_cores", "socket_capacity_exceeded",
 		"memory_must_be_greater_than_128mb", "memory_must_be_at_least_128mb",
+		"memory_limit_exceeds_host_capacity",
 		"invalid_vnc_bind_ip",
 		"vnc_enabled_required", "vnc_wait_required",
 		"vnc_port_must_be_between_1_and_65535", "invalid_vnc_resolution_format",

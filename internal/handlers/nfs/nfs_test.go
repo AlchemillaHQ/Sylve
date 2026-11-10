@@ -24,7 +24,6 @@ import (
 	nfsModels "github.com/alchemillahq/sylve/internal/db/models/nfs"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	"github.com/alchemillahq/sylve/internal/logger"
-	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/nfs"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
@@ -212,43 +211,6 @@ func TestDisableAndDeleteDoNotNeedAvailableZFS(t *testing.T) {
 	response = testutil.PerformRequest(t, router, http.MethodDelete, "/shares/1", nil, nil)
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("missing share status=%d", response.Code)
-	}
-}
-
-func TestNFSWritesRequireLocalAdmin(t *testing.T) {
-	service, _ := setupHandler(t)
-	if err := service.DB.AutoMigrate(&models.User{}, &models.Group{}); err != nil {
-		t.Fatal(err)
-	}
-	admin := models.User{Username: "admin", Admin: true}
-	reader := models.User{Username: "reader"}
-	if err := service.DB.Create(&admin).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := service.DB.Create(&reader).Error; err != nil {
-		t.Fatal(err)
-	}
-	auth := &authService.Service{DB: service.DB}
-	for _, test := range []struct {
-		authType string
-		id       uint
-		status   int
-	}{
-		{"sylve", admin.ID, http.StatusOK},
-		{"pam", admin.ID, http.StatusOK},
-		{authService.AuthTypeSylvePasskey, admin.ID, http.StatusOK},
-		{"sylve", reader.ID, http.StatusForbidden},
-		{"oidc", admin.ID, http.StatusForbidden},
-		{"cluster-key", admin.ID, http.StatusForbidden},
-	} {
-		router := gin.New()
-		router.Use(func(c *gin.Context) { c.Set("AuthType", test.authType); c.Set("UserID", test.id) })
-		router.Use(middleware.RequireLocalAdminForWrites(auth))
-		router.PUT("/config", SetConfig(service))
-		response := testutil.PerformJSONRequest(t, router, http.MethodPut, "/config", configRequest(t, "v3", false))
-		if response.Code != test.status {
-			t.Errorf("%s status=%d want=%d body=%s", test.authType, response.Code, test.status, response.Body)
-		}
 	}
 }
 

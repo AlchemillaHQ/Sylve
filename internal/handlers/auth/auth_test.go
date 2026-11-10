@@ -66,7 +66,7 @@ func runLoginConfigHandler(t *testing.T) map[string]any {
 	ctx, _ := gin.CreateTestContext(rec)
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/auth/login/config", nil)
 
-	LoginConfigHandler()(ctx)
+	LoginConfigHandler(newTestAuthService(t))(ctx)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected_200_got: %d", rec.Code)

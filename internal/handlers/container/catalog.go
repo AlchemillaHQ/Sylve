@@ -8,6 +8,7 @@ import (
 
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	containerServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/container"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 
 	_ "github.com/alchemillahq/sylve/internal"
 
@@ -117,11 +118,14 @@ type StackMember struct {
 // @Param request body containerServiceInterfaces.StackRequest true "Stack"
 // @Success 202 {object} internal.APIResponse[StackResponse] "Accepted"
 // @Router /container/stack [post]
-func CreateStack(lifecycleService lifecycleRequester) gin.HandlerFunc {
+func CreateStack(lifecycleService lifecycleRequester, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req containerServiceInterfaces.StackRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			fail(c, http.StatusBadRequest, "invalid_request_data", err)
+			return
+		}
+		if !allowStackCreate(c, authService, req) {
 			return
 		}
 		prepared, task, outcome, err := lifecycleService.RequestContainerStack(c.Request.Context(), req,

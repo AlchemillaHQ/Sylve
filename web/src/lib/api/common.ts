@@ -10,7 +10,6 @@
 
 import { browser } from '$app/environment';
 import { storage } from '$lib';
-import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 import type { APIResponse } from '$lib/types/common';
 import { toast } from 'svelte-sonner';
 import { showErrorToast, stageErrorDetail } from '$lib/stores/error-details.svelte';
@@ -96,6 +95,13 @@ function applyRequestDefaults(config: APIRequestConfig): APIRequestConfig {
 	}
 
 	return nextConfig;
+}
+
+export function isSessionEnded(detail: unknown): boolean {
+	const message = (detail as { message?: unknown } | null)?.message;
+	return (
+		typeof message === 'string' && (message.startsWith('jwt_') || message === 'no_token_provided')
+	);
 }
 
 // Never node-prefixed: cluster-wide, or the signed-in node's own session.
@@ -225,20 +231,24 @@ class FetchAPIClient {
 			};
 
 			const validateStatus = nextConfig.validateStatus || defaultValidateStatus;
-			if (!validateStatus(response.status)) {
+			const failed = !validateStatus(response.status);
+			// Callers that read error responses themselves still lose a revoked session here.
+			if (response.status === 401 && browser && storage.token && (failed || isSessionEnded(data))) {
+				toast.error('Session expired, please login again', {
+					id: 'session-expired',
+					position: 'bottom-center'
+				});
+				// Loaded lazily: auth.ts reaches back into this module.
+				void import('$lib/api/auth').then(({ logOut }) => logOut());
+			}
+
+			if (failed) {
 				const error: APIClientError = new Error(
 					`Request failed with status code ${response.status}`
 				);
 				error.response = normalizedResponse;
 				error.request = { url: nextConfig.url, method };
 				error.status = response.status;
-
-				if (response.status === 401 && browser) {
-					toast.error('Session expired, please login again', {
-						position: 'bottom-center'
-					});
-					useSafeGoto('/login');
-				}
 
 				handleAxiosError(error);
 				error.handled = true;

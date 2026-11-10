@@ -1159,7 +1159,7 @@ func TestBackupTargetHostKeyResetPermissionStateAndAudit(t *testing.T) {
 		want int
 	}{
 		{"success", 200}, {"not confirmed", 400}, {"invalid id", 400}, {"invalid json", 400},
-		{"not found", 404}, {"non-admin", 403}, {"stale", 409}, {"active backup", 409},
+		{"not found", 404}, {"stale", 409}, {"active backup", 409},
 		{"active restore", 409}, {"missing trust", 503}, {"consensus unavailable", 503}, {"oversized", 413},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
@@ -1181,7 +1181,7 @@ func TestBackupTargetHostKeyResetPermissionStateAndAudit(t *testing.T) {
 			if err := service.ReopenMutations(); err != nil {
 				t.Fatal(err)
 			}
-			if err := database.Create(&models.User{ID: 1, Username: "reset-admin", Admin: scenario.name != "non-admin"}).Error; err != nil {
+			if err := database.Create(&models.User{ID: 1, Username: "reset-admin", Admin: true}).Error; err != nil {
 				t.Fatal(err)
 			}
 			telemetry := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
@@ -1224,7 +1224,7 @@ func TestBackupTargetHostKeyResetPermissionStateAndAudit(t *testing.T) {
 				c.Set("AuthType", "sylve")
 				c.Set("AuthScope", "local")
 			})
-			router.Use(middleware.LimitRequestBody(256), middleware.RequestLoggerMiddleware(telemetry, auth), middleware.RequireLocalAdmin(auth))
+			router.Use(middleware.LimitRequestBody(256), middleware.RequestLoggerMiddleware(telemetry, auth))
 			router.POST("/api/cluster/backups/targets/:id/host-key/reset", ResetBackupTargetHostKey(service))
 			response := performJSONRequest(t, router, http.MethodPost, path, []byte(body))
 			if response.Code != scenario.want {

@@ -21,6 +21,7 @@ under sponsorship from the FreeBSD Foundation.
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import { allowed } from '$lib/stores/permissions.svelte';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import {
 		SLIRP_SWITCH_NAME,
@@ -61,25 +62,14 @@ under sponsorship from the FreeBSD Foundation.
 	let selectedSwitchName = $derived.by(() => {
 		if (!selectedNetwork) return '';
 		if (selectedNetwork.switchType === 'slirp') return SLIRP_SWITCH_NAME;
-		if (selectedNetwork.switchType === 'standard') {
-			return (
-				switches.standard.find((networkSwitch) => networkSwitch.id === selectedNetwork.switchId)
-					?.name ?? ''
-			);
-		}
-		if (selectedNetwork.switchType === 'manual') {
-			return (
-				switches.manual.find((networkSwitch) => networkSwitch.id === selectedNetwork.switchId)
-					?.name ?? ''
-			);
-		}
-		return '';
+		return (selectedNetwork.standardSwitch ?? selectedNetwork.manualSwitch)?.name ?? '';
 	});
 	let selectedMacId = $derived(selectedNetwork?.macId ?? null);
-	const slirpOption = {
-		value: SLIRP_SWITCH_NAME,
-		label: 'SLIRP (internet only, not reachable from outside)'
-	};
+	let slirpOptions = $derived(
+		allowed('Network.Use', `/switch/${SLIRP_SWITCH_NAME}`)
+			? [{ value: SLIRP_SWITCH_NAME, label: 'SLIRP (internet only, not reachable from outside)' }]
+			: []
+	);
 	let usable = $derived([
 		...switches.standard.map((networkSwitch) => ({
 			...networkSwitch,
@@ -305,7 +295,7 @@ under sponsorship from the FreeBSD Foundation.
 				label="Switch"
 				placeholder="Select Switch"
 				options={[
-					slirpOption,
+					...slirpOptions,
 					...usable.map((networkSwitch) => ({
 						value: networkSwitch.name,
 						label: switchOptionLabel(networkSwitch),
@@ -359,7 +349,7 @@ under sponsorship from the FreeBSD Foundation.
 				label="Switch"
 				placeholder="Select Switch"
 				options={[
-					slirpOption,
+					...slirpOptions,
 					...usable.map((networkSwitch) => ({
 						value: networkSwitch.name,
 						label: switchOptionLabel(networkSwitch),

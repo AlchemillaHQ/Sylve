@@ -19,6 +19,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/cmd"
+	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/auth"
@@ -45,7 +46,10 @@ type JoinAdmissionRequest struct {
 	NodeHostname string                       `json:"nodeHostname" binding:"required"`
 	Inventory    GuestIdentityInventoryReport `json:"inventory"`
 	// SSHPublicKey is the joiner's cluster SSH key, recorded with its pin.
-	SSHPublicKey string `json:"sshPublicKey" binding:"required"`
+	SSHPublicKey string   `json:"sshPublicKey" binding:"required"`
+	LocalUsers   []string `json:"localUsers"`
+	// UserClusters identifies retained copies, including users since renamed or deleted there.
+	UserClusters map[string]string `json:"userClusters,omitempty"`
 }
 
 type ClusterJoinProgress struct {
@@ -54,6 +58,7 @@ type ClusterJoinProgress struct {
 }
 
 type ClusterJoinStatus struct {
+	ClusterID         string `json:"clusterId,omitempty"`
 	NodeID            string `json:"nodeId"`
 	NodeIP            string `json:"nodeIp,omitempty"`
 	LeaderIP          string `json:"leaderIp,omitempty"`
@@ -196,11 +201,11 @@ func (s *Service) recordJoinError(err error) {
 }
 
 func (s *Service) dropJoinIntent(record clusterModels.Cluster) error {
-	return s.DB.Model(&record).Updates(map[string]any{"key": "", "join_leader_ip": "", "raft_ip": ""}).Error
+	return s.DB.Model(&record).Updates(map[string]any{"key": "", "join_leader_ip": "", "join_cluster_id": "", "raft_ip": ""}).Error
 }
 
 func (s *Service) finishJoin(record clusterModels.Cluster) error {
-	if err := s.DB.Model(&record).Updates(map[string]any{"join_leader_ip": "", "key": ""}).Error; err != nil {
+	if err := s.DB.Model(&record).Updates(map[string]any{"join_leader_ip": "", "join_cluster_id": "", "key": ""}).Error; err != nil {
 		return err
 	}
 	s.recordJoinError(nil)
@@ -232,9 +237,22 @@ func (s *Service) requestAdmission(ctx context.Context, record clusterModels.Clu
 	if err != nil {
 		return fmt.Errorf("cluster_join_hostname_unavailable: %w", err)
 	}
+	var users []models.User
+	if err := s.DB.WithContext(ctx).Select("username", "shared_cluster_id", "shared_user_id").
+		Where("source = ? AND username <> ?", "local", "admin").Find(&users).Error; err != nil {
+		return fmt.Errorf("cluster_join_users_unavailable: %w", err)
+	}
+	localUsers := make([]string, 0, len(users))
+	userClusters := make(map[string]string)
+	for _, user := range users {
+		localUsers = append(localUsers, user.Username)
+		if user.SharedClusterID != "" && user.SharedUserID != 0 {
+			userClusters[user.Username] = user.SharedClusterID
+		}
+	}
 	payload, err := json.Marshal(JoinAdmissionRequest{
 		NodeID: localNodeID, NodeIP: record.RaftIP, NodeVersion: cmd.Version, NodeHostname: hostname,
-		Inventory: inventory, SSHPublicKey: sshPublicKey,
+		Inventory: inventory, SSHPublicKey: sshPublicKey, LocalUsers: localUsers, UserClusters: userClusters,
 	})
 	if err != nil {
 		return err
@@ -271,6 +289,9 @@ func (s *Service) requestAdmission(ctx context.Context, record clusterModels.Clu
 		var status ClusterJoinStatus
 		if err := json.Unmarshal(apiResponse.Data, &status); err != nil {
 			return fmt.Errorf("cluster_join_admission_response_invalid: %w", err)
+		}
+		if err := s.DB.Model(&record).Update("join_cluster_id", status.ClusterID).Error; err != nil {
+			return err
 		}
 		s.seedJoinPins(status.Pins)
 		return nil

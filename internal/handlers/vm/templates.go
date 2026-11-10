@@ -20,6 +20,7 @@ import (
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
@@ -330,7 +331,7 @@ func ConvertVMToTemplate(libvirtService vmTemplateService, lifecycleService vmTe
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /vm/templates/{templateId}/vms [post]
-func CreateVMFromTemplate(libvirtService vmTemplateService, lifecycleService vmTemplateLifecycleService) gin.HandlerFunc {
+func CreateVMFromTemplate(libvirtService vmTemplateService, lifecycleService vmTemplateLifecycleService, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		templateID, err := strconv.Atoi(c.Param("templateId"))
 		if err != nil || templateID <= 0 {
@@ -361,6 +362,19 @@ func CreateVMFromTemplate(libvirtService vmTemplateService, lifecycleService vmT
 				Data:    nil,
 				Error:   err.Error(),
 			})
+			return
+		}
+		template, err := libvirtService.GetVMTemplate(uint(templateID))
+		if err != nil {
+			c.JSON(vmTemplatePreflightStatusCode(err), internal.APIResponse[any]{
+				Status:  "error",
+				Message: "template_create_preflight_failed",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+		if !allowVMTemplateCreate(c, authService, template, req) {
 			return
 		}
 

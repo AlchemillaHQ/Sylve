@@ -14,7 +14,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
-	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/iscsi"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -254,42 +253,5 @@ func TestISCSIConfigHandlerDatabaseFailureIsSafe(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatal("DB failure wrote the file")
-	}
-}
-
-func TestISCSIConfigRoutesRequireLocalAdminForReadsAndWrites(t *testing.T) {
-	service, _, _, _ := setupConfigHandler(t)
-	if err := service.DB.AutoMigrate(&models.User{}, &models.Group{}); err != nil {
-		t.Fatal(err)
-	}
-	admin := models.User{Username: "admin", Admin: true}
-	reader := models.User{Username: "reader"}
-	service.DB.Create(&admin)
-	service.DB.Create(&reader)
-	auth := &authService.Service{DB: service.DB}
-	for _, test := range []struct {
-		authType string
-		id       uint
-		status   int
-	}{
-		{authType: "sylve", id: admin.ID, status: 200},
-		{authType: "pam", id: admin.ID, status: 200},
-		{authType: authService.AuthTypeSylvePasskey, id: admin.ID, status: 200},
-		{authType: "sylve", id: reader.ID, status: 403},
-		{authType: "oidc", id: admin.ID, status: 403},
-		{authType: "cluster-key", id: admin.ID, status: 403},
-	} {
-		router := gin.New()
-		router.Use(func(c *gin.Context) { c.Set("AuthType", test.authType); c.Set("UserID", test.id) })
-		group := router.Group("/api/iscsi")
-		group.Use(middleware.RequireLocalAdminForWrites(auth))
-		group.GET("/config", middleware.RequireLocalAdmin(auth), GetConfig(service))
-		group.PUT("/config", SetConfig(service))
-		for _, method := range []string{http.MethodGet, http.MethodPut} {
-			response := testutil.PerformJSONRequest(t, router, method, "/api/iscsi/config", []byte("{}"))
-			if response.Code != test.status {
-				t.Fatalf("%s %s status=%d want=%d", test.authType, method, response.Code, test.status)
-			}
-		}
 	}
 }

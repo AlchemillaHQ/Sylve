@@ -16,6 +16,7 @@
 	import { getBasicInfo } from '$lib/api/info/basic';
 	import { resource } from 'runed';
 	import { isDemoMode } from '$lib/demo/runtime';
+	import { allowed } from '$lib/stores/permissions.svelte';
 	import type { ActiveLifecycleGuest } from '$lib/types/task/lifecycle';
 
 	interface Props {
@@ -48,9 +49,15 @@
 	let activeServices = $derived(
 		activeNode ? getEnabledServicesForHostname(activeNode) : storage.enabledServices || []
 	);
-	let virtualizationEnabled = $derived(activeServices.includes('virtualization'));
-	let jailEnabled = $derived(activeServices.includes('jails'));
-	let containersEnabled = $derived(activeServices.includes('containers'));
+	let virtualizationEnabled = $derived(
+		activeServices.includes('virtualization') && allowed('Guest.Allocate', '/vm/*')
+	);
+	let jailEnabled = $derived(
+		activeServices.includes('jails') && allowed('Guest.Allocate', '/jail/*')
+	);
+	let containersEnabled = $derived(
+		activeServices.includes('containers') && allowed('Guest.Allocate', '/container/*')
+	);
 	let createContainerOpen = $state(false);
 
 	let basicInfo = resource(
@@ -202,10 +209,10 @@
 			<p class="font-normal tracking-[.45em]">SYLVE</p>
 		</div>
 	</nav>
-	<div class="flex w-full items-center justify-end gap-2 md:ml-auto lg:gap-4">
+	<div class="flex w-full items-center justify-end gap-2 md:ml-auto">
 		<TaskActivity hostname={activeNode} {clustered} {onActiveGuestsChange} />
 
-		<div class="hidden items-center gap-4 lg:flex">
+		<div class="hidden lg:contents">
 			{#if storage.showReplication}
 				<ReplicationActivity />
 			{/if}

@@ -1,11 +1,4 @@
-import type { Jail, SimpleJail } from '$lib/types/jail/jail';
-import type {
-	CreateData,
-	SimpleVm,
-	VM,
-	VMLifecycleAction,
-	VMLifecycleBadgeStyle
-} from '$lib/types/vm/vm';
+import type { CreateData, VM, VMLifecycleAction, VMLifecycleBadgeStyle } from '$lib/types/vm/vm';
 import type { APIResponse } from '$lib/types/common';
 import { toast } from 'svelte-sonner';
 import { isValidIPv4, isValidIPv6, isValidVMName } from '../string';
@@ -295,20 +288,6 @@ export function getVMCreateErrorMessage(response: Pick<APIResponse, 'message' | 
 	}
 
 	return vmCreateErrorMessageByCode[code] || 'Failed to create VM, check backend logs for details';
-}
-
-export function getNextId(
-	vms: VM[] | SimpleVm[],
-	jails: Jail[] | SimpleJail[],
-	containers: { ocId: number }[] = []
-): number {
-	const usedIds = [
-		...vms.map((vm) => vm.rid),
-		...jails.map((jail) => jail.ctId),
-		...containers.map((container) => container.ocId)
-	];
-	if (usedIds.length === 0) return 100;
-	return Math.max(...usedIds) + 1;
 }
 
 export function getNextGuestId(clusterNodes: ClusterNode[]): number {

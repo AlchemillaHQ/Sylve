@@ -19,6 +19,10 @@ import (
 
 func TestReplicatedStateManifestCoversSnapshotAndExcludesLocalState(t *testing.T) {
 	expectedTables := []string{
+		"acl_grants",
+		"acl_groups",
+		"acl_roles",
+		"auth_realms",
 		"backup_job_operations",
 		"backup_job_runner_rebind_items",
 		"backup_job_runner_rebinds",
@@ -33,6 +37,7 @@ func TestReplicatedStateManifestCoversSnapshotAndExcludesLocalState(t *testing.T
 		"cluster_ssh_identities",
 		"encryption_keys",
 		"guest_identity_claims",
+		"oidc_users",
 		"replication_guest_operation_receipts",
 		"replication_guest_operations",
 		"replication_leases",
@@ -41,6 +46,7 @@ func TestReplicatedStateManifestCoversSnapshotAndExcludesLocalState(t *testing.T
 		"replication_run_operations",
 		"replication_transition_events",
 		"scheduled_run_receipts",
+		"sylve_users",
 	}
 	manifest := ReplicatedStateManifest()
 	actualTables := make([]string, 0, len(manifest))
@@ -379,5 +385,42 @@ func TestDropRetiredReplicatedState(t *testing.T) {
 	}
 	if err := dropRetiredReplicatedState(db); err != nil {
 		t.Fatalf("second run: %v", err)
+	}
+}
+
+func TestLeavingKeepsAccessRulesAndJoiningClearsThem(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	seed := func() {
+		for _, value := range []any{
+			&ACLGrant{Path: "/", SubjectType: ACLSubjectUser, Subject: "alice@sylve", Role: "Auditor", Propagate: true},
+			&ACLRole{Name: "Operator", Privileges: []string{"Guest.PowerMgmt"}},
+			&ClusterNote{Title: "replicated", Content: "state"},
+		} {
+			if err := database.Create(value).Error; err != nil {
+				t.Fatalf("seed %T: %v", value, err)
+			}
+		}
+	}
+	count := func(model any) int64 {
+		var n int64
+		if err := database.Model(model).Count(&n).Error; err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	seed()
+	if err := database.Transaction(ClearDeclusteredStateTx); err != nil {
+		t.Fatal(err)
+	}
+	if count(&ACLGrant{}) != 1 || count(&ACLRole{}) != 1 || count(&ClusterNote{}) != 0 {
+		t.Fatalf("after leaving: grants=%d roles=%d notes=%d", count(&ACLGrant{}), count(&ACLRole{}), count(&ClusterNote{}))
+	}
+
+	if err := database.Transaction(ClearReplicatedStateTx); err != nil {
+		t.Fatal(err)
+	}
+	if count(&ACLGrant{}) != 0 || count(&ACLRole{}) != 0 {
+		t.Fatalf("after joining: grants=%d roles=%d", count(&ACLGrant{}), count(&ACLRole{}))
 	}
 }

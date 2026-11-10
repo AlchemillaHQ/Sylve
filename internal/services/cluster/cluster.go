@@ -314,6 +314,9 @@ func (s *Service) snapshotPreClusterState() error {
 	if r == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
+	if _, err := s.ensureClusterIdentity(context.Background()); err != nil {
+		return fmt.Errorf("cluster_identity_unavailable: %w", err)
+	}
 	if err := s.applyRaftCommand(clusterModels.Command{
 		Type: "cluster_state", Action: "checkpoint", Data: []byte("{}"),
 	}); err != nil {
@@ -585,11 +588,16 @@ func (s *Service) StartAsJoiner(ip, clusterKey string) error {
 }
 
 func clearClusteredDataTx(tx *gorm.DB) error {
-	return clusterModels.ClearReplicatedStateTx(tx)
+	return clusterModels.ClearDeclusteredStateTx(tx)
 }
 
+// Admission records the destination identity before any local state is cleared.
 func (s *Service) clearClusteredData() error {
-	return s.fsm.ClearReplicatedState()
+	var record clusterModels.Cluster
+	if err := s.DB.Limit(1).Find(&record).Error; err != nil {
+		return err
+	}
+	return s.fsm.ClearReplicatedState(record.JoinClusterID)
 }
 
 func markDeclusteredTx(tx *gorm.DB) error {
@@ -603,6 +611,7 @@ func markDeclusteredTx(tx *gorm.DB) error {
 	c.RaftIP = ""
 	c.RaftPort = ClusterRaftPort
 	c.JoinLeaderIP = ""
+	c.JoinClusterID = ""
 	c.LeavePhase = ""
 	c.LeaveLastError = ""
 	c.ReaddressOldIP = ""

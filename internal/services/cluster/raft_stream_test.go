@@ -169,14 +169,21 @@ func TestJoinAdmissionSeedsTheMembersPins(t *testing.T) {
 			return http.StatusBadRequest, []byte(`{"status":"error"}`), nil
 		}
 		body, err := json.Marshal(internal.APIResponse[ClusterJoinStatus]{Status: "success", Data: ClusterJoinStatus{
-			Phase: JoinPhaseCatchingUp, Pins: map[string]string{"leader": hex.EncodeToString(leaderPin[:])},
+			Phase: JoinPhaseCatchingUp, ClusterID: "destination", Pins: map[string]string{"leader": hex.EncodeToString(leaderPin[:])},
 		}})
 		return http.StatusAccepted, body, err
 	}
-	if err := joiner.requestAdmission(t.Context(), clusterModels.Cluster{
+	record := clusterModels.Cluster{
 		RaftIP: "127.0.0.2", JoinLeaderIP: "127.0.0.1", Key: guestIdentityJoinTestKey,
-	}); err != nil {
+	}
+	if err := joiner.DB.Create(&record).Error; err != nil {
 		t.Fatal(err)
+	}
+	if err := joiner.requestAdmission(t.Context(), record); err != nil {
+		t.Fatal(err)
+	}
+	if err := joiner.DB.First(&record).Error; err != nil || record.JoinClusterID != "destination" {
+		t.Fatalf("persisted destination = %q, %v", record.JoinClusterID, err)
 	}
 	if node, ok := joiner.PinNode(leaderPin); !ok || node != "leader" {
 		t.Fatalf("the leader's pin maps to %q (%t)", node, ok)

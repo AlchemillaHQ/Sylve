@@ -16,6 +16,7 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/gin-gonic/gin"
@@ -162,7 +163,7 @@ func NetworkDetach(libvirtService vmNetworkService) gin.HandlerFunc {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /vm/{rid}/networks [post]
-func NetworkAttach(libvirtService vmNetworkService) gin.HandlerFunc {
+func NetworkAttach(libvirtService vmNetworkService, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid, err := utils.ParamUint(c, "rid")
 		if err != nil {
@@ -181,6 +182,9 @@ func NetworkAttach(libvirtService vmNetworkService) gin.HandlerFunc {
 		}
 		req.RID = rid
 
+		if !allowNetworkChange(c, authService, rid, req.SwitchName) {
+			return
+		}
 		network, err := libvirtService.NetworkAttach(req, c.Request.Context())
 		if err != nil {
 			writeVMNetworkError(c, "network_attach_failed", err)
@@ -218,7 +222,7 @@ func NetworkAttach(libvirtService vmNetworkService) gin.HandlerFunc {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /vm/{rid}/networks/{networkId} [patch]
-func NetworkUpdate(libvirtService vmNetworkService) gin.HandlerFunc {
+func NetworkUpdate(libvirtService vmNetworkService, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid, networkID, ok := bindVMNetworkPath(c)
 		if !ok {
@@ -237,6 +241,13 @@ func NetworkUpdate(libvirtService vmNetworkService) gin.HandlerFunc {
 		req.RID = rid
 		req.NetworkID = networkID
 
+		switchName := ""
+		if req.SwitchName != nil {
+			switchName = *req.SwitchName
+		}
+		if !allowNetworkChange(c, authService, rid, switchName) {
+			return
+		}
 		network, err := libvirtService.NetworkUpdate(req, c.Request.Context())
 		if err != nil {
 			writeVMNetworkError(c, "network_update_failed", err)

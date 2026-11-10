@@ -200,22 +200,125 @@ export async function login(
 	return false;
 }
 
-export async function getLoginConfig(): Promise<{ pamEnabled: boolean }> {
+export type LoginRealm = { name: string; label: string; default: boolean };
+
+export async function getLoginConfig(): Promise<{ pamEnabled: boolean; realms: LoginRealm[] }> {
 	try {
+		// The login form waits for this, so a hung request mustn't keep it hidden.
 		const response = await fetch('/api/auth/login/config', {
-			method: 'GET'
+			method: 'GET',
+			signal: AbortSignal.timeout(5000)
 		});
 
 		const responseData = await parseJSONResponse(response);
 		const config = readRecordField(responseData, 'data');
 		if (response.status === 200 && config && typeof config.pamEnabled === 'boolean') {
-			return { pamEnabled: config.pamEnabled };
+			const realms = Array.isArray(config.realms)
+				? config.realms.flatMap((value) => {
+						const name = readStringField(value, 'name');
+						return name
+							? [
+									{
+										name,
+										label: readStringField(value, 'label') || name,
+										default: asJSONRecord(value)?.default === true
+									}
+								]
+							: [];
+					})
+				: [];
+			return { pamEnabled: config.pamEnabled, realms };
 		}
 	} catch (error) {
 		console.warn('Failed to load login config', error);
 	}
 
-	return { pamEnabled: true };
+	return { pamEnabled: true, realms: [] };
+}
+
+const OIDC_RETURN_PATH_KEY = 'sylve-oidc-return-path';
+export const OIDC_CALLBACK_PATH = '/oidc/callback';
+
+function showOIDCFailure(data: APIResponse, path: string, httpStatus: number): void {
+	handleAPIError(data, { method: 'POST', path, httpStatus });
+
+	const messages: Record<string, string> = {
+		user_not_registered_in_sylve: 'This account is not registered in Sylve',
+		no_permissions: 'This account has no permissions in Sylve yet',
+		account_locked: 'This account is locked',
+		oidc_login_expired: 'The sign-in expired, please try again',
+		oidc_acr_not_met: 'The identity provider did not confirm the required authentication',
+		oidc_domain_not_allowed: 'This account is not from an allowed domain',
+		oidc_provider_unavailable: 'The identity provider is unavailable',
+		oidc_realm_unavailable: 'This realm is not available'
+	};
+	const code = Object.keys(messages).find((code) => hasErrorCode(data, code));
+	toast.error(code ? messages[code] : 'Sign-in failed', { position: 'bottom-center' });
+}
+
+// Only a path on this origin, so the provider's round trip can't be turned into an open redirect.
+function safeReturnPath(path: string | null): string {
+	return path && path.startsWith('/') && !path.startsWith('//') && !path.startsWith('/\\')
+		? path
+		: '';
+}
+
+export async function startOIDCLogin(realm: string, returnPath: string): Promise<boolean> {
+	const path = `/api/auth/oidc/${encodeURIComponent(realm)}/start`;
+	try {
+		const response = await fetch(path, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ redirectUri: window.location.origin + OIDC_CALLBACK_PATH })
+		});
+		const responseData = await parseJSONResponse(response);
+		const url = readStringField(readRecordField(responseData, 'data'), 'url');
+		if (response.status === 200 && url) {
+			try {
+				sessionStorage.setItem(OIDC_RETURN_PATH_KEY, safeReturnPath(returnPath));
+			} catch {
+				// Without storage the user lands on the default page.
+			}
+			window.location.assign(url);
+			return true;
+		}
+		showOIDCFailure((responseData || {}) as APIResponse, path, response.status);
+	} catch (error) {
+		console.error('OIDC start error:', error);
+		toast.error('Sign-in failed', { position: 'bottom-center' });
+	}
+	return false;
+}
+
+export function takeOIDCReturnPath(): string {
+	try {
+		const path = sessionStorage.getItem(OIDC_RETURN_PATH_KEY);
+		sessionStorage.removeItem(OIDC_RETURN_PATH_KEY);
+		return safeReturnPath(path);
+	} catch {
+		return '';
+	}
+}
+
+export async function finishOIDCLogin(code: string, state: string): Promise<boolean> {
+	const path = '/api/auth/oidc/callback';
+	try {
+		const response = await fetch(path, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ code, state })
+		});
+		const responseData = await parseJSONResponse(response);
+		if (response.status === 200 && applySuccessfulLogin(responseData?.data)) {
+			await clearCachedAPIData();
+			return true;
+		}
+		showOIDCFailure((responseData || {}) as APIResponse, path, response.status);
+	} catch (error) {
+		console.error('OIDC callback error:', error);
+		toast.error('Sign-in failed', { position: 'bottom-center' });
+	}
+	return false;
 }
 
 type LoginOptionsJSON = Parameters<typeof buildLoginOptions>[0];

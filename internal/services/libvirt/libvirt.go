@@ -62,6 +62,7 @@ type Service struct {
 
 	isDomainShutOffFn func(rid uint) (bool, error)
 	getVMMMaxCPUsFn   func() (int64, error)
+	hostMemoryFn      func() (uint64, error)
 
 	leftPanelRefreshEmitterMu sync.RWMutex
 	leftPanelRefreshEmitter   func(reason string)

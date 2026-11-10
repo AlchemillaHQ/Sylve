@@ -21,6 +21,7 @@
 	import { parseGuestDeletionData, type GFSStep } from '$lib/types/common';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 	import MigrateModal from '$lib/components/custom/VM/MigrateModal.svelte';
+	import { allowed } from '$lib/stores/permissions.svelte';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 
 	interface Props {
@@ -34,6 +35,8 @@
 		return Number.isFinite(value) ? value : 0;
 	});
 	let node = $derived(String(page.params.node || ''));
+	let canPower = $derived(allowed('Guest.PowerMgmt', `/jail/${ctId}`));
+	let canAllocate = $derived(allowed('Guest.Allocate', `/jail/${ctId}`));
 
 	let jailChildRoute = $derived.by(() => {
 		const segments = page.url.pathname.split('/').filter(Boolean);
@@ -377,7 +380,7 @@
 				{#if !shouldHideActionButtons && jState.current.state === 'ACTIVE'}
 					<Button
 						onclick={() => handleAction('restart')}
-						disabled={actionRequestInFlight}
+						disabled={actionRequestInFlight || !canPower}
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 					>
@@ -385,7 +388,7 @@
 					</Button>
 					<Button
 						onclick={() => handleAction('stop')}
-						disabled={actionRequestInFlight}
+						disabled={actionRequestInFlight || !canPower}
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 					>
@@ -394,7 +397,7 @@
 				{:else if !shouldHideActionButtons}
 					<Button
 						onclick={() => handleAction('start')}
-						disabled={actionRequestInFlight}
+						disabled={actionRequestInFlight || !canPower}
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 					>
@@ -403,7 +406,7 @@
 
 					<Button
 						onclick={openDeleteModal}
-						disabled={actionRequestInFlight}
+						disabled={actionRequestInFlight || !canAllocate}
 						size="sm"
 						class="ml-2 bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 					>
@@ -458,7 +461,9 @@
 				{#if availableNodeCount > 0}
 					<Button
 						onclick={() => (showMigrateModal = true)}
-						disabled={actionRequestInFlight || (hasActiveLifecycleTask && !isMigrationActive)}
+						disabled={actionRequestInFlight ||
+							(hasActiveLifecycleTask && !isMigrationActive) ||
+							!allowed('Guest.Migrate', `/jail/${ctId}`)}
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-purple-600 disabled:hover:bg-neutral-600 dark:text-white"
 					>

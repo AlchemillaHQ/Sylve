@@ -201,3 +201,15 @@
 		color: var(--popover-foreground);
 	}
 }
+
+/* Toasts: wider than svelte-sonner's 356px. Its overflow-wrap: anywhere broke words mid-way; break-word
+   only splits a word longer than a whole line, and pretty keeps a last word from sitting alone. */
+[data-sonner-toaster] {
+	--width: 440px !important;
+}
+
+[data-sonner-toast] [data-title],
+[data-sonner-toast] [data-description] {
+	overflow-wrap: break-word;
+	text-wrap: pretty;
+}

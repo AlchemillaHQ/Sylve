@@ -11,11 +11,14 @@ package authHandlers
 import (
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/pkg/system"
@@ -30,7 +33,7 @@ type CreateUserRequest struct {
 	FullName            string `json:"fullName"`
 	Password            string `json:"password" maxLength:"72"`
 	Email               string `json:"email"`
-	Admin               *bool  `json:"admin" binding:"required"`
+	Admin               *bool  `json:"admin"`
 	ConfirmGuestActions bool   `json:"confirmGuestActions"`
 	UID                 int    `json:"uid"`
 	Shell               string `json:"shell"`
@@ -50,7 +53,7 @@ type EditUserRequest struct {
 	Username            string `json:"username"`
 	Password            string `json:"password" maxLength:"72"`
 	Email               string `json:"email"`
-	Admin               *bool  `json:"admin" binding:"required"`
+	Admin               *bool  `json:"admin"`
 	ConfirmGuestActions *bool  `json:"confirmGuestActions"`
 	UID                 int    `json:"uid"`
 	Shell               string `json:"shell"`
@@ -190,10 +193,16 @@ func writeUserServiceError(c *gin.Context, failureMessage string, err error) {
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /auth/users [get]
+// Pickers on the permissions pages and on host pages (Samba, Unix groups) need the list, so reading
+// /access or this node is enough.
 func ListUsersHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		can, ok := middleware.Checker(c, authService)
+		if !ok || !can("/access", auth.SysAudit) && !middleware.Allowed(c, authService, middleware.NodePath(), auth.SysAudit) {
+			return
+		}
 		source := strings.TrimSpace(c.Query("source"))
-		if source != "" && source != "local" && source != "pam" {
+		if source != "" && source != "local" && source != "pam" && source != clusterModels.UserSourceOIDC {
 			writeAuthCodeError(c, http.StatusBadRequest, "invalid_user_source")
 			return
 		}
@@ -203,12 +212,21 @@ func ListUsersHandler(authService *auth.Service) gin.HandlerFunc {
 			writeUserServiceError(c, "failed_to_list_users", err)
 			return
 		}
+		shared, err := authService.SharedUsernames()
+		if err != nil {
+			writeUserServiceError(c, "failed_to_list_users", err)
+			return
+		}
+		public := publicUsersFromModels(users)
+		for i := range public {
+			public[i].NameTaken = public[i].Source == "local" && !public[i].Shared && slices.Contains(shared, public[i].Username)
+		}
 
 		c.JSON(http.StatusOK, internal.APIResponse[[]PublicUser]{
 			Status:  "success",
 			Message: "users_listed_successfully",
 			Error:   "",
-			Data:    publicUsersFromModels(users),
+			Data:    public,
 		})
 	}
 }
@@ -300,6 +318,9 @@ func CreateUserHandler(authService *auth.Service) gin.HandlerFunc {
 // @Router /auth/users/pam [post]
 func CreatePamUserHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if !middleware.RequireHostAdmin(c, authService) {
+			return
+		}
 		var req CreatePamUserRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			writeUserBindingError(c, err, CreatePamUserRequest{})
@@ -372,7 +393,7 @@ func CreatePamUserHandler(authService *auth.Service) gin.HandlerFunc {
 func DeleteUserHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := positiveUserIDParam(c)
-		if !ok {
+		if !ok || !allowUserChange(c, authService, userID) {
 			return
 		}
 		removeHome := false
@@ -431,7 +452,7 @@ func DeleteUserHandler(authService *auth.Service) gin.HandlerFunc {
 func EditUserHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := positiveUserIDParam(c)
-		if !ok {
+		if !ok || !allowUserChange(c, authService, userID) {
 			return
 		}
 
@@ -440,12 +461,8 @@ func EditUserHandler(authService *auth.Service) gin.HandlerFunc {
 			writeUserBindingError(c, err, EditUserRequest{})
 			return
 		}
-
-		var admin bool
-		if req.Admin != nil {
-			admin = *req.Admin
-		} else {
-			admin = false
+		if req.Password != "" && !allowCredentialChange(c, authService, userID) {
+			return
 		}
 
 		err := authService.EditUser(userID, auth.EditUserOpts{
@@ -453,7 +470,7 @@ func EditUserHandler(authService *auth.Service) gin.HandlerFunc {
 			Username:            req.Username,
 			Password:            req.Password,
 			Email:               req.Email,
-			Admin:               admin,
+			Admin:               req.Admin,
 			ConfirmGuestActions: req.ConfirmGuestActions,
 			UID:                 req.UID,
 			Shell:               req.Shell,
@@ -552,7 +569,7 @@ func UserCapabilitiesHandler() gin.HandlerFunc {
 type ImportUserRequest struct {
 	Username            string `json:"username" binding:"required,min=1,max=128"`
 	Password            string `json:"password" binding:"omitempty,min=8,max=72"`
-	Admin               *bool  `json:"admin" binding:"required"`
+	Admin               *bool  `json:"admin"`
 	ConfirmGuestActions bool   `json:"confirmGuestActions"`
 }
 
@@ -561,7 +578,7 @@ type CreatePamUserRequest struct {
 	FullName            string `json:"fullName"`
 	Password            string `json:"password" binding:"required,min=8,max=72"`
 	Email               string `json:"email"`
-	Admin               *bool  `json:"admin" binding:"required"`
+	Admin               *bool  `json:"admin"`
 	ConfirmGuestActions bool   `json:"confirmGuestActions"`
 	UID                 int    `json:"uid" binding:"required,gte=1000,lte=65533"`
 	Shell               string `json:"shell"`
@@ -596,6 +613,9 @@ type CreatePamUserRequest struct {
 // @Router /auth/users/import [post]
 func ImportUserHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if !middleware.RequireHostAdmin(c, authService) {
+			return
+		}
 		var req ImportUserRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			writeUserBindingError(c, err, ImportUserRequest{})

@@ -10,6 +10,7 @@
 	import { resource } from 'runed';
 	import { plural } from '$lib/utils';
 	import { getCPUInfoResult } from '$lib/api/info/cpu';
+	import { hostDetail } from '$lib/stores/permissions.svelte';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
@@ -54,7 +55,8 @@
 	let cpuInfo = resource(
 		() => node,
 		async (hostname) => {
-			const result = await getCPUInfoResult({ hostname });
+			const result = await hostDetail(hostname, () => getCPUInfoResult({ hostname }), null);
+			if (result === null) return null;
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
 				return null;

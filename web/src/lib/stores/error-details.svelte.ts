@@ -20,6 +20,7 @@ export interface ErrorRequestContext {
 
 export interface ErrorDetail {
 	title: string;
+	denied: boolean;
 	status: string;
 	httpStatus?: number;
 	method?: string;
@@ -97,15 +98,31 @@ function detailMessage(detail: unknown): string {
 	return extractErrors(detail)[0] || 'The request could not be completed.';
 }
 
+// A refusal says which privileges were missing on which path, which beats any caller's title.
+function permissionDenial(detail: unknown): string | null {
+	const record = asRecord(detail);
+	if (record?.error === 'superuser_required') return 'Only root or admin can do this';
+	if (record?.error !== 'permission_denied') return null;
+
+	const data = asRecord(record.data);
+	const privileges = Array.isArray(data?.privileges) ? data.privileges.join(', ') : '';
+	const path = typeof data?.path === 'string' ? data.path : '';
+	return privileges && path
+		? `Needs ${privileges} on ${path}`
+		: "You don't have permission to do this";
+}
+
 function buildErrorDetail(
 	title: string,
 	detail: unknown,
 	context: ErrorRequestContext = {}
 ): ErrorDetail {
 	const record = asRecord(detail);
+	const denial = permissionDenial(detail);
 
 	return {
-		title,
+		title: denial ?? title,
+		denied: denial !== null,
 		status: typeof record?.status === 'string' ? record.status : 'error',
 		httpStatus: context.httpStatus,
 		method: context.method,
@@ -139,6 +156,7 @@ function createDetailedErrorToast(
 	const duration = Math.max(options?.duration ?? 0, 8000);
 	const toastId = baseErrorToast(message, {
 		...options,
+		...(detail.denied ? { id: `denied:${detail.title}` } : {}),
 		duration,
 		action: {
 			label: 'Details',
@@ -158,7 +176,7 @@ function consumePendingDetail(message: Parameters<typeof toast.error>[0]) {
 
 	pendingDetail = null;
 	if (pendingTimer) clearTimeout(pendingTimer);
-	if (typeof message === 'string') detail.title = message;
+	if (typeof message === 'string' && !detail.denied) detail.title = message;
 
 	return detail;
 }
@@ -173,7 +191,7 @@ function installDetailedErrorToasts() {
 	) => {
 		const detail = consumePendingDetail(message);
 		return detail
-			? createDetailedErrorToast(message, options, detail)
+			? createDetailedErrorToast(detail.denied ? detail.title : message, options, detail)
 			: baseErrorToast(message, options);
 	}) as typeof toast.error;
 }
@@ -215,7 +233,7 @@ export function reportAPIError(detail: unknown, title?: string) {
 	queueMicrotask(() => {
 		if (pendingDetail !== staged) return;
 		pendingDetail = null;
-		createDetailedErrorToast(resolvedTitle, { position: 'bottom-center' }, staged);
+		createDetailedErrorToast(staged.title, { position: 'bottom-center' }, staged);
 	});
 }
 

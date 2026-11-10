@@ -77,6 +77,7 @@ func TestEnsureAuthenticatedTrustBoundary(t *testing.T) {
 	consoleAuth, _ := json.Marshal(map[string]string{"hash": localHash, "hostname": "origin"})
 	consoleAuthHex := hex.EncodeToString(consoleAuth)
 	admin := authSvc.ProxiedUser{Username: user.Username, AuthType: "sylve"}.Header()
+	realmUser := authSvc.ProxiedUser{Username: "alice", AuthType: authSvc.AuthTypeOIDC, Realm: "company"}.Header()
 	bearer := "Bearer " + localToken
 
 	tests := []struct {
@@ -109,7 +110,7 @@ func TestEnsureAuthenticatedTrustBoundary(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			router := gin.New()
 			router.Use(EnsureAuthenticated(service))
-			router.Handle(test.method, strings.SplitN(test.path, "?", 2)[0], func(c *gin.Context) { c.Status(http.StatusOK) })
+			router.Handle(test.method, testRoute(test.path), func(c *gin.Context) { c.Status(http.StatusOK) })
 			request := httptest.NewRequest(test.method, test.path, nil)
 			for key, value := range test.headers {
 				request.Header.Set(key, value)
@@ -145,19 +146,21 @@ func TestEnsureAuthenticatedTrustBoundary(t *testing.T) {
 		headers map[string]string
 		want    string
 	}{
-		{"local bearer", nil, "/api/vm", map[string]string{"Authorization": bearer}, fmt.Sprintf("user:%d id", user.ID)},
-		{"console hash", nil, "/api/vm/1/console?auth=" + consoleAuthHex, nil, fmt.Sprintf("user:%d id", user.ID)},
-		{"admin through member", member, "/api/vm", map[string]string{authSvc.ProxyUserHeader: admin}, "node:node-1:sylve:admin"},
-		{"member service read", member, "/api/info/node", nil, ""},
+		{"local bearer", nil, "/api/vm", map[string]string{"Authorization": bearer}, fmt.Sprintf("user:%d id|admin", user.ID)},
+		{"console hash", nil, "/api/vm/1/console?auth=" + consoleAuthHex, nil, fmt.Sprintf("user:%d id|admin", user.ID)},
+		{"admin through member", member, "/api/vm", map[string]string{authSvc.ProxyUserHeader: admin}, "node:node-1:sylve:admin|admin"},
+		{"realm user through member", member, "/api/vm", map[string]string{authSvc.ProxyUserHeader: realmUser},
+			"node:node-1:oidc:alice@company|alice@company"},
+		{"member service read", member, "/api/info/node", nil, "|node-1"},
 	} {
 		router := gin.New()
 		router.Use(EnsureAuthenticated(service))
-		router.GET(strings.SplitN(test.path, "?", 2)[0], func(c *gin.Context) {
+		router.GET(testRoute(test.path), func(c *gin.Context) {
 			owner := c.GetString("Owner")
 			if _, ok := c.Get("UserID"); ok {
 				owner += " id"
 			}
-			c.String(http.StatusOK, owner)
+			c.String(http.StatusOK, owner+"|"+c.GetString("Username"))
 		})
 		request := httptest.NewRequest(http.MethodGet, test.path, nil)
 		for key, value := range test.headers {
@@ -224,4 +227,9 @@ func TestAuthenticateJoin(t *testing.T) {
 			}
 		})
 	}
+}
+
+func testRoute(path string) string {
+	path = strings.SplitN(path, "?", 2)[0]
+	return strings.Replace(path, "/api/vm/1/", "/api/vm/:rid/", 1)
 }

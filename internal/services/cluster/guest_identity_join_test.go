@@ -229,6 +229,45 @@ func TestIntegrationRaftAdmitJoinerRefusesATakenHostname(t *testing.T) {
 	}
 }
 
+func TestIntegrationRaftAdmitJoinerRefusesTakenLocalUsers(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 1, guestIdentityJoinTestModels()...)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	seedGuestIdentityJoinTestCluster(t, leader)
+	for _, name := range []string{"alice", "bob"} {
+		if err := leader.service.DB.Create(&clusterModels.SylveUser{Username: name, Password: "hash-" + name}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	request := func(users ...string) JoinAdmissionRequest {
+		return JoinAdmissionRequest{
+			NodeID: "joining-node", NodeIP: "127.0.0.2", NodeVersion: cmd.Version, NodeHostname: "joiner",
+			SSHPublicKey: "ssh-ed25519 AAAA", Inventory: BuildGuestIdentityInventoryReport(nil), LocalUsers: users,
+		}
+	}
+
+	before := raftConfigurationForGuestIdentityJoinTest(t, leader)
+	_, err := leader.service.AdmitJoiner(t.Context(), request("carol", "bob", "alice"), guestIdentityJoinTestSecret, testJoinPin)
+	if err == nil || err.Error() != "joining_node_users_taken: alice, bob" {
+		t.Fatalf("admission error = %v, want alice and bob taken", err)
+	}
+	if after := raftConfigurationForGuestIdentityJoinTest(t, leader); !reflect.DeepEqual(after, before) {
+		t.Fatalf("refused admission changed membership: before=%+v after=%+v", before, after)
+	}
+	if !clusterModels.JoinKeyMatches(leader.service.DB, guestIdentityJoinTestSecret) {
+		t.Fatal("a refused admission spent the join key")
+	}
+
+	if _, err := leader.service.AdmitJoiner(t.Context(), request("carol"), guestIdentityJoinTestSecret, testJoinPin); err != nil {
+		t.Fatal(err)
+	}
+	if err := leader.service.DB.Create(&clusterModels.SylveUser{Username: "carol", Password: "hash-carol"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := leader.service.AdmitJoiner(t.Context(), request("carol"), "", testJoinPin); err != nil {
+		t.Fatalf("the member asking again: %v", err)
+	}
+}
+
 func TestIntegrationRaftJoinKeyAdmitsOneNode(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 1, guestIdentityJoinTestModels()...)
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)

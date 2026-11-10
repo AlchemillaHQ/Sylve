@@ -41,7 +41,8 @@ type SuccessfulLogin struct {
 }
 
 type LoginConfig struct {
-	PAMEnabled bool `json:"pamEnabled"`
+	PAMEnabled bool              `json:"pamEnabled"`
+	Realms     []auth.LoginRealm `json:"realms"`
 }
 
 type UserPreferences struct {
@@ -100,7 +101,7 @@ func writeLoginServiceError(c *gin.Context, err error) {
 		writeAuthCodeError(c, http.StatusBadRequest, "invalid_auth_type")
 	case "pam_auth_disabled":
 		writeAuthCodeError(c, http.StatusForbidden, "pam_auth_disabled")
-	case "only_admin_allowed", "account_locked", "password_auth_disabled", "user_not_registered_in_sylve":
+	case "only_admin_allowed", "no_permissions", "account_locked", "password_auth_disabled", "user_not_registered_in_sylve":
 		writeAuthCodeError(c, http.StatusForbidden, err.Error())
 	case "pam_auth_error":
 		writeAuthCodeError(c, http.StatusServiceUnavailable, "authentication_service_unavailable")
@@ -163,14 +164,20 @@ func completeLogin(
 // @Produce json
 // @Success 200 {object} internal.APIResponse[LoginConfig] "Success"
 // @Router /auth/login/config [get]
-func LoginConfigHandler() gin.HandlerFunc {
+func LoginConfigHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		realms, err := authService.LoginRealms()
+		if err != nil {
+			logger.L.Error().Err(err).Msg("failed_to_list_login_realms")
+			realms = []auth.LoginRealm{}
+		}
 		c.JSON(http.StatusOK, internal.APIResponse[LoginConfig]{
 			Status:  "success",
 			Message: "login_config_retrieved",
 			Error:   "",
 			Data: LoginConfig{
 				PAMEnabled: config.IsPAMEnabled(),
+				Realms:     realms,
 			},
 		})
 	}

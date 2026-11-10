@@ -18,6 +18,298 @@
     "host": "sylve.lan:8181",
     "basePath": "/api",
     "paths": {
+        "/auth/acl-groups": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cluster-wide groups for grants, with their user@realm members; separate from Unix groups",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Permissions"
+                ],
+                "summary": "List permission groups",
+                "responses": {
+                    "200": {
+                        "description": "Groups",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_cluster_ACLGroup"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/acl-groups/{name}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a permission group or replace its members (user@realm)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Permissions"
+                ],
+                "summary": "Set permission group",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Group name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Members",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_auth.setACLGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Group Set",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a permission group and every grant to it",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Permissions"
+                ],
+                "summary": "Delete permission group",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Group name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Group Deleted",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/grants": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Every grant in the cluster: who holds which role on which path",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Permissions"
+                ],
+                "summary": "List grants",
+                "responses": {
+                    "200": {
+                        "description": "Grants",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_cluster_ACLGrant"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Give a user (\"name@pam\" or \"name@sylve\") or a group a role on a path, or change whether it propagates",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Permissions"
+                ],
+                "summary": "Set grant",
+                "parameters": [
+                    {
+                        "description": "Grant",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ACLGrant"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Grant Set",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Remove a role from a user or group on a path",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Permissions"
+                ],
+                "summary": "Delete grant",
+                "parameters": [
+                    {
+                        "description": "Grant",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ACLGrant"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Grant Deleted",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/groups": {
             "get": {
                 "security": [
@@ -455,6 +747,123 @@
                 }
             }
         },
+        "/auth/oidc/callback": {
+            "post": {
+                "description": "Exchanges the provider's code for a session, in the browser that started the sign-in",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Finish OpenID Connect sign-in",
+                "parameters": [
+                    {
+                        "description": "Code and state from the provider",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_auth.OIDCCallbackRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_auth_SuccessfulLogin"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/oidc/{realm}/start": {
+            "post": {
+                "description": "Returns the provider URL to send the browser to, and binds the attempt to this browser with a cookie",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Start OpenID Connect sign-in",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Realm name",
+                        "name": "realm",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "This node's callback URL",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_auth.OIDCStartRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_auth_OIDCStartResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/passkeys/login/begin": {
             "post": {
                 "description": "Start a discoverable WebAuthn login ceremony",
@@ -731,6 +1140,43 @@
                 }
             }
         },
+        "/auth/permissions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The signed-in user's privileges on \"/\" and on every path they have a grant on, and on the paths below each one",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Permissions"
+                ],
+                "summary": "Own permissions",
+                "responses": {
+                    "200": {
+                        "description": "Permissions",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_auth_PermissionsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/preferences": {
             "get": {
                 "security": [
@@ -767,6 +1213,405 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/realms": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "OpenID Connect realms; client secrets are never returned",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Permissions"
+                ],
+                "summary": "List realms",
+                "responses": {
+                    "200": {
+                        "description": "Realms",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_cluster_AuthRealm"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/realms/discover": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Reads an issuer's discovery document; it can't check a client secret",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Permissions"
+                ],
+                "summary": "Discover a provider",
+                "parameters": [
+                    {
+                        "description": "Issuer",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_auth.DiscoverRealmRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Discovery",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_auth_RealmDiscovery"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/realms/{name}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Issuer and client ID are fixed once a realm exists; a missing clientSecret keeps the stored one",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Permissions"
+                ],
+                "summary": "Create or update a realm",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Realm name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Realm",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.AuthRealmSet"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Realm Set",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes the realm with its users and their grants",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Permissions"
+                ],
+                "summary": "Delete a realm",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Realm name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Realm Deleted",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/realms/{name}/users": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds a user before their first sign-in; the first login whose username claim names them binds them",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Permissions"
+                ],
+                "summary": "Add a realm user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Realm name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "User",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_auth.CreateRealmUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User Created",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/roles": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Built-in and custom roles with their privileges",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Permissions"
+                ],
+                "summary": "List roles",
+                "responses": {
+                    "200": {
+                        "description": "Roles",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_auth_RoleInfo"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/roles/{name}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a custom role or replace its privileges; built-in roles can't be changed",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Permissions"
+                ],
+                "summary": "Set custom role",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Role name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Privileges",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_auth.setRoleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Role Set",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a custom role and every grant of it",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Permissions"
+                ],
+                "summary": "Delete custom role",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Role name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Role Deleted",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -4451,6 +5296,37 @@
                     },
                     "503": {
                         "description": "Validation unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/cluster/guest-ids/next": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "One past the highest VM, jail or container ID claimed in the cluster or used on this node, from 100 up",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster"
+                ],
+                "summary": "Next free guest ID",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-uint"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -30808,6 +31684,66 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_cluster_ACLGrant": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ACLGrant"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_cluster_ACLGroup": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ACLGroup"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_cluster_AuthRealm": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.AuthRealm"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_cluster_BackupEvent": {
             "type": "object",
             "properties": {
@@ -31975,6 +32911,26 @@
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_auth.PasskeyCredentialInfo"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_auth_RoleInfo": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_auth.RoleInfo"
                     }
                 },
                 "error": {
@@ -33560,6 +34516,23 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_auth_RealmDiscovery": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_auth.RealmDiscovery"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_certificates_CertificateView": {
             "type": "object",
             "properties": {
@@ -34002,11 +34975,45 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_auth_OIDCStartResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers_auth.OIDCStartResponse"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_auth_PasskeyChallengeResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "$ref": "#/definitions/internal_handlers_auth.PasskeyChallengeResponse"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_auth_PermissionsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers_auth.PermissionsResponse"
                 },
                 "error": {
                     "type": "string"
@@ -34905,6 +35912,179 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_db_models_cluster.ACLGrant": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "propagate": {
+                    "type": "boolean"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "subjectType": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_cluster.ACLGroup": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_cluster.AuthRealm": {
+            "type": "object",
+            "properties": {
+                "acrValues": {
+                    "type": "string"
+                },
+                "autoCreate": {
+                    "type": "boolean"
+                },
+                "caCert": {
+                    "type": "string"
+                },
+                "clientId": {
+                    "type": "string"
+                },
+                "default": {
+                    "type": "boolean"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "groupMappings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.OIDCGroupMapping"
+                    }
+                },
+                "groupsClaim": {
+                    "type": "string"
+                },
+                "hasSecret": {
+                    "type": "boolean"
+                },
+                "hostedDomains": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "issuer": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "prompt": {
+                    "type": "string"
+                },
+                "queryUserInfo": {
+                    "type": "boolean"
+                },
+                "scopes": {
+                    "type": "string"
+                },
+                "sessionHours": {
+                    "type": "integer"
+                },
+                "usernameClaim": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_cluster.AuthRealmSet": {
+            "type": "object",
+            "properties": {
+                "acrValues": {
+                    "type": "string"
+                },
+                "autoCreate": {
+                    "type": "boolean"
+                },
+                "caCert": {
+                    "type": "string"
+                },
+                "clientId": {
+                    "type": "string"
+                },
+                "clientSecret": {
+                    "type": "string"
+                },
+                "default": {
+                    "type": "boolean"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "groupMappings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.OIDCGroupMapping"
+                    }
+                },
+                "groupsClaim": {
+                    "type": "string"
+                },
+                "hasSecret": {
+                    "type": "boolean"
+                },
+                "hostedDomains": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "issuer": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "prompt": {
+                    "type": "string"
+                },
+                "queryUserInfo": {
+                    "type": "boolean"
+                },
+                "scopes": {
+                    "type": "string"
+                },
+                "sessionHours": {
+                    "type": "integer"
+                },
+                "usernameClaim": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_db_models_cluster.BackupEvent": {
             "type": "object",
             "properties": {
@@ -35239,6 +36419,17 @@
                     "type": "string"
                 },
                 "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_cluster.OIDCGroupMapping": {
+            "type": "object",
+            "properties": {
+                "claim": {
+                    "type": "string"
+                },
+                "group": {
                     "type": "string"
                 }
             }
@@ -40300,6 +41491,14 @@
         "github_com_alchemillahq_sylve_internal_interfaces_services_info.BasicInfo": {
             "type": "object",
             "properties": {
+                "architecture": {
+                    "description": "For VM creation by users who can't read the host's CPU details.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_info.Architecture"
+                        }
+                    ]
+                },
                 "bootMode": {
                     "type": "string"
                 },
@@ -40311,6 +41510,9 @@
                 },
                 "loadAverage": {
                     "type": "string"
+                },
+                "maxVCPUs": {
+                    "type": "integer"
                 },
                 "os": {
                     "type": "string"
@@ -44019,6 +45221,20 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_services_auth.LoginRealm": {
+            "type": "object",
+            "properties": {
+                "default": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_services_auth.PasskeyCredentialInfo": {
             "type": "object",
             "properties": {
@@ -44039,6 +45255,72 @@
                 },
                 "userId": {
                     "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_auth.PathPrivileges": {
+            "type": "object",
+            "properties": {
+                "below": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "privileges": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_auth.RealmDiscovery": {
+            "type": "object",
+            "properties": {
+                "acrValuesSupported": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "authorizationEndpoint": {
+                    "type": "string"
+                },
+                "claimsSupported": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "scopesSupported": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "tokenEndpoint": {
+                    "type": "string"
+                },
+                "userInfoEndpoint": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_auth.RoleInfo": {
+            "type": "object",
+            "properties": {
+                "builtin": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "privileges": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -44167,6 +45449,9 @@
                 },
                 "awaitingPromotion": {
                     "type": "boolean"
+                },
+                "clusterId": {
+                    "type": "string"
                 },
                 "lastError": {
                     "type": "string"
@@ -46589,7 +47874,6 @@
         "internal_handlers_auth.CreatePamUserRequest": {
             "type": "object",
             "required": [
-                "admin",
                 "homeDirPerms",
                 "password",
                 "uid",
@@ -46663,10 +47947,30 @@
                 }
             }
         },
+        "internal_handlers_auth.CreateRealmUserRequest": {
+            "type": "object",
+            "required": [
+                "username"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "fullName": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string",
+                    "maxLength": 64
+                }
+            }
+        },
         "internal_handlers_auth.CreateUserRequest": {
             "type": "object",
             "required": [
-                "admin",
                 "username"
             ],
             "properties": {
@@ -46729,11 +48033,23 @@
                 }
             }
         },
-        "internal_handlers_auth.EditUserRequest": {
+        "internal_handlers_auth.DiscoverRealmRequest": {
             "type": "object",
             "required": [
-                "admin"
+                "issuer"
             ],
+            "properties": {
+                "caCert": {
+                    "type": "string"
+                },
+                "issuer": {
+                    "type": "string",
+                    "maxLength": 2048
+                }
+            }
+        },
+        "internal_handlers_auth.EditUserRequest": {
+            "type": "object",
             "properties": {
                 "admin": {
                     "type": "boolean"
@@ -46856,7 +48172,6 @@
         "internal_handlers_auth.ImportUserRequest": {
             "type": "object",
             "required": [
-                "admin",
                 "username"
             ],
             "properties": {
@@ -46883,6 +48198,12 @@
             "properties": {
                 "pamEnabled": {
                     "type": "boolean"
+                },
+                "realms": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_auth.LoginRealm"
+                    }
                 }
             }
         },
@@ -46924,12 +48245,70 @@
                 }
             }
         },
+        "internal_handlers_auth.OIDCCallbackRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "state"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "maxLength": 4096
+                },
+                "state": {
+                    "type": "string",
+                    "maxLength": 128
+                }
+            }
+        },
+        "internal_handlers_auth.OIDCStartRequest": {
+            "type": "object",
+            "required": [
+                "redirectUri"
+            ],
+            "properties": {
+                "redirectUri": {
+                    "type": "string",
+                    "maxLength": 2048
+                }
+            }
+        },
+        "internal_handlers_auth.OIDCStartResponse": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_handlers_auth.PasskeyChallengeResponse": {
             "type": "object",
             "properties": {
                 "publicKey": {},
                 "requestId": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handlers_auth.PermissionsResponse": {
+            "type": "object",
+            "properties": {
+                "nodes": {
+                    "description": "Nodes maps hostnames, which the UI shows, to the IDs that /nodes/\u003cid\u003e grants use.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "paths": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_auth.PathPrivileges"
+                    }
+                },
+                "superuser": {
+                    "type": "boolean"
                 }
             }
         },
@@ -47027,6 +48406,9 @@
                 "locked": {
                     "type": "boolean"
                 },
+                "nameTaken": {
+                    "type": "boolean"
+                },
                 "notes": {
                     "type": "string"
                 },
@@ -47035,6 +48417,9 @@
                 },
                 "primaryGroupId": {
                     "type": "integer"
+                },
+                "shared": {
+                    "type": "boolean"
                 },
                 "shell": {
                     "type": "string"
@@ -47114,6 +48499,31 @@
                 }
             }
         },
+        "internal_handlers_auth.setACLGroupRequest": {
+            "type": "object",
+            "properties": {
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "internal_handlers_auth.setRoleRequest": {
+            "type": "object",
+            "required": [
+                "privileges"
+            ],
+            "properties": {
+                "privileges": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "internal_handlers_basic.InitializeHostState": {
             "type": "object",
             "properties": {
@@ -47141,6 +48551,12 @@
                 "inventory": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.GuestIdentityInventoryReport"
                 },
+                "localUsers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "nodeHostname": {
                     "description": "NodeHostname names the node in requests, so no two members share one.",
                     "type": "string"
@@ -47157,6 +48573,13 @@
                 "sshPublicKey": {
                     "description": "SSHPublicKey is the joiner's cluster SSH key, recorded with its pin.",
                     "type": "string"
+                },
+                "userClusters": {
+                    "description": "UserClusters identifies retained copies, including users since renamed or deleted there.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 }
             }
         },

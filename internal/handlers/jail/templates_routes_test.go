@@ -75,6 +75,10 @@ func (m *mockJailTemplateService) GetJailTemplate(templateID uint) (*jailModels.
 	return m.getFn(templateID)
 }
 
+func (m *mockJailTemplateService) SwitchName(string, uint) (string, error) {
+	return "lan", nil
+}
+
 func (m *mockJailTemplateService) PreflightConvertJailToTemplate(
 	ctx context.Context,
 	ctID uint,
@@ -336,7 +340,7 @@ func TestCreateJailFromTemplateHandlerMappings(t *testing.T) {
 	t.Run("invalid body", func(t *testing.T) {
 		lifecycleSvc := setupJailTemplateLifecycle(t)
 		r := gin.New()
-		r.POST("/jail/templates/:templateId/jails", CreateJailFromTemplate(&mockJailTemplateService{}, lifecycleSvc))
+		r.POST("/jail/templates/:templateId/jails", CreateJailFromTemplate(&mockJailTemplateService{}, lifecycleSvc, nil))
 		rr := testutil.PerformJSONRequest(t, r, http.MethodPost, "/jail/templates/1/jails", []byte(`{"mode":`))
 		decodeAPIResponse(t, rr.Code, http.StatusBadRequest, rr.Body.String())
 	})
@@ -348,7 +352,7 @@ func TestCreateJailFromTemplateHandlerMappings(t *testing.T) {
 			preflightCreate: func(context.Context, uint, jail.CreateFromTemplateRequest) error {
 				return assertErr("template_not_found")
 			},
-		}, lifecycleSvc))
+		}, lifecycleSvc, nil))
 		rr := testutil.PerformJSONRequest(t, r, http.MethodPost, "/jail/templates/1/jails", []byte(`{"mode":"single","ctid":101}`))
 		decodeAPIResponse(t, rr.Code, http.StatusNotFound, rr.Body.String())
 	})
@@ -358,7 +362,7 @@ func TestCreateJailFromTemplateHandlerMappings(t *testing.T) {
 		r := gin.New()
 		r.POST("/jail/templates/:templateId/jails", func(c *gin.Context) {
 			c.Set("Username", "tester")
-			CreateJailFromTemplate(&mockJailTemplateService{}, lifecycleSvc)(c)
+			CreateJailFromTemplate(&mockJailTemplateService{}, lifecycleSvc, nil)(c)
 		})
 		rr := testutil.PerformJSONRequest(
 			t,
@@ -385,6 +389,7 @@ func TestCreateJailFromTemplateHandlerMappings(t *testing.T) {
 						return &taskModels.GuestLifecycleTask{}, "queued", nil
 					},
 				},
+				nil,
 			),
 		)
 		rr := testutil.PerformJSONRequest(
@@ -415,7 +420,7 @@ func TestCreateJailFromTemplateHandlerMappings(t *testing.T) {
 		r := gin.New()
 		r.POST("/jail/templates/:templateId/jails", func(c *gin.Context) {
 			c.Set("Username", "tester")
-			CreateJailFromTemplate(&mockJailTemplateService{}, lifecycleSvc)(c)
+			CreateJailFromTemplate(&mockJailTemplateService{}, lifecycleSvc, nil)(c)
 		})
 		rr := testutil.PerformJSONRequest(t, r, http.MethodPost, "/jail/templates/1/jails", []byte(payload))
 		decodeAPIResponse(t, rr.Code, http.StatusConflict, rr.Body.String())
@@ -430,7 +435,7 @@ func TestCreateJailFromTemplateHandlerMappings(t *testing.T) {
 				preflightCreate: func(context.Context, uint, jail.CreateFromTemplateRequest) error {
 					return assertErr("failed_to_get_template_dataset")
 				},
-			}, lifecycleSvc)(c)
+			}, lifecycleSvc, nil)(c)
 		})
 
 		rr := testutil.PerformJSONRequest(t, r, http.MethodPost, "/jail/templates/1/jails", []byte(`{"mode":"single","ctid":101}`))

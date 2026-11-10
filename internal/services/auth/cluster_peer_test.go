@@ -49,7 +49,7 @@ func TestProxiedUserIsAnUnlockedAdmin(t *testing.T) {
 		if (err == nil) != test.ok {
 			t.Fatalf("%s/%s: error %v, want ok=%t", test.user, test.authType, err, test.ok)
 		}
-		if test.ok && got != (ProxiedUser{Username: user.Username, AuthType: test.authType}) {
+		if test.ok && got != (ProxiedUser{Username: user.Username, AuthType: test.authType, Realm: RealmSylve}) {
 			t.Fatalf("%s/%s: proxied %+v", test.user, test.authType, got)
 		}
 	}
@@ -66,6 +66,7 @@ func TestParseProxiedUserRoundTripsAndRejectsJunk(t *testing.T) {
 	for _, value := range []string{
 		"", "not json", `{"authType":"sylve"}`, `{"username":" ","authType":"sylve"}`,
 		`{"username":"a","authType":"internal-cluster"}`,
+		`{"username":"a","authType":"sylve","realm":"ldap"}`,
 	} {
 		if _, err := ParseProxiedUser(value); err == nil {
 			t.Fatalf("accepted %q", value)

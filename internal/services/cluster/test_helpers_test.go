@@ -32,7 +32,7 @@ var testJoinPin = sha256.Sum256([]byte("joining-node"))
 
 func newClusterServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 	t.Helper()
-	migrateModels = append(migrateModels, &clusterModels.Cluster{}, &clusterModels.ScheduledRunResultOutbox{},
+	migrateModels = append(migrateModels, &clusterModels.Cluster{}, &clusterModels.ClusterNode{}, &clusterModels.ScheduledRunResultOutbox{},
 		&jailModels.Jail{}, &jailModels.JailCreation{})
 	migrateModels = append(migrateModels, clusterModels.ReplicatedModels()...)
 	db := testutil.NewSQLiteTestDB(t, migrateModels...)
@@ -90,41 +90,10 @@ func newOpenTestMutationGate(t *testing.T) *MutationGate {
 
 func newClusterRaftTestNode(t *testing.T, id string, migrateModels ...any) *clusterRaftTestNode {
 	t.Helper()
-
-	db := newClusterServiceTestDB(t, migrateModels...)
-	fsm := clusterModels.NewFSMDispatcher(db)
-	clusterModels.RegisterDefaultHandlers(fsm)
-
-	cfg := raft.DefaultConfig()
-	cfg.LocalID = raft.ServerID(id)
-	cfg.Logger = hclog.NewNullLogger()
-	cfg.HeartbeatTimeout = 200 * time.Millisecond
-	cfg.ElectionTimeout = 200 * time.Millisecond
-	cfg.LeaderLeaseTimeout = 100 * time.Millisecond
-	cfg.CommitTimeout = 25 * time.Millisecond
-
-	addr, transport := raft.NewInmemTransport(raft.ServerAddress(id))
-	r, err := raft.NewRaft(
-		cfg,
-		fsm,
-		raft.NewInmemStore(),
-		raft.NewInmemStore(),
-		raft.NewInmemSnapshotStore(),
-		transport,
-	)
-	if err != nil {
-		t.Fatalf("failed to create raft node %s: %v", id, err)
-	}
-
 	node := &clusterRaftTestNode{
-		id:        id,
-		addr:      addr,
-		transport: transport,
-		raft:      r,
-		service: withRaft(&Service{
-			DB:           db,
-			NodeID:       id,
-			fsm:          fsm,
+		id: id,
+		service: &Service{
+			DB: newClusterServiceTestDB(t, migrateModels...), NodeID: id,
 			mutationGate: newOpenTestMutationGate(t),
 			joinVersionForNode: func(context.Context, raft.Server) (string, error) {
 				return cmd.Version, nil
@@ -132,13 +101,41 @@ func newClusterRaftTestNode(t *testing.T, id string, migrateModels ...any) *clus
 			backupTargetValidator: func(context.Context, *clusterModels.BackupTarget) error {
 				return nil
 			},
-		}, r),
+		},
 	}
-	node.service.trackPins(fsm)
+	startClusterRaftTestNode(t, node)
 	t.Cleanup(func() {
 		cleanupClusterRaftTestNodes(t, []*clusterRaftTestNode{node})
 	})
 	return node
+}
+
+func startClusterRaftTestNode(t *testing.T, node *clusterRaftTestNode) {
+	t.Helper()
+	withFSM(node.service)
+
+	cfg := raft.DefaultConfig()
+	cfg.LocalID = raft.ServerID(node.id)
+	cfg.Logger = hclog.NewNullLogger()
+	cfg.HeartbeatTimeout = 200 * time.Millisecond
+	cfg.ElectionTimeout = 200 * time.Millisecond
+	cfg.LeaderLeaseTimeout = 100 * time.Millisecond
+	cfg.CommitTimeout = 25 * time.Millisecond
+
+	addr, transport := raft.NewInmemTransport(raft.ServerAddress(node.id))
+	r, err := raft.NewRaft(
+		cfg,
+		node.service.fsm,
+		raft.NewInmemStore(),
+		raft.NewInmemStore(),
+		raft.NewInmemSnapshotStore(),
+		transport,
+	)
+	if err != nil {
+		t.Fatalf("failed to create raft node %s: %v", node.id, err)
+	}
+	node.addr, node.transport, node.raft = addr, transport, r
+	node.service.SetRaft(r)
 }
 
 func withRaft(s *Service, r *raft.Raft) *Service {

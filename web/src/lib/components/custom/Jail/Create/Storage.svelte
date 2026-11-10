@@ -7,6 +7,7 @@
 	import type { CreateData } from '$lib/types/jail/jail';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
+	import { allowed, nodePath } from '$lib/stores/permissions.svelte';
 	import { fstabPlaceholder } from '$lib/utils/placeholders';
 	import { toast } from 'svelte-sonner';
 	import * as Select from '$lib/components/ui/select/index.js';
@@ -174,7 +175,13 @@
 		bind:value={source}
 		data={[
 			{ label: 'Base / Bootstrap', value: 'base' },
-			{ label: 'Existing ZFS', value: 'zfs' }
+			{
+				label: 'Existing ZFS',
+				value: 'zfs',
+				...(allowed('Sys.Modify', nodePath(hostname ?? ''))
+					? {}
+					: { disabled: true, description: 'Needs Sys.Modify on this node' })
+			}
 		]}
 		onValueChange={selectSource}
 		disallowEmpty

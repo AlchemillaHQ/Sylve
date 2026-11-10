@@ -266,7 +266,7 @@ func TestEditPamUserPasswordAndExplicitSambaIntent(t *testing.T) {
 	}
 
 	seedUserToken(t, service, user.ID, "admin-session")
-	fullOptions.Admin = true
+	fullOptions.Admin = boolPtr(true)
 	if err := service.EditUser(user.ID, fullOptions); err != nil {
 		t.Fatalf("promote PAM user: %v", err)
 	}
@@ -485,6 +485,12 @@ func TestEditPamUserRejectsUnsafeHomeMutationsBeforeSideEffects(t *testing.T) {
 func TestValidatePAMUsernameEmpty(t *testing.T) {
 	if err := validatePAMUsername(""); err == nil || !strings.Contains(err.Error(), "invalid_username_length") {
 		t.Fatalf("expected invalid_username_length, got: %v", err)
+	}
+}
+
+func TestValidatePAMUsernameReserved(t *testing.T) {
+	if err := validatePAMUsername("Root"); err == nil || !strings.Contains(err.Error(), "reserved_username") {
+		t.Fatalf("expected reserved_username, got: %v", err)
 	}
 }
 

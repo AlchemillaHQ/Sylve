@@ -29,8 +29,10 @@ under sponsorship from the FreeBSD Foundation.
 	import { dnsConfigPresets } from '$lib/utils/jail/jail';
 	import NetworkObjectCreator from '$lib/components/custom/Network/Objects/CreateOrEdit.svelte';
 	import { getDashedDate } from '$lib/utils/time.svelte';
+	import { allowed, nodePath } from '$lib/stores/permissions.svelte';
 
 	interface Props {
+		node: string;
 		name: string;
 		ctId: number;
 		switch: string;
@@ -60,6 +62,7 @@ under sponsorship from the FreeBSD Foundation.
 	}
 
 	let {
+		node,
 		name,
 		ctId,
 		switch: nwSwitch = $bindable(),
@@ -324,18 +327,21 @@ under sponsorship from the FreeBSD Foundation.
 	name: string,
 	type: 'standard' | 'manual' | 'inherit' | 'none' = 'standard',
 	filtered = false,
-	runtimeAvailable = true
+	runtimeAvailable = true,
+	needsHostAdmin = false
 )}
 	{@const i = `radio-${type}-${id}`}
 	<div
-		class:opacity-60={!runtimeAvailable}
+		class:opacity-60={!runtimeAvailable || needsHostAdmin}
 		class="mb-2 flex items-center space-x-3 rounded-lg border p-4"
 	>
-		<RadioGroup.Item value={name} id={i} disabled={!runtimeAvailable} />
+		<RadioGroup.Item value={name} id={i} disabled={!runtimeAvailable || needsHostAdmin} />
 		<Label for={i} class="flex flex-col items-start gap-2">
 			<p class="">{name}</p>
 			<p class="text-muted-foreground text-sm">
-				{#if !runtimeAvailable}
+				{#if needsHostAdmin}
+					Inherit network from the host · Needs Sys.Modify on this node
+				{:else if !runtimeAvailable}
 					Runtime bridge state unavailable
 				{:else if type === 'standard'}
 					Standard switch{filtered ? ' · VLAN filtered' : ''}
@@ -366,7 +372,14 @@ under sponsorship from the FreeBSD Foundation.
 				{/each}
 			{/if}
 
-			{@render radioItem(-1, 'Inherit', 'inherit')}
+			{@render radioItem(
+				-1,
+				'Inherit',
+				'inherit',
+				false,
+				true,
+				!allowed('Sys.Modify', nodePath(node))
+			)}
 			{@render radioItem(0, 'None', 'none')}
 		</ScrollArea>
 	</RadioGroup.Root>

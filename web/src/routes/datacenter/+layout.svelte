@@ -6,6 +6,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+	import { visibleItems, type Need } from '$lib/stores/permissions.svelte';
 	import type { ClusterDetails } from '$lib/types/cluster/cluster';
 	import { isAPIResponse } from '$lib/utils/http';
 	import { resource } from 'runed';
@@ -15,6 +16,7 @@
 		icon: string;
 		href?: string;
 		children?: NodeItem[];
+		need?: Need;
 	}
 
 	let clusterDetails = resource(
@@ -32,6 +34,8 @@
 	let clusterEnabled = $derived(clusterDetails.current?.cluster?.enabled === true);
 
 	let nodeItems: NodeItem[] = $derived.by(() => {
+		const audit: Need = ['Sys.Audit', '/'];
+		const auditAccess: Need = ['Sys.Audit', '/access'];
 		const items: NodeItem[] = [
 			{
 				label: 'Summary',
@@ -41,16 +45,19 @@
 			{
 				label: 'Notes',
 				icon: 'mdi--notes',
-				href: '/datacenter/notes'
+				href: '/datacenter/notes',
+				need: audit
 			},
 			{
 				label: 'Cluster',
 				icon: 'carbon--assembly-cluster',
-				href: '/datacenter/cluster'
+				href: '/datacenter/cluster',
+				need: audit
 			},
 			{
 				label: 'Backups',
 				icon: 'mdi--backup-restore',
+				need: audit,
 				children: [
 					{
 						label: 'Targets',
@@ -68,18 +75,55 @@
 						href: '/datacenter/backups/events'
 					}
 				]
-			}
+			},
 			// {
 			// 	label: 'Storage',
 			// 	icon: 'mdi--storage',
 			// 	href: '/datacenter/storage'
 			// }
+			{
+				label: 'Permissions',
+				icon: 'mdi--shield-account',
+				children: [
+					{
+						label: 'Users',
+						icon: 'mdi--account',
+						href: '/datacenter/permissions/users',
+						need: ['User.Modify', '/access']
+					},
+					{
+						label: 'Groups',
+						icon: 'mdi--account-multiple',
+						href: '/datacenter/permissions/groups',
+						need: auditAccess
+					},
+					{
+						label: 'Grants',
+						icon: 'mdi--account-key',
+						href: '/datacenter/permissions/grants',
+						need: auditAccess
+					},
+					{
+						label: 'Roles',
+						icon: 'mdi--card-account-details-outline',
+						href: '/datacenter/permissions/roles',
+						need: auditAccess
+					},
+					{
+						label: 'Realms',
+						icon: 'mdi--login-variant',
+						href: '/datacenter/permissions/realms',
+						need: auditAccess
+					}
+				]
+			}
 		];
 
 		if (clusterEnabled && storage.showReplication) {
 			items.push({
 				label: 'Replication',
 				icon: 'carbon--ibm-data-replication',
+				need: audit,
 				children: [
 					{
 						label: 'Policies',
@@ -95,7 +139,7 @@
 			});
 		}
 
-		return items;
+		return visibleItems(items);
 	});
 
 	interface Props {
@@ -118,7 +162,7 @@
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center justify-between border-b p-2">
 		<span>Data Center</span>
-		<div class="flex items-center gap-1">
+		<div class="flex items-center gap-2">
 			<NotificationBell />
 			<Button
 				size="sm"
@@ -153,29 +197,32 @@
 		autoSaveId="main-pane-auto-save"
 		onLayoutChange={emitResize}
 	>
-		<Resizable.Pane defaultSize={15}>
-			<div class="h-full px-1.5">
-				<nav aria-label="Difuse-sidebar" class="menu thin-scrollbar h-full min-h-0 w-full">
-					<ul class="h-full min-h-0">
-						<ScrollArea
-							orientation="both"
-							class="h-full w-full"
-							scrollbarXClasses="hidden"
-							scrollbarYClasses="hidden"
-							fade
-						>
-							{#each nodeItems as item (item.href ?? item.icon)}
-								<TreeView {item} />
-							{/each}
-						</ScrollArea>
-					</ul>
-				</nav>
-			</div>
-		</Resizable.Pane>
+		<!-- A lone Summary is the lock page for users without datacenter access; no menu for that. -->
+		{#if nodeItems.length > 1}
+			<Resizable.Pane defaultSize={15} order={1}>
+				<div class="h-full px-1.5">
+					<nav aria-label="Difuse-sidebar" class="menu thin-scrollbar h-full min-h-0 w-full">
+						<ul class="h-full min-h-0">
+							<ScrollArea
+								orientation="both"
+								class="h-full w-full"
+								scrollbarXClasses="hidden"
+								scrollbarYClasses="hidden"
+								fade
+							>
+								{#each nodeItems as item (item.href ?? item.icon)}
+									<TreeView {item} />
+								{/each}
+							</ScrollArea>
+						</ul>
+					</nav>
+				</div>
+			</Resizable.Pane>
 
-		<Resizable.Handle withHandle gripPreferenceKey="main-navigation" />
+			<Resizable.Handle withHandle gripPreferenceKey="main-navigation" />
+		{/if}
 
-		<Resizable.Pane>
+		<Resizable.Pane order={2}>
 			<div class="h-full overflow-auto">
 				{@render children?.()}
 			</div>

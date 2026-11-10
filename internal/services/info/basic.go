@@ -9,6 +9,8 @@
 package info
 
 import (
+	"runtime"
+
 	"github.com/alchemillahq/sylve/internal/cmd"
 	"github.com/alchemillahq/sylve/internal/config"
 	infoServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/info"
@@ -31,6 +33,8 @@ func (s *Service) GetBasicInfo() (basicInfo infoServiceInterfaces.BasicInfo, err
 		return infoServiceInterfaces.BasicInfo{}, err
 	}
 
+	maxVCPUs, _ := utils.GetVMMMaxCPUs()
+
 	return infoServiceInterfaces.BasicInfo{
 		Hostname:      hostname,
 		OS:            utils.GetOS(),
@@ -40,5 +44,7 @@ func (s *Service) GetBasicInfo() (basicInfo infoServiceInterfaces.BasicInfo, err
 		SylveVersion:  cmd.Version,
 		SylveCommit:   cmd.Commit,
 		DevFSDisabled: config.IsDevFSDisabled(),
+		Architecture:  infoServiceInterfaces.Architecture(runtime.GOARCH),
+		MaxVCPUs:      maxVCPUs,
 	}, nil
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getCPUInfo } from '$lib/api/info/cpu';
+	import { hostDetail } from '$lib/stores/permissions.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import {
@@ -10,6 +11,7 @@
 	import { resource } from 'runed';
 
 	interface Props {
+		node: string;
 		cpuCores: number;
 		ram: number;
 		startAtBoot: boolean;
@@ -20,6 +22,7 @@
 	}
 
 	let {
+		node,
 		cpuCores = $bindable(),
 		ram = $bindable(),
 		startAtBoot = $bindable(),
@@ -31,11 +34,8 @@
 
 	let humanSize = $state(formatBytesBinary(ram || 1024 * 1024 * 1024));
 	let cpuInfo = resource(
-		() => 'cpu-info',
-		async () => {
-			const result = await getCPUInfo('current');
-			return result;
-		}
+		() => node,
+		async (hostname) => hostDetail(hostname, () => getCPUInfo('current', { hostname }), null)
 	);
 
 	$effect(() => {

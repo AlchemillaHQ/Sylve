@@ -443,9 +443,12 @@
 				}}
 				size="sm"
 				variant="outline"
-				class="h-6.5"
+				class="h-6.5 disabled:pointer-events-auto!"
 				disabled={!mutationsAvailable ||
 					(targets.current.find((target) => target.id === selectedTargetId)?.enabled ?? true)}
+				title={(targets.current.find((target) => target.id === selectedTargetId)?.enabled ?? true)
+					? 'Disable the target before deleting it'
+					: ''}
 			>
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>

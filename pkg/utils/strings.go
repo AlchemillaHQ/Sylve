@@ -274,12 +274,18 @@ func IsValidEmail(email string) bool {
 	return true
 }
 
-func IsValidUsername(username string) bool {
-	invalidUsernames := []string{"root", "admin", "superuser"}
-	for _, invalid := range invalidUsernames {
-		if strings.EqualFold(username, invalid) {
-			return false
+func IsReservedUsername(username string) bool {
+	for _, reserved := range []string{"root", "admin", "superuser"} {
+		if strings.EqualFold(username, reserved) {
+			return true
 		}
+	}
+	return false
+}
+
+func IsValidUsername(username string) bool {
+	if IsReservedUsername(username) {
+		return false
 	}
 
 	regex := regexp.MustCompile(`^[a-z_]([a-z0-9_-]{0,31}|[a-z0-9_-]{0,30}\$)$`)

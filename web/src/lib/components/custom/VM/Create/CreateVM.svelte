@@ -13,8 +13,6 @@
 	import { buildPassablePCI } from '$lib/utils/system/pci';
 	import { generatePassword } from '$lib/utils/string';
 	import {
-		getNextGuestId,
-		getNextId,
 		getVMCreateErrorMessage,
 		handleCSMWrapCPUError,
 		isValidCreateData
@@ -24,15 +22,17 @@
 	import Hardware from './Hardware.svelte';
 	import Network from './Network.svelte';
 	import Storage from './Storage.svelte';
-	import { getNodes } from '$lib/api/cluster/cluster';
+	import { getNextGuestID, getNodes } from '$lib/api/cluster/cluster';
 	import { getSimpleJails } from '$lib/api/jail/jail';
 	import { getSimpleContainers } from '$lib/api/container/container';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { reload as reloadStore } from '$lib/stores/api.svelte';
+	import { hostDetail } from '$lib/stores/permissions.svelte';
 	import { getBasicSettings } from '$lib/api/system/settings';
-	import { getCPUInfoResult } from '$lib/api/info/cpu';
+	import { getBasicInfoResult } from '$lib/api/info/basic';
 	import type { BasicSettings } from '$lib/types/system/settings';
-	import type { Architecture, CPUInfo } from '$lib/types/info/cpu';
+	import type { BasicInfo } from '$lib/types/info/basic';
+	import type { Architecture } from '$lib/types/info/cpu';
 	import { type CPUPin, type CreateData, type VMBootRom } from '$lib/types/vm/vm';
 	import {
 		handleAPIError,
@@ -118,7 +118,11 @@
 	const networkObjects = resource(
 		() => `network-objects-${modal.node || '__default__'}`,
 		async (key) => {
-			const result = await getNetworkObjects(modal.node || undefined);
+			const result = await hostDetail(
+				modal.node,
+				() => getNetworkObjects(modal.node || undefined),
+				[]
+			);
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
 				return [] as NetworkObject[];
@@ -149,7 +153,7 @@
 	const pciDevices = resource(
 		() => `pci-devices-${modal.node || '__default__'}`,
 		async (key, _previousKey, { data: previousDevices }): Promise<PCIDevice[]> => {
-			const result = await getPCIDevices(modal.node || undefined);
+			const result = await hostDetail(modal.node, () => getPCIDevices(modal.node || undefined), []);
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
 				return previousDevices ?? [];
@@ -163,7 +167,7 @@
 	const pptDevices = resource(
 		() => `ppt-devices-${modal.node || '__default__'}`,
 		async (key, _previousKey, { data: previousDevices }): Promise<PPTDevice[]> => {
-			const result = await getPPTDevices(modal.node || undefined);
+			const result = await hostDetail(modal.node, () => getPPTDevices(modal.node || undefined), []);
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
 				return previousDevices ?? [];
@@ -249,15 +253,16 @@
 
 	type NodeCPUInfo = {
 		node: string;
-		info: CPUInfo;
+		info: BasicInfo;
 	};
 
+	// Basic info carries the architecture and vCPU limit, and any user may read it.
 	const nodeCPUInfo = resource(
 		() => modal.node || '__default__',
 		async (selectedNode, _previousNode, { signal }): Promise<NodeCPUInfo | null> => {
 			const hostname = selectedNode === '__default__' ? undefined : selectedNode;
 			try {
-				const result = await getCPUInfoResult({ hostname, signal });
+				const result = await getBasicInfoResult({ hostname, signal });
 				if (isAPIResponse(result)) {
 					handleAPIError(result);
 					return null;
@@ -275,7 +280,7 @@
 		{ initialValue: null as NodeCPUInfo | null }
 	);
 
-	let selectedNodeCPUInfo = $derived.by((): CPUInfo | undefined => {
+	let selectedNodeCPUInfo = $derived.by((): BasicInfo | undefined => {
 		const selectedNode = modal.node || '__default__';
 		return nodeCPUInfo.current?.node === selectedNode ? nodeCPUInfo.current.info : undefined;
 	});
@@ -314,6 +319,7 @@
 			jails.refetch();
 			containers.refetch();
 			clusterNodes.refetch();
+			nextGuestID.refetch();
 			basicSettings.refetch();
 			nodeCPUInfo.refetch();
 		}
@@ -345,17 +351,12 @@
 		{ value: 'advanced', label: 'Advanced' }
 	];
 
-	let nextId = $derived.by(() => {
-		if (
-			clusterNodes.current &&
-			Array.isArray(clusterNodes.current) &&
-			clusterNodes.current.length > 0
-		) {
-			return getNextGuestId(clusterNodes.current);
-		}
-
-		return getNextId(vms.current || [], jails.current || [], containers.current);
-	});
+	const nextGuestID = resource(
+		() => 'next-guest-id',
+		async () => await getNextGuestID(),
+		{ initialValue: 0 }
+	);
+	let nextId = $derived(nextGuestID.current || undefined);
 
 	let loading = $state(false);
 	let lastTab = $state('basic');

@@ -18,6 +18,7 @@ under sponsorship from the FreeBSD Foundation.
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Network from '$lib/components/custom/VM/Hardware/Network.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import { hostDetail } from '$lib/stores/permissions.svelte';
 	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { NetworkObject } from '$lib/types/network/object';
@@ -96,7 +97,7 @@ under sponsorship from the FreeBSD Foundation.
 	const networkObjects = resource(
 		() => data.node,
 		async (node) => {
-			const result = await getNetworkObjects(node);
+			const result = await hostDetail(node, () => getNetworkObjects(node), []);
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
 				return lastNetworkObjectsByNode[node] ?? [];
@@ -183,15 +184,16 @@ under sponsorship from the FreeBSD Foundation.
 				sw = switches.current.manual.find((candidate) => candidate.id === network.switchId) ?? null;
 			}
 
-			const macObject =
-				networkObjects.current.find((object) => object.id === network.macId) ?? null;
+			const macObject = network.macObj ?? null;
 			const macAddress = macObject?.entries?.[0]?.value || network.mac || '';
 			rows.push({
 				id: network.id,
+				// The switch list only has switches the user may audit; the VM carries its own.
 				switchName:
 					network.switchType === 'slirp'
 						? SLIRP_SWITCH_NAME
-						: sw?.name || `Unknown ${network.switchType} switch (${network.switchId})`,
+						: (sw ?? network.standardSwitch ?? network.manualSwitch)?.name ||
+							`Unknown ${network.switchType} switch (${network.switchId})`,
 				vlanFiltering: sw?.vlanFiltering ?? false,
 				accessVlan: sw?.vlanFiltering ? (sw.defaultAccessVlan ?? null) : null,
 				mac: macObject

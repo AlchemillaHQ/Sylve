@@ -19,8 +19,10 @@ import (
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	notifier "github.com/alchemillahq/sylve/internal/notifications"
+	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/notifications"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
@@ -757,5 +759,65 @@ func TestTestRuleHandlerRejectsUnknownTemplate(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected_404 got: %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestTransportSecretsOnlyForThoseWhoMayChangeThem(t *testing.T) {
+	svc := newHandlerTestService(t)
+	if err := svc.DB.AutoMigrate(&models.User{}, &models.Migrations{},
+		&clusterModels.ACLGrant{}, &clusterModels.ACLRole{}, &clusterModels.ACLGroup{}); err != nil {
+		t.Fatal(err)
+	}
+	webhook := "https://discord.com/api/webhooks/123/secret-token"
+	for _, input := range []notifications.TransportInput{
+		{Name: "Ntfy", Type: notifications.TransportTypeNtfy,
+			Ntfy: &notifications.NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "secret-topic"}},
+		{Name: "Discord", Type: notifications.TransportTypeDiscord,
+			Discord: &notifications.DiscordTransportConfigUpdate{WebhookURL: &webhook}},
+	} {
+		if _, err := svc.CreateTransport(context.Background(), input); err != nil {
+			t.Fatalf("seed %s: %v", input.Name, err)
+		}
+	}
+	auditor := models.User{Username: "auditor", Source: "local"}
+	operator := models.User{Username: "operator", Source: "local"}
+	nobody := models.User{Username: "nobody", Source: "local"}
+	records := []any{&auditor, &operator, &nobody, &models.Migrations{Name: "rbac_admin_grants"},
+		&clusterModels.ACLGrant{Path: "/", SubjectType: clusterModels.ACLSubjectUser, Subject: "auditor@sylve", Role: "Auditor", Propagate: true},
+		&clusterModels.ACLGrant{Path: "/", SubjectType: clusterModels.ACLSubjectUser, Subject: "operator@sylve", Role: "SysAdmin", Propagate: true},
+	}
+	for _, record := range records {
+		if err := svc.DB.Create(record).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	auth := &authService.Service{DB: svc.DB}
+
+	gin.SetMode(gin.TestMode)
+	for _, tt := range []struct {
+		user        models.User
+		want        int
+		withSecrets bool
+	}{{auditor, http.StatusOK, false}, {operator, http.StatusOK, true}, {nobody, http.StatusForbidden, false}} {
+		r := gin.New()
+		r.Use(func(c *gin.Context) { c.Set("UserID", tt.user.ID) })
+		r.GET("/api/notifications/transports", GetTransports(svc, auth))
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/notifications/transports", nil))
+		if rec.Code != tt.want {
+			t.Fatalf("%s: %d %s, want %d", tt.user.Username, rec.Code, rec.Body, tt.want)
+		}
+		if tt.want != http.StatusOK {
+			continue
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, "https://ntfy.sh") {
+			t.Fatalf("%s: transports missing: %s", tt.user.Username, body)
+		}
+		for _, secret := range []string{"secret-topic", "secret-token"} {
+			if strings.Contains(body, secret) != tt.withSecrets {
+				t.Errorf("%s: %q shown = %v, want %v", tt.user.Username, secret, !tt.withSecrets, tt.withSecrets)
+			}
+		}
 	}
 }

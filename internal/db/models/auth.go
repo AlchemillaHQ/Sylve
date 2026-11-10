@@ -33,6 +33,9 @@ type User struct {
 	PrimaryGroupID      *uint     `json:"primaryGroupId" gorm:"index"`
 	Source              string    `json:"source" gorm:"default:'local';index"`
 	ExternallyManaged   bool      `json:"externallyManaged" gorm:"not null;default:false"`
+	Shared              bool      `json:"shared" gorm:"not null;default:false"`
+	SharedClusterID     string    `json:"-" gorm:"not null;default:''"`
+	SharedUserID        uint      `json:"-" gorm:"not null;default:0"`
 	CreatedAt           time.Time `gorm:"autoCreateTime" json:"createdAt"`
 	UpdatedAt           time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
 	LastLoginTime       time.Time `json:"lastLoginTime"`

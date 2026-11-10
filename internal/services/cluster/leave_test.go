@@ -199,6 +199,10 @@ func TestFinalizeLocalDeclusterIsIdempotent(t *testing.T) {
 	if err := service.DB.Create(&clusterModels.ClusterNode{NodeUUID: "node-2"}).Error; err != nil {
 		t.Fatal(err)
 	}
+	grant := clusterModels.ACLGrant{Path: "/", SubjectType: clusterModels.ACLSubjectUser, Subject: "alice@sylve", Role: "Auditor", Propagate: true}
+	if err := service.DB.Create(&grant).Error; err != nil {
+		t.Fatal(err)
+	}
 	raftDir := filepath.Join(dataPath, "raft")
 	sshDir := filepath.Join(dataPath, clusterSSHDirName)
 	for _, dir := range []string{raftDir, sshDir} {
@@ -234,6 +238,10 @@ func TestFinalizeLocalDeclusterIsIdempotent(t *testing.T) {
 			t.Fatalf("path still exists: %s err=%v", path, err)
 		}
 	}
+	var grants int64
+	if err := service.DB.Model(&clusterModels.ACLGrant{}).Count(&grants).Error; err != nil || grants != 1 {
+		t.Fatalf("grants after leaving = %d, %v", grants, err)
+	}
 	requireAdmitted(t, service, false)
 }
 
@@ -266,6 +274,13 @@ func newLeaveTestCluster(t *testing.T, size int) ([]*clusterRaftTestNode, *clust
 			Enabled: true, Key: guestIdentityJoinTestKey, RaftIP: node.id, RaftPort: ClusterRaftPort,
 		}).Error; err != nil {
 			t.Fatal(err)
+		}
+		for _, peer := range nodes {
+			if err := node.service.DB.Create(&clusterModels.ClusterNode{
+				NodeUUID: peer.id, Hostname: peer.id, Protocol: clusterModels.ClusterProtocol,
+			}).Error; err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	network := routeTestPeerRequests(nodes)
@@ -301,6 +316,37 @@ func TestIntegrationFollowerLeaveCompletes(t *testing.T) {
 		}
 		requireLeft(t, target)
 		waitForClusterRaftVoterCount(t, []*clusterRaftTestNode{leader}, size-1, 8*time.Second)
+	}
+}
+
+func TestIntegrationLeaveBindsLegacySharedUsers(t *testing.T) {
+	nodes, leader, _ := newLeaveTestCluster(t, 3)
+	target := leaveTestFollowers(nodes, leader)[0]
+	// Replay the command as an earlier RBAC build did, before proposals initialized the ID.
+	if err := leader.service.applyRaftCommand(clusterModels.Command{
+		Type: "sylve_user", Action: "create", Data: []byte(`{"username":"alice","password":"hash-alice"}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	waitForClusterCondition(t, time.Second, "legacy user replicated", func() bool {
+		var count int64
+		return target.service.DB.Table("users").Where("username = ? AND shared", "alice").Count(&count).Error == nil && count == 1
+	})
+	if err := target.service.Leave(t.Context(), false); err != nil {
+		t.Fatal(err)
+	}
+	requireLeft(t, target)
+	id, err := clusterModels.ReadClusterID(leader.service.DB)
+	if err != nil || id == "" {
+		t.Fatalf("cluster identity = %q, %v", id, err)
+	}
+	var origin struct {
+		SharedClusterID string
+		SharedUserID    uint
+	}
+	if err := target.service.DB.Table("users").Where("username = ?", "alice").First(&origin).Error; err != nil ||
+		origin.SharedClusterID != id || origin.SharedUserID == 0 {
+		t.Fatalf("retained user origin = %+v, %v", origin, err)
 	}
 }
 

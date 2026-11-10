@@ -10,7 +10,7 @@
 
 import { browser } from '$app/environment';
 import { storage } from '$lib';
-import { api } from '$lib/api/common';
+import { api, isSessionEnded } from '$lib/api/common';
 import { isDemoMode } from '$lib/demo/runtime';
 import { reload } from '$lib/stores/api.svelte';
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
@@ -262,6 +262,10 @@ export async function cachedFetch<T>(
 		return await fetchFunction();
 	}
 
+	// Loading permissions drops the cache when they changed; wait so a page never reads it first.
+	// Loaded lazily: the permissions store reaches back into this module.
+	if (browser) await (await import('$lib/stores/permissions.svelte')).loadPermissions();
+
 	const scopedKey = getScopedCacheKey(key, hostname);
 	const now = Date.now();
 	const entry = await kvStorage.getItem<T>(scopedKey);
@@ -351,6 +355,8 @@ export function getAPIErrorText(
 
 export function handleAPIError(result: APIResponse, context?: ErrorRequestContext): void {
 	console.error('API Error', result);
+	// The API client already said "Session expired" and is on its way to the login page.
+	if (isSessionEnded(result)) return;
 	if (context) registerErrorContext(result, context);
 	reportAPIError(result);
 }

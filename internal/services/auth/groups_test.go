@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/system"
 )
@@ -31,6 +32,9 @@ func newGroupTestService(t *testing.T) *Service {
 		&models.WebAuthnCredential{},
 		&models.WebAuthnChallenge{},
 		&models.PAMIdentity{},
+		&clusterModels.ACLGrant{},
+		&clusterModels.ACLRole{},
+		&clusterModels.ACLGroup{},
 	)
 
 	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {

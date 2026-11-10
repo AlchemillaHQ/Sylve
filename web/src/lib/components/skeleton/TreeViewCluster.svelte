@@ -24,6 +24,7 @@
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import { confirmGuestAction } from '$lib/stores/guest-actions.svelte';
+	import { allowed } from '$lib/stores/permissions.svelte';
 	import { slide } from 'svelte/transition';
 	import { toast } from 'svelte-sonner';
 	import SidebarElement from './TreeViewCluster.svelte';
@@ -151,6 +152,18 @@
 			item.resourceType === 'jail-template' ||
 			item.resourceType === 'vm-template'
 	);
+	// Templates have no path of their own yet, so their kind's path decides.
+	let guestPath = $derived(
+		item.resourceType === 'vm-template'
+			? '/vm'
+			: item.resourceType === 'jail-template'
+				? '/jail'
+				: `/${item.resourceType}/${item.resourceId}`
+	);
+	let canPower = $derived(allowed('Guest.PowerMgmt', guestPath));
+	let canAllocate = $derived(allowed('Guest.Allocate', guestPath));
+	let canClone = $derived(allowed('Guest.Clone', guestPath));
+	let mayMigrate = $derived(allowed('Guest.Migrate', guestPath));
 	let actionInFlight = $state(false);
 	let lastActiveUrl = $derived.by(() => {
 		const segments = activeUrl.split('/');
@@ -575,7 +588,7 @@
 					{#if item.state === 'active'}
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight || lifecycleActive}
+							disabled={actionInFlight || lifecycleActive || !canPower}
 							onSelect={() => void handleActionClick('restart')}
 						>
 							<span class="icon-[mdi--restart] h-4 w-4"></span>
@@ -583,7 +596,7 @@
 						</ContextMenu.Item>
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight || lifecycleActive}
+							disabled={actionInFlight || lifecycleActive || !canPower}
 							onSelect={() => void handleActionClick('stop')}
 						>
 							<span class="icon-[mdi--stop] h-4 w-4"></span>
@@ -592,7 +605,7 @@
 					{:else}
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight || lifecycleActive}
+							disabled={actionInFlight || lifecycleActive || !canPower}
 							onSelect={() => void handleActionClick('start')}
 						>
 							<span class="icon-[mdi--play] h-4 w-4"></span>
@@ -601,14 +614,14 @@
 					{/if}
 					<ContextMenu.Separator />
 					{#if canMigrate && onMigrate}
-						<ContextMenu.Item class="gap-2" onSelect={() => onMigrate(item)}>
+						<ContextMenu.Item class="gap-2" disabled={!mayMigrate} onSelect={() => onMigrate(item)}>
 							<span class="icon-[mdi--swap-horizontal] h-4 w-4"></span>
 							Migrate
 						</ContextMenu.Item>
 					{/if}
 					<ContextMenu.Item
 						class="gap-2"
-						disabled={item.state === 'active' || convertTemplateLoading}
+						disabled={item.state === 'active' || convertTemplateLoading || !canAllocate}
 						onclick={() => openConvertTemplateDialog()}
 					>
 						<span class="icon-[mdi--content-copy] h-4 w-4"></span>
@@ -618,7 +631,7 @@
 					{#if item.state === 'active'}
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight || lifecycleActive}
+							disabled={actionInFlight || lifecycleActive || !canPower}
 							onSelect={() => void handleActionClick('reboot')}
 						>
 							<span class="icon-[mdi--restart] h-4 w-4"></span>
@@ -626,7 +639,7 @@
 						</ContextMenu.Item>
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight || lifecycleActive}
+							disabled={actionInFlight || lifecycleActive || !canPower}
 							onSelect={() => void handleActionClick('shutdown')}
 						>
 							<span class="icon-[mdi--power] h-4 w-4"></span>
@@ -634,7 +647,7 @@
 						</ContextMenu.Item>
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight || lifecycleActive}
+							disabled={actionInFlight || lifecycleActive || !canPower}
 							onSelect={() => void handleActionClick('stop')}
 						>
 							<span class="icon-[mdi--stop] h-4 w-4"></span>
@@ -643,7 +656,7 @@
 					{:else}
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight || lifecycleActive}
+							disabled={actionInFlight || lifecycleActive || !canPower}
 							onSelect={() => void handleActionClick('start')}
 						>
 							<span class="icon-[mdi--play] h-4 w-4"></span>
@@ -652,21 +665,25 @@
 					{/if}
 					<ContextMenu.Separator />
 					{#if canMigrate && onMigrate && item.state !== 'orphan'}
-						<ContextMenu.Item class="gap-2" onSelect={() => onMigrate(item)}>
+						<ContextMenu.Item class="gap-2" disabled={!mayMigrate} onSelect={() => onMigrate(item)}>
 							<span class="icon-[mdi--swap-horizontal] h-4 w-4"></span>
 							Migrate
 						</ContextMenu.Item>
 					{/if}
 					<ContextMenu.Item
 						class="gap-2"
-						disabled={item.state === 'active' || convertTemplateLoading}
+						disabled={item.state === 'active' || convertTemplateLoading || !canAllocate}
 						onclick={() => openConvertTemplateDialog()}
 					>
 						<span class="icon-[mdi--content-copy] h-4 w-4"></span>
 						Create Template
 					</ContextMenu.Item>
 					{#if item.state === 'orphan'}
-						<ContextMenu.Item class="gap-2 text-destructive" onclick={() => (deleteVMOpen = true)}>
+						<ContextMenu.Item
+							class="gap-2 text-destructive"
+							disabled={!canAllocate}
+							onclick={() => (deleteVMOpen = true)}
+						>
 							<span class="icon-[mdi--delete-sweep] h-4 w-4"></span>
 							Remove stale entry
 						</ContextMenu.Item>
@@ -675,7 +692,7 @@
 					{#if item.state === 'active'}
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight || lifecycleActive}
+							disabled={actionInFlight || lifecycleActive || !canPower}
 							onSelect={() => void handleActionClick('restart')}
 						>
 							<span class="icon-[mdi--restart] h-4 w-4"></span>
@@ -683,7 +700,7 @@
 						</ContextMenu.Item>
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight || lifecycleActive}
+							disabled={actionInFlight || lifecycleActive || !canPower}
 							onSelect={() => void handleActionClick('stop')}
 						>
 							<span class="icon-[mdi--stop] h-4 w-4"></span>
@@ -691,7 +708,7 @@
 						</ContextMenu.Item>
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight || lifecycleActive}
+							disabled={actionInFlight || lifecycleActive || !canPower}
 							onSelect={() => void handleActionClick('kill')}
 						>
 							<span class="icon-[mdi--skull-outline] h-4 w-4"></span>
@@ -700,7 +717,7 @@
 					{:else}
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight || lifecycleActive}
+							disabled={actionInFlight || lifecycleActive || !canPower}
 							onSelect={() => void handleActionClick('start')}
 						>
 							<span class="icon-[mdi--play] h-4 w-4"></span>
@@ -711,7 +728,7 @@
 						<ContextMenu.Separator />
 						<ContextMenu.Item
 							class="gap-2"
-							disabled={actionInFlight || lifecycleActive}
+							disabled={actionInFlight || lifecycleActive || !canAllocate}
 							onSelect={() => void handleActionClick('update')}
 						>
 							<span class="icon-[mdi--arrow-up-circle-outline] h-4 w-4"></span>
@@ -755,13 +772,18 @@
 						<span class="icon-[mdi--eye-outline] h-4 w-4"></span>
 						View Template
 					</ContextMenu.Item>
-					<ContextMenu.Item class="gap-2" onclick={() => (createFromTemplateOpen = true)}>
+					<ContextMenu.Item
+						class="gap-2"
+						disabled={!canClone}
+						onclick={() => (createFromTemplateOpen = true)}
+					>
 						<span class="icon-[mdi--plus-box-outline] h-4 w-4"></span>
 						Create Jail
 					</ContextMenu.Item>
 					<ContextMenu.Separator />
 					<ContextMenu.Item
 						class="gap-2 text-destructive"
+						disabled={!canAllocate}
 						onclick={() => (deleteTemplateOpen = true)}
 					>
 						<span class="icon-[mdi--delete-outline] h-4 w-4"></span>
@@ -772,13 +794,18 @@
 						<span class="icon-[mdi--eye-outline] h-4 w-4"></span>
 						View Template
 					</ContextMenu.Item>
-					<ContextMenu.Item class="gap-2" onclick={() => (createFromTemplateOpen = true)}>
+					<ContextMenu.Item
+						class="gap-2"
+						disabled={!canClone}
+						onclick={() => (createFromTemplateOpen = true)}
+					>
 						<span class="icon-[mdi--plus-box-outline] h-4 w-4"></span>
 						Create VM
 					</ContextMenu.Item>
 					<ContextMenu.Separator />
 					<ContextMenu.Item
 						class="gap-2 text-destructive"
+						disabled={!canAllocate}
 						onclick={() => (deleteTemplateOpen = true)}
 					>
 						<span class="icon-[mdi--delete-outline] h-4 w-4"></span>

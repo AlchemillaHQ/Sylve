@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getRAMInfoResult } from '$lib/api/info/ram';
+	import { hostDetail } from '$lib/stores/permissions.svelte';
 	import { modifyRAM } from '$lib/api/jail/hardware';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -32,7 +33,8 @@
 	const hostRam = resource(
 		() => node,
 		async (hostname) => {
-			const result = await getRAMInfoResult({ hostname });
+			const result = await hostDetail(hostname, () => getRAMInfoResult({ hostname }), null);
+			if (result === null) return ram;
 
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
@@ -63,9 +65,10 @@
 			error = 'RAM value must be at least 1 MiB';
 		}
 
+		// 0 when the user can't read the host; the server still checks.
 		const total = hostRam.current.total;
 
-		if (bytes > total - 1024 * 1024 * 1024 || bytes > total) {
+		if (total > 0 && (bytes > total - 1024 * 1024 * 1024 || bytes > total)) {
 			if (bytes > total) {
 				error = 'RAM value exceeds available memory';
 			} else if (bytes > total - 1024 * 1024 * 1024) {

@@ -83,8 +83,8 @@ type vmNetworkHandlerResponse struct {
 func newVMNetworkRouter(networkService vmNetworkService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.POST("/vm/:rid/networks", NetworkAttach(networkService))
-	router.PATCH("/vm/:rid/networks/:networkId", NetworkUpdate(networkService))
+	router.POST("/vm/:rid/networks", NetworkAttach(networkService, nil))
+	router.PATCH("/vm/:rid/networks/:networkId", NetworkUpdate(networkService, nil))
 	router.DELETE("/vm/:rid/networks/:networkId", NetworkDetach(networkService))
 	return router
 }

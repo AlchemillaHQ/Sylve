@@ -301,7 +301,7 @@ func TestFSMDispatcherRunsAfterApplyHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	want("restore", 3, 1)
-	if err := fsm.ClearReplicatedState(); err != nil {
+	if err := fsm.ClearReplicatedState(""); err != nil {
 		t.Fatal(err)
 	}
 	want("reset", 4, 2)

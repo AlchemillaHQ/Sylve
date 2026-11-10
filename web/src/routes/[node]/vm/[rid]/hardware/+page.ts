@@ -1,6 +1,7 @@
 import { getRAMInfoResult } from '$lib/api/info/ram.js';
 import { getPCIDevices, getPPTDevices } from '$lib/api/system/pci';
 import { getVmByIdResult, getVMsResult } from '$lib/api/vm/vm';
+import { hostDetail } from '$lib/stores/permissions.svelte';
 import type { APIResponse } from '$lib/types/common';
 import { ALWAYS_REFRESH, SEVEN_DAYS } from '$lib/utils';
 import { cachedFetch, isAPIResponse } from '$lib/utils/http';
@@ -22,15 +23,28 @@ export async function load({ params }) {
 			false,
 			node
 		),
-		cachedFetch(
-			'system-ram-info',
-			async () => getRAMInfoResult({ hostname: node }),
-			ALWAYS_REFRESH,
-			false,
-			node
+		hostDetail(
+			node,
+			() =>
+				cachedFetch(
+					'system-ram-info',
+					async () => getRAMInfoResult({ hostname: node }),
+					ALWAYS_REFRESH,
+					false,
+					node
+				),
+			{ total: 0, free: 0, usedPercent: 0 }
 		),
-		cachedFetch('pciDevices', async () => getPCIDevices(node), SEVEN_DAYS, false, node),
-		cachedFetch('pptDevices', async () => getPPTDevices(node), SEVEN_DAYS, false, node)
+		hostDetail(
+			node,
+			() => cachedFetch('pciDevices', async () => getPCIDevices(node), SEVEN_DAYS, false, node),
+			[]
+		),
+		hostDetail(
+			node,
+			() => cachedFetch('pptDevices', async () => getPPTDevices(node), SEVEN_DAYS, false, node),
+			[]
+		)
 	]);
 
 	if (isAPIResponse(vmResult)) {

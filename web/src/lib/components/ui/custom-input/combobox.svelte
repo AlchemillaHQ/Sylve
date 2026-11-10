@@ -147,6 +147,8 @@
 		}
 	}
 
+	const maxChips = 2;
+
 	const selectedLabels = $derived.by(() => {
 		const vals = multiple ? (Array.isArray(value) ? value : []) : value ? [value] : [];
 		return vals.map((v) => {
@@ -213,10 +215,7 @@
 				class="{buttonClass} w-full min-w-0 flex-nowrap justify-between gap-1 overflow-hidden"
 				{disabled}
 			>
-				<div
-					class="flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
-					class:flex-wrap={multiple && !showCount}
-				>
+				<div class="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
 					{#if selectedLabels.length > 0}
 						{#if showCount && multiple}
 							<p class="min-w-0 max-w-full truncate rounded px-2 text-sm">
@@ -224,16 +223,24 @@
 								{showCountLabel}
 							</p>
 						{:else}
-							{#each selectedLabels as lbl (lbl)}
+							{#each multiple ? selectedLabels.slice(0, maxChips) : selectedLabels as lbl (lbl)}
 								<p
 									class={multiple
-										? 'bg-secondary = max-w-full whitespace-break-spaces rounded px-2 text-left text-sm'
+										? 'bg-secondary min-w-0 truncate rounded px-2 text-left text-sm'
 										: 'min-w-0 max-w-full truncate rounded px-2 text-sm'}
 									title={Array.isArray(lbl) ? lbl.join(', ') : lbl}
 								>
 									{lbl}
 								</p>
 							{/each}
+							{#if multiple && selectedLabels.length > maxChips}
+								<p
+									class="bg-secondary shrink-0 rounded px-2 text-sm"
+									title={selectedLabels.slice(maxChips).join(', ')}
+								>
+									+{selectedLabels.length - maxChips} more
+								</p>
+							{/if}
 						{/if}
 					{:else}
 						<span class="truncate opacity-50">{placeholder}</span>

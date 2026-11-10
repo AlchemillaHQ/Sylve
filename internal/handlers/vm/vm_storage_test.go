@@ -108,9 +108,9 @@ type vmStorageHandlerResponse struct {
 func newVMStorageRouter(storageSvc vmStorageService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.POST("/vm/:rid/storage", StorageAttach(storageSvc))
-	router.POST("/vm/:rid/storage/from-image", CreateStorageFromImage(storageSvc))
-	router.PATCH("/vm/:rid/storage/:storageId", StorageUpdate(storageSvc))
+	router.POST("/vm/:rid/storage", StorageAttach(storageSvc, nil))
+	router.POST("/vm/:rid/storage/from-image", CreateStorageFromImage(storageSvc, nil))
+	router.PATCH("/vm/:rid/storage/:storageId", StorageUpdate(storageSvc, nil))
 	router.DELETE("/vm/:rid/storage/:storageId", StorageDetach(storageSvc))
 	return router
 }

@@ -40,6 +40,8 @@ type PublicUser struct {
 	PrimaryGroupID      *uint                `json:"primaryGroupId"`
 	Source              string               `json:"source"`
 	ExternallyManaged   bool                 `json:"externallyManaged"`
+	Shared              bool                 `json:"shared"`
+	NameTaken           bool                 `json:"nameTaken"`
 	PasskeyEligible     bool                 `json:"passkeyEligible"`
 	CreatedAt           time.Time            `json:"createdAt"`
 	UpdatedAt           time.Time            `json:"updatedAt"`
@@ -96,6 +98,7 @@ func publicUserFromModel(user models.User) PublicUser {
 		PrimaryGroupID:      user.PrimaryGroupID,
 		Source:              user.Source,
 		ExternallyManaged:   user.ExternallyManaged,
+		Shared:              user.Shared,
 		PasskeyEligible:     auth.IsPasskeyRegistrationEligible(user),
 		CreatedAt:           user.CreatedAt,
 		UpdatedAt:           user.UpdatedAt,

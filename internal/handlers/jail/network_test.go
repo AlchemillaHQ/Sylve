@@ -87,7 +87,7 @@ func TestAddJailNetworkHandlerUsesPathCTIDAndReturnsCreatedNetwork(t *testing.T)
 			gotCTID = ctID
 			return &jailModels.Network{ID: 9, JailID: 3, Name: req.Name, SwitchID: 4, SwitchType: "standard"}, nil
 		},
-	}))
+	}, nil))
 	response := testutil.PerformJSONRequest(t, router, http.MethodPost, "/jail/42/networks", []byte(`{"name":"lan0","switchName":"LAN"}`))
 	if response.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d body=%s", response.Code, response.Body.String())
@@ -117,7 +117,7 @@ func TestPatchJailNetworkHandlerPreservesExplicitFalseAndDistinctIDs(t *testing.
 			}
 			return &jailModels.Network{ID: networkID, JailID: 3, SwitchID: 4, SwitchType: "standard"}, nil
 		},
-	}))
+	}, nil))
 	response := testutil.PerformJSONRequest(t, router, http.MethodPatch, "/jail/42/networks/7", []byte(`{"dhcp":false,"defaultGateway":false}`))
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", response.Code, response.Body.String())

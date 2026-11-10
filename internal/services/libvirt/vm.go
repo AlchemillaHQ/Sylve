@@ -542,6 +542,9 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, 
 	if data.RAM < 1024*1024*128 {
 		return fmt.Errorf("memory_must_be_greater_than_128mb")
 	}
+	if err := s.checkRAMFitsHost(data.RAM); err != nil {
+		return err
+	}
 
 	vncEnabled := true
 	if data.VNCEnabled != nil {

@@ -20,6 +20,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -29,6 +30,7 @@ import (
 type jailTemplateService interface {
 	GetJailTemplatesSimple() ([]jailServiceInterfaces.SimpleTemplateList, error)
 	GetJailTemplate(templateID uint) (*jailModels.JailTemplate, error)
+	SwitchName(switchType string, switchID uint) (string, error)
 	PreflightConvertJailToTemplate(ctx context.Context, ctID uint, req jail.ConvertToTemplateRequest) error
 	PreflightCreateJailsFromTemplate(ctx context.Context, templateID uint, req jail.CreateFromTemplateRequest) error
 	DeleteJailTemplate(ctx context.Context, templateID uint) error
@@ -336,7 +338,7 @@ func ConvertJailToTemplate(jailService jailTemplateService, lifecycleService jai
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /jail/templates/{templateId}/jails [post]
-func CreateJailFromTemplate(jailService jailTemplateService, lifecycleService jailTemplateLifecycleService) gin.HandlerFunc {
+func CreateJailFromTemplate(jailService jailTemplateService, lifecycleService jailTemplateLifecycleService, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		templateID, err := strconv.Atoi(c.Param("templateId"))
 		if err != nil || templateID <= 0 {
@@ -361,6 +363,19 @@ func CreateJailFromTemplate(jailService jailTemplateService, lifecycleService ja
 				Data:    nil,
 				Error:   err.Error(),
 			})
+			return
+		}
+		template, err := jailService.GetJailTemplate(uint(templateID))
+		if err != nil {
+			c.JSON(jailTemplatePreflightStatusCode(err), internal.APIResponse[any]{
+				Status:  "error",
+				Message: "template_create_preflight_failed",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+		if !allowJailTemplateCreate(c, authService, jailService, template, req) {
 			return
 		}
 

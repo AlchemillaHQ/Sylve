@@ -78,7 +78,12 @@
 						aria-label="Help Information"
 						class="inline-flex items-center justify-center"
 					>
-						<span class="icon icon-[mdi--help-circle-outline] size-4"></span>
+						<!-- A dialog focuses its first control on open, which shouldn't pop the hint. -->
+						{#snippet child({ props })}
+							<button {...props} onfocus={undefined}>
+								<span class="icon icon-[mdi--help-circle-outline] size-4"></span>
+							</button>
+						{/snippet}
 					</Tooltip.Trigger>
 
 					<Tooltip.Content class="text-pretty break-words" style="max-width: 250px">

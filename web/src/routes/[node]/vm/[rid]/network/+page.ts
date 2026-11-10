@@ -1,6 +1,7 @@
 import { getNetworkObjects } from '$lib/api/network/object.js';
 import { getSwitches } from '$lib/api/network/switch';
 import { getVmByIdResult } from '$lib/api/vm/vm';
+import { hostDetail } from '$lib/stores/permissions.svelte';
 import type { APIResponse } from '$lib/types/common';
 import { emptySwitchList, isSwitchList } from '$lib/types/network/switch';
 import { SEVEN_DAYS } from '$lib/utils.js';
@@ -23,7 +24,18 @@ export async function load({ params }) {
 			node
 		),
 		cachedFetch('network-switches', async () => getSwitches(node), SEVEN_DAYS, false, node),
-		cachedFetch('network-objects', async () => getNetworkObjects(node), SEVEN_DAYS, false, node)
+		hostDetail(
+			node,
+			() =>
+				cachedFetch(
+					'network-objects',
+					async () => getNetworkObjects(node),
+					SEVEN_DAYS,
+					false,
+					node
+				),
+			[]
+		)
 	]);
 
 	if (isAPIResponse(vmResult)) {

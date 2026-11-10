@@ -1,23 +1,17 @@
 import type { NetworkObject } from '$lib/types/network/object';
 import { escapeHTML } from '$lib/utils/string';
 
-function objectLabel(networkObjects: NetworkObject[], objectId: number): string {
-	const object = networkObjects.find((candidate) => candidate.id === objectId);
+export function objectLabel(object?: NetworkObject | null): string {
 	const value = object?.entries?.length === 1 ? object.entries[0]?.value : '';
 	if (!object || !value) return '-';
 	return `${escapeHTML(object.name)} (${escapeHTML(value)})`;
 }
 
 export function ipGatewayFormatter(
-	networkObjects: NetworkObject[],
-	ipId: number,
-	ipGwId?: number | null
+	ip?: NetworkObject | null,
+	gateway?: NetworkObject | null
 ): string {
-	const address = objectLabel(networkObjects, ipId);
-	if (!ipGwId) return address;
-	return `${address}<br>${objectLabel(networkObjects, ipGwId)}`;
-}
-
-export function macFormatter(networkObjects: NetworkObject[], macId: number): string {
-	return objectLabel(networkObjects, macId);
+	const address = objectLabel(ip);
+	if (!gateway) return address;
+	return `${address}<br>${objectLabel(gateway)}`;
 }

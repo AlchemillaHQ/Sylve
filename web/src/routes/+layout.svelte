@@ -5,7 +5,16 @@
 	import { IsDocumentVisible, IsIdle, watch } from 'runed';
 	import { fade } from 'svelte/transition';
 	import { preloadData, onNavigate } from '$app/navigation';
-	import { isTokenValid, login, loginWithPasskey, isInitialized } from '$lib/api/auth';
+	import {
+		finishOIDCLogin,
+		isTokenValid,
+		login,
+		loginWithPasskey,
+		isInitialized,
+		OIDC_CALLBACK_PATH,
+		takeOIDCReturnPath
+	} from '$lib/api/auth';
+	import { toast } from 'svelte-sonner';
 	import Login from '$lib/components/custom/Login.svelte';
 	import Throbber from '$lib/components/custom/Throbber.svelte';
 	import Shell from '$lib/components/skeleton/Shell.svelte';
@@ -26,6 +35,7 @@
 	import { ProgressBar } from '@prgm/sveltekit-progress-bar';
 	import About from '$lib/components/custom/About.svelte';
 	import { startSSEEvents, stopSSEEvents } from '$lib/api/events';
+	import { clearPermissions, loadPermissions } from '$lib/stores/permissions.svelte';
 	import { onDestroy } from 'svelte';
 	import { connection } from '$lib/stores/api.svelte';
 	import { handleCommandKeydown } from '$lib/system.js';
@@ -48,7 +58,7 @@
 	let rebooted = $state<boolean>(isDemoMode);
 
 	let loading = $state({
-		throbber: false,
+		throbber: !isDemoMode && page.url.pathname === OIDC_CALLBACK_PATH,
 		login: false,
 		passkey: false,
 		initialization: false
@@ -89,6 +99,10 @@
 					window.parent.postMessage({ type: 'sylve-demo-ready' }, '*');
 				});
 			});
+			return;
+		}
+
+		if (page.url.pathname === OIDC_CALLBACK_PATH && (await handleOIDCCallback())) {
 			return;
 		}
 
@@ -156,6 +170,82 @@
 		if (!isDemoMode) stopSSEEvents();
 	});
 
+	async function afterLogin(toLoginPath: string) {
+		loading.throbber = true;
+		loading.initialization = true;
+
+		try {
+			try {
+				[initialized, rebooted] = await isInitialized();
+			} catch (error) {
+				console.error('Initialization check error:', error);
+				initialized = false;
+				rebooted = false;
+			}
+
+			await useSafeGoto(resolve('/'));
+
+			if (!initialized || !rebooted) {
+				return;
+			}
+
+			const basicSettings = await getLocalBasicSettings();
+			if (isAPIResponse(basicSettings)) {
+				console.error('Failed to fetch basic settings:', basicSettings);
+				return;
+			}
+
+			setEnabledServicesForHostname(
+				storage.localHostname || storage.hostname,
+				basicSettings.services
+			);
+			syncActiveEnabledServices(page.url.pathname);
+
+			let target = toLoginPath;
+
+			if (!target) {
+				target = page.url.pathname;
+			}
+
+			if (target === '/') {
+				target = resolve('/datacenter/summary');
+			}
+
+			await preloadData(target);
+			await useSafeGoto(target, { replaceState: true });
+		} finally {
+			loading.initialization = false;
+			await sleep(1500);
+			loading.throbber = false;
+		}
+	}
+
+	async function handleOIDCCallback(): Promise<boolean> {
+		const params = page.url.searchParams;
+		const code = params.get('code') ?? '';
+		const state = params.get('state') ?? '';
+		const refused = params.get('error');
+		const returnPath = takeOIDCReturnPath();
+		await useSafeGoto(resolve('/'), { replaceState: true });
+
+		if (refused || !code || !state) {
+			console.warn('OIDC sign-in refused:', refused, params.get('error_description'));
+			toast.error('The identity provider did not complete the sign-in', {
+				position: 'bottom-center'
+			});
+			loading.throbber = false;
+			return false;
+		}
+
+		const signedIn = await finishOIDCLogin(code, state);
+		if (signedIn) {
+			await afterLogin(returnPath);
+		} else {
+			loading.throbber = false;
+		}
+		return signedIn;
+	}
+
 	async function handleLogin(
 		username: string,
 		password: string,
@@ -169,53 +259,7 @@
 		try {
 			if (await login(username, password, type, remember)) {
 				loading.login = false;
-				loading.throbber = true;
-				loading.initialization = true;
-
-				try {
-					try {
-						[initialized, rebooted] = await isInitialized();
-					} catch (error) {
-						console.error('Initialization check error:', error);
-						initialized = false;
-						rebooted = false;
-					}
-
-					await useSafeGoto(resolve('/'));
-
-					if (!initialized || !rebooted) {
-						return;
-					}
-
-					const basicSettings = await getLocalBasicSettings();
-					if (isAPIResponse(basicSettings)) {
-						console.error('Failed to fetch basic settings:', basicSettings);
-						return;
-					}
-
-					setEnabledServicesForHostname(
-						storage.localHostname || storage.hostname,
-						basicSettings.services
-					);
-					syncActiveEnabledServices(page.url.pathname);
-
-					let target = toLoginPath;
-
-					if (!target) {
-						target = page.url.pathname;
-					}
-
-					if (target === '/') {
-						target = resolve('/datacenter/summary');
-					}
-
-					await preloadData(target);
-					await useSafeGoto(target, { replaceState: true });
-				} finally {
-					loading.initialization = false;
-					await sleep(1500);
-					loading.throbber = false;
-				}
+				await afterLogin(toLoginPath);
 				return;
 			} else {
 				isError = true;
@@ -243,51 +287,7 @@
 		try {
 			if (await loginWithPasskey(remember)) {
 				loading.passkey = false;
-				loading.throbber = true;
-				loading.initialization = true;
-
-				try {
-					try {
-						[initialized, rebooted] = await isInitialized();
-					} catch (error) {
-						console.error('Initialization check error:', error);
-						initialized = false;
-						rebooted = false;
-					}
-
-					await useSafeGoto(resolve('/'));
-
-					if (!initialized || !rebooted) {
-						return;
-					}
-
-					const basicSettings = await getLocalBasicSettings();
-					if (isAPIResponse(basicSettings)) {
-						console.error('Failed to fetch basic settings:', basicSettings);
-						return;
-					}
-
-					setEnabledServicesForHostname(
-						storage.localHostname || storage.hostname,
-						basicSettings.services
-					);
-					syncActiveEnabledServices(page.url.pathname);
-
-					let target = toLoginPath;
-					if (!target) {
-						target = page.url.pathname;
-					}
-					if (target === '/') {
-						target = resolve('/datacenter/summary');
-					}
-
-					await preloadData(target);
-					await useSafeGoto(target, { replaceState: true });
-				} finally {
-					loading.initialization = false;
-					await sleep(1500);
-					loading.throbber = false;
-				}
+				await afterLogin(toLoginPath);
 				return;
 			} else {
 				isError = true;
@@ -330,8 +330,10 @@
 			if (isDemoMode) return;
 			if (token) {
 				void startSSEEvents();
+				void loadPermissions();
 			} else {
 				stopSSEEvents();
+				clearPermissions();
 			}
 		}
 	);

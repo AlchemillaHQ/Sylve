@@ -17,7 +17,9 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/gin-gonic/gin"
@@ -190,7 +192,7 @@ func StorageDetach(libvirtService vmStorageService) gin.HandlerFunc {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /vm/{rid}/storage [post]
-func StorageAttach(libvirtService vmStorageService) gin.HandlerFunc {
+func StorageAttach(libvirtService vmStorageService, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid, err := utils.ParamUint(c, "rid")
 		if err != nil {
@@ -205,6 +207,9 @@ func StorageAttach(libvirtService vmStorageService) gin.HandlerFunc {
 		}
 		req.RID = rid
 
+		if !allowStorageAttach(c, authService, req) {
+			return
+		}
 		storage, err := libvirtService.StorageAttach(req, c.Request.Context())
 		if err != nil {
 			writeVMStorageError(c, "storage_attach_failed", err)
@@ -243,7 +248,7 @@ func StorageAttach(libvirtService vmStorageService) gin.HandlerFunc {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /vm/{rid}/storage/from-image [post]
-func CreateStorageFromImage(libvirtService vmStorageService) gin.HandlerFunc {
+func CreateStorageFromImage(libvirtService vmStorageService, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid, err := utils.ParamUint(c, "rid")
 		if err != nil {
@@ -258,6 +263,10 @@ func CreateStorageFromImage(libvirtService vmStorageService) gin.HandlerFunc {
 		}
 		req.RID = rid
 
+		if !middleware.Allowed(c, authService, auth.GuestPath("vm", rid), auth.GuestConfigDisk) ||
+			!middleware.Allowed(c, authService, auth.StoragePath(req.Pool), auth.DatastoreAllocateSpace) {
+			return
+		}
 		storage, err := libvirtService.CreateStorageFromImage(req, c.Request.Context())
 		if err != nil {
 			writeVMStorageError(c, "storage_create_from_image_failed", err)
@@ -300,7 +309,7 @@ func CreateStorageFromImage(libvirtService vmStorageService) gin.HandlerFunc {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /vm/{rid}/storage/{storageId} [patch]
-func StorageUpdate(libvirtService vmStorageService) gin.HandlerFunc {
+func StorageUpdate(libvirtService vmStorageService, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid, storageID, ok := bindVMStoragePath(c)
 		if !ok {
@@ -320,6 +329,9 @@ func StorageUpdate(libvirtService vmStorageService) gin.HandlerFunc {
 		req.RID = rid
 		req.ID = storageID
 
+		if !allowStorageUpdate(c, authService, req) {
+			return
+		}
 		storage, err := libvirtService.StorageUpdate(req, c.Request.Context())
 		if err != nil {
 			writeVMStorageError(c, "storage_update_failed", err)

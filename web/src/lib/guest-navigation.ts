@@ -21,7 +21,8 @@ const guestSections = [
 	'packages',
 	'snapshots',
 	'backups',
-	'options'
+	'options',
+	'permissions'
 ] as const;
 
 export type GuestSection = (typeof guestSections)[number];
@@ -32,7 +33,8 @@ const containerSections: GuestSection[] = [
 	'hardware',
 	'network',
 	'storage',
-	'options'
+	'options',
+	'permissions'
 ];
 
 export function getGuestSections(

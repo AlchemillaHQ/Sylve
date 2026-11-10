@@ -10,6 +10,7 @@
 
 import type { Row } from '$lib/types/components/tree-table';
 import { formatBytesBinary } from './bytes';
+import { escapeHTML } from './string';
 import { deepEqual } from 'fast-equals';
 import {
 	TabulatorFull,
@@ -57,6 +58,10 @@ export const renderWithIcon = (
 		</span>
 	`.trim();
 };
+
+export function renderBadge(label: string, colorClass: string): string {
+	return `<span class="inline-flex items-center rounded border px-1 font-mono text-xs leading-tight ${colorClass}">${escapeHTML(label)}</span>`;
+}
 
 export function sizeFormatter(cell: CellComponent) {
 	try {

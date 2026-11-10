@@ -14,12 +14,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/hashicorp/raft"
 )
 
 func allSnapshotModels() []any {
 	return []any{
+		&ACLGrant{},
+		&ACLRole{},
+		&ACLGroup{},
 		&GuestIdentityClaim{},
 		&ClusterNote{},
 		&ClusterOption{},
@@ -44,6 +48,14 @@ func allSnapshotModels() []any {
 		&ReplicationTransitionEvent{},
 		&ClusterSSHIdentity{},
 		&EncryptionKey{},
+		&SylveUser{},
+		&OIDCUser{},
+		&AuthRealm{},
+		&models.User{},
+		&models.Group{},
+		&models.Token{},
+		&models.WebAuthnCredential{},
+		&models.WebAuthnChallenge{},
 	}
 }
 
@@ -549,7 +561,7 @@ func TestFSMDispatcherAppliedIndexLifecycle(t *testing.T) {
 	if resp := fsm.Apply(&raft.Log{Type: raft.LogCommand, Index: 12, Data: checkpoint}); resp != nil {
 		t.Fatalf("checkpoint apply response = %v", resp)
 	}
-	if err := fsm.ClearReplicatedState(); err != nil {
+	if err := fsm.ClearReplicatedState(""); err != nil {
 		t.Fatalf("clear replicated state: %v", err)
 	}
 	if fsm.AppliedIndex() != 0 {

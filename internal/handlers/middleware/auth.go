@@ -129,11 +129,17 @@ func authenticatePeer(c *gin.Context, authService *authSvc.Service) (bool, bool)
 
 	c.Set("AuthScope", "cluster")
 	c.Set("ClusterCaller", caller)
-	c.Set("Username", user.Username)
+	// A realm user's name is only unique with the realm, as on the node they signed in at.
+	if user.AuthType == authSvc.AuthTypeOIDC {
+		c.Set("Username", user.Username+"@"+user.Realm)
+	} else {
+		c.Set("Username", user.Username)
+	}
 	c.Set("AuthType", user.AuthType)
 	c.Set("IssuerNodeID", nodeID)
 	if caller == authSvc.ClusterCallerUser {
 		c.Set("Owner", authSvc.ProxiedOwner(nodeID, user))
+		c.Set(principalKey, authSvc.ForwardedPrincipal(user))
 	}
 	return true, true
 }
@@ -209,12 +215,12 @@ func authenticateLocalRequest(c *gin.Context, authService *authSvc.Service) bool
 func EnsureAuthenticated(authService *authSvc.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if present, ok := authenticatePeer(c, authService); present {
-			if ok {
+			if ok && authorize(c, authService) {
 				c.Next()
 			}
 			return
 		}
-		if authenticateLocalRequest(c, authService) {
+		if authenticateLocalRequest(c, authService) && authorize(c, authService) {
 			c.Next()
 		}
 	}

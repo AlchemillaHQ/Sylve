@@ -17,7 +17,10 @@ import (
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/db/models"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
@@ -33,6 +36,8 @@ func performLifecycleRequest(t *testing.T, route, target string, handler gin.Han
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
+	// Node callers skip permission checks, so these tests need no auth service.
+	router.Use(func(c *gin.Context) { c.Set("ClusterCaller", auth.ClusterCallerNode) })
 	router.GET(route, handler)
 
 	recorder := httptest.NewRecorder()
@@ -55,16 +60,16 @@ func TestLifecycleHandlersRejectInvalidFilters(t *testing.T) {
 		name, route, target, message string
 		handler                      gin.HandlerFunc
 	}{
-		{"unsupported collection guest type", "/tasks/lifecycle/active", "/tasks/lifecycle/active?guestType=unknown", "invalid_guest_type", ActiveLifecycleTasks(nil)},
-		{"empty collection guest type", "/tasks/lifecycle/active", "/tasks/lifecycle/active?guestType=", "invalid_guest_type", ActiveLifecycleTasks(nil)},
-		{"zero collection guest ID", "/tasks/lifecycle/active", "/tasks/lifecycle/active?guestId=0", "invalid_guest_id", ActiveLifecycleTasks(nil)},
-		{"malformed collection guest ID", "/tasks/lifecycle/active", "/tasks/lifecycle/active?guestId=abc", "invalid_guest_id", ActiveLifecycleTasks(nil)},
-		{"zero recent limit", "/tasks/lifecycle/recent", "/tasks/lifecycle/recent?limit=0", "invalid_limit", RecentLifecycleTasks(nil)},
-		{"negative recent limit", "/tasks/lifecycle/recent", "/tasks/lifecycle/recent?limit=-1", "invalid_limit", RecentLifecycleTasks(nil)},
-		{"oversized recent limit", "/tasks/lifecycle/recent", "/tasks/lifecycle/recent?limit=201", "invalid_limit", RecentLifecycleTasks(nil)},
-		{"malformed recent limit", "/tasks/lifecycle/recent", "/tasks/lifecycle/recent?limit=many", "invalid_limit", RecentLifecycleTasks(nil)},
-		{"unsupported member guest type", "/tasks/lifecycle/active/:guestType/:guestId", "/tasks/lifecycle/active/unknown/1", "invalid_guest_type", ActiveLifecycleTaskForGuest(nil)},
-		{"zero member guest ID", "/tasks/lifecycle/active/:guestType/:guestId", "/tasks/lifecycle/active/vm/0", "invalid_guest_id", ActiveLifecycleTaskForGuest(nil)},
+		{"unsupported collection guest type", "/tasks/lifecycle/active", "/tasks/lifecycle/active?guestType=unknown", "invalid_guest_type", ActiveLifecycleTasks(nil, nil)},
+		{"empty collection guest type", "/tasks/lifecycle/active", "/tasks/lifecycle/active?guestType=", "invalid_guest_type", ActiveLifecycleTasks(nil, nil)},
+		{"zero collection guest ID", "/tasks/lifecycle/active", "/tasks/lifecycle/active?guestId=0", "invalid_guest_id", ActiveLifecycleTasks(nil, nil)},
+		{"malformed collection guest ID", "/tasks/lifecycle/active", "/tasks/lifecycle/active?guestId=abc", "invalid_guest_id", ActiveLifecycleTasks(nil, nil)},
+		{"zero recent limit", "/tasks/lifecycle/recent", "/tasks/lifecycle/recent?limit=0", "invalid_limit", RecentLifecycleTasks(nil, nil)},
+		{"negative recent limit", "/tasks/lifecycle/recent", "/tasks/lifecycle/recent?limit=-1", "invalid_limit", RecentLifecycleTasks(nil, nil)},
+		{"oversized recent limit", "/tasks/lifecycle/recent", "/tasks/lifecycle/recent?limit=201", "invalid_limit", RecentLifecycleTasks(nil, nil)},
+		{"malformed recent limit", "/tasks/lifecycle/recent", "/tasks/lifecycle/recent?limit=many", "invalid_limit", RecentLifecycleTasks(nil, nil)},
+		{"unsupported member guest type", "/tasks/lifecycle/active/:guestType/:guestId", "/tasks/lifecycle/active/unknown/1", "invalid_guest_type", ActiveLifecycleTaskForGuest(nil, nil)},
+		{"zero member guest ID", "/tasks/lifecycle/active/:guestType/:guestId", "/tasks/lifecycle/active/vm/0", "invalid_guest_id", ActiveLifecycleTaskForGuest(nil, nil)},
 	}
 
 	for _, test := range tests {
@@ -86,7 +91,7 @@ func TestActiveLifecycleTaskForGuestReturnsNullableSuccess(t *testing.T) {
 		t,
 		"/tasks/lifecycle/active/:guestType/:guestId",
 		"/tasks/lifecycle/active/vm/41",
-		ActiveLifecycleTaskForGuest(service),
+		ActiveLifecycleTaskForGuest(service, nil),
 	)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", recorder.Code, recorder.Body.String())
@@ -107,9 +112,9 @@ func TestLifecycleTaskFiltersIncludeContainers(t *testing.T) {
 		route, target string
 		handler       gin.HandlerFunc
 	}{
-		{"/tasks/lifecycle/active", "/tasks/lifecycle/active?guestType=container", ActiveLifecycleTasks(service)},
-		{"/tasks/lifecycle/recent", "/tasks/lifecycle/recent?guestType=container", RecentLifecycleTasks(service)},
-		{"/tasks/lifecycle/active/:guestType/:guestId", "/tasks/lifecycle/active/container/42", ActiveLifecycleTaskForGuest(service)},
+		{"/tasks/lifecycle/active", "/tasks/lifecycle/active?guestType=container", ActiveLifecycleTasks(service, nil)},
+		{"/tasks/lifecycle/recent", "/tasks/lifecycle/recent?guestType=container", RecentLifecycleTasks(service, nil)},
+		{"/tasks/lifecycle/active/:guestType/:guestId", "/tasks/lifecycle/active/container/42", ActiveLifecycleTaskForGuest(service, nil)},
 	} {
 		if w := performLifecycleRequest(t, tc.route, tc.target, tc.handler); w.Code != 200 {
 			t.Fatalf("container filter: %s", w.Body.String())
@@ -131,7 +136,7 @@ func TestLifecycleHandlerDoesNotExposeStorageErrors(t *testing.T) {
 		t,
 		"/tasks/lifecycle/active",
 		"/tasks/lifecycle/active?guestType=vm&guestId=41",
-		ActiveLifecycleTasks(service),
+		ActiveLifecycleTasks(service, nil),
 	)
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500; body=%s", recorder.Code, recorder.Body.String())
@@ -153,7 +158,7 @@ func TestLifecycleTaskObservationKeepsExactTerminalAttempt(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	recorder := performLifecycleRequest(t, "/tasks/lifecycle/:taskId", fmt.Sprintf("/tasks/lifecycle/%d", first.ID), LifecycleTask(service))
+	recorder := performLifecycleRequest(t, "/tasks/lifecycle/:taskId", fmt.Sprintf("/tasks/lifecycle/%d", first.ID), LifecycleTask(service, nil))
 	var response internal.APIResponse[*taskModels.GuestLifecycleTask]
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
@@ -165,9 +170,70 @@ func TestLifecycleTaskObservationKeepsExactTerminalAttempt(t *testing.T) {
 		target string
 		status int
 	}{{"0", 400}, {"invalid", 400}, {"9999", 404}} {
-		recorder := performLifecycleRequest(t, "/tasks/lifecycle/:taskId", "/tasks/lifecycle/"+tc.target, LifecycleTask(service))
+		recorder := performLifecycleRequest(t, "/tasks/lifecycle/:taskId", "/tasks/lifecycle/"+tc.target, LifecycleTask(service, nil))
 		if recorder.Code != tc.status {
 			t.Fatalf("%s: status=%d body=%s", tc.target, recorder.Code, recorder.Body.String())
+		}
+	}
+}
+
+func TestLifecycleTasksOnlyShowVisibleGuests(t *testing.T) {
+	service := newLifecycleHandlerTestService(t)
+	authDB := testutil.NewSQLiteTestDB(t, &models.User{}, &models.Group{}, &models.Migrations{},
+		&clusterModels.ACLGrant{}, &clusterModels.ACLRole{}, &clusterModels.ACLGroup{})
+	authService := &auth.Service{DB: authDB}
+	alice := models.User{Username: "alice", Source: "local"}
+	for _, record := range []any{&alice, &models.Migrations{Name: "rbac_admin_grants"},
+		&clusterModels.ACLGrant{Path: "/vm/100", SubjectType: clusterModels.ACLSubjectUser, Subject: "alice@sylve", Role: "GuestUser", Propagate: true},
+	} {
+		if err := authDB.Create(record).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	visible := taskModels.GuestLifecycleTask{GuestType: "vm", GuestID: 100, Action: "start", Status: "running"}
+	other := taskModels.GuestLifecycleTask{GuestType: "vm", GuestID: 101, Action: "start", Status: "running"}
+	template := taskModels.GuestLifecycleTask{GuestType: "vm-template", GuestID: 100, Action: "create", Status: "queued"}
+	for _, task := range []*taskModels.GuestLifecycleTask{&visible, &other, &template} {
+		if err := service.DB.Create(task).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	request := func(route, target string, handler gin.HandlerFunc) *httptest.ResponseRecorder {
+		router := gin.New()
+		router.GET(route, func(c *gin.Context) { c.Set("UserID", alice.ID) }, handler)
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))
+		return recorder
+	}
+
+	for route, handler := range map[string]gin.HandlerFunc{
+		"/tasks/lifecycle/active": ActiveLifecycleTasks(service, authService),
+		"/tasks/lifecycle/recent": RecentLifecycleTasks(service, authService),
+	} {
+		recorder := request(route, route, handler)
+		var response internal.APIResponse[[]taskModels.GuestLifecycleTask]
+		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+			t.Fatal(err)
+		}
+		if len(response.Data) != 1 || response.Data[0].ID != visible.ID {
+			t.Fatalf("%s: got %+v, want only task %d", route, response.Data, visible.ID)
+		}
+	}
+
+	for _, tc := range []struct {
+		route, target string
+		handler       gin.HandlerFunc
+		status        int
+	}{
+		{"/tasks/lifecycle/active/:guestType/:guestId", "/tasks/lifecycle/active/vm/100", ActiveLifecycleTaskForGuest(service, authService), http.StatusOK},
+		{"/tasks/lifecycle/active/:guestType/:guestId", "/tasks/lifecycle/active/vm/101", ActiveLifecycleTaskForGuest(service, authService), http.StatusForbidden},
+		{"/tasks/lifecycle/:taskId", fmt.Sprintf("/tasks/lifecycle/%d", visible.ID), LifecycleTask(service, authService), http.StatusOK},
+		{"/tasks/lifecycle/:taskId", fmt.Sprintf("/tasks/lifecycle/%d", other.ID), LifecycleTask(service, authService), http.StatusForbidden},
+		{"/tasks/lifecycle/:taskId", fmt.Sprintf("/tasks/lifecycle/%d", template.ID), LifecycleTask(service, authService), http.StatusForbidden},
+	} {
+		if recorder := request(tc.route, tc.target, tc.handler); recorder.Code != tc.status {
+			t.Fatalf("%s: status=%d, want %d; body=%s", tc.target, recorder.Code, tc.status, recorder.Body.String())
 		}
 	}
 }

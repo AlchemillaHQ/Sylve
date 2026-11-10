@@ -1,4 +1,4 @@
-import { getCPUInfoResult } from '$lib/api/info/cpu';
+import { getBasicInfoResult } from '$lib/api/info/basic';
 import { getVmByIdResult } from '$lib/api/vm/vm';
 import type { APIResponse } from '$lib/types/common';
 import type { Architecture } from '$lib/types/info/cpu';
@@ -13,7 +13,7 @@ export async function load({ params }) {
 		error(404, 'Invalid VM RID');
 	}
 
-	const [vmResult, cpuResult] = await Promise.all([
+	const [vmResult, basicResult] = await Promise.all([
 		cachedFetch(
 			`vm-${rid}`,
 			async () => getVmByIdResult(rid, { hostname: node }),
@@ -21,13 +21,7 @@ export async function load({ params }) {
 			false,
 			node
 		),
-		cachedFetch(
-			'system-cpu-info',
-			async () => getCPUInfoResult({ hostname: node }),
-			SEVEN_DAYS,
-			false,
-			node
-		)
+		getBasicInfoResult({ hostname: node })
 	]);
 
 	if (isAPIResponse(vmResult)) {
@@ -41,11 +35,11 @@ export async function load({ params }) {
 		node,
 		rid,
 		vm: vmResult,
-		architecture: (isAPIResponse(cpuResult)
+		architecture: (isAPIResponse(basicResult)
 			? vmResult.bootRom === 'uboot'
 				? 'arm64'
 				: 'amd64'
-			: cpuResult.architecture) as Architecture,
-		loadErrors: (isAPIResponse(cpuResult) ? [cpuResult] : []) as APIResponse[]
+			: basicResult.architecture) as Architecture,
+		loadErrors: (isAPIResponse(basicResult) ? [basicResult] : []) as APIResponse[]
 	};
 }

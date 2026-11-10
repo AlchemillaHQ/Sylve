@@ -18,7 +18,10 @@ import (
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/db/models"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 )
@@ -62,9 +65,50 @@ func bootstrapTestRouter(service jailBootstrapService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.GET("/jail/bootstraps", ListBootstraps(service))
-	router.POST("/jail/bootstraps", CreateBootstrap(service))
-	router.DELETE("/jail/bootstraps/:name", DeleteBootstrap(service))
+	router.POST("/jail/bootstraps", CreateBootstrap(service, nil))
+	router.DELETE("/jail/bootstraps/:name", DeleteBootstrap(service, nil))
 	return router
+}
+
+func TestBootstrapsNeedTemplateRightsOnTheirPool(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &models.User{}, &models.Migrations{},
+		&clusterModels.ACLGrant{}, &clusterModels.ACLRole{}, &clusterModels.ACLGroup{})
+	bob := models.User{Username: "bob", Source: "local"}
+	for _, record := range []any{&bob, &models.Migrations{Name: "rbac_admin_grants"}, &clusterModels.ACLGrant{
+		Path: "/storage/tank", SubjectType: clusterModels.ACLSubjectUser, Subject: "bob@sylve", Role: "DatastoreUser", Propagate: true,
+	}} {
+		if err := db.Create(record).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	stub := &bootstrapHandlerStub{
+		createResult: jailServiceInterfaces.BootstrapCreateResult{Outcome: "queued"},
+		deleteResult: jailServiceInterfaces.BootstrapDeleteResult{Outcome: "deleted"},
+	}
+	service := &auth.Service{DB: db}
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) { c.Set("UserID", bob.ID) })
+	router.POST("/jail/bootstraps", CreateBootstrap(stub, service))
+	router.DELETE("/jail/bootstraps/:name", DeleteBootstrap(stub, service))
+
+	for _, tt := range []struct {
+		method, target, body string
+		want                 int
+	}{
+		{http.MethodPost, "/jail/bootstraps", `{"pool":"tank","major":15,"type":"base"}`, http.StatusAccepted},
+		{http.MethodPost, "/jail/bootstraps", `{"pool":"zroot","major":15,"type":"base"}`, http.StatusForbidden},
+		{http.MethodDelete, "/jail/bootstraps/15-0-Base?pool=tank", "", http.StatusOK},
+		{http.MethodDelete, "/jail/bootstraps/15-0-Base?pool=zroot", "", http.StatusForbidden},
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(tt.method, tt.target, strings.NewReader(tt.body))
+		request.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(recorder, request)
+		if recorder.Code != tt.want {
+			t.Errorf("%s %s %s: status %d, want %d", tt.method, tt.target, tt.body, recorder.Code, tt.want)
+		}
+	}
 }
 
 func TestListBootstrapsRequiresPool(t *testing.T) {

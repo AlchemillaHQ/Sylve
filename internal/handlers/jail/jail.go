@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -21,8 +22,10 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -466,10 +469,9 @@ func classifyDeleteJailError(err error) (int, string) {
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /jail [get]
-func ListJails(jailService jailListService) gin.HandlerFunc {
+func ListJails(jailService jailListService, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		jails, err := jailService.GetJails()
-
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
@@ -477,6 +479,10 @@ func ListJails(jailService jailListService) gin.HandlerFunc {
 				Data:    nil,
 				Error:   err.Error(),
 			})
+			return
+		}
+		jails, ok := middleware.Visible(c, authService, jails, auth.GuestAudit, func(jail jailModels.Jail) string { return fmt.Sprintf("/jail/%d", jail.CTID) })
+		if !ok {
 			return
 		}
 
@@ -558,10 +564,9 @@ func GetJailByCTID(jailService jailDetailService) gin.HandlerFunc {
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /jail/simple [get]
-func ListJailsSimple(jailService jailSimpleListService) gin.HandlerFunc {
+func ListJailsSimple(jailService jailSimpleListService, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		jails, err := jailService.GetJailsSimple()
-
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
@@ -569,6 +574,10 @@ func ListJailsSimple(jailService jailSimpleListService) gin.HandlerFunc {
 				Data:    nil,
 				Error:   err.Error(),
 			})
+			return
+		}
+		jails, ok := middleware.Visible(c, authService, jails, auth.GuestAudit, func(jail jailServiceInterfaces.SimpleList) string { return fmt.Sprintf("/jail/%d", jail.CTID) })
+		if !ok {
 			return
 		}
 
@@ -660,11 +669,14 @@ func GetSimpleJailByCTID(jailService jailSimpleDetailService) gin.HandlerFunc {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /jail [post]
-func CreateJail(jailService jailCreateService, lifecycleService jailCreationLifecycleService) gin.HandlerFunc {
+func CreateJail(jailService jailCreateService, lifecycleService jailCreationLifecycleService, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req jailServiceInterfaces.CreateJailRequest
 
 		if !bindJailJSON(c, &req, "invalid_request_data") {
+			return
+		}
+		if !allowJailCreate(c, authService, req) {
 			return
 		}
 
@@ -741,10 +753,13 @@ func CreateJail(jailService jailCreateService, lifecycleService jailCreationLife
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /jail/validate [post]
-func ValidateCreateJail(service jailCreationValidator) gin.HandlerFunc {
+func ValidateCreateJail(service jailCreationValidator, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req jailServiceInterfaces.CreateJailRequest
 		if !bindJailJSON(c, &req, "invalid_request_data") {
+			return
+		}
+		if !allowJailCreate(c, authService, req) {
 			return
 		}
 		if err := service.ValidateCreate(c.Request.Context(), req); err != nil {

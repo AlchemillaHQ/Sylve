@@ -67,6 +67,12 @@ export function getClusterJoinErrorMessage(error: string, retrying: boolean): st
 	if (contains('joining_node_hostname_taken')) {
 		return 'A cluster node already has this hostname. Rename this node, then join again.';
 	}
+	if (contains('joining_node_users_taken')) {
+		const names = error.split('joining_node_users_taken:')[1]?.trim();
+		return names
+			? `The cluster already has local users named ${names}. Rename or delete them on this node, then join again.`
+			: 'The cluster already has local users with names this node uses. Rename or delete them here, then join again.';
+	}
 	if (contains('joining_node_id_already_in_use', 'joining_node_id_conflicts_with_leader')) {
 		return 'This node ID is already in use in the cluster. Check the existing member before retrying.';
 	}

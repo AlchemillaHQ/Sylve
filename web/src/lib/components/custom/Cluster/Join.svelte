@@ -1,14 +1,17 @@
 <script lang="ts">
+	import { listGrants, listRoles } from '$lib/api/auth/permissions';
 	import { joinCluster, refreshClusterAfterLifecycleChange } from '$lib/api/cluster/cluster';
+	import * as Alert from '$lib/components/ui/alert/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Input from '$lib/components/ui/input/input.svelte';
-	import { handleAPIError } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { getClusterJoinErrorMessage } from '$lib/utils/cluster';
 	import { isValidIPv4 } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
+	import { watch } from 'runed';
 	import SpanWithIcon from '../SpanWithIcon.svelte';
 
 	interface Props {
@@ -25,6 +28,27 @@
 
 	let properties = $state(options);
 	let loading = $state(false);
+
+	// Joining replaces this node's grants and custom roles with the cluster's.
+	let replaced = $state<string[]>([]);
+	async function loadReplaced() {
+		const [grants, roles] = await Promise.all([listGrants(), listRoles()]);
+		replaced = [
+			...(isAPIResponse(grants) ? [] : grants).map(
+				(grant) => `${grant.role} on ${grant.path} for ${grant.subject}`
+			),
+			...(isAPIResponse(roles) ? [] : roles)
+				.filter((role) => !role.builtin)
+				.map((role) => `Custom role ${role.name}`)
+		];
+	}
+
+	watch(
+		() => open,
+		(isOpen) => {
+			if (isOpen) void loadReplaced();
+		}
+	);
 
 	function getJoinErrorMessage(response: { message?: string; error?: string | string[] }): string {
 		const details = Array.isArray(response.error) ? response.error.join(' ') : response.error || '';
@@ -136,6 +160,25 @@
 				showPasswordOnFocus={true}
 			/>
 		</div>
+
+		{#if replaced.length > 0}
+			<Alert.Root variant="destructive">
+				<Alert.Title>
+					<div class="flex items-center gap-1">
+						<span class="icon-[mdi--alert-circle-outline] h-4 w-4 shrink-0"></span>
+						<span>The cluster's permissions replace this node's</span>
+					</div>
+				</Alert.Title>
+				<Alert.Description>
+					<p>These are removed; root and admin keep full access:</p>
+					<ul class="max-h-32 list-inside list-disc space-y-1 overflow-y-auto">
+						{#each replaced as line (line)}
+							<li>{line}</li>
+						{/each}
+					</ul>
+				</Alert.Description>
+			</Alert.Root>
+		{/if}
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">

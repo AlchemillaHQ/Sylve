@@ -1,5 +1,6 @@
 import { getFiles } from '$lib/api/system/file-explorer';
 import { cachedFetch, isAPIResponse } from '$lib/utils/http';
+import { error } from '@sveltejs/kit';
 
 export async function load({ params }) {
 	const result = await cachedFetch(
@@ -10,6 +11,7 @@ export async function load({ params }) {
 		params.node
 	);
 	if (isAPIResponse(result)) {
+		if (result.message === 'superuser_required') error(403, 'superuser_required');
 		return {
 			node: params.node,
 			files: [],

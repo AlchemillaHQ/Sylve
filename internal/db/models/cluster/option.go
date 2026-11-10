@@ -23,6 +23,7 @@ type ClusterOption struct {
 	ID                      uint      `gorm:"primaryKey;autoIncrement:false" json:"id"`
 	KeyboardLayout          string    `json:"keyboardLayout"`
 	JoinKeyHash             string    `gorm:"not null;default:''" json:"-"`
+	ClusterID               string    `gorm:"not null;default:''" json:"-"`
 	CreatedAt               time.Time `gorm:"autoCreateTime" json:"createdAt"`
 	UpdatedAt               time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
 }

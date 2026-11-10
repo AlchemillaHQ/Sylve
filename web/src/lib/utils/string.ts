@@ -215,9 +215,12 @@ export async function sha256(str: string, rounds: number = 1): Promise<string> {
 	return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+export function isReservedUsername(username: string): boolean {
+	return ['root', 'admin', 'superuser'].includes(username.toLowerCase());
+}
+
 export function isValidUsername(username: string): boolean {
-	const invalidUsernames = ['root', 'admin', 'superuser'];
-	if (invalidUsernames.includes(username.toLowerCase())) {
+	if (isReservedUsername(username)) {
 		return false;
 	}
 

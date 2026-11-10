@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
@@ -25,6 +26,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/system"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -64,6 +66,11 @@ type Service struct {
 	loginAttempts         map[string]*loginAttempt
 	clusterIdentityMu     sync.RWMutex
 	clusterIssuerVerifier func(string) (ClusterIssuerMembership, error)
+	rbacActive            atomic.Bool
+	proposeMu             sync.RWMutex
+	proposer              Proposer
+	oidcMu                sync.Mutex
+	oidcProviders         map[string]*oidcProvider
 }
 
 type ClusterIssuerMembership struct {
@@ -89,6 +96,7 @@ type ScopedJWT struct {
 const (
 	ClusterInternalAuthType = "internal-cluster"
 	AuthTypeSylvePasskey    = "sylve-passkey"
+	AuthTypeOIDC            = "oidc"
 	ClusterKeyHeader        = "X-Cluster-Key"
 	ClusterCallerNode       = "node"
 	ClusterCallerUser       = "user"
@@ -104,18 +112,23 @@ func ParseProxiedUser(value string) (ProxiedUser, error) {
 	}
 	switch user.AuthType {
 	case "sylve", "pam", AuthTypeSylvePasskey:
-		return user, nil
-	default:
-		return ProxiedUser{}, fmt.Errorf("invalid_proxy_user")
+		if user.Realm == "" || user.Realm == RealmPAM || user.Realm == RealmSylve {
+			return user, nil
+		}
+	case AuthTypeOIDC:
+		if validRealmName(user.Realm) {
+			return user, nil
+		}
 	}
+	return ProxiedUser{}, fmt.Errorf("invalid_proxy_user")
 }
 
 func (s *Service) ProxiedUser(userID uint, authType string) (ProxiedUser, error) {
 	var user models.User
-	if err := s.DB.Select("username", "admin", "locked", "disable_password").First(&user, userID).Error; err != nil {
+	if err := s.DB.First(&user, userID).Error; err != nil {
 		return ProxiedUser{}, fmt.Errorf("failed_to_load_proxy_user: %w", err)
 	}
-	if user.Locked || !user.Admin {
+	if _, err := s.loginRefusal(&user); user.Locked || err != nil {
 		return ProxiedUser{}, fmt.Errorf("proxy_user_not_authorized")
 	}
 	switch authType {
@@ -128,10 +141,15 @@ func (s *Service) ProxiedUser(userID uint, authType string) (ProxiedUser, error)
 			return ProxiedUser{}, fmt.Errorf("proxy_user_not_authorized")
 		}
 	case AuthTypeSylvePasskey:
+	case AuthTypeOIDC:
+		if !s.realmEnabled(PrincipalOf(&user).Realm) {
+			return ProxiedUser{}, fmt.Errorf("proxy_user_not_authorized")
+		}
 	default:
 		return ProxiedUser{}, fmt.Errorf("proxy_auth_type_not_supported")
 	}
-	return ProxiedUser{Username: user.Username, AuthType: authType}, nil
+	principal := PrincipalOf(&user)
+	return ProxiedUser{Username: principal.Username, AuthType: authType, Realm: principal.Realm}, nil
 }
 
 func LocalOwner(userID uint) string {
@@ -139,7 +157,11 @@ func LocalOwner(userID uint) string {
 }
 
 func ProxiedOwner(originNode string, user ProxiedUser) string {
-	return "node:" + originNode + ":" + user.AuthType + ":" + user.Username
+	name := user.Username
+	if user.AuthType == AuthTypeOIDC {
+		name += "@" + user.Realm
+	}
+	return "node:" + originNode + ":" + user.AuthType + ":" + name
 }
 
 func NewAuthService(db *gorm.DB) serviceInterfaces.AuthServiceInterface {
@@ -151,6 +173,7 @@ func newAuthService(db *gorm.DB, hasher passwordHasher) *Service {
 		DB:             db,
 		passwordHasher: hasher,
 		loginAttempts:  make(map[string]*loginAttempt),
+		oidcProviders:  make(map[string]*oidcProvider),
 	}
 }
 
@@ -206,8 +229,10 @@ func (s *Service) getTokenExpiry(remember bool) time.Time {
 }
 
 func (s *Service) issueJWT(user models.User, authType string, remember bool) (string, error) {
-	expiry := s.getTokenExpiry(remember)
+	return s.issueJWTUntil(user, authType, s.getTokenExpiry(remember))
+}
 
+func (s *Service) issueJWTUntil(user models.User, authType string, expiry time.Time) (string, error) {
 	data := JWT{
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiry),
@@ -252,6 +277,25 @@ func (s *Service) issueJWT(user models.User, authType string, remember bool) (st
 	return token, nil
 }
 
+var authenticateHostPassword = (*Service).AuthenticatePAM
+
+// A PAM user's password is the host's while PAM sign-in is on. While it's off, the Sylve-side hash
+// stands in, but not once the host has locked, expired or removed the account.
+func (s *Service) verifySylvePassword(user *models.User, password string) (bool, string, error) {
+	if user.Source != "pam" {
+		return s.passwordHasher.Verify(password, user.Password), "password_mismatch", nil
+	}
+	if config.IsPAMEnabled() {
+		valid, err := authenticateHostPassword(s, user.Username, password)
+		return valid, "credentials_rejected", err
+	}
+	if !s.passwordHasher.Verify(password, user.Password) {
+		return false, "password_mismatch", nil
+	}
+	usable, err := system.UnixUserUsable(user.Username)
+	return usable, "host_account_unusable", err
+}
+
 func (s *Service) CreateJWT(username, password, authType string, remember bool) (uint, string, error) {
 	username = strings.TrimSpace(username)
 
@@ -276,7 +320,7 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 	var user models.User
 
 	if authType == "sylve" {
-		if err := s.DB.Where("username = ?", username).First(&user).Error; err != nil {
+		if err := s.DB.Where("username = ? AND source <> ?", username, clusterModels.UserSourceOIDC).First(&user).Error; err != nil {
 			attempt := s.recordFailedLogin(username)
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				s.logLoginFailure(username, authType, "user_not_found", attempt, nil)
@@ -286,9 +330,9 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 			return 0, "", fmt.Errorf("invalid_credentials")
 		}
 
-		if !s.passwordHasher.Verify(password, user.Password) {
+		if valid, reason, err := s.verifySylvePassword(&user, password); err != nil || !valid {
 			attempt := s.recordFailedLogin(username)
-			s.logLoginFailure(username, authType, "password_mismatch", attempt, nil)
+			s.logLoginFailure(username, authType, reason, attempt, err)
 			return 0, "", fmt.Errorf("invalid_credentials")
 		}
 
@@ -302,10 +346,10 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 			return 0, "", fmt.Errorf("password_auth_disabled")
 		}
 
-		if !user.Admin {
+		if reason, err := s.loginRefusal(&user); err != nil {
 			attempt := s.recordFailedLogin(username)
-			s.logLoginFailure(username, authType, "admin_required", attempt, nil)
-			return 0, "", fmt.Errorf("only_admin_allowed")
+			s.logLoginFailure(username, authType, reason, attempt, nil)
+			return 0, "", err
 		}
 	} else if authType == "pam" {
 		if !config.IsPAMEnabled() {
@@ -327,7 +371,7 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 			return 0, "", fmt.Errorf("invalid_credentials")
 		}
 
-		if err := s.DB.Where("username = ?", username).First(&user).Error; err != nil {
+		if err := s.DB.Where("username = ? AND source <> ?", username, clusterModels.UserSourceOIDC).First(&user).Error; err != nil {
 			attempt := s.recordFailedLogin(username)
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				s.logLoginFailure(username, authType, "user_not_registered", attempt, nil)
@@ -342,10 +386,10 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 			return 0, "", fmt.Errorf("account_locked")
 		}
 
-		if !user.Admin {
+		if reason, err := s.loginRefusal(&user); err != nil {
 			attempt := s.recordFailedLogin(username)
-			s.logLoginFailure(username, authType, "admin_required", attempt, nil)
-			return 0, "", fmt.Errorf("only_admin_allowed")
+			s.logLoginFailure(username, authType, reason, attempt, nil)
+			return 0, "", err
 		}
 	} else {
 		s.logLoginFailure(username, authType, "invalid_auth_type", loginAttempt{}, nil)
@@ -504,7 +548,10 @@ func (s *Service) VerifyTokenInDb(token string) bool {
 	if user.Locked {
 		return false
 	}
-	if !user.Admin {
+	if tokenRecord.AuthType == AuthTypeOIDC && !s.realmEnabled(PrincipalOf(&user).Realm) {
+		return false
+	}
+	if _, err := s.loginRefusal(&user); err != nil {
 		return false
 	}
 

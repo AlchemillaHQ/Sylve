@@ -12,6 +12,8 @@ import (
 	"net/http"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/info"
 
 	_ "github.com/alchemillahq/sylve/internal/db/models/info"
@@ -27,9 +29,18 @@ import (
 // @Success 200 {object} internal.APIResponse[[]infoModels.AuditRecord] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /info/audit-records [get]
-func AuditRecords(infoService *info.Service) gin.HandlerFunc {
+func AuditRecords(infoService *info.Service, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		records, err := infoService.GetAuditRecords(64)
+		can, ok := middleware.Checker(c, authService)
+		if !ok {
+			return
+		}
+		var userID *uint
+		if !can(middleware.NodePath(), auth.SysSyslog) {
+			id := c.GetUint("UserID")
+			userID = &id
+		}
+		records, err := infoService.GetAuditRecords(64, userID)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{

@@ -36,12 +36,13 @@ var ErrClusterProtocolOutdated = errors.New("cluster_protocol_outdated")
 // proposable also lists the only commands a peer may hand the leader. A command
 // that speaks for a node returns that node, and only that node may propose it.
 var proposable = map[string]func(data json.RawMessage) string{
-	"note/create":           nil,
-	"note/update":           nil,
-	"note/delete":           nil,
-	"note/bulk_delete":      nil,
-	"encryption_key/upsert": nil,
-	"cluster_join_key/set":  nil,
+	"note/create":                 nil,
+	"note/update":                 nil,
+	"note/delete":                 nil,
+	"note/bulk_delete":            nil,
+	"encryption_key/upsert":       nil,
+	"cluster_join_key/set":        nil,
+	"cluster_identity/initialize": nil,
 	"cluster_ssh_identity/upsert": func(data json.RawMessage) string {
 		var identity clusterModels.ClusterSSHIdentity
 		if json.Unmarshal(data, &identity) != nil {
@@ -51,6 +52,24 @@ var proposable = map[string]func(data json.RawMessage) string{
 	},
 	"guest_identity/claim":   guestIdentityClaimOwner,
 	"guest_identity/release": guestIdentityClaimOwner,
+	"acl_grant/set":          nil,
+	"acl_grant/delete":       nil,
+	"acl_role/set":           nil,
+	"acl_role/delete":        nil,
+	"acl_group/set":          nil,
+	"acl_group/delete":       nil,
+	"acl_subject/delete":     nil,
+	"acl_subject/rename":     nil,
+	"sylve_user/create":      nil,
+	"sylve_user/update":      nil,
+	"sylve_user/rename":      nil,
+	"sylve_user/delete":      nil,
+	"auth_realm/set":         nil,
+	"auth_realm/delete":      nil,
+	"oidc_user/create":       nil,
+	"oidc_user/login":        nil,
+	"oidc_user/update":       nil,
+	"oidc_user/delete":       nil,
 }
 
 func guestIdentityClaimOwner(data json.RawMessage) string {
@@ -111,6 +130,10 @@ func (s *Service) Propose(ctx context.Context, commandType, action string, paylo
 		return err
 	}
 	if r := s.Raft(); r != nil && r.State() != raft.Leader {
+		// An older leader cannot classify commands it does not know.
+		if err := s.requireMemberProtocol(r, s.fsm.Protocol(cmd.Type, cmd.Action)); err != nil {
+			return err
+		}
 		index, err := s.forwardProposal(ctx, r, cmd)
 		if err != nil {
 			return err
@@ -182,6 +205,13 @@ func (s *Service) applyProposal(ctx context.Context, cmd clusterModels.Command) 
 	}
 	if err := s.requireMemberProtocol(r, s.fsm.Protocol(cmd.Type, cmd.Action)); err != nil {
 		return 0, err
+	}
+	// Record provenance before sharing users, even if the upgrade's info job hasn't run yet.
+	// Raft delivers the ID first, including to a member later removed while partitioned.
+	if cmd.Type == "sylve_user" {
+		if _, err := s.ensureClusterIdentity(ctx); err != nil {
+			return 0, err
+		}
 	}
 	if err := clusterModels.PrepareCommand(&cmd, time.Now()); err != nil {
 		return 0, err

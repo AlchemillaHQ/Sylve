@@ -16,7 +16,9 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/notifications"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -190,12 +192,31 @@ func DismissAll(service *notifications.Service) gin.HandlerFunc {
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /notifications/transports [get]
-func GetTransports(service *notifications.Service) gin.HandlerFunc {
+// Passwords and tokens never leave; a Discord webhook URL and an ntfy topic work as secrets too, so
+// only those who may change the transports see them.
+func GetTransports(service *notifications.Service, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if !middleware.Allowed(c, authService, "/", auth.SysAudit) {
+			return
+		}
+		can, ok := middleware.Checker(c, authService)
+		if !ok {
+			return
+		}
 		cfg, err := service.GetTransportConfig(c.Request.Context())
 		if err != nil {
 			writeNotificationServiceError(c, "get_transports", "failed_to_load_notification_config", err)
 			return
+		}
+		if !can("/", auth.SysModify) {
+			for _, transport := range cfg.Transports {
+				if transport.Discord != nil {
+					transport.Discord.WebhookURL = ""
+				}
+				if transport.Ntfy != nil {
+					transport.Ntfy.Topic = ""
+				}
+			}
 		}
 
 		c.JSON(http.StatusOK, internal.APIResponse[notifications.TransportConfigView]{

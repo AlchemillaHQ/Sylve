@@ -14,6 +14,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { reload } from '$lib/stores/api.svelte';
+	import { hostDetail } from '$lib/stores/permissions.svelte';
 	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { Jail, JailState, JailStatsBootstrap } from '$lib/types/jail/jail';
@@ -41,8 +42,8 @@
 		ctId: number;
 		jail: Jail;
 		stats: JailStatsBootstrap | null;
-		ramInfo: RAMInfo;
-		cpuInfo: CPUInfo;
+		ramInfo: RAMInfo | null;
+		cpuInfo: CPUInfo | null;
 	}
 
 	let visible = new IsDocumentVisible();
@@ -241,8 +242,12 @@
 	const cpuInfo = resource(
 		() => data.node,
 		async (hostname, _, { signal }) => {
-			const result = await getCPUInfo('current', { hostname, signal });
-			updateCache('system-cpu-info', result as CPUInfo, hostname);
+			const result = await hostDetail(
+				hostname,
+				() => getCPUInfo('current', { hostname, signal }),
+				null
+			);
+			if (result) updateCache('system-cpu-info', result as CPUInfo, hostname);
 			return result;
 		},
 		{
@@ -254,8 +259,12 @@
 	const ramInfo = resource(
 		() => data.node,
 		async (hostname, _, { signal }) => {
-			const result = await getRAMInfo('current', { hostname, signal });
-			updateCache('system-ram-info', result, hostname);
+			const result = await hostDetail(
+				hostname,
+				() => getRAMInfo('current', { hostname, signal }),
+				null
+			);
+			if (result) updateCache('system-ram-info', result, hostname);
 			return result;
 		},
 		{
@@ -263,12 +272,11 @@
 		}
 	);
 
-	let memoryUsage = $derived.by(() => {
-		if (jState.current?.state === 'ACTIVE') {
-			return (jState.current.memory / (jail.current.memory || ramInfo.current?.total || 1)) * 100;
-		}
-		return 0;
-	});
+	// Without resource limits these are host totals, which are 0 for users who can't read the host.
+	let cpuCores = $derived(jail.current.cores || cpuInfo.current?.logicalCores || 0);
+	let memoryLimit = $derived(jail.current.memory || ramInfo.current?.total || 0);
+	let memoryUsed = $derived(jState.current?.state === 'ACTIVE' ? jState.current.memory : 0);
+	let memoryUsage = $derived(memoryLimit > 0 ? (memoryUsed / memoryLimit) * 100 : 0);
 
 	useInterval(1000, {
 		callback: async () => {
@@ -323,8 +331,6 @@
 	let logsContainerElement = $state<HTMLDivElement | null>(null);
 	let followLogs = $state(true);
 	const LOG_AUTO_SCROLL_THRESHOLD = 24;
-	let logicalCores = $derived(cpuInfo.current?.logicalCores ?? 0);
-	let totalRAM = $derived(ramInfo.current?.total ?? 0);
 	let jailDesc = $state(jail.current.description || '');
 	let debouncedDesc = new Debounced(() => jailDesc, 500);
 	let isDescInitialized = false;
@@ -638,11 +644,8 @@
 							<span>CPU Usage</span>
 						</p>
 						<p class="ml-auto">
-							{#if jState.current?.state === 'ACTIVE'}
-								{`${jState.current.pcpu.toFixed(2)}% of ${jail.current.cores || logicalCores} Core(s)`}
-							{:else}
-								{`0% of ${jail.current.cores || logicalCores} Core(s)`}
-							{/if}
+							{`${(jState.current?.state === 'ACTIVE' ? jState.current.pcpu : 0).toFixed(2)}%`}
+							{#if cpuCores > 0}{` of ${cpuCores} Core(s)`}{/if}
 						</p>
 					</div>
 
@@ -660,19 +663,13 @@
 							<span>Memory Usage</span>
 						</p>
 						<p class="ml-auto">
-							{`${memoryUsage.toFixed(2)}% of ${formatBytesBinary(jail.current.memory || totalRAM)}`}
+							{memoryLimit > 0
+								? `${memoryUsage.toFixed(2)}% of ${formatBytesBinary(memoryLimit)}`
+								: `${formatBytesBinary(memoryUsed)} used`}
 						</p>
 					</div>
 
-					{#if jState.current?.state === 'ACTIVE'}
-						<Progress
-							value={(jState.current.memory / (jail.current.memory || totalRAM)) * 100}
-							max={100}
-							class="ml-auto h-2"
-						/>
-					{:else}
-						<Progress value={0} max={100} class="ml-auto h-2" />
-					{/if}
+					<Progress value={memoryUsage} max={100} class="ml-auto h-2" />
 				</div>
 			</Card.Content>
 		</Card.Root>

@@ -90,7 +90,7 @@ func TestNodeDownloadStripsOriginCredentialsAndActsForTheUser(t *testing.T) {
 	if forwardedHash != "" || forwardedAuth != "" {
 		t.Fatalf("origin query credentials leaked: hash=%q auth=%q", forwardedHash, forwardedAuth)
 	}
-	if want := (authService.ProxiedUser{Username: user.Username, AuthType: "sylve"}).Header(); forwardedClusterHeader != want {
+	if want := (authService.ProxiedUser{Username: user.Username, AuthType: "sylve", Realm: authService.RealmSylve}).Header(); forwardedClusterHeader != want {
 		t.Fatalf("forwarded proxy user %q, want the signed-in admin %q", forwardedClusterHeader, want)
 	}
 	for _, name := range []string{

@@ -43,7 +43,7 @@ func TestAsyncCreateJailReturnsAcceptedTaskWithoutSynchronousExecution(t *testin
 	router := gin.New()
 	var auditJob any
 	router.Use(func(c *gin.Context) { c.Set("Username", "tester"); c.Next(); auditJob, _ = c.Get("AuditAsyncJobID") })
-	router.POST("/jail", CreateJail(service, queue))
+	router.POST("/jail", CreateJail(service, queue, nil))
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest("POST", "/jail?async=true", strings.NewReader(`{"name":"imported-jail","ctId":904,"pool":"zroot","type":"freebsd","zfsSource":{"dataset":"zroot/foreign/root","guid":"123","mode":"rename"}}`))
 	request.Header.Set("Content-Type", "application/json")
@@ -88,7 +88,7 @@ func TestAsyncJailCreationAdmissionFailuresAreNotAccepted(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			service := &jailCoreHandlerStub{}
 			router := gin.New()
-			router.POST("/jail", CreateJail(service, tc.queue))
+			router.POST("/jail", CreateJail(service, tc.queue, nil))
 			recorder := httptest.NewRecorder()
 			req := httptest.NewRequest("POST", "/jail?"+tc.query, strings.NewReader(tc.payload))
 			req.Header.Set("Content-Type", "application/json")
@@ -141,8 +141,8 @@ func TestJailCreationRejectsSnapshotFieldsBeforeValidationOrQueueing(t *testing.
 			queue := &jailCreationQueueStub{}
 			validator := &jailZFSSourceHandlerStub{}
 			router := gin.New()
-			router.POST("/jail", CreateJail(service, queue))
-			router.POST("/jail/validate", ValidateCreateJail(validator))
+			router.POST("/jail", CreateJail(service, queue, nil))
+			router.POST("/jail/validate", ValidateCreateJail(validator, nil))
 			payload := `{"name":"copied-jail","ctId":904,"pool":"tank","type":"freebsd","zfsSource":{"dataset":"tank/foreign/root","guid":"123",` + field + `}}`
 			request := httptest.NewRequest("POST", path, strings.NewReader(payload))
 			request.Header.Set("Content-Type", "application/json")

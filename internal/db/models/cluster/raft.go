@@ -94,7 +94,7 @@ var errUnknownCommand = errors.New("raft_command_unknown")
 // Adding a command bumps ClusterProtocol and registers it with OnSince at the
 // new value (a changed command gets a new action), so a leader proposes it
 // only once every member runs a build that knows it.
-const ClusterProtocol = 1
+const ClusterProtocol = 2
 
 type FSMDispatcher struct {
 	DB           *gorm.DB
@@ -319,13 +319,19 @@ func (f *FSMDispatcher) resetAppliedIndexLocked() {
 	f.appliedIndex.Store(0)
 }
 
-func (f *FSMDispatcher) ClearReplicatedState() error {
+func (f *FSMDispatcher) ClearReplicatedState(joiningClusterID string) error {
 	if f == nil || f.DB == nil {
 		return fmt.Errorf("raft_fsm_unavailable")
 	}
 	f.sm.Lock()
 	defer f.sm.Unlock()
 	if err := f.DB.Transaction(func(tx *gorm.DB) error {
+		if err := prepareSylveUsersForJoinTx(tx, joiningClusterID); err != nil {
+			return err
+		}
+		if err := prepareOIDCUsersForJoinTx(tx); err != nil {
+			return err
+		}
 		if err := ClearReplicatedStateTx(tx); err != nil {
 			return err
 		}
@@ -445,6 +451,10 @@ type (
 
 func RegisterDefaultHandlers(f *FSMDispatcher) {
 	RegisterGuestIdentityHandlers(f)
+	RegisterACLHandlers(f)
+	RegisterSylveUserHandlers(f)
+	RegisterOIDCHandlers(f)
+	OnSince(f, aclProtocol, "cluster_identity", "initialize", initializeClusterIdentityTx)
 
 	On(f, "cluster_state", "checkpoint", func(*gorm.DB, *struct{}) error { return nil })
 

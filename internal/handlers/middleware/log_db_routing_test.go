@@ -19,6 +19,7 @@ import (
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v4"
 )
 
 func TestAsyncWorkerCompletionBeforeRequestLoggerReturnCannotBeOverwritten(t *testing.T) {
@@ -79,6 +80,39 @@ func TestAsyncWorkerCompletionBeforeRequestLoggerReturnCannotBeOverwritten(t *te
 	}
 	if !strings.Contains(record.Action, `"eventId":55`) || strings.Contains(record.Action, "restore_job_started") {
 		t.Fatalf("worker outcome was not authoritative: %s", record.Action)
+	}
+}
+
+func TestRequestLoggerAuditsOIDCSignIns(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	auditDB := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"custom_claims": map[string]any{"userId": 12, "username": "alice@company", "authType": "oidc"},
+	}).SignedString([]byte("test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := gin.New()
+	router.Use(RequestLoggerMiddleware(auditDB, nil))
+	router.POST("/api/auth/oidc/:realm/start", func(c *gin.Context) { c.Status(http.StatusOK) })
+	router.POST("/api/auth/oidc/callback", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"data": gin.H{"token": token}})
+	})
+	for _, path := range []string{"/api/auth/oidc/company/start", "/api/auth/oidc/callback"} {
+		router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(`{"code":"c"}`)))
+	}
+
+	var records []infoModels.AuditRecord
+	if err := auditDB.Order("id").Find(&records).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 || records[0].User != "anonymous" {
+		t.Fatalf("records = %+v, want the start audited as anonymous", records)
+	}
+	signIn := records[1]
+	if signIn.User != "alice@company" || signIn.AuthType != "oidc" || signIn.UserID == nil || *signIn.UserID != 12 ||
+		strings.Contains(signIn.Action, token) || strings.Contains(signIn.Action, `"code"`) {
+		t.Fatalf("sign-in record = %+v", signIn)
 	}
 }
 

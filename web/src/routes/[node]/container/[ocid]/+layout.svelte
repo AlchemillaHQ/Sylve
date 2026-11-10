@@ -30,6 +30,7 @@
 	import { getAPIErrorText, isAPIResponse, removeCache, updateCache } from '$lib/utils/http';
 	import { toastContainerError } from '$lib/utils/container/errors';
 	import { specProblem } from '$lib/utils/container/validate';
+	import { allowed } from '$lib/stores/permissions.svelte';
 	import { resource, useInterval, watch } from 'runed';
 	import { setContext, type Snippet } from 'svelte';
 	import { toast } from 'svelte-sonner';
@@ -59,6 +60,8 @@
 	);
 	let runtimeState = $derived(current.runtime?.state ?? 'missing');
 	let running = $derived(runtimeState === 'running');
+	let canPower = $derived(allowed('Guest.PowerMgmt', `/container/${data.ocId}`));
+	let canAllocate = $derived(allowed('Guest.Allocate', `/container/${data.ocId}`));
 
 	let webUrl = $derived.by(() => {
 		if (!running || !current.webPort) return '';
@@ -228,7 +231,7 @@
 				{#each [['restart', 'icon-[mdi--restart]', 'Restart'], ['stop', 'icon-[mdi--stop]', 'Stop'], ['kill', 'icon-[mdi--skull-outline]', 'Kill']] as [action, icon, title] (action)}
 					<Button
 						onclick={() => act(action as ContainerAction)}
-						disabled={inFlight}
+						disabled={inFlight || !canPower}
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-yellow-600 dark:text-white"
 					>
@@ -238,7 +241,7 @@
 			{:else}
 				<Button
 					onclick={() => act('start')}
-					disabled={inFlight || current.creationPending}
+					disabled={inFlight || current.creationPending || !canPower}
 					size="sm"
 					class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-green-600 dark:text-white"
 				>
@@ -246,7 +249,7 @@
 				</Button>
 				<Button
 					onclick={() => (deleteDialog = { open: true, volumes: false, stack: false })}
-					disabled={inFlight || current.creationPending}
+					disabled={inFlight || current.creationPending || !canAllocate}
 					size="sm"
 					class="bg-muted-foreground/40 dark:bg-muted ml-2 h-6 text-black hover:bg-red-600 dark:text-white"
 				>

@@ -17,4 +17,8 @@ type BasicInfo struct {
 	SylveVersion  string `json:"sylveVersion"`
 	SylveCommit   string `json:"sylveCommit"`
 	DevFSDisabled bool   `json:"devFSDisabled"`
+
+	// For VM creation by users who can't read the host's CPU details.
+	Architecture Architecture `json:"architecture"`
+	MaxVCPUs     int64        `json:"maxVCPUs"`
 }

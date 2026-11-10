@@ -247,7 +247,6 @@ func TestFileExplorerDownloadRequiresAuthenticatedCurrentAdmin(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(middleware.EnsureAuthenticated(auth))
-	router.Use(middleware.RequireLocalAdmin(auth))
 	router.GET("/api/system/file-explorer/download", DownloadFile(&system.Service{}))
 
 	unauthenticated := testutil.PerformRequest(t, router, http.MethodGet, endpoint, nil, nil)

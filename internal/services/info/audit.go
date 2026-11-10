@@ -16,9 +16,13 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 )
 
-func (s *Service) GetAuditRecords(limit int) ([]infoModels.AuditRecord, error) {
+func (s *Service) GetAuditRecords(limit int, userID *uint) ([]infoModels.AuditRecord, error) {
+	query := s.auditDB().Order("created_at desc").Limit(limit)
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
+	}
 	var records []infoModels.AuditRecord
-	err := s.auditDB().Order("created_at desc").Limit(limit).Find(&records).Error
+	err := query.Find(&records).Error
 
 	return records, err
 }

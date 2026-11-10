@@ -16,7 +16,9 @@ import (
 	"github.com/alchemillahq/sylve/internal/db"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	jailHandlers "github.com/alchemillahq/sylve/internal/handlers/jail"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	containerServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/container"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/container"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 
@@ -106,11 +108,21 @@ func queueTask(c *gin.Context, lifecycleService lifecycleRequester, ocid uint, a
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[[]containerServiceInterfaces.ListItem] "Success"
 // @Router /container [get]
-func ListContainers(service containerServiceInterfaces.ContainerServiceInterface) gin.HandlerFunc {
+func visibleContainers(c *gin.Context, service containerServiceInterfaces.ContainerServiceInterface, authService *auth.Service) ([]containerServiceInterfaces.ListItem, bool) {
+	items, err := service.List(c.Request.Context())
+	if err != nil {
+		failService(c, "failed_to_list_containers", err)
+		return nil, false
+	}
+	return middleware.Visible(c, authService, items, auth.GuestAudit, func(item containerServiceInterfaces.ListItem) string {
+		return fmt.Sprintf("/container/%d", item.OCID)
+	})
+}
+
+func ListContainers(service containerServiceInterfaces.ContainerServiceInterface, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		items, err := service.List(c.Request.Context())
-		if err != nil {
-			failService(c, "failed_to_list_containers", err)
+		items, ok := visibleContainers(c, service, authService)
+		if !ok {
 			return
 		}
 		respond(c, http.StatusOK, "containers_listed", items)
@@ -124,11 +136,10 @@ func ListContainers(service containerServiceInterfaces.ContainerServiceInterface
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[[]containerServiceInterfaces.SimpleList] "Success"
 // @Router /container/simple [get]
-func ListContainersSimple(service containerServiceInterfaces.ContainerServiceInterface) gin.HandlerFunc {
+func ListContainersSimple(service containerServiceInterfaces.ContainerServiceInterface, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		items, err := service.List(c.Request.Context())
-		if err != nil {
-			failService(c, "failed_to_list_containers", err)
+		items, ok := visibleContainers(c, service, authService)
+		if !ok {
 			return
 		}
 		simple := make([]containerServiceInterfaces.SimpleList, len(items))
@@ -195,11 +206,14 @@ func GetContainerImage(service containerServiceInterfaces.ContainerServiceInterf
 // @Param request body containerServiceInterfaces.CreateRequest true "Container"
 // @Success 202 {object} internal.APIResponse[TaskResponse] "Accepted"
 // @Router /container [post]
-func CreateContainer(lifecycleService lifecycleRequester) gin.HandlerFunc {
+func CreateContainer(lifecycleService lifecycleRequester, service containerServiceInterfaces.ContainerServiceInterface, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req containerServiceInterfaces.CreateRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			fail(c, http.StatusBadRequest, "invalid_request_data", err)
+			return
+		}
+		if !allowContainerCreate(c, authService, service, req) {
 			return
 		}
 		queueTask(c, lifecycleService, req.OCID, "create", req)
@@ -216,7 +230,7 @@ func CreateContainer(lifecycleService lifecycleRequester) gin.HandlerFunc {
 // @Param request body containerServiceInterfaces.Spec true "Spec"
 // @Success 202 {object} internal.APIResponse[TaskResponse] "Accepted"
 // @Router /container/{ocid} [put]
-func UpdateContainer(lifecycleService lifecycleRequester) gin.HandlerFunc {
+func UpdateContainer(lifecycleService lifecycleRequester, service containerServiceInterfaces.ContainerServiceInterface, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ocid, ok := parseOCID(c)
 		if !ok {
@@ -225,6 +239,14 @@ func UpdateContainer(lifecycleService lifecycleRequester) gin.HandlerFunc {
 		var spec containerServiceInterfaces.Spec
 		if err := c.ShouldBindJSON(&spec); err != nil {
 			fail(c, http.StatusBadRequest, "invalid_request_data", err)
+			return
+		}
+		current, err := service.Get(c.Request.Context(), ocid)
+		if err != nil {
+			failService(c, "failed_to_get_container", err)
+			return
+		}
+		if !allowContainerUpdate(c, authService, service, ocid, containerServiceInterfaces.SpecOf(current.Container), spec) {
 			return
 		}
 		queueTask(c, lifecycleService, ocid, "update", spec)
@@ -289,7 +311,7 @@ func ContainerAction(lifecycleService lifecycleRequester) gin.HandlerFunc {
 // @Param request body containerServiceInterfaces.OptionsRequest true "Options"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Router /container/{ocid}/options [patch]
-func UpdateContainerOptions(service containerServiceInterfaces.ContainerServiceInterface) gin.HandlerFunc {
+func UpdateContainerOptions(service containerServiceInterfaces.ContainerServiceInterface, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ocid, ok := parseOCID(c)
 		if !ok {
@@ -298,6 +320,9 @@ func UpdateContainerOptions(service containerServiceInterfaces.ContainerServiceI
 		var req containerServiceInterfaces.OptionsRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			fail(c, http.StatusBadRequest, "invalid_request_data", err)
+			return
+		}
+		if !allowOptionsUpdate(c, authService, ocid, req) {
 			return
 		}
 		if err := service.UpdateOptions(c.Request.Context(), ocid, req); err != nil {
@@ -335,11 +360,14 @@ func CheckContainerUpdates(service containerServiceInterfaces.ContainerServiceIn
 // @Param request body containerServiceInterfaces.StackTitleRequest true "Title"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Router /container/stack/{stack} [patch]
-func RenameContainerStack(service containerServiceInterfaces.ContainerServiceInterface) gin.HandlerFunc {
+func RenameContainerStack(service containerServiceInterfaces.ContainerServiceInterface, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req containerServiceInterfaces.StackTitleRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			fail(c, http.StatusBadRequest, "invalid_request_data", err)
+			return
+		}
+		if !allowStackRename(c, authService, service, c.Param("stack")) {
 			return
 		}
 		if err := service.RenameStack(c.Request.Context(), c.Param("stack"), req.Title); err != nil {

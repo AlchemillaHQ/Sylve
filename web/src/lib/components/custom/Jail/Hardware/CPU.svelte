@@ -12,7 +12,7 @@
 	interface Props {
 		open: boolean;
 		jail: Jail;
-		cpu: CPUInfo;
+		cpu: CPUInfo | null;
 		node: string;
 		onSaved: () => void | Promise<void>;
 	}
@@ -29,7 +29,7 @@
 			error = 'CPU cores must be a whole number';
 		} else if (cores < 1) {
 			error = 'CPU cores must be at least 1';
-		} else if (cores > cpu.logicalCores) {
+		} else if (cpu && cores > cpu.logicalCores) {
 			error = `CPU cores larger than logical cores (${cpu.logicalCores})`;
 		}
 

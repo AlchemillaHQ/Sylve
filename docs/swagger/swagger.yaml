@@ -23,6 +23,45 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_cluster_ACLGrant:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ACLGrant'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_cluster_ACLGroup:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ACLGroup'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_cluster_AuthRealm:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.AuthRealm'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_cluster_BackupEvent:
     properties:
       data:
@@ -782,6 +821,19 @@ definitions:
       data:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_auth.PasskeyCredentialInfo'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_auth_RoleInfo:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_auth.RoleInfo'
         type: array
       error:
         type: string
@@ -1808,6 +1860,17 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_auth_RealmDiscovery:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_auth.RealmDiscovery'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_certificates_CertificateView:
     properties:
       data:
@@ -2094,10 +2157,32 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_auth_OIDCStartResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers_auth.OIDCStartResponse'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_auth_PasskeyChallengeResponse:
     properties:
       data:
         $ref: '#/definitions/internal_handlers_auth.PasskeyChallengeResponse'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_auth_PermissionsResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers_auth.PermissionsResponse'
       error:
         type: string
       message:
@@ -2698,6 +2783,120 @@ definitions:
       oldDriver:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal_db_models_cluster.ACLGrant:
+    properties:
+      id:
+        type: integer
+      path:
+        type: string
+      propagate:
+        type: boolean
+      role:
+        type: string
+      subject:
+        type: string
+      subjectType:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_cluster.ACLGroup:
+    properties:
+      id:
+        type: integer
+      members:
+        items:
+          type: string
+        type: array
+      name:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_cluster.AuthRealm:
+    properties:
+      acrValues:
+        type: string
+      autoCreate:
+        type: boolean
+      caCert:
+        type: string
+      clientId:
+        type: string
+      default:
+        type: boolean
+      enabled:
+        type: boolean
+      groupMappings:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.OIDCGroupMapping'
+        type: array
+      groupsClaim:
+        type: string
+      hasSecret:
+        type: boolean
+      hostedDomains:
+        type: string
+      id:
+        type: integer
+      issuer:
+        type: string
+      label:
+        type: string
+      name:
+        type: string
+      prompt:
+        type: string
+      queryUserInfo:
+        type: boolean
+      scopes:
+        type: string
+      sessionHours:
+        type: integer
+      usernameClaim:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_cluster.AuthRealmSet:
+    properties:
+      acrValues:
+        type: string
+      autoCreate:
+        type: boolean
+      caCert:
+        type: string
+      clientId:
+        type: string
+      clientSecret:
+        type: string
+      default:
+        type: boolean
+      enabled:
+        type: boolean
+      groupMappings:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.OIDCGroupMapping'
+        type: array
+      groupsClaim:
+        type: string
+      hasSecret:
+        type: boolean
+      hostedDomains:
+        type: string
+      id:
+        type: integer
+      issuer:
+        type: string
+      label:
+        type: string
+      name:
+        type: string
+      prompt:
+        type: string
+      queryUserInfo:
+        type: boolean
+      scopes:
+        type: string
+      sessionHours:
+        type: integer
+      usernameClaim:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal_db_models_cluster.BackupEvent:
     properties:
       completedAt:
@@ -2922,6 +3121,13 @@ definitions:
       title:
         type: string
       updatedAt:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_cluster.OIDCGroupMapping:
+    properties:
+      claim:
+        type: string
+      group:
         type: string
     type: object
   github_com_alchemillahq_sylve_internal_db_models_cluster.ReplicationEvent:
@@ -6319,6 +6525,10 @@ definitions:
     - ArchLOONG64
   github_com_alchemillahq_sylve_internal_interfaces_services_info.BasicInfo:
     properties:
+      architecture:
+        allOf:
+        - $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_info.Architecture'
+        description: For VM creation by users who can't read the host's CPU details.
       bootMode:
         type: string
       devFSDisabled:
@@ -6327,6 +6537,8 @@ definitions:
         type: string
       loadAverage:
         type: string
+      maxVCPUs:
+        type: integer
       os:
         type: string
       sylveCommit:
@@ -8813,6 +9025,15 @@ definitions:
       username:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal_services_auth.LoginRealm:
+    properties:
+      default:
+        type: boolean
+      label:
+        type: string
+      name:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal_services_auth.PasskeyCredentialInfo:
     properties:
       createdAt:
@@ -8827,6 +9048,49 @@ definitions:
         type: string
       userId:
         type: integer
+    type: object
+  github_com_alchemillahq_sylve_internal_services_auth.PathPrivileges:
+    properties:
+      below:
+        items:
+          type: string
+        type: array
+      privileges:
+        items:
+          type: string
+        type: array
+    type: object
+  github_com_alchemillahq_sylve_internal_services_auth.RealmDiscovery:
+    properties:
+      acrValuesSupported:
+        items:
+          type: string
+        type: array
+      authorizationEndpoint:
+        type: string
+      claimsSupported:
+        items:
+          type: string
+        type: array
+      scopesSupported:
+        items:
+          type: string
+        type: array
+      tokenEndpoint:
+        type: string
+      userInfoEndpoint:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_auth.RoleInfo:
+    properties:
+      builtin:
+        type: boolean
+      name:
+        type: string
+      privileges:
+        items:
+          type: string
+        type: array
     type: object
   github_com_alchemillahq_sylve_internal_services_certificates.CertificateInput:
     properties:
@@ -8911,6 +9175,8 @@ definitions:
         type: integer
       awaitingPromotion:
         type: boolean
+      clusterId:
+        type: string
       lastError:
         type: string
       leaderAddress:
@@ -10568,10 +10834,23 @@ definitions:
         minLength: 1
         type: string
     required:
-    - admin
     - homeDirPerms
     - password
     - uid
+    - username
+    type: object
+  internal_handlers_auth.CreateRealmUserRequest:
+    properties:
+      email:
+        type: string
+      fullName:
+        type: string
+      notes:
+        type: string
+      username:
+        maxLength: 64
+        type: string
+    required:
     - username
     type: object
   internal_handlers_auth.CreateUserRequest:
@@ -10616,8 +10895,17 @@ definitions:
         minLength: 1
         type: string
     required:
-    - admin
     - username
+    type: object
+  internal_handlers_auth.DiscoverRealmRequest:
+    properties:
+      caCert:
+        type: string
+      issuer:
+        maxLength: 2048
+        type: string
+    required:
+    - issuer
     type: object
   internal_handlers_auth.EditUserRequest:
     properties:
@@ -10664,8 +10952,6 @@ definitions:
         type: integer
       username:
         type: string
-    required:
-    - admin
     type: object
   internal_handlers_auth.FinishPasskeyLoginRequest:
     properties:
@@ -10717,13 +11003,16 @@ definitions:
         minLength: 1
         type: string
     required:
-    - admin
     - username
     type: object
   internal_handlers_auth.LoginConfig:
     properties:
       pamEnabled:
         type: boolean
+      realms:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_auth.LoginRealm'
+        type: array
     type: object
   internal_handlers_auth.LoginRequest:
     properties:
@@ -10752,11 +11041,51 @@ definitions:
       nextUID:
         type: integer
     type: object
+  internal_handlers_auth.OIDCCallbackRequest:
+    properties:
+      code:
+        maxLength: 4096
+        type: string
+      state:
+        maxLength: 128
+        type: string
+    required:
+    - code
+    - state
+    type: object
+  internal_handlers_auth.OIDCStartRequest:
+    properties:
+      redirectUri:
+        maxLength: 2048
+        type: string
+    required:
+    - redirectUri
+    type: object
+  internal_handlers_auth.OIDCStartResponse:
+    properties:
+      url:
+        type: string
+    type: object
   internal_handlers_auth.PasskeyChallengeResponse:
     properties:
       publicKey: {}
       requestId:
         type: string
+    type: object
+  internal_handlers_auth.PermissionsResponse:
+    properties:
+      nodes:
+        additionalProperties:
+          type: string
+        description: Nodes maps hostnames, which the UI shows, to the IDs that /nodes/<id>
+          grants use.
+        type: object
+      paths:
+        additionalProperties:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_auth.PathPrivileges'
+        type: object
+      superuser:
+        type: boolean
     type: object
   internal_handlers_auth.PublicGroup:
     properties:
@@ -10820,12 +11149,16 @@ definitions:
         type: string
       locked:
         type: boolean
+      nameTaken:
+        type: boolean
       notes:
         type: string
       passkeyEligible:
         type: boolean
       primaryGroupId:
         type: integer
+      shared:
+        type: boolean
       shell:
         type: string
       source:
@@ -10876,6 +11209,22 @@ definitions:
       confirmGuestActions:
         type: boolean
     type: object
+  internal_handlers_auth.setACLGroupRequest:
+    properties:
+      members:
+        items:
+          type: string
+        type: array
+    type: object
+  internal_handlers_auth.setRoleRequest:
+    properties:
+      privileges:
+        items:
+          type: string
+        type: array
+    required:
+    - privileges
+    type: object
   internal_handlers_basic.InitializeHostState:
     properties:
       dhcpConfigCustom:
@@ -10889,6 +11238,10 @@ definitions:
     properties:
       inventory:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.GuestIdentityInventoryReport'
+      localUsers:
+        items:
+          type: string
+        type: array
       nodeHostname:
         description: NodeHostname names the node in requests, so no two members share
           one.
@@ -10903,6 +11256,12 @@ definitions:
         description: SSHPublicKey is the joiner's cluster SSH key, recorded with its
           pin.
         type: string
+      userClusters:
+        additionalProperties:
+          type: string
+        description: UserClusters identifies retained copies, including users since
+          renamed or deleted there.
+        type: object
     required:
     - nodeHostname
     - nodeId
@@ -12339,6 +12698,193 @@ info:
   title: Sylve API
   version: 0.3.1
 paths:
+  /auth/acl-groups:
+    get:
+      description: Cluster-wide groups for grants, with their user@realm members;
+        separate from Unix groups
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Groups
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_cluster_ACLGroup'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List permission groups
+      tags:
+      - Permissions
+  /auth/acl-groups/{name}:
+    delete:
+      description: Delete a permission group and every grant to it
+      parameters:
+      - description: Group name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Group Deleted
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete permission group
+      tags:
+      - Permissions
+    put:
+      consumes:
+      - application/json
+      description: Create a permission group or replace its members (user@realm)
+      parameters:
+      - description: Group name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Members
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_auth.setACLGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Group Set
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Set permission group
+      tags:
+      - Permissions
+  /auth/grants:
+    delete:
+      consumes:
+      - application/json
+      description: Remove a role from a user or group on a path
+      parameters:
+      - description: Grant
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ACLGrant'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Grant Deleted
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete grant
+      tags:
+      - Permissions
+    get:
+      description: 'Every grant in the cluster: who holds which role on which path'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Grants
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_cluster_ACLGrant'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List grants
+      tags:
+      - Permissions
+    post:
+      consumes:
+      - application/json
+      description: Give a user ("name@pam" or "name@sylve") or a group a role on a
+        path, or change whether it propagates
+      parameters:
+      - description: Grant
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ACLGrant'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Grant Set
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Set grant
+      tags:
+      - Permissions
   /auth/groups:
     get:
       description: List registered groups and their public user records, including
@@ -12627,6 +13173,85 @@ paths:
       summary: Logout
       tags:
       - Authentication
+  /auth/oidc/{realm}/start:
+    post:
+      consumes:
+      - application/json
+      description: Returns the provider URL to send the browser to, and binds the
+        attempt to this browser with a cookie
+      parameters:
+      - description: Realm name
+        in: path
+        name: realm
+        required: true
+        type: string
+      - description: This node's callback URL
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_auth.OIDCStartRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_auth_OIDCStartResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      summary: Start OpenID Connect sign-in
+      tags:
+      - Authentication
+  /auth/oidc/callback:
+    post:
+      consumes:
+      - application/json
+      description: Exchanges the provider's code for a session, in the browser that
+        started the sign-in
+      parameters:
+      - description: Code and state from the provider
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_auth.OIDCCallbackRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_auth_SuccessfulLogin'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      summary: Finish OpenID Connect sign-in
+      tags:
+      - Authentication
   /auth/passkeys/login/begin:
     post:
       description: Start a discoverable WebAuthn login ceremony
@@ -12807,6 +13432,30 @@ paths:
       summary: Finish passkey registration
       tags:
       - Authentication
+  /auth/permissions:
+    get:
+      description: The signed-in user's privileges on "/" and on every path they have
+        a grant on, and on the paths below each one
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Permissions
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_auth_PermissionsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Own permissions
+      tags:
+      - Permissions
   /auth/preferences:
     get:
       description: Retrieve the preferences of the current local-session user
@@ -12834,6 +13483,262 @@ paths:
       summary: Get User Preferences
       tags:
       - Authentication
+  /auth/realms:
+    get:
+      description: OpenID Connect realms; client secrets are never returned
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Realms
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_cluster_AuthRealm'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List realms
+      tags:
+      - Permissions
+  /auth/realms/{name}:
+    delete:
+      description: Deletes the realm with its users and their grants
+      parameters:
+      - description: Realm name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Realm Deleted
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete a realm
+      tags:
+      - Permissions
+    put:
+      consumes:
+      - application/json
+      description: Issuer and client ID are fixed once a realm exists; a missing clientSecret
+        keeps the stored one
+      parameters:
+      - description: Realm name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Realm
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.AuthRealmSet'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Realm Set
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Create or update a realm
+      tags:
+      - Permissions
+  /auth/realms/{name}/users:
+    post:
+      consumes:
+      - application/json
+      description: Adds a user before their first sign-in; the first login whose username
+        claim names them binds them
+      parameters:
+      - description: Realm name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: User
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_auth.CreateRealmUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User Created
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Add a realm user
+      tags:
+      - Permissions
+  /auth/realms/discover:
+    post:
+      consumes:
+      - application/json
+      description: Reads an issuer's discovery document; it can't check a client secret
+      parameters:
+      - description: Issuer
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_auth.DiscoverRealmRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Discovery
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_auth_RealmDiscovery'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Discover a provider
+      tags:
+      - Permissions
+  /auth/roles:
+    get:
+      description: Built-in and custom roles with their privileges
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Roles
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_auth_RoleInfo'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List roles
+      tags:
+      - Permissions
+  /auth/roles/{name}:
+    delete:
+      description: Delete a custom role and every grant of it
+      parameters:
+      - description: Role name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Role Deleted
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete custom role
+      tags:
+      - Permissions
+    put:
+      consumes:
+      - application/json
+      description: Create a custom role or replace its privileges; built-in roles
+        can't be changed
+      parameters:
+      - description: Role name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Privileges
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_auth.setRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Role Set
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Set custom role
+      tags:
+      - Permissions
   /auth/sse-tokens:
     post:
       description: Create a short-lived token scoped to the authenticated user's event
@@ -15243,6 +16148,26 @@ paths:
       summary: Validate a Backup Target
       tags:
       - Cluster Backups
+  /cluster/guest-ids/next:
+    get:
+      description: One past the highest VM, jail or container ID claimed in the cluster
+        or used on this node, from 100 up
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-uint'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Next free guest ID
+      tags:
+      - Cluster
   /cluster/join:
     post:
       consumes:

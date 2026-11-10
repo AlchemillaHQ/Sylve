@@ -270,6 +270,7 @@ type ContainerServiceInterface interface {
 	UsedPorts(ctx context.Context, exceptOCID uint) ([]UsedPort, error)
 
 	ListNetworks(ctx context.Context) ([]containerModels.Network, error)
+	NetworkSwitchName(ctx context.Context, name string) (string, error)
 	CreateNetwork(ctx context.Context, req NetworkRequest) (containerModels.Network, error)
 	DeleteNetwork(ctx context.Context, id uint) error
 

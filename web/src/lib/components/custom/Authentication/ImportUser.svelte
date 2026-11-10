@@ -27,7 +27,6 @@
 	let loadingUsers = $state(false);
 	let selectedUsername = $state({ open: false, value: '' });
 	let password = $state('');
-	let admin = $state(false);
 	let confirmGuestActions = $state(false);
 	let submitting = $state(false);
 	let listController: AbortController | null = null;
@@ -72,7 +71,6 @@
 	function reset() {
 		selectedUsername = { open: false, value: '' };
 		password = '';
-		admin = false;
 		confirmGuestActions = false;
 	}
 
@@ -118,7 +116,6 @@
 		const payload = {
 			username,
 			password: password || undefined,
-			admin,
 			confirmGuestActions
 		};
 		submitting = true;
@@ -214,10 +211,6 @@
 
 					<div class="space-y-1.5">
 						<div class="flex flex-wrap items-center gap-6">
-							<div class="flex items-center gap-2">
-								<Checkbox id="import-admin" bind:checked={admin} />
-								<Label for="import-admin" class="cursor-pointer text-sm">Admin</Label>
-							</div>
 							<div class="flex items-center gap-2">
 								<Checkbox id="import-confirm-guest-actions" bind:checked={confirmGuestActions} />
 								<Tooltip.Root>

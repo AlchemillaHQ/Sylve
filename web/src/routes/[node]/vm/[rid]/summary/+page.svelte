@@ -52,6 +52,7 @@
 	import { resolve } from '$app/paths';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import MigrateModal from '$lib/components/custom/VM/MigrateModal.svelte';
+	import { allowed } from '$lib/stores/permissions.svelte';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 
 	interface Data {
@@ -64,6 +65,8 @@
 	}
 
 	let { data }: { data: Data } = $props();
+	let canPower = $derived(allowed('Guest.PowerMgmt', `/vm/${data.rid}`));
+	let canAllocate = $derived(allowed('Guest.Allocate', `/vm/${data.rid}`));
 	let gfsStep = $state<GFSStep>('hourly');
 
 	type VMStatsSnapshot = VMStatsBootstrap & {
@@ -914,6 +917,7 @@
 	{#if type === 'start' && !shouldHideActionButtons && domain.current?.id == -1 && !isDomainRunningForActions && !isDomainErrorState && !isOrphanState}
 		<Button
 			onclick={() => handleStart()}
+			disabled={!canPower}
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
@@ -922,6 +926,7 @@
 
 		<Button
 			onclick={() => openDeleteModal(false)}
+			disabled={!canAllocate}
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
@@ -930,6 +935,7 @@
 	{:else if type === 'force-delete' && !shouldHideActionButtons && isDomainErrorState}
 		<Button
 			onclick={() => openDeleteModal(true)}
+			disabled={!canAllocate}
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-700 disabled:hover:bg-neutral-600 dark:text-white"
 		>
@@ -940,7 +946,7 @@
 				title="Force Delete"
 			/>
 		</Button>
-	{:else if type === 'remove-orphan' && !shouldHideActionButtons && isOrphanState}
+	{:else if type === 'remove-orphan' && !shouldHideActionButtons && isOrphanState && canAllocate}
 		{#key `${data.node}:${data.rid}`}
 			<ReinitializeConfig rid={data.rid} hostname={data.node} oncomplete={refreshLifecycleState} />
 		{/key}
@@ -959,6 +965,7 @@
 	{:else if type === 'force-stop' && (domain.current?.id !== -1 || domain.current?.pendingAction === 'start' || domain.current?.pendingAction === 'reboot') && isDomainRunningForActions && isShutdownTaskActive}
 		<Button
 			onclick={() => handleForceStop()}
+			disabled={!canPower}
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
@@ -968,6 +975,7 @@
 		<Button
 			onclick={() =>
 				type === 'stop' ? handleStop() : type === 'shutdown' ? handleShutdown() : handleReboot()}
+			disabled={!canPower}
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
@@ -985,7 +993,7 @@
 	{:else if type === 'migrate' && !isOrphanState}
 		<Button
 			onclick={() => (showMigrateModal = true)}
-			disabled={isMigrationActive}
+			disabled={isMigrationActive || !allowed('Guest.Migrate', `/vm/${data.rid}`)}
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-purple-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>

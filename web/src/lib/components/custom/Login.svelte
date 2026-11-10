@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { getLoginConfig, revokeJWT } from '$lib/api/auth';
+	import { getLoginConfig, revokeJWT, startOIDCLogin, type LoginRealm } from '$lib/api/auth';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
@@ -42,6 +42,11 @@
 	let authType = $state('sylve');
 	let remember = $state(false);
 	let pamEnabled = $state(true);
+	let realms = $state<LoginRealm[]>([]);
+	let redirecting = $state(false);
+	// The default realm decides which fields show, so the form waits for it rather than reflowing.
+	let configLoaded = $state(false);
+	let oidcRealm = $derived(realms.find((realm) => authType === `oidc:${realm.name}`));
 
 	watch(
 		() => language,
@@ -72,7 +77,11 @@
 	);
 
 	async function submitPasswordLogin() {
-		if (loading || loadingPasskey) return;
+		if (loading || loadingPasskey || redirecting) return;
+		if (oidcRealm) {
+			redirecting = await startOIDCLogin(oidcRealm.name, toLoginPath);
+			return;
+		}
 
 		try {
 			await onLogin(username, password, authType, remember, toLoginPath);
@@ -104,6 +113,12 @@
 		void (async () => {
 			const loginConfig = await getLoginConfig();
 			pamEnabled = loginConfig.pamEnabled;
+			realms = loginConfig.realms;
+			const preferred = realms.find((realm) => realm.default);
+			if (preferred && authType === 'sylve') {
+				authType = `oidc:${preferred.name}`;
+			}
+			configLoaded = true;
 		})();
 	});
 
@@ -112,7 +127,7 @@
 	});
 </script>
 
-<div class="fixed inset-0 flex items-center justify-center px-3">
+<div class="fixed inset-0 flex items-center justify-center px-3" class:invisible={!configLoaded}>
 	<Card.Root class="w-full max-w-lg rounded-lg shadow-lg">
 		<Card.Header class="flex flex-row items-center justify-center gap-2">
 			{#if mode.current === 'dark'}
@@ -125,52 +140,56 @@
 		</Card.Header>
 
 		<Card.Content class="space-y-4 p-6">
-			<div class="flex items-center gap-2">
-				<Label for="username" class="w-44">Username</Label>
-				<Input
-					id="username"
-					class="h-8 w-full"
-					type="text"
-					placeholder="Enter your username"
-					bind:value={username}
-					autocomplete="off"
-					required
-				/>
-			</div>
-			<div class="flex items-center gap-2">
-				<Label for="password" class="w-44">Password</Label>
-				<div class="relative w-full">
+			{#if !oidcRealm}
+				<div class="flex items-center gap-2">
+					<Label for="username" class="w-44">Username</Label>
 					<Input
-						id="password"
-						type={passwordVisible ? 'text' : 'password'}
-						placeholder="●●●●●●●●"
+						id="username"
+						class="h-8 w-full"
+						type="text"
+						placeholder="Enter your username"
+						bind:value={username}
 						autocomplete="off"
-						class="h-8 w-full pr-9"
-						bind:value={password}
 						required
 					/>
-					<button
-						type="button"
-						class="text-muted-foreground hover:text-foreground focus-visible:ring-ring absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-r-md transition-colors focus-visible:ring-2 focus-visible:outline-none"
-						onclick={() => (passwordVisible = !passwordVisible)}
-						aria-label={passwordVisible ? 'Hide password' : 'Show password'}
-						aria-pressed={passwordVisible}
-					>
-						<span
-							class={passwordVisible
-								? 'icon-[lucide--eye-off] size-4'
-								: 'icon-[lucide--eye] size-4'}
-							aria-hidden="true"
-						></span>
-					</button>
 				</div>
-			</div>
+				<div class="flex items-center gap-2">
+					<Label for="password" class="w-44">Password</Label>
+					<div class="relative w-full">
+						<Input
+							id="password"
+							type={passwordVisible ? 'text' : 'password'}
+							placeholder="●●●●●●●●"
+							autocomplete="off"
+							class="h-8 w-full pr-9"
+							bind:value={password}
+							required
+						/>
+						<button
+							type="button"
+							class="text-muted-foreground hover:text-foreground focus-visible:ring-ring absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-r-md transition-colors focus-visible:ring-2 focus-visible:outline-none"
+							onclick={() => (passwordVisible = !passwordVisible)}
+							aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+							aria-pressed={passwordVisible}
+						>
+							<span
+								class={passwordVisible
+									? 'icon-[lucide--eye-off] size-4'
+									: 'icon-[lucide--eye] size-4'}
+								aria-hidden="true"
+							></span>
+						</button>
+					</div>
+				</div>
+			{/if}
 
 			<div class="flex items-center gap-2">
 				<Label for="realm" class="w-44">Realm</Label>
 				<Select.Root type="single" bind:value={authType}>
 					<Select.Trigger class="h-8 w-full">
-						{#if authType === 'pam' && pamEnabled}
+						{#if oidcRealm}
+							{oidcRealm.label}
+						{:else if authType === 'pam' && pamEnabled}
 							PAM
 						{:else}
 							Sylve
@@ -181,6 +200,9 @@
 							<Select.Item value="pam">PAM</Select.Item>
 						{/if}
 						<Select.Item value="sylve">Sylve</Select.Item>
+						{#each realms as realm (realm.name)}
+							<Select.Item value={`oidc:${realm.name}`}>{realm.label}</Select.Item>
+						{/each}
 					</Select.Content>
 				</Select.Root>
 			</div>
@@ -206,8 +228,10 @@
 
 		<Card.Footer class="flex items-center justify-between">
 			<div class="flex items-center space-x-2">
-				<Checkbox id="remember" bind:checked={remember} />
-				<Label for="remember" class="text-sm font-medium">Remember Me</Label>
+				{#if !oidcRealm}
+					<Checkbox id="remember" bind:checked={remember} />
+					<Label for="remember" class="text-sm font-medium">Remember Me</Label>
+				{/if}
 			</div>
 			<div class="flex items-center gap-2">
 				<Button
@@ -268,18 +292,33 @@
 					{/if}
 				</Button>
 
-				<Button
-					onclick={submitPasswordLogin}
-					disabled={loading || loadingPasskey}
-					size="sm"
-					class="w-20 rounded-md bg-blue-700 text-white hover:bg-blue-600"
-				>
-					{#if loading}
-						<span class="icon-[line-md--loading-loop] h-4 w-4"></span>
-					{:else}
-						Login
-					{/if}
-				</Button>
+				{#if oidcRealm}
+					<Button
+						onclick={submitPasswordLogin}
+						disabled={redirecting || loadingPasskey}
+						size="sm"
+						class="rounded-md bg-blue-700 text-white hover:bg-blue-600"
+					>
+						{#if redirecting}
+							<span class="icon-[line-md--loading-loop] h-4 w-4"></span>
+						{:else}
+							Sign in with {oidcRealm.label}
+						{/if}
+					</Button>
+				{:else}
+					<Button
+						onclick={submitPasswordLogin}
+						disabled={loading || loadingPasskey}
+						size="sm"
+						class="w-20 rounded-md bg-blue-700 text-white hover:bg-blue-600"
+					>
+						{#if loading}
+							<span class="icon-[line-md--loading-loop] h-4 w-4"></span>
+						{:else}
+							Login
+						{/if}
+					</Button>
+				{/if}
 			</div>
 		</Card.Footer>
 	</Card.Root>

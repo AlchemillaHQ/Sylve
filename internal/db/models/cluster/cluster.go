@@ -26,7 +26,8 @@ type Cluster struct {
 	RaftIP        string `json:"raftIP"`
 	RaftPort      int    `json:"raftPort"`
 
-	JoinLeaderIP string `json:"-"`
+	JoinLeaderIP  string `json:"-"`
+	JoinClusterID string `json:"-"`
 
 	LeavePhase     string `json:"-"`
 	LeaveLastError string `json:"-"`

@@ -15,7 +15,9 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal"
 
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/internal/services/zfs"
@@ -72,7 +74,7 @@ func GetPoolStatus(zfsService *zfs.Service) gin.HandlerFunc {
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /zfs/pools [get]
-func GetPools(zfsService *zfs.Service, systemService *system.Service) gin.HandlerFunc {
+func GetPools(zfsService *zfs.Service, systemService *system.Service, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var pools []*gzfs.ZPool
 		var err error
@@ -97,6 +99,11 @@ func GetPools(zfsService *zfs.Service, systemService *system.Service) gin.Handle
 				Error:   err.Error(),
 				Data:    nil,
 			})
+			return
+		}
+
+		pools, ok := middleware.Visible(c, authService, pools, auth.DatastoreAudit, func(pool *gzfs.ZPool) string { return "/storage/" + pool.Name })
+		if !ok {
 			return
 		}
 

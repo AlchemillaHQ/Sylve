@@ -13,7 +13,7 @@ under sponsorship from the FreeBSD Foundation.
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { storage } from '$lib';
-	import { getNodes } from '$lib/api/cluster/cluster';
+	import { getNextGuestID, getNodes } from '$lib/api/cluster/cluster';
 	import { getSimpleJails, getJailZFSSources, newJail, validateNewJail } from '$lib/api/jail/jail';
 	import { getSimpleContainers } from '$lib/api/container/container';
 	import { getLifecycleTask } from '$lib/api/task/lifecycle';
@@ -28,6 +28,7 @@ under sponsorship from the FreeBSD Foundation.
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert/index.js';
 	import { reload } from '$lib/stores/api.svelte';
+	import { hostDetail } from '$lib/stores/permissions.svelte';
 	import type { CreateData } from '$lib/types/jail/jail';
 	import { JailCreationAcceptedSchema } from '$lib/types/jail/jail';
 	import { LifecycleTaskSchema, isLifecycleTaskActive } from '$lib/types/task/lifecycle';
@@ -40,7 +41,6 @@ under sponsorship from the FreeBSD Foundation.
 		updateCache
 	} from '$lib/utils/http';
 	import { getJailCreateErrorMessage, isValidCreateData } from '$lib/utils/jail/jail';
-	import { getNextGuestId, getNextId } from '$lib/utils/vm/vm';
 	import { fade } from 'svelte/transition';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -238,7 +238,11 @@ under sponsorship from the FreeBSD Foundation.
 	let networkObjects = resource(
 		() => `network-objects-${modal.node || '__default__'}`,
 		async (key) => {
-			const objects = await getNetworkObjects(modal.node || undefined);
+			const objects = await hostDetail(
+				modal.node,
+				() => getNetworkObjects(modal.node || undefined),
+				[]
+			);
 			if (isAPIResponse(objects)) {
 				handleAPIError(objects);
 				return [] as NetworkObject[];
@@ -395,6 +399,7 @@ under sponsorship from the FreeBSD Foundation.
 			jails.refetch();
 			containers.refetch();
 			nodes.refetch();
+			nextGuestID.refetch();
 			pools.refetch();
 			filesystemData.refetch();
 			zfsSourceData.refetch();
@@ -427,15 +432,12 @@ under sponsorship from the FreeBSD Foundation.
 
 	let creating: boolean = $state(false);
 
-	let nextId = $derived.by(() => {
-		if (open) {
-			if (nodes.current && Array.isArray(nodes.current) && nodes.current.length > 0) {
-				return getNextGuestId(nodes.current);
-			}
-
-			return getNextId(vms.current || [], jails.current || [], containers.current);
-		}
-	});
+	const nextGuestID = resource(
+		() => 'next-guest-id',
+		async () => await getNextGuestID(),
+		{ initialValue: 0 }
+	);
+	let nextId = $derived(open ? nextGuestID.current || undefined : undefined);
 
 	watch(
 		() => nextId,
@@ -655,6 +657,7 @@ under sponsorship from the FreeBSD Foundation.
 									{:else if value === 'network' && networkSwitches.current && Array.isArray(networkObjects.current)}
 										<div in:fade={{ duration: 200 }}>
 											<Network
+												node={modal.node}
 												name={modal.name}
 												ctId={modal.id}
 												bind:switch={modal.network.switch}
@@ -686,6 +689,7 @@ under sponsorship from the FreeBSD Foundation.
 									{:else if value === 'hardware'}
 										<div in:fade={{ duration: 200 }}>
 											<Hardware
+												node={modal.node}
 												bind:cpuCores={modal.hardware.cpuCores}
 												bind:ram={modal.hardware.ram}
 												bind:startAtBoot={modal.hardware.startAtBoot}

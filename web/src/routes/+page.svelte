@@ -119,4 +119,5 @@
 <span class="icon-[mdi--arrow-collapse-right]"></span>
 <span class="icon-[mdi--arrow-expand-right]"></span>
 <span class="icon-[icon-park-outline--prison]"></span>
+<span class="icon-[mdi--shield-account]"></span>
 -->

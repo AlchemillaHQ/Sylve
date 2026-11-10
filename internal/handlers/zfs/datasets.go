@@ -11,11 +11,14 @@ package zfsHandlers
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/zfs"
 
 	"github.com/gin-gonic/gin"
@@ -83,7 +86,7 @@ func snapshotCreationErrorResponse(err error) (int, string) {
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /zfs/datasets [get]
-func GetDatasets(zfsService *zfs.Service) gin.HandlerFunc {
+func GetDatasets(zfsService *zfs.Service, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		qt := c.Query("type")
 
@@ -119,6 +122,14 @@ func GetDatasets(zfsService *zfs.Service) gin.HandlerFunc {
 				Error:   err.Error(),
 				Data:    nil,
 			})
+			return
+		}
+
+		datasets, ok := middleware.Visible(c, authService, datasets, auth.DatastoreAudit, func(dataset *gzfs.Dataset) string {
+			pool, _, _ := strings.Cut(dataset.Name, "/")
+			return "/storage/" + pool
+		})
+		if !ok {
 			return
 		}
 

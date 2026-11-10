@@ -9,13 +9,17 @@
 package taskHandlers
 
 import (
+	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 	"github.com/gin-gonic/gin"
 )
@@ -87,6 +91,26 @@ func writeLifecycleServiceError(c *gin.Context, message string, err error) {
 	})
 }
 
+// Templates have no path of their own, so their tasks need host access.
+func taskAccess(guestType string, guestID uint) (string, string) {
+	switch guestType {
+	case taskModels.GuestTypeVM, taskModels.GuestTypeJail, taskModels.GuestTypeContainer:
+		return fmt.Sprintf("/%s/%d", guestType, guestID), auth.GuestAudit
+	}
+	return "/", auth.SysAudit
+}
+
+func visibleTasks(c *gin.Context, authService *auth.Service, tasks []taskModels.GuestLifecycleTask) ([]taskModels.GuestLifecycleTask, bool) {
+	can, ok := middleware.Checker(c, authService)
+	if !ok {
+		return nil, false
+	}
+	return slices.DeleteFunc(tasks, func(task taskModels.GuestLifecycleTask) bool {
+		path, privilege := taskAccess(task.GuestType, task.GuestID)
+		return !can(path, privilege)
+	}), true
+}
+
 // @Summary List active lifecycle tasks
 // @Description List queued and running guest lifecycle tasks, optionally filtered by guest type and positive guest ID
 // @Tags Tasks
@@ -100,7 +124,7 @@ func writeLifecycleServiceError(c *gin.Context, message string, err error) {
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /tasks/lifecycle/active [get]
-func ActiveLifecycleTasks(lifecycleService *lifecycle.Service) gin.HandlerFunc {
+func ActiveLifecycleTasks(lifecycleService *lifecycle.Service, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		guestType, ok := lifecycleGuestTypeQuery(c)
 		if !ok {
@@ -114,6 +138,10 @@ func ActiveLifecycleTasks(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 		tasks, err := lifecycleService.ListActiveTasks(guestType, guestID)
 		if err != nil {
 			writeLifecycleServiceError(c, "failed_to_list_active_lifecycle_tasks", err)
+			return
+		}
+		tasks, ok = visibleTasks(c, authService, tasks)
+		if !ok {
 			return
 		}
 
@@ -140,7 +168,7 @@ func ActiveLifecycleTasks(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /tasks/lifecycle/recent [get]
-func RecentLifecycleTasks(lifecycleService *lifecycle.Service) gin.HandlerFunc {
+func RecentLifecycleTasks(lifecycleService *lifecycle.Service, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		guestType, ok := lifecycleGuestTypeQuery(c)
 		if !ok {
@@ -171,6 +199,10 @@ func RecentLifecycleTasks(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 			writeLifecycleServiceError(c, "failed_to_list_recent_lifecycle_tasks", err)
 			return
 		}
+		tasks, ok = visibleTasks(c, authService, tasks)
+		if !ok {
+			return
+		}
 
 		c.JSON(http.StatusOK, internal.APIResponse[[]taskModels.GuestLifecycleTask]{
 			Status:  "success",
@@ -194,7 +226,7 @@ func RecentLifecycleTasks(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /tasks/lifecycle/active/{guestType}/{guestId} [get]
-func ActiveLifecycleTaskForGuest(lifecycleService *lifecycle.Service) gin.HandlerFunc {
+func ActiveLifecycleTaskForGuest(lifecycleService *lifecycle.Service, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		guestType, valid := parseLifecycleGuestType(c.Param("guestType"))
 		if !valid {
@@ -219,6 +251,9 @@ func ActiveLifecycleTaskForGuest(lifecycleService *lifecycle.Service) gin.Handle
 			return
 		}
 
+		if path, privilege := taskAccess(guestType, uint(guestID)); !middleware.Allowed(c, authService, path, privilege) {
+			return
+		}
 		task, err := lifecycleService.GetActiveTaskForGuest(guestType, uint(guestID))
 		if err != nil {
 			writeLifecycleServiceError(c, "failed_to_get_active_lifecycle_task", err)
@@ -245,7 +280,7 @@ func ActiveLifecycleTaskForGuest(lifecycleService *lifecycle.Service) gin.Handle
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /tasks/lifecycle/{taskId} [get]
-func LifecycleTask(service *lifecycle.Service) gin.HandlerFunc {
+func LifecycleTask(service *lifecycle.Service, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.ParseUint(c.Param("taskId"), 10, strconv.IntSize)
 		if err != nil || id == 0 {
@@ -259,6 +294,9 @@ func LifecycleTask(service *lifecycle.Service) gin.HandlerFunc {
 		}
 		if task == nil {
 			c.JSON(http.StatusNotFound, internal.APIResponse[any]{Status: "error", Message: "lifecycle_task_not_found"})
+			return
+		}
+		if path, privilege := taskAccess(task.GuestType, task.GuestID); !middleware.Allowed(c, authService, path, privilege) {
 			return
 		}
 		c.JSON(http.StatusOK, internal.APIResponse[*taskModels.GuestLifecycleTask]{Status: "success", Data: task})

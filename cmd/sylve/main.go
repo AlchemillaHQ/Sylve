@@ -204,6 +204,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 
 	clusterSvc := cS.(*cluster.Service)
 	authSvc := aS.(*auth.Service)
+	authSvc.SetProposer(clusterSvc.Propose)
 	authSvc.SetClusterIssuerVerifier(func(nodeID string) (auth.ClusterIssuerMembership, error) {
 		membership, err := clusterSvc.ResolveCurrentRaftMember(nodeID)
 		if err != nil {
@@ -436,6 +437,8 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		go hostUpdateSvc.StartMonitor()
 		go clusterSvc.StartBackupJobRunnerRebindReconciler(qCtx)
 		go aS.ClearExpiredJWTTokens(qCtx)
+		go authSvc.MigrateAdminGrants(qCtx)
+		go authSvc.ShareLocalUsers(qCtx)
 	} else {
 		logger.L.Info().
 			Bool("initialized", basicSettings.Initialized).

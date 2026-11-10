@@ -23,7 +23,9 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	libvirtSvc "github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
@@ -87,20 +89,20 @@ func writeVNCHandshakeError(c *gin.Context, status int, code string) {
 	})
 }
 
-func resolveVNCBackendEndpoint(svc *libvirtSvc.Service, port int) (string, error) {
+func resolveVNCBackendEndpoint(svc *libvirtSvc.Service, port int) (string, uint, error) {
 	if svc == nil || svc.DB == nil {
-		return "", errVNCServiceUnavailable
+		return "", 0, errVNCServiceUnavailable
 	}
 
 	vm, err := svc.GetVMByVNCPort(port)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 
 	return net.JoinHostPort(
 		libvirtSvc.NormalizeVNCBindAddressForDial(vm.VNCBind),
 		strconv.Itoa(port),
-	), nil
+	), vm.RID, nil
 }
 
 // @Summary Open a VM VNC WebSocket
@@ -118,7 +120,7 @@ func resolveVNCBackendEndpoint(svc *libvirtSvc.Service, port int) (string, error
 // @Failure 502 {object} internal.APIResponse[any] "Bad Gateway"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /vnc/{port} [get]
-func VNCProxyHandler(svc *libvirtSvc.Service) gin.HandlerFunc {
+func VNCProxyHandler(svc *libvirtSvc.Service, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		port := c.Param("port")
 		if port == "" {
@@ -132,7 +134,7 @@ func VNCProxyHandler(svc *libvirtSvc.Service) gin.HandlerFunc {
 			return
 		}
 
-		backendEndpoint, err := resolveVNCBackendEndpoint(svc, int(i))
+		backendEndpoint, rid, err := resolveVNCBackendEndpoint(svc, int(i))
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			writeVNCHandshakeError(c, http.StatusNotFound, "vnc_port_not_found")
 			return
@@ -142,6 +144,9 @@ func VNCProxyHandler(svc *libvirtSvc.Service) gin.HandlerFunc {
 				logger.L.Error().Err(err).Int64("port", i).Msg("Failed to resolve VNC backend")
 			}
 			writeVNCHandshakeError(c, http.StatusServiceUnavailable, "vnc_service_unavailable")
+			return
+		}
+		if !middleware.Allowed(c, authService, auth.GuestPath("vm", rid), auth.GuestConsole) {
 			return
 		}
 

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/system"
@@ -64,6 +65,9 @@ func normalizeSambaAction(action string) (string, error) {
 func validatePAMUsername(username string) error {
 	if username == "" || len(username) > 128 {
 		return userValidationError("invalid_username_length")
+	}
+	if utils.IsReservedUsername(username) {
+		return userValidationError("reserved_username")
 	}
 	if !utils.IsValidUsername(username) {
 		return userValidationError("invalid_username_format")
@@ -1007,7 +1011,7 @@ func (s *Service) editManagedPamUser(user *models.User, opts EditUserOpts) error
 	failIntegration := func(code string, cause error) error {
 		return userIntegrationError(code, cause, applied)
 	}
-	revokeSessions := opts.Password != "" || opts.Admin != user.Admin ||
+	revokeSessions := opts.Password != "" || *opts.Admin != user.Admin ||
 		opts.Locked != user.Locked || opts.DisablePassword != user.DisablePassword
 	if revokeSessions {
 		if err := s.revokeUserTokens(s.DB, user.ID); err != nil {
@@ -1165,7 +1169,7 @@ func (s *Service) editManagedPamUser(user *models.User, opts EditUserOpts) error
 	updates := map[string]any{
 		"full_name":        opts.FullName,
 		"email":            opts.Email,
-		"admin":            opts.Admin,
+		"admin":            *opts.Admin,
 		"uid":              opts.UID,
 		"shell":            opts.Shell,
 		"home_directory":   opts.HomeDirectory,
@@ -1245,6 +1249,9 @@ func (s *Service) deleteManagedPamUser(user *models.User, removeHome bool) error
 		}
 	}
 
+	if err := s.revokeUserGrants(user); err != nil {
+		return err
+	}
 	if err := s.revokeUserTokens(s.DB, user.ID); err != nil {
 		return userInternalError("session_revoke_failed", err)
 	}
@@ -1278,22 +1285,6 @@ func (s *Service) deleteManagedPamUser(user *models.User, removeHome bool) error
 
 func (s *Service) deleteUserDatabaseState(userID uint) error {
 	return s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := s.revokeUserTokens(tx, userID); err != nil {
-			return err
-		}
-		if err := tx.Where("user_id = ?", userID).Delete(&models.WebAuthnCredential{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id = ?", userID).Delete(&models.WebAuthnChallenge{}).Error; err != nil {
-			return err
-		}
-		user := models.User{ID: userID}
-		if err := tx.Model(&user).Association("Groups").Clear(); err != nil {
-			return err
-		}
-		if err := tx.Delete(&models.User{}, userID).Error; err != nil {
-			return err
-		}
-		return nil
+		return clusterModels.DeleteUserRowTx(tx, userID)
 	})
 }

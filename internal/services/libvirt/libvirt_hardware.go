@@ -22,6 +22,7 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/beevik/etree"
+	"github.com/shirou/gopsutil/mem"
 	"gorm.io/gorm"
 )
 
@@ -288,6 +289,7 @@ func updatePassthrough(xml string, pciDevices []int, passedThroughIds []models.P
 
 const (
 	minimumVMHardwareRAMBytes = 128 * 1024 * 1024
+	vmHostMemoryReserve       = 1024 * 1024 * 1024
 	minimumVNCWidth           = 640
 	minimumVNCHeight          = 480
 	maximumVNCWidth           = 3840
@@ -587,12 +589,37 @@ func (s *Service) ModifyCPU(rid uint, req libvirtServiceInterfaces.ModifyCPURequ
 	}, vmHardwareMutationHooks{})
 }
 
+// Keeps 1 GiB for the host, as jails do. Restores and migrations don't come through here.
+func (s *Service) checkRAMFitsHost(ram int) error {
+	hostMemory := func() (uint64, error) {
+		usage, err := mem.VirtualMemory()
+		if err != nil {
+			return 0, err
+		}
+		return usage.Total, nil
+	}
+	if s.hostMemoryFn != nil {
+		hostMemory = s.hostMemoryFn
+	}
+	total, err := hostMemory()
+	if err != nil {
+		return fmt.Errorf("failed_to_read_host_memory: %w", err)
+	}
+	if total <= vmHostMemoryReserve || uint64(ram) > total-vmHostMemoryReserve {
+		return fmt.Errorf("memory_limit_exceeds_host_capacity")
+	}
+	return nil
+}
+
 func (s *Service) ModifyRAM(rid uint, ram int) error {
 	if ram < minimumVMHardwareRAMBytes {
 		return fmt.Errorf("memory_must_be_at_least_128mb")
 	}
 	if s == nil || s.DB == nil {
 		return fmt.Errorf("db_not_initialized")
+	}
+	if err := s.checkRAMFitsHost(ram); err != nil {
+		return err
 	}
 	s.crudMutex.Lock()
 	defer s.crudMutex.Unlock()

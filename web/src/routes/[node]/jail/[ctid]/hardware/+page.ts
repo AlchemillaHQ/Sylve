@@ -1,6 +1,7 @@
 import { getCPUInfoResult } from '$lib/api/info/cpu.js';
 import { getRAMInfoResult } from '$lib/api/info/ram';
 import { getJailByCTID } from '$lib/api/jail/jail';
+import { hostDetail } from '$lib/stores/permissions.svelte';
 import type { APIResponse } from '$lib/types/common';
 import type { Jail } from '$lib/types/jail/jail';
 import { ALWAYS_REFRESH, SEVEN_DAYS } from '$lib/utils.js';
@@ -23,19 +24,29 @@ export async function load({ params }) {
 			false,
 			node
 		),
-		cachedFetch(
-			'ram-info',
-			async () => await getRAMInfoResult({ hostname: node }),
-			ALWAYS_REFRESH,
-			false,
-			node
+		hostDetail(
+			node,
+			() =>
+				cachedFetch(
+					'ram-info',
+					async () => await getRAMInfoResult({ hostname: node }),
+					ALWAYS_REFRESH,
+					false,
+					node
+				),
+			{ total: 0, free: 0, usedPercent: 0 }
 		),
-		cachedFetch(
-			'cpu-info',
-			async () => await getCPUInfoResult({ hostname: node }),
-			cacheDuration,
-			false,
-			node
+		hostDetail(
+			node,
+			() =>
+				cachedFetch(
+					'cpu-info',
+					async () => await getCPUInfoResult({ hostname: node }),
+					cacheDuration,
+					false,
+					node
+				),
+			null
 		)
 	]);
 	const jailError = (isAPIResponse(jailResult) ? jailResult : null) as APIResponse | null;

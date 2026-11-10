@@ -181,6 +181,11 @@ func (s *Service) AdmitJoiner(
 	if err := requireCleanGuestIdentityInventory(joinInventoryReportFromClaims(claims, nodeID, joiner)); err != nil {
 		return status, err
 	}
+	// Retained copies can only carry an ID that already exists, so admission doesn't create one.
+	status.ClusterID, err = clusterModels.ReadClusterID(s.DB.WithContext(ctx))
+	if err != nil {
+		return status, err
+	}
 	if existing != nil {
 		status.Suffrage = raftSuffrageName(existing.Suffrage)
 		if existing.Suffrage == raft.Voter {
@@ -188,6 +193,23 @@ func (s *Service) AdmitJoiner(
 		}
 		status.Pins, err = s.memberPins(ctx)
 		return status, err
+	}
+	// Checked only for a new member: one already admitted may have shared its users since.
+	var localUsers []string
+	for _, name := range request.LocalUsers {
+		if status.ClusterID == "" || request.UserClusters[name] != status.ClusterID {
+			localUsers = append(localUsers, name)
+		}
+	}
+	var taken []string
+	if len(localUsers) != 0 {
+		if err := s.DB.WithContext(ctx).Model(&clusterModels.SylveUser{}).Where("username IN ?", localUsers).
+			Order("username").Pluck("username", &taken).Error; err != nil {
+			return status, err
+		}
+	}
+	if len(taken) != 0 {
+		return status, fmt.Errorf("joining_node_users_taken: %s", strings.Join(taken, ", "))
 	}
 	if err := s.apply("cluster_ssh_identity", "upsert", identity); err != nil {
 		return status, fmt.Errorf("join_identity_record_failed: %w", err)

@@ -13,11 +13,9 @@ under sponsorship from the FreeBSD Foundation.
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { storage } from '$lib';
-	import { getNodes } from '$lib/api/cluster/cluster';
-	import { getSimpleContainers, newContainer } from '$lib/api/container/container';
-	import { getSimpleJails } from '$lib/api/jail/jail';
+	import { getNextGuestID, getNodes } from '$lib/api/cluster/cluster';
+	import { newContainer } from '$lib/api/container/container';
 	import { getLifecycleTask } from '$lib/api/task/lifecycle';
-	import { getSimpleVMs } from '$lib/api/vm/vm';
 	import { getPools } from '$lib/api/zfs/pool';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert/index.js';
@@ -33,7 +31,6 @@ under sponsorship from the FreeBSD Foundation.
 	import { isLifecycleTaskActive } from '$lib/types/task/lifecycle';
 	import { normalizeSizeInputExact, parseSizeInputToBytes } from '$lib/utils/bytes';
 	import { getAPIErrorText, isAPIResponse } from '$lib/utils/http';
-	import { getNextGuestId, getNextId } from '$lib/utils/vm/vm';
 	import { describeContainerError } from '$lib/utils/container/errors';
 	import { createProblem } from '$lib/utils/container/validate';
 	import { resource, watch } from 'runed';
@@ -84,23 +81,17 @@ under sponsorship from the FreeBSD Foundation.
 		() => (open ? node : null),
 		async (hostname) => {
 			if (!hostname) return null;
-			const [pools, vms, jails, containers] = await Promise.all([
-				getPools(false, hostname),
-				getSimpleVMs(hostname),
-				getSimpleJails(hostname),
-				getSimpleContainers(hostname)
-			]);
-			return { hostname, pools, vms, jails, containers };
+			return { hostname, pools: await getPools(false, hostname) };
 		}
 	);
 	let clustered = $derived(!!nodes.current && nodes.current.length > 0);
 	let openSelect = $state({ node: false, pool: false });
 
-	let nextId = $derived.by(() => {
-		if (clustered) return getNextGuestId(nodes.current!);
-		if (!options.current) return 0;
-		return getNextId(options.current.vms, options.current.jails, options.current.containers);
-	});
+	const nextGuestID = resource(
+		() => open,
+		async (isOpen) => (isOpen ? await getNextGuestID() : 0)
+	);
+	let nextId = $derived(nextGuestID.current ?? 0);
 
 	watch(
 		() => nextId,

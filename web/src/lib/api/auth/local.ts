@@ -32,7 +32,6 @@ export interface UserPayload {
 	fullName?: string;
 	email?: string;
 	password?: string;
-	admin: boolean;
 	confirmGuestActions?: boolean;
 	uid?: number;
 	shell?: string;
@@ -111,7 +110,6 @@ export async function getUserCapabilities(
 export interface ImportUserPayload {
 	username: string;
 	password?: string;
-	admin: boolean;
 	confirmGuestActions?: boolean;
 }
 

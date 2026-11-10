@@ -105,6 +105,8 @@ export const VMNetworkSchema = z.object({
 	macObj: NetworkObjectSchema.optional().nullable(),
 	switchId: z.number().int(),
 	switchType: z.enum(['standard', 'manual', 'slirp']),
+	standardSwitch: z.object({ name: z.string() }).nullish(),
+	manualSwitch: z.object({ name: z.string() }).nullish(),
 	emulation: z.string(),
 	enable: z.boolean().optional().default(true),
 	vmId: z.number().int().optional()

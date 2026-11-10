@@ -126,7 +126,7 @@ func TestPoolScrubHandlerErrorStatuses(t *testing.T) {
 	}
 }
 
-func TestPoolScrubScheduleAuthenticationAndAdminWrites(t *testing.T) {
+func TestPoolScrubScheduleRequiresAnAdminSession(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &models.User{}, &models.Group{}, &models.Token{}, &models.SystemSecrets{})
 	if err := database.Create(&models.SystemSecrets{Name: "JWTSecret", Data: "scrub-handler-test-secret"}).Error; err != nil {
 		t.Fatal(err)
@@ -144,8 +144,11 @@ func TestPoolScrubScheduleAuthenticationAndAdminWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err := service.CreateJWT("user", "correct horse battery staple", "sylve", false); err == nil {
+		t.Fatal("non-admin got a session")
+	}
 	router := gin.New()
-	group := router.Group("/zfs/pools/scrub/schedules", middleware.EnsureAuthenticated(service), middleware.RequireLocalAdminForWrites(service))
+	group := router.Group("/api/zfs/pools/scrub/schedules", middleware.EnsureAuthenticated(service))
 	stub := &scrubScheduleHandlerStub{}
 	group.GET("", ListPoolScrubSchedules(stub))
 	group.POST("", CreatePoolScrubSchedule(stub))
@@ -155,7 +158,7 @@ func TestPoolScrubScheduleAuthenticationAndAdminWrites(t *testing.T) {
 	}{
 		{"GET", "", 401}, {"POST", "", 401}, {"GET", token, 200}, {"POST", token, 201},
 	} {
-		request := httptest.NewRequest(test.method, "/zfs/pools/scrub/schedules", strings.NewReader(`{"poolGuid":"101","cronExpr":"0 3 * * 0","enabled":true}`))
+		request := httptest.NewRequest(test.method, "/api/zfs/pools/scrub/schedules", strings.NewReader(`{"poolGuid":"101","cronExpr":"0 3 * * 0","enabled":true}`))
 		request.Header.Set("Content-Type", "application/json")
 		if test.token != "" {
 			request.Header.Set("Authorization", "Bearer "+test.token)
@@ -164,28 +167,6 @@ func TestPoolScrubScheduleAuthenticationAndAdminWrites(t *testing.T) {
 		router.ServeHTTP(response, request)
 		if response.Code != test.status {
 			t.Fatalf("%s: %d, want %d: %s", test.method, response.Code, test.status, response.Body.String())
-		}
-	}
-	// Login itself is admin-only. Exercise the write gate independently with an
-	// authenticated non-admin identity (for example, a forwarded identity).
-	nonAdmin := gin.New()
-	nonAdmin.Use(func(c *gin.Context) {
-		c.Set("AuthType", "sylve")
-		c.Set("UserID", users[0].ID)
-		c.Set("AuthScope", "local")
-		c.Next()
-	})
-	nonAdmin.Use(middleware.RequireLocalAdminForWrites(service))
-	nonAdmin.GET("/schedules", ListPoolScrubSchedules(stub))
-	nonAdmin.POST("/schedules", CreatePoolScrubSchedule(stub))
-	for _, test := range []struct {
-		method string
-		status int
-	}{{"GET", 200}, {"POST", 403}} {
-		response := httptest.NewRecorder()
-		nonAdmin.ServeHTTP(response, httptest.NewRequest(test.method, "/schedules", nil))
-		if response.Code != test.status {
-			t.Fatalf("non-admin %s: %d, want %d", test.method, response.Code, test.status)
 		}
 	}
 }

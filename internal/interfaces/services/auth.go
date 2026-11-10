@@ -25,9 +25,11 @@ type CustomClaims struct {
 
 // Trusted only from a member's cert. It has no user ID: one from another node
 // names nobody here.
+// Older builds send no Realm; it then follows AuthType.
 type ProxiedUser struct {
 	Username string `json:"username"`
 	AuthType string `json:"authType"`
+	Realm    string `json:"realm,omitempty"`
 }
 
 func (u ProxiedUser) Header() string {
@@ -61,7 +63,7 @@ type EditUserOpts struct {
 	Username            string
 	Password            string
 	Email               string
-	Admin               bool
+	Admin               *bool
 	ConfirmGuestActions *bool
 	UID                 int
 	Shell               string

@@ -9,6 +9,7 @@
 	import Serial from '$lib/components/custom/VM/Options/Serial.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { hostDetail } from '$lib/stores/permissions.svelte';
 	import type { APIResponse } from '$lib/types/common';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
@@ -62,7 +63,7 @@
 	const pciDevices = resource(
 		() => data.node,
 		async (node): Promise<PCIDevice[]> => {
-			const result = await getPCIDevices(node);
+			const result = await hostDetail(node, () => getPCIDevices(node), []);
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
 				return lastPCIDevicesByNode[node] ?? [];
@@ -81,7 +82,7 @@
 	const pptDevices = resource(
 		() => data.node,
 		async (node): Promise<PPTDevice[]> => {
-			const result = await getPPTDevices(node);
+			const result = await hostDetail(node, () => getPPTDevices(node), []);
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
 				return lastPPTDevicesByNode[node] ?? [];

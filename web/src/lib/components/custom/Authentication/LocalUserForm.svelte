@@ -10,7 +10,7 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { User } from '$lib/types/auth';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
-	import { isValidEmail, isValidUsername } from '$lib/utils/string';
+	import { isReservedUsername, isValidEmail, isValidUsername } from '$lib/utils/string';
 	import { onDestroy } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
@@ -39,7 +39,6 @@
 			email: edit && user ? (user.email ?? '') : '',
 			password: '',
 			confirmPassword: '',
-			admin: edit && user ? user.admin : false,
 			confirmGuestActions: edit && user ? user.confirmGuestActions : false
 		};
 	}
@@ -57,11 +56,9 @@
 
 	function validate(): string {
 		if (!properties.username) return 'Username is required';
-		if (
-			!(edit && user && properties.username === user.username) &&
-			!isValidUsername(properties.username)
-		)
-			return 'Invalid username format';
+		const changed = !(edit && user && properties.username === user.username);
+		if (changed && isReservedUsername(properties.username)) return 'This name is reserved';
+		if (changed && !isValidUsername(properties.username)) return 'Invalid username format';
 		if (!edit && users.some((u) => u.username === properties.username))
 			return 'Username already exists';
 		if (edit && user && users.some((u) => u.id !== user!.id && u.username === properties.username))
@@ -92,15 +89,16 @@
 		const requestUserID = requestEdit ? user?.id : undefined;
 		if (requestEdit && requestUserID === undefined) return;
 		const currentUserID = getJWTClaims()?.custom_claims.userId;
+		const renamed = requestEdit && properties.username !== user?.username;
+		// Both end the user's sessions on the server.
 		const requiresReauthentication =
-			requestEdit && Boolean(properties.password) && currentUserID === requestUserID;
+			requestEdit && (Boolean(properties.password) || renamed) && currentUserID === requestUserID;
 
 		const payload = {
 			fullName: properties.fullName,
 			username: properties.username,
 			email: properties.email,
 			password: properties.password,
-			admin: properties.admin,
 			confirmGuestActions: properties.confirmGuestActions
 		};
 		const requestHostname = hostname;
@@ -132,7 +130,11 @@
 			}
 
 			if (requiresReauthentication) {
-				await logOut('Password changed. Please sign in again.');
+				await logOut(
+					renamed
+						? 'Username changed. Please sign in again.'
+						: 'Password changed. Please sign in again.'
+				);
 				return;
 			}
 
@@ -192,7 +194,7 @@
 					label="Username"
 					placeholder="johndoe"
 					bind:value={properties.username}
-					disabled={edit}
+					disabled={edit && user?.username === 'admin'}
 				/>
 			</div>
 			<CustomValueInput
@@ -217,10 +219,6 @@
 				/>
 			</div>
 			<div class="flex flex-wrap items-center gap-6 pt-2">
-				<div class="flex items-center gap-2">
-					<Checkbox id="admin" bind:checked={properties.admin} />
-					<Label for="admin" class="cursor-pointer text-sm">Admin</Label>
-				</div>
 				<div class="flex items-center gap-2">
 					<Checkbox id="confirm-guest-actions" bind:checked={properties.confirmGuestActions} />
 					<Tooltip.Root>

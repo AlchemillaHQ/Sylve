@@ -16,6 +16,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	containerServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/container"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/network/attachment"
 	"gorm.io/gorm"
 )
 
@@ -229,4 +230,20 @@ func (s *Service) DeleteNetwork(ctx context.Context, id uint) error {
 		s.applyFirewall()
 	}
 	return nil
+}
+
+// NetworkSwitchName is "" for a network on its own bridge or one that doesn't exist yet.
+func (s *Service) NetworkSwitchName(ctx context.Context, name string) (string, error) {
+	var network containerModels.Network
+	if err := s.DB.WithContext(ctx).Where("name = ?", name).Limit(1).Find(&network).Error; err != nil {
+		return "", err
+	}
+	if network.SwitchID == nil {
+		return "", nil
+	}
+	identity, err := attachment.NewResolver(s.DB).ResolveIdentityByID(network.SwitchType, *network.SwitchID)
+	if err != nil {
+		return "", err
+	}
+	return identity.Name, nil
 }

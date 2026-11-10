@@ -146,6 +146,7 @@ func newVMCreatePrecheckTestService(db *gorm.DB, pools []string, existingDataset
 			Runner: &vmCreatePrecheckZFSRunner{existing: existing},
 		}),
 		getVMMMaxCPUsFn: func() (int64, error) { return 64, nil },
+		hostMemoryFn:    func() (uint64, error) { return 64 << 30, nil },
 	}
 }
 
@@ -196,6 +197,45 @@ func TestValidateCreateVCPULimit(t *testing.T) {
 				t.Fatalf("sysctl error was not preserved: %v", err)
 			}
 		})
+	}
+}
+
+func TestVMRAMLeavesHostReserve(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &vmModels.VMStorageDataset{}, &vmModels.VMTemplate{})
+	svc := newVMCreatePrecheckTestService(db, nil, nil)
+	svc.hostMemoryFn = func() (uint64, error) { return 4 << 30, nil }
+	req := testCreateRequest(520, 0)
+	disabled := false
+	req.VNCEnabled = &disabled
+
+	req.RAM = 3<<30 + 1
+	if err := svc.validateCreate(req, context.Background()); err == nil || err.Error() != "memory_limit_exceeds_host_capacity" {
+		t.Fatalf("create error = %v, want memory_limit_exceeds_host_capacity", err)
+	}
+	if err := svc.ModifyRAM(520, req.RAM); err == nil || err.Error() != "memory_limit_exceeds_host_capacity" {
+		t.Fatalf("modify error = %v, want memory_limit_exceeds_host_capacity", err)
+	}
+	template := vmModels.VMTemplate{Name: "big", CPUSockets: 1, CPUCores: 1, CPUThreads: 1, RAM: req.RAM}
+	if err := db.Create(&template).Error; err != nil {
+		t.Fatalf("failed to seed template: %v", err)
+	}
+	err := svc.PreflightCreateVMsFromTemplate(context.Background(), template.ID, libvirtServiceInterfaces.CreateFromTemplateRequest{RID: 520})
+	if err == nil || err.Error() != "memory_limit_exceeds_host_capacity" {
+		t.Fatalf("template preflight error = %v, want memory_limit_exceeds_host_capacity", err)
+	}
+
+	req.RAM = 3 << 30
+	if err := svc.validateCreate(req, context.Background()); err != nil {
+		t.Fatalf("create within the reserve rejected: %v", err)
+	}
+	if err := svc.ModifyRAM(520, req.RAM); err == nil || !strings.HasPrefix(err.Error(), "vm_not_found") {
+		t.Fatalf("modify error = %v, want vm_not_found past the RAM check", err)
+	}
+
+	svc.hostMemoryFn = func() (uint64, error) { return 0, errors.New("sysctl failed") }
+	if err := svc.validateCreate(req, context.Background()); err == nil || !strings.HasPrefix(err.Error(), "failed_to_read_host_memory") {
+		t.Fatalf("create error = %v, want failed_to_read_host_memory", err)
 	}
 }
 

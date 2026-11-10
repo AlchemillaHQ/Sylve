@@ -187,7 +187,7 @@ func writePasskeyLoginError(c *gin.Context, err error) {
 	switch err.Error() {
 	case "invalid_credentials", "user_not_found", "credential_not_found", "blank_user_handle", "invalid_user_handle":
 		writeAuthCodeError(c, http.StatusUnauthorized, "invalid_credentials")
-	case "only_admin_allowed", "account_locked":
+	case "only_admin_allowed", "no_permissions", "account_locked":
 		writeAuthCodeError(c, http.StatusForbidden, err.Error())
 	case "challenge_not_found", "challenge_used", "challenge_expired", "credential_required":
 		writeAuthCodeError(c, http.StatusBadRequest, "invalid_passkey_request")
@@ -291,6 +291,12 @@ func FinishPasskeyLoginHandler(authService *auth.Service) gin.HandlerFunc {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /auth/passkeys/register/begin [post]
+// Your own passkeys need nothing more. Another user's are a way into their account, so they're a
+// change to that user.
+func passkeysAllowed(c *gin.Context, authService *auth.Service, userID uint) bool {
+	return userID == c.GetUint("UserID") || allowUserChange(c, authService, userID)
+}
+
 func BeginPasskeyRegistrationHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		setSensitiveAuthResponseHeaders(c)
@@ -298,6 +304,9 @@ func BeginPasskeyRegistrationHandler(authService *auth.Service) gin.HandlerFunc 
 		var req BeginPasskeyRegistrationRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			writePasskeyBindingError(c, err)
+			return
+		}
+		if !passkeysAllowed(c, authService, req.UserID) || !allowCredentialChange(c, authService, req.UserID) {
 			return
 		}
 
@@ -390,7 +399,7 @@ func FinishPasskeyRegistrationHandler(authService *auth.Service) gin.HandlerFunc
 func ListUserPasskeysHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := positiveUserIDParam(c)
-		if !ok {
+		if !ok || !passkeysAllowed(c, authService, userID) {
 			return
 		}
 
@@ -427,7 +436,7 @@ func ListUserPasskeysHandler(authService *auth.Service) gin.HandlerFunc {
 func DeleteUserPasskeyHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := positiveUserIDParam(c)
-		if !ok {
+		if !ok || !passkeysAllowed(c, authService, userID) {
 			return
 		}
 

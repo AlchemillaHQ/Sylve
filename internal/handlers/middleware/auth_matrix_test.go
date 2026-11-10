@@ -90,7 +90,6 @@ func TestAuthorizationMatrix(t *testing.T) {
 		}
 	}
 
-	adminMW := RequireLocalAdmin(authService)
 	clusterScopeMW := RequireClusterScope()
 
 	type testCase struct {
@@ -101,10 +100,6 @@ func TestAuthorizationMatrix(t *testing.T) {
 	}
 
 	cases := []testCase{
-		{"admin: unauthenticated → 401", anonUser, []gin.HandlerFunc{adminMW}, http.StatusUnauthorized},
-		{"admin: non-admin → 403", sylveNonAdmin, []gin.HandlerFunc{adminMW}, http.StatusForbidden},
-		{"admin: admin → 200", sylveAdmin, []gin.HandlerFunc{adminMW}, http.StatusOK},
-
 		{"intra-cluster: unauthenticated → 401", anonUser, []gin.HandlerFunc{clusterScopeMW}, http.StatusUnauthorized},
 		{"intra-cluster: user → 403", sylveNonAdmin, []gin.HandlerFunc{clusterScopeMW}, http.StatusForbidden},
 		{"intra-cluster: admin → 403", sylveAdmin, []gin.HandlerFunc{clusterScopeMW}, http.StatusForbidden},

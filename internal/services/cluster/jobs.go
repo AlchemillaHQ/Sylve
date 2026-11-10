@@ -764,6 +764,7 @@ func (s *Service) StartClusterMonitors(ctx context.Context) {
 					logger.L.Error().Err(err).Msg("Failed to populate cluster nodes")
 				}
 			}
+			s.reconcileClusterIdentity(ctx)
 			if err := s.forgetDepartedMembers(ctx); err != nil && !errors.Is(err, ErrNodeLeaveFenced) {
 				logger.L.Warn().Err(err).Msg("cluster_departed_member_cleanup_failed")
 			}

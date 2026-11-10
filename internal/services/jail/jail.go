@@ -1524,12 +1524,10 @@ func (s *Service) createJail(ctx context.Context, data jailServiceInterfaces.Cre
 		createdNetworks = append(createdNetworks, network)
 	}
 
-	if data.InheritIPv4 != nil {
-		jail.InheritIPv4 = *data.InheritIPv4
-	}
-
-	if data.InheritIPv6 != nil {
-		jail.InheritIPv6 = *data.InheritIPv6
+	// The flags default to true in the UI; with any other switch they'd still win over it.
+	if strings.EqualFold(data.SwitchName, "inherit") {
+		jail.InheritIPv4 = data.InheritIPv4 != nil && *data.InheritIPv4
+		jail.InheritIPv6 = data.InheritIPv6 != nil && *data.InheritIPv6
 	}
 
 	// Associate the created networks with the jail

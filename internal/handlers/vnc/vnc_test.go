@@ -29,7 +29,7 @@ func performVNCHandshakeRequest(
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.GET("/vnc/:port", VNCProxyHandler(service))
+	router.GET("/vnc/:port", VNCProxyHandler(service, nil))
 
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/vnc/"+port, nil)
@@ -100,7 +100,7 @@ func TestResolveVNCBackendEndpointUsesMatchedVMBind(t *testing.T) {
 		t.Fatalf("seed VM: %v", err)
 	}
 
-	endpoint, err := resolveVNCBackendEndpoint(&libvirtSvc.Service{DB: database}, vm.VNCPort)
+	endpoint, _, err := resolveVNCBackendEndpoint(&libvirtSvc.Service{DB: database}, vm.VNCPort)
 	if err != nil {
 		t.Fatalf("resolve backend endpoint: %v", err)
 	}

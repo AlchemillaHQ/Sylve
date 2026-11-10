@@ -29,7 +29,7 @@ type NodeInfo struct {
 }
 
 type InfoServiceInterface interface {
-	GetAuditRecords(limit int) ([]infoModels.AuditRecord, error)
+	GetAuditRecords(limit int, userID *uint) ([]infoModels.AuditRecord, error)
 
 	GetBasicInfo() (basicInfo BasicInfo, err error)
 

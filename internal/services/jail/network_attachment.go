@@ -203,3 +203,11 @@ func (s *Service) prepareJailNetworkMetadata(jail *jailModels.Jail) error {
 	}
 	return nil
 }
+
+func (s *Service) SwitchName(switchType string, switchID uint) (string, error) {
+	identity, err := jailNetworkAttachmentResolver(s.DB).ResolveIdentityByID(switchType, switchID)
+	if err != nil {
+		return "", err
+	}
+	return identity.Name, nil
+}

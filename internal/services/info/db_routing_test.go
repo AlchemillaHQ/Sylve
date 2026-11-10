@@ -68,7 +68,7 @@ func TestDBRoutingReadsFromTelemetryDB(t *testing.T) {
 				}).Error
 			},
 			func(svc *Service) ([]infoModels.AuditRecord, error) {
-				return svc.GetAuditRecords(10)
+				return svc.GetAuditRecords(10, nil)
 			},
 			func(t *testing.T, results []infoModels.AuditRecord) {
 				if len(results) != 1 {

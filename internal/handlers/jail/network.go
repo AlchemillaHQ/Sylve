@@ -16,6 +16,7 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -195,7 +196,7 @@ func SetNetworkInheritance(jailService jailNetworkService) gin.HandlerFunc {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /jail/{ctid}/networks [post]
-func AddNetwork(jailService jailNetworkService) gin.HandlerFunc {
+func AddNetwork(jailService jailNetworkService, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctID, ok := positiveJailNetworkParam(c, "ctid", "invalid_ct_id")
 		if !ok {
@@ -204,6 +205,9 @@ func AddNetwork(jailService jailNetworkService) gin.HandlerFunc {
 
 		var req jailServiceInterfaces.AddJailNetworkRequest
 		if !bindJailJSON(c, &req, "invalid_request_data") {
+			return
+		}
+		if !allowJailNetworkChange(c, authService, ctID, req.SwitchName) {
 			return
 		}
 
@@ -245,7 +249,7 @@ func AddNetwork(jailService jailNetworkService) gin.HandlerFunc {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /jail/{ctid}/networks/{networkId} [patch]
-func EditNetwork(jailService jailNetworkService) gin.HandlerFunc {
+func EditNetwork(jailService jailNetworkService, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctID, ok := positiveJailNetworkParam(c, "ctid", "invalid_ct_id")
 		if !ok {
@@ -258,6 +262,13 @@ func EditNetwork(jailService jailNetworkService) gin.HandlerFunc {
 
 		var req jailServiceInterfaces.EditJailNetworkRequest
 		if !bindJailJSON(c, &req, "invalid_request_data") {
+			return
+		}
+		switchName := ""
+		if req.SwitchName != nil {
+			switchName = *req.SwitchName
+		}
+		if !allowJailNetworkChange(c, authService, ctID, switchName) {
 			return
 		}
 

@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"testing"
+	"time"
 )
 
 func resetTestHooks() {
@@ -1028,6 +1030,35 @@ func TestChownHome(t *testing.T) {
 			t.Fatalf("expected error for chown failure")
 		}
 	})
+}
+
+func TestUnixUserUsableExpiry(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		expiry  string
+		want    bool
+		wantErr error
+	}{
+		{name: "no expiry", expiry: "0", want: true},
+		{name: "future expiry", expiry: strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10), want: true},
+		{name: "expired", expiry: "1"},
+		{name: "invalid expiry", expiry: "invalid", wantErr: strconv.ErrSyntax},
+		{name: "empty expiry", expiry: "", wantErr: strconv.ErrSyntax},
+		{name: "overflowing expiry", expiry: "9223372036854775808", wantErr: strconv.ErrRange},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Cleanup(SetRunCommand(func(command string, args ...string) (string, error) {
+				if command != "/usr/sbin/pw" || !reflect.DeepEqual(args, []string{"usershow", "-n", "alice"}) {
+					t.Fatalf("unexpected command: %s %v", command, args)
+				}
+				return fmt.Sprintf("alice:$6$x:1001:1001::0:%s:Alice:/home/alice:/bin/sh", test.expiry), nil
+			}))
+			usable, err := UnixUserUsable("alice")
+			if usable != test.want || !errors.Is(err, test.wantErr) {
+				t.Fatalf("UnixUserUsable = %t, %v; want %t, %v", usable, err, test.want, test.wantErr)
+			}
+		})
+	}
 }
 
 func TestGetUnixUserInfoFull(t *testing.T) {

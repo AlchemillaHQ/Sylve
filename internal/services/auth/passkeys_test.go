@@ -57,9 +57,8 @@ func TestPasskeyRegistrationEligibility(t *testing.T) {
 		user models.User
 		want bool
 	}{
-		{name: "admin with Sylve password", user: models.User{Admin: true, Password: "hash"}, want: true},
-		{name: "admin without Sylve password", user: models.User{Admin: true}, want: false},
-		{name: "non-admin with Sylve password", user: models.User{Password: "hash"}, want: false},
+		{name: "with a Sylve password", user: models.User{Password: "hash"}, want: true},
+		{name: "without a Sylve password", user: models.User{}, want: false},
 	}
 
 	for _, tt := range tests {

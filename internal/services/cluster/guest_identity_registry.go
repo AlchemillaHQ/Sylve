@@ -460,3 +460,23 @@ func (s *Service) ReclaimGuestIdentity(ctx context.Context, guestID uint) error 
 }
 
 var _ clusterServiceInterfaces.GuestIdentityCoordinator = (*Service)(nil)
+
+// The UI can't work this out: it only sees the guests its user may audit.
+func (s *Service) NextGuestID(ctx context.Context) (uint, error) {
+	claims, err := s.ListGuestIdentityClaims(ctx)
+	if err != nil {
+		return 0, err
+	}
+	local, err := ScanLocalGuestIdentityInventory(s.DB.WithContext(ctx), s.LocalNodeID())
+	if err != nil {
+		return 0, err
+	}
+	next := uint(100)
+	for _, claim := range claims {
+		next = max(next, claim.GuestID+1)
+	}
+	for _, entry := range local.Entries {
+		next = max(next, entry.GuestID+1)
+	}
+	return next, nil
+}

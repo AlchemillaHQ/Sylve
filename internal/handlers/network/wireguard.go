@@ -14,11 +14,23 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/network"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
+
+// Reading the setup needs Sys.Audit on the node; the private and pre-shared keys only go to those
+// who may change it.
+func wireGuardKeysVisible(c *gin.Context, authService *auth.Service) (bool, bool) {
+	if !middleware.Allowed(c, authService, middleware.NodePath(), auth.SysAudit) {
+		return false, false
+	}
+	can, ok := middleware.Checker(c, authService)
+	return ok && can(middleware.NodePath(), auth.SysModify), ok
+}
 
 func wireGuardErrorResponse(err error, fallbackMessage string) (int, string) {
 	switch {
@@ -130,12 +142,22 @@ func wireGuardClientID(c *gin.Context) (uint, bool) {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /network/wireguard/server [get]
-func GetWireGuardServer(svc *network.Service) gin.HandlerFunc {
+func GetWireGuardServer(svc *network.Service, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		showKeys, ok := wireGuardKeysVisible(c, authService)
+		if !ok {
+			return
+		}
 		server, err := svc.GetWireGuardServer()
 		if err != nil {
 			writeWireGuardError(c, err, "failed_to_get_wireguard_server")
 			return
+		}
+		if !showKeys {
+			server.PrivateKey = ""
+			for i := range server.Peers {
+				server.Peers[i].PrivateKey, server.Peers[i].PreSharedKey = "", ""
+			}
 		}
 
 		c.JSON(http.StatusOK, internal.APIResponse[*networkModels.WireGuardServer]{
@@ -461,12 +483,21 @@ func RemoveWireGuardServerPeer(svc *network.Service) gin.HandlerFunc {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /network/wireguard/clients [get]
-func GetWireGuardClients(svc *network.Service) gin.HandlerFunc {
+func GetWireGuardClients(svc *network.Service, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		showKeys, ok := wireGuardKeysVisible(c, authService)
+		if !ok {
+			return
+		}
 		clients, err := svc.GetWireGuardClients()
 		if err != nil {
 			writeWireGuardError(c, err, "failed_to_get_wireguard_clients")
 			return
+		}
+		if !showKeys {
+			for i := range clients {
+				clients[i].PrivateKey, clients[i].PreSharedKey = "", ""
+			}
 		}
 
 		c.JSON(http.StatusOK, internal.APIResponse[[]networkModels.WireGuardClient]{

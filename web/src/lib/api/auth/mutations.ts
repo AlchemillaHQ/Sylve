@@ -7,7 +7,7 @@ import {
 } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
-const authCacheKeys = ['users', 'users_local', 'users_pam', 'groups'] as const;
+const authCacheKeys = ['users', 'users_pam', 'groups'] as const;
 
 export async function authMutation<T extends z.ZodType>(
 	endpoint: string,

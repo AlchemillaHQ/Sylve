@@ -13,7 +13,9 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/network"
 	"github.com/gin-gonic/gin"
 )
@@ -32,7 +34,7 @@ type ListSwitchResponse struct {
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /network/switch [get]
-func ListSwitches(networkService *network.Service) gin.HandlerFunc {
+func ListSwitches(networkService *network.Service, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		standardSwitches, err := networkService.GetStandardSwitches()
 		if err != nil {
@@ -55,6 +57,14 @@ func ListSwitches(networkService *network.Service) gin.HandlerFunc {
 				Error:   "network_switch_list_failed",
 				Data:    nil,
 			})
+			return
+		}
+		standardSwitches, ok := middleware.Visible(c, authService, standardSwitches, auth.NetworkAudit, func(sw networkModels.StandardSwitch) string { return "/switch/" + sw.Name })
+		if !ok {
+			return
+		}
+		manualSwitches, ok = middleware.Visible(c, authService, manualSwitches, auth.NetworkAudit, func(sw networkModels.ManualSwitch) string { return "/switch/" + sw.Name })
+		if !ok {
 			return
 		}
 

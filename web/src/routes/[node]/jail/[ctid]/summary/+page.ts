@@ -2,6 +2,7 @@ import { getCPUInfo } from '$lib/api/info/cpu.js';
 import { getRAMInfo } from '$lib/api/info/ram.js';
 import { getJailByCTID, getStatsBootstrap } from '$lib/api/jail/jail';
 import { getNodes } from '$lib/api/cluster/cluster';
+import { hostDetail } from '$lib/stores/permissions.svelte';
 import type { ClusterNode } from '$lib/types/cluster/cluster';
 import { SEVEN_DAYS } from '$lib/utils.js';
 import { cachedFetch, isAPIResponse } from '$lib/utils/http';
@@ -29,19 +30,29 @@ export async function load({ params }) {
 			false,
 			node
 		),
-		cachedFetch(
-			'system-ram-info',
-			async () => getRAMInfo('current', { hostname: node }),
-			cacheDuration,
-			false,
-			node
+		hostDetail(
+			node,
+			() =>
+				cachedFetch(
+					'system-ram-info',
+					async () => getRAMInfo('current', { hostname: node }),
+					cacheDuration,
+					false,
+					node
+				),
+			null
 		),
-		cachedFetch(
-			'system-cpu-info',
-			async () => getCPUInfo('current', { hostname: node }),
-			cacheDuration,
-			false,
-			node
+		hostDetail(
+			node,
+			() =>
+				cachedFetch(
+					'system-cpu-info',
+					async () => getCPUInfo('current', { hostname: node }),
+					cacheDuration,
+					false,
+					node
+				),
+			null
 		),
 		cachedFetch('cluster-nodes', async () => getNodes(), 1000)
 	]);

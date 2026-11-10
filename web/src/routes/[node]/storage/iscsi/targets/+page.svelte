@@ -24,6 +24,7 @@
 	import * as Select from '$lib/components/ui/select/index.js';
 	import { storage } from '$lib';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
+	import { allowed, nodePath } from '$lib/stores/permissions.svelte';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { TargetSessions } from '$lib/api/iscsi/target';
 	import type { ISCSITarget } from '$lib/types/iscsi/target';
@@ -757,11 +758,14 @@
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete Target" />
 			</Button>
 		{/if}
+		<!-- Free-form target config can hold CHAP secrets, so it stays with those who may change it. -->
 		<Button
 			onclick={() => (properties.config.open = true)}
 			size="sm"
 			variant="outline"
-			class="ml-auto h-6.5"
+			class="ml-auto h-6.5 disabled:pointer-events-auto!"
+			disabled={!allowed('Sys.Modify', nodePath(data.node))}
+			title={allowed('Sys.Modify', nodePath(data.node)) ? '' : 'Needs Sys.Modify on this node'}
 		>
 			<SpanWithIcon
 				icon="icon-[mdi--cog-outline]"

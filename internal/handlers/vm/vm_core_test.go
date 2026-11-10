@@ -189,7 +189,7 @@ func TestCreateVMHandlerReturnsCreatedIdentityAndLocation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	stub := &vmCoreHandlerStub{}
 	router := gin.New()
-	router.POST("/vm", CreateVM(stub))
+	router.POST("/vm", CreateVM(stub, nil))
 
 	body := `{
 		"name":"created-vm",
@@ -235,7 +235,7 @@ func TestCreateVMHandlerRejectsInvalidBodyBeforeService(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	stub := &vmCoreHandlerStub{}
 	router := gin.New()
-	router.POST("/vm", CreateVM(stub))
+	router.POST("/vm", CreateVM(stub, nil))
 
 	request := httptest.NewRequest(http.MethodPost, "/vm", strings.NewReader(`{"name":"missing-rid"}`))
 	request.Header.Set("Content-Type", "application/json")

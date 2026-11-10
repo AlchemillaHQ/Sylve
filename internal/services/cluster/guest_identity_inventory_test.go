@@ -341,3 +341,26 @@ func TestGuestIdentityInventoryCallReportsDurableRows(t *testing.T) {
 		t.Fatalf("inventory report is not canonical: %+v", snapshot.Report)
 	}
 }
+
+func TestNextGuestIDCountsClaimsAndLocalGuests(t *testing.T) {
+	db := newClusterServiceTestDB(t, &vmModels.VM{}, &jailModels.Jail{})
+	service := withFSM(&Service{DB: db, NodeID: "node-a"})
+	if next, err := service.NextGuestID(t.Context()); err != nil || next != 100 {
+		t.Fatalf("empty: next = %d, %v; want 100", next, err)
+	}
+	if err := db.Create(&clusterModels.GuestIdentityClaim{GuestID: 250, GuestKind: "jail", OwnerNodeID: "node-b"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&vmModels.VM{RID: 120, Name: "vm-120"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if next, err := service.NextGuestID(t.Context()); err != nil || next != 251 {
+		t.Fatalf("next = %d, %v; want 251, past another node's claim", next, err)
+	}
+	if err := db.Create(&jailModels.Jail{CTID: 300, Name: "jail-300"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if next, err := service.NextGuestID(t.Context()); err != nil || next != 301 {
+		t.Fatalf("next = %d, %v; want 301, past a local jail", next, err)
+	}
+}

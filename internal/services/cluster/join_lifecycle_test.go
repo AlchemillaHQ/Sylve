@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -21,10 +22,13 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/cmd"
+	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/hashicorp/raft"
+	"gorm.io/gorm"
 )
 
 func newJoinTestService(t *testing.T) *Service {
@@ -68,6 +72,13 @@ func newJoinTestCluster(t *testing.T, size int) ([]*clusterRaftTestNode, *testPe
 	waitForClusterRaftVoterCount(t, members, size, 8*time.Second)
 	for _, member := range members {
 		seedGuestIdentityJoinTestCluster(t, member)
+		for _, peer := range members {
+			if err := member.service.DB.Create(&clusterModels.ClusterNode{
+				NodeUUID: peer.id, Hostname: peer.id, Protocol: clusterModels.ClusterProtocol,
+			}).Error; err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	if err := joiner.service.DB.Create(&clusterModels.Cluster{RaftPort: ClusterRaftPort}).Error; err != nil {
 		t.Fatal(err)
@@ -75,6 +86,10 @@ func newJoinTestCluster(t *testing.T, size int) ([]*clusterRaftTestNode, *testPe
 	joiner.service.joinRaftStarter = func(ip, clusterKey string) error {
 		if err := joiner.service.clearClusteredData(); err != nil {
 			return err
+		}
+		if joiner.raft.State() == raft.Shutdown {
+			_ = joiner.transport.Close()
+			startClusterRaftTestNode(t, joiner)
 		}
 		record, err := joiner.service.loadClusterRecord()
 		if err != nil {
@@ -258,6 +273,236 @@ func TestIntegrationRefusedJoinLeavesTheNodeUntouched(t *testing.T) {
 	}
 	if servers := raftConfigurationForGuestIdentityJoinTest(t, leader).Servers; len(servers) != 1 {
 		t.Fatalf("leader configuration = %+v", servers)
+	}
+}
+
+func TestIntegrationJoinRefusesLocalUsersTheClusterHas(t *testing.T) {
+	for _, origin := range []string{"", "another-cluster"} {
+		t.Run("origin="+origin, func(t *testing.T) {
+			nodes, _ := newJoinTestCluster(t, 1)
+			leader, joiner := nodes[0], nodes[1]
+			if err := leader.service.DB.Create(&clusterModels.SylveUser{Username: "alice", Password: "hash-cluster"}).Error; err != nil {
+				t.Fatal(err)
+			}
+			for _, value := range []any{
+				&clusterModels.SylveUser{Username: "alice", Password: "hash-here"},
+				&models.User{Username: "alice", Password: "hash-here", Source: "local", Shared: true, SharedClusterID: origin, SharedUserID: 1},
+				&models.User{Username: "admin", Password: "hash-admin", Source: "local"},
+			} {
+				if err := joiner.service.DB.Create(value).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			joiner.service.joinRaftStarter = func(string, string) error {
+				t.Error("Raft started for a refused join")
+				return nil
+			}
+
+			_, err := joinTestCluster(t, joiner, leader)
+			var refused *JoinAdmissionError
+			if !errors.As(err, &refused) || refused.StatusCode != http.StatusConflict || refused.Detail != "joining_node_users_taken: alice" {
+				t.Fatalf("join error = %v, want alice taken", err)
+			}
+			requireNoJoin(t, joiner.service)
+			var alice models.User
+			if err := joiner.service.DB.Where("username = ?", "alice").First(&alice).Error; err != nil ||
+				!alice.Shared || alice.Password != "hash-here" || alice.SharedClusterID != origin {
+				t.Fatalf("joiner alice = %+v, %v; want it untouched", alice, err)
+			}
+		})
+	}
+}
+
+func recordCurrentProtocol(t *testing.T, leader, node *clusterRaftTestNode) {
+	t.Helper()
+	if err := leader.service.DB.Where("node_uuid = ?", node.id).
+		Assign(clusterModels.ClusterNode{Protocol: clusterModels.ClusterProtocol}).
+		FirstOrCreate(&clusterModels.ClusterNode{NodeUUID: node.id}).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIntegrationRejoinAfterTipUpgradeRemoval(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	nodes, _ := newJoinTestCluster(t, 2)
+	leader := waitForClusterRaftLeader(t, nodes[:2], 8*time.Second)
+	joiner := nodes[2]
+	if _, err := joinTestCluster(t, joiner, leader); err != nil {
+		t.Fatal(err)
+	}
+	reconcileJoinsUntilVoter(t, nodes, joiner)
+	// Published tip resumes this Raft format with neither an ID nor shared users.
+	if id, err := clusterModels.ReadClusterID(leader.service.DB); err != nil || id != "" {
+		t.Fatalf("pre-upgrade identity = %q, %v", id, err)
+	}
+	recordCurrentProtocol(t, leader, joiner)
+	if err := leader.service.Propose(t.Context(), "sylve_user", "create", clusterModels.SylveUser{
+		Username: "alice", Password: "hash-alice",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var alice models.User
+	waitForClusterCondition(t, time.Second, "shared user replicated", func() bool {
+		return joiner.service.DB.Where("username = ?", "alice").First(&alice).Error == nil && alice.Shared
+	})
+	// A removed, partitioned node learns of its departure through the API alone.
+	joiner.transport.DisconnectAll()
+	for _, node := range nodes[:2] {
+		node.transport.Disconnect(joiner.addr)
+	}
+	if err := leader.service.RemoveMember(t.Context(), joiner.id, true); err != nil {
+		t.Fatal(err)
+	}
+	reconcileUntilLeft(t, joiner)
+	if err := joiner.service.mutationGate.Open(); err != nil {
+		t.Fatal(err)
+	}
+	seedJoinKey(t, leader)
+	if status, err := joinTestCluster(t, joiner, leader); err != nil || status.LastError != "" {
+		t.Fatalf("removed member rejoin = %+v, %v", status, err)
+	}
+	reconcileJoinsUntilVoter(t, nodes, joiner)
+	var current models.User
+	if err := joiner.service.DB.Where("username = ?", "alice").First(&current).Error; err != nil ||
+		current.ID != alice.ID || !current.Shared || current.SharedClusterID == "" || current.SharedUserID == 0 {
+		t.Fatalf("returning user = %+v, %v", current, err)
+	}
+}
+
+func TestIntegrationRejoinReconcilesSharedUsers(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	nodes, _ := newJoinTestCluster(t, 1)
+	leader, joiner := nodes[0], nodes[1]
+	for _, name := range []string{"alice", "gone", "renamed", "replaced"} {
+		if err := leader.service.Propose(t.Context(), "sylve_user", "create", clusterModels.SylveUser{
+			Username: name, Password: "hash-old",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := joinTestCluster(t, joiner, leader); err != nil {
+		t.Fatal(err)
+	}
+	reconcileJoinsUntilVoter(t, nodes, joiner)
+	var alice models.User
+	if err := joiner.service.DB.Where("username = ?", "alice").First(&alice).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := joiner.service.DB.Create(&models.Token{UserID: alice.ID, Token: "old-session"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"gone", "renamed", "replaced"} {
+		var user models.User
+		if err := joiner.service.DB.Where("username = ?", name).First(&user).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := joiner.service.DB.Create(&models.WebAuthnCredential{
+			UserID: user.ID, CredentialID: name + "-key", Data: []byte("x"),
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	recordCurrentProtocol(t, leader, joiner)
+	if err := joiner.service.Leave(t.Context(), false); err != nil {
+		t.Fatal(err)
+	}
+	requireLeft(t, joiner)
+	if err := joiner.service.mutationGate.Open(); err != nil {
+		t.Fatal(err)
+	}
+	if err := leader.service.Propose(t.Context(), "sylve_user", "update", clusterModels.SylveUser{
+		Username: "alice", Password: "hash-current", Email: "current@example.com", Locked: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := leader.service.Propose(t.Context(), "sylve_user", "delete", clusterModels.SylveUser{Username: "gone"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := leader.service.Propose(t.Context(), "sylve_user", "delete", clusterModels.SylveUser{Username: "replaced"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := leader.service.Propose(t.Context(), "sylve_user", "create", clusterModels.SylveUser{
+		Username: "replaced", Password: "hash-replacement",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := leader.service.Propose(t.Context(), "sylve_user", "rename", clusterModels.SylveUserRename{
+		From: "renamed", To: "new-name",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := joiner.service.Propose(t.Context(), "sylve_user", "update", clusterModels.SylveUser{
+		Username: "alice", Password: "hash-standalone",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := joiner.service.Propose(t.Context(), "sylve_user", "create", clusterModels.SylveUser{
+		Username: "fresh", Password: "hash-fresh",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := joiner.service.Propose(t.Context(), "acl_grant", "set", clusterModels.ACLGrant{
+		Path: "/", SubjectType: clusterModels.ACLSubjectUser, Subject: "fresh@sylve", Role: "Administrator", Propagate: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	seedJoinKey(t, leader)
+	// Force snapshot catch-up, as a fresh Raft store must handle changes made while away.
+	if err := leader.service.snapshotPreClusterState(); err != nil {
+		t.Fatal(err)
+	}
+	start := joiner.service.joinRaftStarter
+	joiner.service.joinRaftStarter = func(string, string) error {
+		if err := joiner.service.clearClusteredData(); err != nil {
+			return err
+		}
+		return errors.New("interrupted_after_clear")
+	}
+	status, err := joinTestCluster(t, joiner, leader)
+	if err != nil || status.LastError != "interrupted_after_clear" {
+		t.Fatalf("rejoin = %+v, %v", status, err)
+	}
+	joiner.service.joinRaftStarter = start
+	reconcileJoinsUntilVoter(t, nodes, joiner)
+	var current models.User
+	if err := joiner.service.DB.Where("username = ?", "alice").First(&current).Error; err != nil ||
+		current.ID != alice.ID || !current.Shared || current.Password != "hash-current" || !current.Locked || current.Email != "current@example.com" {
+		t.Fatalf("returning alice = %+v, %v; want the current cluster account", current, err)
+	}
+	for _, name := range []string{"gone", "renamed"} {
+		if err := joiner.service.DB.Where("username = ?", name).First(&models.User{}).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
+			t.Fatalf("old user %s survived rejoin: %v", name, err)
+		}
+	}
+	for name, password := range map[string]string{"new-name": "hash-old", "replaced": "hash-replacement"} {
+		var user models.User
+		if err := joiner.service.DB.Where("username = ?", name).First(&user).Error; err != nil || !user.Shared || user.Password != password {
+			t.Fatalf("cluster user %s = %+v, %v", name, user, err)
+		}
+	}
+	for _, model := range []any{&models.Token{}, &models.WebAuthnCredential{}, &clusterModels.ACLGrant{}} {
+		var count int64
+		if err := joiner.service.DB.Model(model).Count(&count).Error; err != nil || count != 0 {
+			t.Fatalf("%T after rejoin = %d, %v", model, count, err)
+		}
+	}
+	var fresh models.User
+	if err := joiner.service.DB.Where("username = ?", "fresh").First(&fresh).Error; err != nil || fresh.Password != "hash-fresh" {
+		t.Fatalf("standalone-created user = %+v, %v; want it retained", fresh, err)
+	}
+	recordCurrentProtocol(t, leader, joiner)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	service := auth.NewAuthService(joiner.service.DB).(*auth.Service)
+	service.SetProposer(func(ctx context.Context, commandType, action string, payload any) error {
+		defer cancel()
+		return joiner.service.Propose(ctx, commandType, action, payload)
+	})
+	service.ShareLocalUsers(ctx)
+	var names []string
+	if err := leader.service.DB.Model(&clusterModels.SylveUser{}).Order("username").Pluck("username", &names).Error; err != nil ||
+		!slices.Equal(names, []string{"alice", "fresh", "new-name", "replaced"}) {
+		t.Fatalf("shared users after rejoin = %v, %v", names, err)
 	}
 }
 

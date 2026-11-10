@@ -11,6 +11,7 @@ package libvirtHandlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,8 +20,10 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
@@ -154,6 +157,7 @@ var vmCreateBadRequestCodes = map[string]struct{}{
 	"mac_object_not_found":                             {},
 	"media_not_cloud_init_capable":                     {},
 	"memory_must_be_greater_than_128mb":                {},
+	"memory_limit_exceeds_host_capacity":               {},
 	"no_emulation_type_selected":                       {},
 	"no_switch_emulation_type_selected":                {},
 	"passthrough_device_does_not_exist":                {},
@@ -574,7 +578,7 @@ func GetVMByRID(libvirtService vmDetailService) gin.HandlerFunc {
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /vm [get]
-func ListVMs(libvirtService *libvirt.Service) gin.HandlerFunc {
+func ListVMs(libvirtService *libvirt.Service, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		vms, err := libvirtService.ListVMs()
 		if err != nil {
@@ -584,6 +588,10 @@ func ListVMs(libvirtService *libvirt.Service) gin.HandlerFunc {
 				Data:    nil,
 				Error:   "failed_to_list_vms: " + err.Error(),
 			})
+			return
+		}
+		vms, ok := middleware.Visible(c, authService, vms, auth.GuestAudit, func(vm vmModels.VM) string { return fmt.Sprintf("/vm/%d", vm.RID) })
+		if !ok {
 			return
 		}
 
@@ -800,7 +808,7 @@ func ReinitializeVMConfig(libvirtService vmConfigReinitializationService) gin.Ha
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /vm [post]
-func CreateVM(libvirtService vmCreateService) gin.HandlerFunc {
+func CreateVM(libvirtService vmCreateService, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req libvirtServiceInterfaces.CreateVMRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -810,6 +818,9 @@ func CreateVM(libvirtService vmCreateService) gin.HandlerFunc {
 				Data:    nil,
 				Error:   "Invalid request data: " + err.Error(),
 			})
+			return
+		}
+		if !allowVMCreate(c, authService, req) {
 			return
 		}
 
@@ -1307,10 +1318,9 @@ func UpdateVMName(libvirtService vmNameService, clusterService *cluster.Service)
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /vm/simple [get]
-func ListVMsSimple(libvirtService *libvirt.Service) gin.HandlerFunc {
+func ListVMsSimple(libvirtService *libvirt.Service, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		vms, err := libvirtService.SimpleListVM()
-
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
@@ -1318,6 +1328,10 @@ func ListVMsSimple(libvirtService *libvirt.Service) gin.HandlerFunc {
 				Data:    nil,
 				Error:   "failed_to_list_vms_simple: " + err.Error(),
 			})
+			return
+		}
+		vms, ok := middleware.Visible(c, authService, vms, auth.GuestAudit, func(vm libvirtServiceInterfaces.SimpleList) string { return fmt.Sprintf("/vm/%d", vm.RID) })
+		if !ok {
 			return
 		}
 

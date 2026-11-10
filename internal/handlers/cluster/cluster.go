@@ -127,6 +127,8 @@ func writeJoinAdmissionError(c *gin.Context, err error) {
 		message = "cluster_join_outcome_uncertain"
 	case strings.HasPrefix(errText, "joining_node_hostname_taken"):
 		status, message = http.StatusConflict, "joining_node_hostname_taken"
+	case strings.HasPrefix(errText, "joining_node_users_taken"):
+		status, message = http.StatusConflict, "joining_node_users_taken"
 	case strings.HasPrefix(errText, "invalid_joining_node_ip"), strings.HasPrefix(errText, "joining_"):
 		status, message = http.StatusConflict, "cluster_join_refused"
 	}

@@ -16,8 +16,10 @@ import (
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
+	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
@@ -55,7 +57,7 @@ func setupWireGuardServerHandlerRouter(t *testing.T, bodyLimit int64, serviceEna
 	if bodyLimit > 0 {
 		server.Use(middleware.LimitRequestBody(bodyLimit))
 	}
-	server.GET("", GetWireGuardServer(svc))
+	server.GET("", GetWireGuardServer(svc, nil))
 	server.POST("", InitWireGuardServer(svc))
 	server.PUT("", EditWireGuardServer(svc))
 	server.PATCH("", SetWireGuardServerEnabled(svc))
@@ -69,7 +71,7 @@ func setupWireGuardServerHandlerRouter(t *testing.T, bodyLimit int64, serviceEna
 	if bodyLimit > 0 {
 		clients.Use(middleware.LimitRequestBody(bodyLimit))
 	}
-	clients.GET("", GetWireGuardClients(svc))
+	clients.GET("", GetWireGuardClients(svc, nil))
 	clients.POST("", CreateWireGuardClient(svc))
 	clients.PUT("/:clientId", EditWireGuardClient(svc))
 	clients.PATCH("/:clientId", SetWireGuardClientEnabled(svc))
@@ -520,4 +522,66 @@ func TestWireGuardClientStatusesValidationAndKeyResponse(t *testing.T) {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
 	})
+}
+
+func TestWireGuardKeysOnlyForThoseWhoMayChangeThem(t *testing.T) {
+	db := newNetworkHandlerTestDB(t,
+		&models.BasicSettings{}, &networkModels.WireGuardServer{}, &networkModels.WireGuardServerPeer{},
+		&networkModels.WireGuardClient{}, &models.User{}, &models.Migrations{},
+		&clusterModels.ACLGrant{}, &clusterModels.ACLRole{}, &clusterModels.ACLGroup{},
+	)
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.WireGuard}}).Error; err != nil {
+		t.Fatal(err)
+	}
+	server := seedWireGuardServerHandler(t, db, true)
+	auditor := models.User{Username: "auditor", Source: "local"}
+	hostAdmin := models.User{Username: "hostadmin", Source: "local"}
+	nobody := models.User{Username: "nobody", Source: "local"}
+	records := []any{&auditor, &hostAdmin, &nobody, &models.Migrations{Name: "rbac_admin_grants"},
+		&networkModels.WireGuardServerPeer{Name: "laptop", Enabled: true, WireGuardServerID: server.ID,
+			PrivateKey: "peer-private-key", PublicKey: "peer-public-key", PreSharedKey: "peer-psk"},
+		&networkModels.WireGuardClient{Name: "office", Enabled: true,
+			PrivateKey: "client-private-key", PublicKey: "client-public-key", PreSharedKey: "client-psk"},
+		&clusterModels.ACLGrant{Path: "/", SubjectType: clusterModels.ACLSubjectUser, Subject: "auditor@sylve", Role: "Auditor", Propagate: true},
+		&clusterModels.ACLGrant{Path: middleware.NodePath(), SubjectType: clusterModels.ACLSubjectUser, Subject: "hostadmin@sylve", Role: "SysAdmin", Propagate: true},
+	}
+	for _, record := range records {
+		if err := db.Create(record).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	svc := &networkService.Service{DB: db, TelemetryDB: db}
+	auth := &authService.Service{DB: db}
+	secrets := []string{"server-private-key", "peer-private-key", "peer-psk", "client-private-key", "client-psk"}
+
+	gin.SetMode(gin.TestMode)
+	for _, tt := range []struct {
+		user     models.User
+		want     int
+		withKeys bool
+	}{{auditor, http.StatusOK, false}, {hostAdmin, http.StatusOK, true}, {nobody, http.StatusForbidden, false}} {
+		router := gin.New()
+		router.Use(func(c *gin.Context) { c.Set("UserID", tt.user.ID) })
+		router.GET("/server", GetWireGuardServer(svc, auth))
+		router.GET("/clients", GetWireGuardClients(svc, auth))
+		var body strings.Builder
+		for _, path := range []string{"/server", "/clients"} {
+			rr := performNetworkJSONRequest(t, router, http.MethodGet, path, nil)
+			if rr.Code != tt.want {
+				t.Fatalf("%s %s: %d %s, want %d", tt.user.Username, path, rr.Code, rr.Body, tt.want)
+			}
+			body.WriteString(rr.Body.String())
+		}
+		if tt.want != http.StatusOK {
+			continue
+		}
+		if !strings.Contains(body.String(), "peer-public-key") || !strings.Contains(body.String(), "client-public-key") {
+			t.Fatalf("%s: setup missing: %s", tt.user.Username, body.String())
+		}
+		for _, secret := range secrets {
+			if strings.Contains(body.String(), secret) != tt.withKeys {
+				t.Errorf("%s: %q shown = %v, want %v", tt.user.Username, secret, !tt.withKeys, tt.withKeys)
+			}
+		}
+	}
 }

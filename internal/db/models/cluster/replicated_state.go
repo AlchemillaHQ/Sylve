@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 )
@@ -30,12 +31,20 @@ func init() {
 }
 
 type ReplicatedStateTable struct {
-	Table string
-	Model any
+	Table         string
+	Model         any
+	SurvivesLeave bool
 }
 
 // Children precede parents: clearing walks it forwards and restore backwards.
+// A node that leaves the cluster keeps its access rules.
 var replicatedStateManifest = []ReplicatedStateTable{
+	{Table: "acl_grants", Model: &ACLGrant{}, SurvivesLeave: true},
+	{Table: "acl_groups", Model: &ACLGroup{}, SurvivesLeave: true},
+	{Table: "acl_roles", Model: &ACLRole{}, SurvivesLeave: true},
+	{Table: "sylve_users", Model: &SylveUser{}, SurvivesLeave: true},
+	{Table: "oidc_users", Model: &OIDCUser{}, SurvivesLeave: true},
+	{Table: "auth_realms", Model: &AuthRealm{}, SurvivesLeave: true},
 	{Table: "guest_identity_claims", Model: &GuestIdentityClaim{}},
 	{Table: "scheduled_run_receipts", Model: &ScheduledRunReceipt{}},
 	{Table: "replication_run_operations", Model: &ReplicationRunOperation{}},
@@ -61,11 +70,11 @@ var replicatedStateManifest = []ReplicatedStateTable{
 }
 
 func ReplicatedModels() []any {
-	models := make([]any, len(replicatedStateManifest))
-	for i, entry := range replicatedStateManifest {
-		models[i] = entry.Model
+	list := make([]any, 0, len(replicatedStateManifest)+5)
+	for _, entry := range replicatedStateManifest {
+		list = append(list, entry.Model)
 	}
-	return models
+	return append(list, &models.User{}, &models.Group{}, &models.Token{}, &models.WebAuthnCredential{}, &models.WebAuthnChallenge{})
 }
 
 type ClusterSnapshot struct {
@@ -81,11 +90,22 @@ type SnapshotTable struct {
 }
 
 func ClearReplicatedStateTx(tx *gorm.DB) error {
+	return clearReplicatedTablesTx(tx, false)
+}
+
+func ClearDeclusteredStateTx(tx *gorm.DB) error {
+	return clearReplicatedTablesTx(tx, true)
+}
+
+func clearReplicatedTablesTx(tx *gorm.DB, leaving bool) error {
 	if tx == nil {
 		return fmt.Errorf("replicated_state_database_required")
 	}
 	tableNames := make([]string, 0, len(replicatedStateManifest))
 	for _, entry := range replicatedStateManifest {
+		if leaving && entry.SurvivesLeave {
+			continue
+		}
 		if err := tx.Exec("DELETE FROM " + quoteIdentifier(entry.Table)).Error; err != nil {
 			return fmt.Errorf("clear_replicated_state_%s: %w", entry.Table, err)
 		}
@@ -165,8 +185,13 @@ func restoreReplicatedStateTx(tx *gorm.DB, snap *ClusterSnapshot) error {
 	for _, table := range snap.Tables {
 		byName[table.Name] = table
 	}
-	if len(byName) != len(replicatedStateManifest) {
-		return fmt.Errorf("cluster_snapshot_table_set_mismatch")
+	// A table this build doesn't know would be lost here and still be missing after the upgrade,
+	// so refuse it; the node catches up once upgraded. A table the snapshot lacks comes from an
+	// older leader, which has no rows for it.
+	for name := range byName {
+		if !slices.ContainsFunc(replicatedStateManifest, func(entry ReplicatedStateTable) bool { return entry.Table == name }) {
+			return fmt.Errorf("cluster_snapshot_table_unknown: %s", name)
+		}
 	}
 	if err := ClearReplicatedStateTx(tx); err != nil {
 		return err
@@ -175,11 +200,18 @@ func restoreReplicatedStateTx(tx *gorm.DB, snap *ClusterSnapshot) error {
 		name := replicatedStateManifest[i].Table
 		table, ok := byName[name]
 		if !ok {
-			return fmt.Errorf("cluster_snapshot_table_missing: %s", name)
+			continue
 		}
 		if err := restoreSnapshotTable(tx, table); err != nil {
 			return fmt.Errorf("restore_replicated_state_%s: %w", name, err)
 		}
+	}
+	if err := reconcileOIDCUsersTx(tx); err != nil {
+		return err
+	}
+	// A snapshot from an older leader has no users to go by.
+	if _, ok := byName["sylve_users"]; ok {
+		return reconcileSylveUsersTx(tx)
 	}
 	return nil
 }

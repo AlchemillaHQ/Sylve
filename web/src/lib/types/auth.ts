@@ -37,8 +37,10 @@ export const UserSchema = z.object({
 	locked: z.boolean().optional().default(false),
 	doasEnabled: z.boolean().optional().default(false),
 	primaryGroupId: z.number().nullable().optional(),
-	source: z.enum(['local', 'pam']).default('local'),
+	source: z.enum(['local', 'pam', 'oidc']).default('local'),
 	externallyManaged: z.boolean().default(false),
+	shared: z.boolean().default(false),
+	nameTaken: z.boolean().default(false),
 	passkeyEligible: z.boolean(),
 	createdAt: z.string(),
 	updatedAt: z.string(),
@@ -118,3 +120,89 @@ export type SambaAction = z.infer<typeof SambaActionSchema>;
 export type NextUIDResult = z.infer<typeof NextUIDResultSchema>;
 export type UserCapabilities = z.infer<typeof UserCapabilitiesSchema>;
 export type ImportableUnixUser = z.infer<typeof ImportableUnixUserSchema>;
+
+export const ACLGrantSchema = z.object({
+	id: z.number().int().optional(),
+	path: z.string(),
+	subjectType: z.enum(['user', 'group']),
+	subject: z.string(),
+	role: z.string(),
+	propagate: z.boolean()
+});
+
+export const RoleSchema = z.object({
+	name: z.string(),
+	privileges: z.array(z.string()),
+	builtin: z.boolean().default(false)
+});
+
+export const ACLGroupSchema = z.object({
+	name: z.string(),
+	members: z.array(z.string()).default([])
+});
+
+export const PathPrivilegesSchema = z.object({
+	privileges: z.array(z.string()),
+	below: z.array(z.string())
+});
+
+export const PermissionsSchema = z.object({
+	superuser: z.boolean(),
+	paths: z.record(z.string(), PathPrivilegesSchema),
+	nodes: z.record(z.string(), z.string()).default({})
+});
+
+export const OIDCGroupMappingSchema = z.object({
+	claim: z.string(),
+	group: z.string()
+});
+
+export const AuthRealmSchema = z.object({
+	name: z.string(),
+	label: z.string(),
+	issuer: z.string(),
+	clientId: z.string(),
+	hasSecret: z.boolean().default(false),
+	scopes: z.string(),
+	usernameClaim: z.string(),
+	groupsClaim: z.string(),
+	groupMappings: z.array(OIDCGroupMappingSchema).default([]),
+	autoCreate: z.boolean(),
+	queryUserInfo: z.boolean(),
+	prompt: z.string(),
+	acrValues: z.string(),
+	hostedDomains: z.string().default(''),
+	sessionHours: z.number().int(),
+	caCert: z.string(),
+	default: z.boolean(),
+	enabled: z.boolean()
+});
+
+export const RealmDiscoverySchema = z.object({
+	authorizationEndpoint: z.string(),
+	tokenEndpoint: z.string(),
+	userInfoEndpoint: z.string(),
+	scopesSupported: z.array(z.string()).nullable().default([]),
+	claimsSupported: z.array(z.string()).nullable().default([]),
+	acrValuesSupported: z.array(z.string()).nullable().default([])
+});
+
+export type ACLGrant = z.infer<typeof ACLGrantSchema>;
+export type Role = z.infer<typeof RoleSchema>;
+export type ACLGroup = z.infer<typeof ACLGroupSchema>;
+export type Permissions = z.infer<typeof PermissionsSchema>;
+export type OIDCGroupMapping = z.infer<typeof OIDCGroupMappingSchema>;
+export type AuthRealm = z.infer<typeof AuthRealmSchema>;
+export type RealmDiscovery = z.infer<typeof RealmDiscoverySchema>;
+
+// A realm user's username already ends in @<realm>.
+export function subjectOf(user: Pick<User, 'username' | 'source'>): string {
+	switch (user.source) {
+		case 'oidc':
+			return user.username;
+		case 'pam':
+			return `${user.username}@pam`;
+		default:
+			return `${user.username}@sylve`;
+	}
+}

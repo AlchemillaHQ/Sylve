@@ -26,6 +26,7 @@
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { removeStaleCacheByRID, getVMLifecycleBadgeStyle } from '$lib/utils/vm/vm';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
+	import { allowed } from '$lib/stores/permissions.svelte';
 
 	interface Props {
 		children?: import('svelte').Snippet;
@@ -38,6 +39,8 @@
 		return Number.isSafeInteger(value) && value > 0 ? value : 0;
 	});
 	let node = $derived(String(page.params.node || ''));
+	let canPower = $derived(allowed('Guest.PowerMgmt', `/vm/${rid}`));
+	let canAllocate = $derived(allowed('Guest.Allocate', `/vm/${rid}`));
 	let vmIdentity = $derived(`${node}\u0000${rid}`);
 
 	type SimpleVMSnapshot = { identity: string; vm: SimpleVm };
@@ -562,6 +565,7 @@
 						{#if !shouldHideActionButtons && domain.current.id === -1 && !isDomainRunningForActions && !isDomainErrorState && !isOrphanState}
 							<Button
 								onclick={() => handleStart()}
+								disabled={!canPower}
 								size="sm"
 								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 							>
@@ -570,6 +574,7 @@
 
 							<Button
 								onclick={() => openDeleteModal(false)}
+								disabled={!canAllocate}
 								size="sm"
 								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 							>
@@ -580,6 +585,7 @@
 						{#if !shouldHideActionButtons && isDomainErrorState}
 							<Button
 								onclick={() => openDeleteModal(true)}
+								disabled={!canAllocate}
 								size="sm"
 								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-700 disabled:hover:bg-neutral-600 dark:text-white"
 							>
@@ -596,6 +602,7 @@
 							{#if isShutdownTaskActive}
 								<Button
 									onclick={() => handleForceStop()}
+									disabled={!canPower}
 									size="sm"
 									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 								>
@@ -611,6 +618,7 @@
 							{#if !shouldHideActionButtons}
 								<Button
 									onclick={() => handleReboot()}
+									disabled={!canPower}
 									size="sm"
 									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 								>
@@ -624,6 +632,7 @@
 
 								<Button
 									onclick={() => handleShutdown()}
+									disabled={!canPower}
 									size="sm"
 									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 								>
@@ -637,6 +646,7 @@
 
 								<Button
 									onclick={() => handleStop()}
+									disabled={!canPower}
 									size="sm"
 									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 								>
@@ -646,7 +656,7 @@
 						{/if}
 					{/if}
 
-					{#if isOrphanState && !shouldHideActionButtons}
+					{#if isOrphanState && !shouldHideActionButtons && canAllocate}
 						<ReinitializeConfig {rid} hostname={node} oncomplete={refreshVmDomain} />
 						<Button
 							onclick={() => openRemoveModal()}

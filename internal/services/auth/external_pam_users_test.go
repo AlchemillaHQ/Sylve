@@ -60,7 +60,7 @@ func externalPAMEditOpts(user *models.User) EditUserOpts {
 		Username:        user.Username,
 		FullName:        user.FullName,
 		Email:           user.Email,
-		Admin:           user.Admin,
+		Admin:           boolPtr(user.Admin),
 		UID:             user.UID,
 		Shell:           user.Shell,
 		HomeDirectory:   user.HomeDirectory,
@@ -272,7 +272,7 @@ func TestEditExternalPamUserOnlyUpdatesSylveState(t *testing.T) {
 	}
 	for _, change := range []func(*EditUserOpts){
 		func(o *EditUserOpts) { o.Locked = true },
-		func(o *EditUserOpts) { o.Admin = false },
+		func(o *EditUserOpts) { o.Admin = boolPtr(false) },
 		func(o *EditUserOpts) { o.DisablePassword = true },
 	} {
 		seedUserToken(t, service, user.ID, "next-session")

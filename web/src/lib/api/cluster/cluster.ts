@@ -157,6 +157,11 @@ export async function getNodes(signal?: AbortSignal): Promise<ClusterNode[]> {
 	});
 }
 
+export async function getNextGuestID(): Promise<number> {
+	const result = await apiRequestResult('/cluster/guest-ids/next', z.number(), 'GET');
+	return typeof result === 'number' ? result : 100;
+}
+
 export async function getNodesResult(signal?: AbortSignal): Promise<ClusterNode[] | APIResponse> {
 	return await apiRequestResult('/cluster/nodes', z.array(ClusterNodeSchema), 'GET', undefined, {
 		signal
