@@ -1091,6 +1091,50 @@ func TestGetUnixUserInfoFull(t *testing.T) {
 			t.Fatalf("expected error for malformed output")
 		}
 	})
+
+	t.Run("gecos with literal colon", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "bob:*:2001:2001:user:0:0:Bob:Smith:/home/bob:/bin/sh", nil
+		}
+
+		info, err := GetUnixUserInfoFull("bob")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if info.FullName != "Bob:Smith" {
+			t.Fatalf("expected fullName 'Bob:Smith', got: %s", info.FullName)
+		}
+		if info.HomeDir != "/home/bob" {
+			t.Fatalf("expected home /home/bob, got: %s", info.HomeDir)
+		}
+		if info.Shell != "/bin/sh" {
+			t.Fatalf("expected shell /bin/sh, got: %s", info.Shell)
+		}
+	})
+
+	t.Run("gecos with backslash before colon", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return `alice:*:2002:2002:user:0:0:Alice\:Jones:/home/alice:/bin/bash`, nil
+		}
+
+		info, err := GetUnixUserInfoFull("alice")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if info.FullName != `Alice\:Jones` {
+			t.Fatalf(`expected fullName 'Alice\:Jones', got: %s`, info.FullName)
+		}
+		if info.HomeDir != "/home/alice" {
+			t.Fatalf("expected home /home/alice, got: %s", info.HomeDir)
+		}
+		if info.Shell != "/bin/bash" {
+			t.Fatalf("expected shell /bin/bash, got: %s", info.Shell)
+		}
+	})
 }
 
 func TestGetUnixUserInfo(t *testing.T) {
@@ -1245,6 +1289,42 @@ func TestListAllUnixUsers(t *testing.T) {
 		}
 		if users[0].Username != "alice" {
 			t.Fatalf("expected alice, got: %s", users[0].Username)
+		}
+	})
+
+	t.Run("gecos with colon", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "" +
+				"alice:*:1001:1001::0:0:Alice:Smith:/home/alice:/bin/sh\n" +
+				"bob:*:1002:1002::0:0:Bob:/home/bob:/bin/tcsh\n", nil
+		}
+
+		users, err := ListAllUnixUsers()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(users) != 2 {
+			t.Fatalf("expected 2 users, got: %d", len(users))
+		}
+		if users[0].FullName != "Alice:Smith" {
+			t.Fatalf("expected alice fullName 'Alice:Smith', got: %s", users[0].FullName)
+		}
+		if users[0].HomeDir != "/home/alice" {
+			t.Fatalf("expected alice home /home/alice, got: %s", users[0].HomeDir)
+		}
+		if users[0].Shell != "/bin/sh" {
+			t.Fatalf("expected alice shell /bin/sh, got: %s", users[0].Shell)
+		}
+		if users[1].FullName != "Bob" {
+			t.Fatalf("expected bob fullName 'Bob', got: %s", users[1].FullName)
+		}
+		if users[1].HomeDir != "/home/bob" {
+			t.Fatalf("expected bob home /home/bob, got: %s", users[1].HomeDir)
+		}
+		if users[1].Shell != "/bin/tcsh" {
+			t.Fatalf("expected bob shell /bin/tcsh, got: %s", users[1].Shell)
 		}
 	})
 }
