@@ -9,6 +9,7 @@
 package libvirtHandlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -90,5 +91,51 @@ func TestVMChecksCoverIDsPoolsSwitchesAndRestrictedSettings(t *testing.T) {
 	clone := libvirtServiceInterfaces.CreateFromTemplateRequest{RID: 100}
 	if got := as(func(c *gin.Context) bool { return allowVMTemplateCreate(c, service, template, clone) }); got != http.StatusForbidden {
 		t.Errorf("cloning a template without Guest.Clone on /vm: status %d, want 403", got)
+	}
+}
+
+type vmDetailStub vmModels.VM
+
+func (s vmDetailStub) GetVMByRID(uint) (vmModels.VM, error) { return vmModels.VM(s), nil }
+
+func TestVNCPasswordOnlyForConsoleOrVNCSettings(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &models.User{}, &models.Migrations{},
+		&clusterModels.ACLGrant{}, &clusterModels.ACLRole{}, &clusterModels.ACLGroup{})
+	records := []any{
+		&models.Migrations{Name: "rbac_admin_grants"},
+		&clusterModels.ACLRole{Name: "VNCEditor", Privileges: []string{auth.GuestAudit, auth.GuestConfigHWType}},
+	}
+	roles := map[string]string{"alice": "GuestUser", "bob": "Auditor", "carol": "VNCEditor"}
+	ids := map[string]uint{}
+	for name, role := range roles {
+		user := models.User{Username: name, Source: "local"}
+		if err := db.Create(&user).Error; err != nil {
+			t.Fatal(err)
+		}
+		ids[name] = user.ID
+		records = append(records, &clusterModels.ACLGrant{Path: "/vm/100", SubjectType: clusterModels.ACLSubjectUser, Subject: name + "@sylve", Role: role})
+	}
+	for _, record := range records {
+		if err := db.Create(record).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	service := &auth.Service{DB: db}
+	gin.SetMode(gin.TestMode)
+
+	for name, want := range map[string]string{"alice": "secret", "bob": "", "carol": "secret"} {
+		router := gin.New()
+		router.Use(func(c *gin.Context) { c.Set("UserID", ids[name]) })
+		router.GET("/vm/:rid", GetVMByRID(vmDetailStub{RID: 100, VNCPassword: "secret"}, service))
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/vm/100", nil))
+
+		var response struct{ Data vmModels.VM }
+		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+			t.Fatalf("%s: %v (%s)", name, err, recorder.Body.String())
+		}
+		if response.Data.VNCPassword != want {
+			t.Errorf("%s (%s): VNC password %q, want %q", name, roles[name], response.Data.VNCPassword, want)
+		}
 	}
 }

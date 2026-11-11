@@ -88,7 +88,7 @@ func TestGetVMByRIDHandlerUsesRIDPathIdentity(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	stub := &vmCoreHandlerStub{vm: vmModels.VM{ID: 12, RID: 901, Name: "rid-vm"}}
 	router := gin.New()
-	router.GET("/vm/:rid", GetVMByRID(stub))
+	router.GET("/vm/:rid", GetVMByRID(stub, nil))
 
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/vm/901", nil))
@@ -121,7 +121,7 @@ func TestGetVMByRIDHandlerValidatesAndMapsMissingRID(t *testing.T) {
 	t.Run("invalid RID", func(t *testing.T) {
 		stub := &vmCoreHandlerStub{}
 		router := gin.New()
-		router.GET("/vm/:rid", GetVMByRID(stub))
+		router.GET("/vm/:rid", GetVMByRID(stub, nil))
 
 		recorder := httptest.NewRecorder()
 		router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/vm/0", nil))
@@ -139,7 +139,7 @@ func TestGetVMByRIDHandlerValidatesAndMapsMissingRID(t *testing.T) {
 	t.Run("missing VM", func(t *testing.T) {
 		stub := &vmCoreHandlerStub{vmErr: gorm.ErrRecordNotFound}
 		router := gin.New()
-		router.GET("/vm/:rid", GetVMByRID(stub))
+		router.GET("/vm/:rid", GetVMByRID(stub, nil))
 
 		recorder := httptest.NewRecorder()
 		router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/vm/902", nil))

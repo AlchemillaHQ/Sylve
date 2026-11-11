@@ -531,7 +531,7 @@ func classifyUpdateVMNameError(err error) (int, string) {
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /vm/{rid} [get]
-func GetVMByRID(libvirtService vmDetailService) gin.HandlerFunc {
+func GetVMByRID(libvirtService vmDetailService, authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid, ok := parseVMRID(c)
 		if !ok {
@@ -558,6 +558,12 @@ func GetVMByRID(libvirtService vmDetailService) gin.HandlerFunc {
 			})
 			return
 		}
+
+		can, ok := middleware.Checker(c, authService)
+		if !ok {
+			return
+		}
+		hideVNCPassword(can, &vm)
 
 		c.JSON(http.StatusOK, internal.APIResponse[vmModels.VM]{
 			Status:  "success",
@@ -594,8 +600,13 @@ func ListVMs(libvirtService *libvirt.Service, authService *auth.Service) gin.Han
 		if !ok {
 			return
 		}
+		can, ok := middleware.Checker(c, authService)
+		if !ok {
+			return
+		}
 
 		for i := range vms {
+			hideVNCPassword(can, &vms[i])
 			if vms[i].PCIDevices == nil {
 				vms[i].PCIDevices = []int{}
 			}

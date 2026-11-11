@@ -714,7 +714,7 @@ func RegisterRoutes(r *gin.Engine,
 			vmHandlers.RequireVMReplicationTopologyMutable(libvirtService, "rid"),
 			vmHandlers.DeleteVMSnapshot(libvirtService),
 		)
-		vm.GET("/:rid", vmHandlers.GetVMByRID(libvirtService))
+		vm.GET("/:rid", vmHandlers.GetVMByRID(libvirtService, authService))
 		vm.GET("", vmHandlers.ListVMs(libvirtService, authService))
 		vm.POST("", vmHandlers.CreateVM(libvirtService, authService))
 		vm.DELETE("/:rid/registration",

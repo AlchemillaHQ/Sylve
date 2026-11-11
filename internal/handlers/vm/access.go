@@ -119,3 +119,10 @@ func allowNetworkChange(c *gin.Context, authService *auth.Service, rid uint, swi
 	}
 	return !usesSwitch(switchName) || middleware.Allowed(c, authService, auth.SwitchPath(switchName), auth.NetworkUse)
 }
+
+func hideVNCPassword(can func(string, ...string) bool, vm *vmModels.VM) {
+	path := auth.GuestPath("vm", vm.RID)
+	if !can(path, auth.GuestConsole) && !can(path, auth.GuestConfigHWType) {
+		vm.VNCPassword = ""
+	}
+}
