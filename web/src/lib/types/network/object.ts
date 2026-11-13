@@ -12,7 +12,7 @@ export const NetworkObjectType = z.enum([
 	'FQDN'
 ]);
 
-export const ListsType = z.enum(['firehol', 'cloudflare', 'abusedb']);
+export const ListsType = z.enum(['firehol', 'cloudflare', 'abusedb', 'netapi']);
 export type ListsType = z.infer<typeof ListsType>;
 
 export const NetworkObjectUsageSchema = z.object({
