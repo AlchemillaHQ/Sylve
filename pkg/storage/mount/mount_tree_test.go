@@ -105,6 +105,25 @@ func TestUnmountDescendantsDeepestFirstAndStrictlyBounded(t *testing.T) {
 	}
 }
 
+func TestListDescendantsDeepestFirstAndStrictlyBounded(t *testing.T) {
+	ops := &fakeMountTreeOps{mounts: testMounts(
+		MountInfo{Source: "devfs", Target: "/jails/10/dev", FSType: "devfs"},
+		MountInfo{Source: "fdescfs", Target: "/jails/10/dev/fd", FSType: "fdescfs"},
+		MountInfo{Source: "outside", Target: "/jails/100/dev", FSType: "devfs"},
+	)}
+
+	got, err := listDescendants(t.Context(), "/jails/10/", ops)
+	if err != nil {
+		t.Fatalf("list descendants: %v", err)
+	}
+	if len(got) != 2 || got[0].Target != "/jails/10/dev/fd" || got[1].Target != "/jails/10/dev" {
+		t.Fatalf("descendants = %+v", got)
+	}
+	if len(ops.calls) != 0 {
+		t.Fatalf("listing unmounted something: %+v", ops.calls)
+	}
+}
+
 func TestUnmountDescendantsForcesOnlyBusyMounts(t *testing.T) {
 	busyTarget := "/jails/10/dev/fd"
 	ops := &fakeMountTreeOps{

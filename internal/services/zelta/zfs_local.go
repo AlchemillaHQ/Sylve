@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/gzfs"
+	storagezfs "github.com/alchemillahq/sylve/pkg/storage/zfs"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -320,6 +321,30 @@ func (s *Service) unmountLocalDataset(ctx context.Context, name string) error {
 
 func (s *Service) unmountLocalDatasetNormally(ctx context.Context, name string) error {
 	return s.unmountLocalDatasetWithForce(ctx, name, false)
+}
+
+// resolveLocalDatasetNormalUnmount looks name up once, so retrying a busy
+// unmount reruns only zfs unmount rather than a full zfs list each time. The
+// mountpoint is empty when it isn't a usable path.
+func (s *Service) resolveLocalDatasetNormalUnmount(
+	ctx context.Context,
+	name string,
+) (unmount func(context.Context) error, mountpoint string, err error) {
+	if s != nil && s.localDatasetUnmounter != nil {
+		return func(ctx context.Context) error {
+			return s.localDatasetUnmounter(ctx, name, false)
+		}, "", nil
+	}
+
+	ds, err := s.getLocalDataset(ctx, name)
+	if err != nil {
+		return nil, "", err
+	}
+	if ds == nil {
+		return func(context.Context) error { return nil }, "", nil
+	}
+	mountpoint, _ = storagezfs.FilesystemMountpoint(ds)
+	return func(ctx context.Context) error { return ds.Unmount(ctx, false) }, mountpoint, nil
 }
 
 func (s *Service) unmountLocalDatasetWithForce(ctx context.Context, name string, force bool) error {

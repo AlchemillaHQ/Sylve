@@ -94,6 +94,28 @@ func TestParseJailRuntimesJSON(t *testing.T) {
 	}
 }
 
+func TestJlsJailDying(t *testing.T) {
+	output := []byte(`{"__version":"2","jail-information":{"jail":[` +
+		`{"jid":7,"name":"aaaab","dying":"false"},` +
+		`{"jid":3,"name":"aaaab","dying":"true"},` +
+		`{"jid":8,"name":"aaaac","dying":"false"},` +
+		`{"jid":9,"name":"aaaad","dying":true}]}}`)
+	for name, want := range map[string]bool{
+		"aaaab": true, // a dying entry behind a live one of the same name
+		"aaaac": false,
+		"aaaad": true,
+		"aaaae": false,
+	} {
+		got, err := jlsJailDying(output, name)
+		if err != nil || got != want {
+			t.Fatalf("jlsJailDying(%q) = (%t, %v), want %t", name, got, err, want)
+		}
+	}
+	if _, err := jlsJailDying([]byte("{"), "aaaab"); err == nil {
+		t.Fatal("corrupt jls JSON unexpectedly succeeded")
+	}
+}
+
 func TestEmergencyStopJailRuntimesWithOpsStopsOnlyManagedAndDrainsNewRuntime(t *testing.T) {
 	one := utils.HashIntToNLetters(1, 5)
 	two := utils.HashIntToNLetters(2, 5)

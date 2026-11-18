@@ -385,23 +385,45 @@ func parseJailID(value any) (int, bool) {
 	}
 }
 
-func parseJailRuntimesJSON(out []byte) (map[string]jailRuntime, error) {
+type jlsJail struct {
+	JID    any    `json:"jid"`
+	Parent any    `json:"parent"`
+	Name   string `json:"name"`
+	Dying  any    `json:"dying"`
+}
+
+// dying accepts jls's exported "true"/"false" as well as a JSON boolean.
+func (j jlsJail) dying() bool {
+	switch value := j.Dying.(type) {
+	case bool:
+		return value
+	case string:
+		return strings.TrimSpace(value) == "true"
+	default:
+		return false
+	}
+}
+
+func decodeJlsJails(out []byte) ([]jlsJail, error) {
 	var jlsData struct {
 		JailInformation struct {
-			Jail []struct {
-				JID    any    `json:"jid"`
-				Parent any    `json:"parent"`
-				Name   string `json:"name"`
-			} `json:"jail"`
+			Jail []jlsJail `json:"jail"`
 		} `json:"jail-information"`
 	}
-
 	if err := json.Unmarshal(out, &jlsData); err != nil {
 		return nil, fmt.Errorf("failed to parse jls json: %w", err)
 	}
+	return jlsData.JailInformation.Jail, nil
+}
 
-	runtimeByName := make(map[string]jailRuntime, len(jlsData.JailInformation.Jail))
-	for _, j := range jlsData.JailInformation.Jail {
+func parseJailRuntimesJSON(out []byte) (map[string]jailRuntime, error) {
+	jails, err := decodeJlsJails(out)
+	if err != nil {
+		return nil, err
+	}
+
+	runtimeByName := make(map[string]jailRuntime, len(jails))
+	for _, j := range jails {
 		name := strings.TrimSpace(j.Name)
 		if name == "" {
 			continue
@@ -443,6 +465,32 @@ func (s *Service) IsJailRunning(ctid uint) (bool, error) {
 	jailName := s.GetCTIDHash(ctid)
 	_, ok := runtimeByName[jailName]
 	return ok, nil
+}
+
+// IsJailDying reports a jail that was removed but is still held by the kernel,
+// e.g. by its sockets in TIME_WAIT. Plain jls hides it, yet it keeps its root
+// referenced, so a normal unmount of its dataset fails as busy until it's gone.
+func (s *Service) IsJailDying(ctid uint) (bool, error) {
+	out, err := exec.Command("/usr/sbin/jls", "-d", "--libxo", "json", "jid", "name", "dying").Output()
+	if err != nil {
+		return false, fmt.Errorf("failed to run jls: %w", err)
+	}
+	return jlsJailDying(out, s.GetCTIDHash(ctid))
+}
+
+// jlsJailDying checks every entry: a dying jail can share its name with a
+// newer one.
+func jlsJailDying(out []byte, name string) (bool, error) {
+	jails, err := decodeJlsJails(out)
+	if err != nil {
+		return false, err
+	}
+	for _, j := range jails {
+		if strings.TrimSpace(j.Name) == name && j.dying() {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *Service) readPSUsageByJID() (map[int]psUsage, error) {

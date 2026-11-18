@@ -35,6 +35,28 @@ func List(ctx context.Context) ([]MountInfo, error) {
 	return (nativeMountTreeOps{}).list(ctx)
 }
 
+// Descendants lists the live mounts strictly below mountpoint, deepest first.
+func Descendants(ctx context.Context, mountpoint string) ([]MountInfo, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return listDescendants(ctx, mountpoint, nativeMountTreeOps{})
+}
+
+func listDescendants(ctx context.Context, mountpoint string, ops mountTreeOps) ([]MountInfo, error) {
+	root, err := normalizeRoot(mountpoint)
+	if err != nil {
+		return nil, err
+	}
+	mounts, err := ops.list(ctx)
+	if err != nil {
+		return nil, err
+	}
+	descendants := descendantMounts(mounts, root)
+	sortMountsForUnmount(descendants)
+	return descendants, nil
+}
+
 type mountTreeOps interface {
 	list(context.Context) ([]MountInfo, error)
 	unmount(target string, force bool) error

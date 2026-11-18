@@ -31,7 +31,17 @@ type restoreJailLifecycleStub struct {
 	stopErr          error
 	stopKeepsRunning bool
 	restartErr       error
-	steps            []string
+	// dyingPolls is how many IsJailDying calls report the jail as dying.
+	dyingPolls int
+	steps      []string
+}
+
+func (s *restoreJailLifecycleStub) IsJailDying(uint) (bool, error) {
+	if s.dyingPolls > 0 {
+		s.dyingPolls--
+		return true, nil
+	}
+	return false, nil
 }
 
 func (s *restoreJailLifecycleStub) GetJailCTIDFromDataset(string) (uint, error) {
@@ -202,6 +212,106 @@ func TestPrepareInPlaceJailRestoreFailsWhileDatasetBusy(t *testing.T) {
 	}
 	if err == nil || !strings.Contains(err.Error(), "restore_jail_dataset_busy") {
 		t.Fatalf("error = %v, want restore_jail_dataset_busy", err)
+	}
+}
+
+func TestPrepareInPlaceJailRestoreWaitsForDyingJail(t *testing.T) {
+	t.Parallel()
+
+	stub := &restoreJailLifecycleStub{ctID: 42, dyingPolls: 1}
+	service := newRestoreJailLifecycleService(stub)
+	service.localDatasetUnmounter = func(context.Context, string, bool) error {
+		if stub.dyingPolls > 0 {
+			return errors.New("unmounted while the jail was still dying")
+		}
+		return nil
+	}
+
+	guard, err := service.prepareInPlaceJailRestore(t.Context(), 42, "tank/sylve/jails/42")
+	if err != nil || guard == nil {
+		t.Fatalf("prepareInPlaceJailRestore: guard=%v err=%v", guard, err)
+	}
+}
+
+func TestPrepareInPlaceJailRestoreFailsWhileJailDying(t *testing.T) {
+	t.Parallel()
+
+	service := newRestoreJailLifecycleService(&restoreJailLifecycleStub{ctID: 42, dyingPolls: 1 << 30})
+	unmounts := 0
+	service.localDatasetUnmounter = func(context.Context, string, bool) error {
+		unmounts++
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Millisecond)
+	defer cancel()
+
+	guard, err := service.prepareInPlaceJailRestore(ctx, 42, "tank/sylve/jails/42")
+	if guard != nil || err == nil || !strings.Contains(err.Error(), "restore_jail_still_dying") {
+		t.Fatalf("guard=%v err=%v, want restore_jail_still_dying", guard, err)
+	}
+	if unmounts != 0 {
+		t.Fatalf("unmounted a dying jail's dataset %d times", unmounts)
+	}
+}
+
+// The deadline kills whatever zfs command is running; that must still read as
+// a busy dataset rather than a failed unmount.
+func TestPrepareInPlaceJailRestoreReportsKilledRetryAsBusy(t *testing.T) {
+	t.Parallel()
+
+	service := newRestoreJailLifecycleService(&restoreJailLifecycleStub{ctID: 42})
+	calls := 0
+	service.localDatasetUnmounter = func(ctx context.Context, _ string, _ bool) error {
+		calls++
+		if calls == 1 {
+			return errors.New("cannot unmount: pool or dataset is busy")
+		}
+		<-ctx.Done()
+		return errors.New("zfs list failed: signal: killed (stderr: )")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 2*restoreJailQuiesceRetryInterval)
+	defer cancel()
+
+	_, err := service.prepareInPlaceJailRestore(ctx, 42, "tank/sylve/jails/42")
+	if err == nil || !strings.Contains(err.Error(), "restore_jail_dataset_busy") ||
+		!strings.Contains(err.Error(), "pool or dataset is busy") {
+		t.Fatalf("error = %v, want restore_jail_dataset_busy with the busy cause", err)
+	}
+	if calls != 2 {
+		t.Fatalf("unmount calls = %d, want 2", calls)
+	}
+}
+
+func TestPrepareInPlaceJailRestoreReportsHungUnmountAsTimeout(t *testing.T) {
+	t.Parallel()
+
+	service := newRestoreJailLifecycleService(&restoreJailLifecycleStub{ctID: 42})
+	service.localDatasetUnmounter = func(ctx context.Context, _ string, _ bool) error {
+		<-ctx.Done()
+		return errors.New("zfs unmount failed: signal: killed (stderr: )")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Millisecond)
+	defer cancel()
+
+	_, err := service.prepareInPlaceJailRestore(ctx, 42, "tank/sylve/jails/42")
+	if err == nil || !strings.Contains(err.Error(), "restore_jail_dataset_unmount_timeout") ||
+		!errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want restore_jail_dataset_unmount_timeout", err)
+	}
+}
+
+func TestPrepareInPlaceJailRestoreReportsNonBusyUnmountFailure(t *testing.T) {
+	t.Parallel()
+
+	service := newRestoreJailLifecycleService(&restoreJailLifecycleStub{ctID: 42})
+	service.localDatasetUnmounter = func(context.Context, string, bool) error {
+		return errors.New("permission denied")
+	}
+
+	_, err := service.prepareInPlaceJailRestore(t.Context(), 42, "tank/sylve/jails/42")
+	if err == nil || !strings.Contains(err.Error(), "restore_jail_dataset_unmount_failed") ||
+		!strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("error = %v, want restore_jail_dataset_unmount_failed", err)
 	}
 }
 

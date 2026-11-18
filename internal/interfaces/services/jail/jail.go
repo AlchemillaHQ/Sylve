@@ -237,6 +237,7 @@ type JailServiceInterface interface {
 	JailAction(ctid int, action string) error
 	ForceStopJail(ctID uint) error
 	IsJailRunning(ctid uint) (bool, error)
+	IsJailDying(ctid uint) (bool, error)
 	GetJailCTIDFromDataset(dataset string) (uint, error)
 	DeleteJail(ctx context.Context, ctId uint, deleteMacs bool, deleteRootFS bool) error
 	DeleteJailWithWarnings(ctx context.Context, ctId uint, deleteMacs bool, deleteRootFS bool) (DeleteJailResult, error)
