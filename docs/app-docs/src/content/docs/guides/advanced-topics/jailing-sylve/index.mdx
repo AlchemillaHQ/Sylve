@@ -40,6 +40,8 @@ Notes:
 - Replace `100` in `children.max` with your desired number of maximum hierarchial jails.
 - Replace your `devfs_ruleset` number based on your own custom rules.
 - Add your own desired interface to `vnet.interface`.
+- Do **NOT** set `jailed=on` on a dataset managed by Sylve. Sylve refuses to mount a dataset (or its
+  children) with this property set to `on`.
 
 ### DevFS ruleset
 
