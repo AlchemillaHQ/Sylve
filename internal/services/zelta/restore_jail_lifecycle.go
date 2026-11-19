@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,8 +16,8 @@ import (
 )
 
 const (
-	// A removed jail can stay dying until its sockets leave TIME_WAIT, 60s by
-	// default, and its dataset stays busy until then.
+	// A stopped jail can stay dying until its sockets leave TIME_WAIT, 60s by
+	// default, and keeps its dataset busy until then.
 	restoreJailQuiesceTimeout       = 2 * time.Minute
 	restoreJailQuiesceRetryInterval = 250 * time.Millisecond
 )
@@ -47,9 +48,8 @@ func (g *restoreRuntimeGuard) restoreAfterFailure(primary error) (error, error) 
 	return primary, nil
 }
 
-// The jail restore fence has already stopped the jail; once the kernel has
-// released it, its dataset still has to be unmounted before the promotion
-// renames it.
+// The jail restore fence has already stopped the jail; its dataset still has to
+// be unmounted before the promotion renames it.
 func (s *Service) prepareInPlaceJailRestore(
 	ctx context.Context,
 	ctID uint,
@@ -58,9 +58,6 @@ func (s *Service) prepareInPlaceJailRestore(
 	dataset = normalizeRestoreDestinationDataset(dataset)
 	quiesceCtx, cancel := context.WithTimeout(ctx, restoreJailQuiesceTimeout)
 	defer cancel()
-	if err := s.waitForJailRestoreReleased(quiesceCtx, ctID); err != nil {
-		return nil, err
-	}
 	if err := s.waitForJailRestoreDatasetUnmount(quiesceCtx, ctID, dataset); err != nil {
 		return nil, err
 	}
@@ -90,23 +87,10 @@ func (s *Service) waitForJailRestoreStopped(ctx context.Context, ctID uint) erro
 	}
 }
 
-// waitForJailRestoreReleased waits out a dying jail, which keeps its root
-// referenced until the kernel frees it.
-func (s *Service) waitForJailRestoreReleased(ctx context.Context, ctID uint) error {
-	for {
-		dying, err := s.Jail.IsJailDying(ctID)
-		if err != nil {
-			return fmt.Errorf("restore_jail_state_check_failed: ct_id=%d: %w", ctID, err)
-		}
-		if !dying {
-			return nil
-		}
-		if !waitForRestoreJailRetry(ctx) {
-			return fmt.Errorf("restore_jail_still_dying: ct_id=%d: %w", ctID, ctx.Err())
-		}
-	}
-}
-
+// waitForJailRestoreDatasetUnmount retries while the dataset is busy. A dying
+// jail is only reported, never waited on by itself: a stuck one may never go,
+// and it doesn't matter once the dataset unmounts, e.g. after a manual
+// forced unmount.
 func (s *Service) waitForJailRestoreDatasetUnmount(ctx context.Context, ctID uint, dataset string) error {
 	unmount, mountpoint, err := s.resolveLocalDatasetNormalUnmount(ctx, dataset)
 	var busyErr error
@@ -143,16 +127,35 @@ func (s *Service) waitForJailRestoreDatasetUnmount(ctx context.Context, ctID uin
 		)
 	}
 	return fmt.Errorf(
-		"restore_jail_dataset_busy: ct_id=%d dataset=%s mounts_below=%s: %w",
+		"restore_jail_dataset_busy: ct_id=%d dataset=%s dying_jids=%s mounts_below=%s: %w",
 		ctID,
 		dataset,
+		s.describeDyingJails(ctID),
 		describeMountsBelow(mountpoint),
 		busyErr,
 	)
 }
 
+// describeDyingJails lists removed copies of the jail the kernel still holds;
+// each keeps the dataset busy until it's released.
+func (s *Service) describeDyingJails(ctID uint) string {
+	jids, err := s.Jail.DyingJailIDs(ctID)
+	if err != nil {
+		return fmt.Sprintf("unknown(%v)", err)
+	}
+	if len(jids) == 0 {
+		return "none"
+	}
+	described := make([]string, 0, len(jids))
+	for _, jid := range jids {
+		described = append(described, strconv.Itoa(jid))
+	}
+	return "[" + strings.Join(described, ",") + "]"
+}
+
 // describeMountsBelow lists what is still mounted on top of a busy dataset.
-// With nothing listed, a process most likely has files open there.
+// With nothing listed here or as dying, a process most likely has files open
+// there.
 func describeMountsBelow(mountpoint string) string {
 	if mountpoint == "" {
 		return "unknown"

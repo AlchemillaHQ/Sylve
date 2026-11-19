@@ -467,30 +467,35 @@ func (s *Service) IsJailRunning(ctid uint) (bool, error) {
 	return ok, nil
 }
 
-// IsJailDying reports a jail that was removed but is still held by the kernel,
-// e.g. by its sockets in TIME_WAIT. Plain jls hides it, yet it keeps its root
-// referenced, so a normal unmount of its dataset fails as busy until it's gone.
-func (s *Service) IsJailDying(ctid uint) (bool, error) {
+// DyingJailIDs lists removed copies of the jail that the kernel still holds,
+// e.g. for sockets in TIME_WAIT or a leaked reference. Plain jls hides them,
+// yet each keeps its root referenced, so a normal unmount of the jail's
+// dataset fails as busy while any remain.
+func (s *Service) DyingJailIDs(ctid uint) ([]int, error) {
 	out, err := exec.Command("/usr/sbin/jls", "-d", "--libxo", "json", "jid", "name", "dying").Output()
 	if err != nil {
-		return false, fmt.Errorf("failed to run jls: %w", err)
+		return nil, fmt.Errorf("failed to run jls: %w", err)
 	}
-	return jlsJailDying(out, s.GetCTIDHash(ctid))
+	return dyingJailIDs(out, s.GetCTIDHash(ctid))
 }
 
-// jlsJailDying checks every entry: a dying jail can share its name with a
-// newer one.
-func jlsJailDying(out []byte, name string) (bool, error) {
+// dyingJailIDs checks every entry: dying copies share their name with each
+// other and with a running one.
+func dyingJailIDs(out []byte, name string) ([]int, error) {
 	jails, err := decodeJlsJails(out)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
+	var jids []int
 	for _, j := range jails {
-		if strings.TrimSpace(j.Name) == name && j.dying() {
-			return true, nil
+		if strings.TrimSpace(j.Name) != name || !j.dying() {
+			continue
+		}
+		if jid, ok := parseJailID(j.JID); ok {
+			jids = append(jids, jid)
 		}
 	}
-	return false, nil
+	return jids, nil
 }
 
 func (s *Service) readPSUsageByJID() (map[int]psUsage, error) {

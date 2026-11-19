@@ -5,6 +5,7 @@ package jail
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -94,24 +95,25 @@ func TestParseJailRuntimesJSON(t *testing.T) {
 	}
 }
 
-func TestJlsJailDying(t *testing.T) {
+func TestDyingJailIDs(t *testing.T) {
 	output := []byte(`{"__version":"2","jail-information":{"jail":[` +
-		`{"jid":7,"name":"aaaab","dying":"false"},` +
 		`{"jid":3,"name":"aaaab","dying":"true"},` +
+		`{"jid":"5","name":"aaaab","dying":"true"},` +
+		`{"jid":7,"name":"aaaab","dying":"false"},` +
 		`{"jid":8,"name":"aaaac","dying":"false"},` +
 		`{"jid":9,"name":"aaaad","dying":true}]}}`)
-	for name, want := range map[string]bool{
-		"aaaab": true, // a dying entry behind a live one of the same name
-		"aaaac": false,
-		"aaaad": true,
-		"aaaae": false,
+	for name, want := range map[string][]int{
+		"aaaab": {3, 5}, // dying copies next to a running one
+		"aaaac": nil,
+		"aaaad": {9},
+		"aaaae": nil,
 	} {
-		got, err := jlsJailDying(output, name)
-		if err != nil || got != want {
-			t.Fatalf("jlsJailDying(%q) = (%t, %v), want %t", name, got, err, want)
+		got, err := dyingJailIDs(output, name)
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Fatalf("dyingJailIDs(%q) = (%v, %v), want %v", name, got, err, want)
 		}
 	}
-	if _, err := jlsJailDying([]byte("{"), "aaaab"); err == nil {
+	if _, err := dyingJailIDs([]byte("{"), "aaaab"); err == nil {
 		t.Fatal("corrupt jls JSON unexpectedly succeeded")
 	}
 }
