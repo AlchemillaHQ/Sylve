@@ -232,6 +232,16 @@ func orderedUniqueJailNetworkRCConfLines(lines []string) []string {
 	return unique
 }
 
+// ipv4GatewayOffLink reports whether gateway is outside the prefix of cidr (e.g. a /32).
+func ipv4GatewayOffLink(cidr, gateway string) bool {
+	_, prefix, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return false
+	}
+	gatewayIP := net.ParseIP(gateway)
+	return gatewayIP != nil && !prefix.Contains(gatewayIP)
+}
+
 func jailHookHasCommands(content string) bool {
 	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
@@ -1307,6 +1317,9 @@ func (s *Service) SyncNetwork(ctID uint, jail jailModels.Jail) error {
 				if ipv4 != "" {
 					postStartBuilder.WriteString(fmt.Sprintf("ifconfig -j %s %s inet %s\n", ctidHash, epairB, ipv4))
 					if network.DefaultGateway && ipv4Gateway != "" {
+						if ipv4GatewayOffLink(ipv4, ipv4Gateway) {
+							postStartBuilder.WriteString(fmt.Sprintf("route -j %s add -host %s -interface %s\n", ctidHash, ipv4Gateway, epairB))
+						}
 						postStartBuilder.WriteString(fmt.Sprintf("route -j %s add default %s\n", ctidHash, ipv4Gateway))
 					}
 				}
@@ -1331,6 +1344,13 @@ func (s *Service) SyncNetwork(ctID uint, jail jailModels.Jail) error {
 				}
 				rcConfLines = append(rcConfLines, fmt.Sprintf("ifconfig_%s_net%db=\"inet %s netmask %s\"", ctidHash, network.ID, ip, mask))
 				if network.DefaultGateway && ipv4Gateway != "" {
+					if ipv4GatewayOffLink(ipv4, ipv4Gateway) {
+						routeName := fmt.Sprintf("sylve_gw%d", network.ID)
+						rcConfLines = append(rcConfLines,
+							fmt.Sprintf("static_routes=\"${static_routes} %s\"", routeName),
+							fmt.Sprintf("route_%s=\"-host %s -interface %s\"", routeName, ipv4Gateway, epairB),
+						)
+					}
 					rcConfLines = append(rcConfLines, fmt.Sprintf("defaultrouter=\"%s\"", ipv4Gateway))
 				}
 			}

@@ -656,6 +656,137 @@ func TestSyncNetworkRepairsFreeBSDStaticConfiguration(t *testing.T) {
 	}
 }
 
+func TestIPv4GatewayOffLink(t *testing.T) {
+	tests := []struct {
+		cidr, gateway string
+		want          bool
+	}{
+		{"192.0.2.10/32", "192.0.2.1", true},
+		{"192.0.2.10/24", "192.0.2.1", false},
+		{"192.0.2.10/30", "192.0.2.1", true},
+		{"192.0.2.10/32", "192.0.2.10", false},
+		{"192.0.2.10", "192.0.2.1", false},
+		{"192.0.2.10/32", "not-an-ip", false},
+	}
+	for _, tt := range tests {
+		if got := ipv4GatewayOffLink(tt.cidr, tt.gateway); got != tt.want {
+			t.Errorf("ipv4GatewayOffLink(%q, %q) = %v, want %v", tt.cidr, tt.gateway, got, tt.want)
+		}
+	}
+}
+
+func TestSyncNetworkAddsHostRouteForFreeBSDSlash32Gateway(t *testing.T) {
+	fixture := newJailNetworkSyncFixture(t, jailModels.JailTypeFreeBSD, 7206)
+	macID := fixture.addObject(t, "Mac", "02:00:00:00:72:07")
+	ipv4ID := fixture.addObject(t, "Network", "192.0.2.10/32")
+	ipv4GatewayID := fixture.addObject(t, "Host", "192.0.2.1")
+	network := fixture.addNetwork(t, jailModels.Network{
+		Name:           "slash32",
+		MacID:          &macID,
+		IPv4ID:         &ipv4ID,
+		IPv4GwID:       &ipv4GatewayID,
+		DefaultGateway: true,
+	})
+	rcConfPath := filepath.Join(fixture.mountPoint, "etc", "rc.conf")
+	if err := os.WriteFile(rcConfPath, []byte("static_routes=\"user\"\nroute_user=\"-net 198.51.100.0/24 192.0.2.1\"\n"), 0o644); err != nil {
+		t.Fatalf("seed rc.conf: %v", err)
+	}
+
+	if err := fixture.service.SyncNetwork(fixture.jail.CTID, fixture.jail); err != nil {
+		t.Fatalf("sync /32 interface: %v", err)
+	}
+	rcConf, err := os.ReadFile(rcConfPath)
+	if err != nil {
+		t.Fatalf("read /32 rc.conf: %v", err)
+	}
+	epairB := fmt.Sprintf("%s_net%db", fixture.service.GetCTIDHash(fixture.jail.CTID), network.ID)
+	routeName := fmt.Sprintf("sylve_gw%d", network.ID)
+	ordered := []string{
+		`static_routes="user"`,
+		fmt.Sprintf(`ifconfig_%s="inet 192.0.2.10 netmask 255.255.255.255"`, epairB),
+		fmt.Sprintf(`static_routes="${static_routes} %s"`, routeName),
+		fmt.Sprintf(`route_%s="-host 192.0.2.1 -interface %s"`, routeName, epairB),
+		`defaultrouter="192.0.2.1"`,
+	}
+	last := -1
+	for _, line := range ordered {
+		if got := strings.Count(string(rcConf), line); got != 1 {
+			t.Fatalf("/32 line %q count = %d, want 1:\n%s", line, got, rcConf)
+		}
+		index := strings.Index(string(rcConf), line)
+		if index < last {
+			t.Fatalf("/32 line %q is out of order:\n%s", line, rcConf)
+		}
+		last = index
+	}
+
+	if err := fixture.service.SyncNetwork(fixture.jail.CTID, fixture.jail); err != nil {
+		t.Fatalf("repeat /32 sync: %v", err)
+	}
+	repeated, err := os.ReadFile(rcConfPath)
+	if err != nil {
+		t.Fatalf("reread /32 rc.conf: %v", err)
+	}
+	if string(repeated) != string(rcConf) {
+		t.Fatalf("repeating /32 sync changed rc.conf:\nfirst:\n%s\nsecond:\n%s", rcConf, repeated)
+	}
+
+	fixture.network.entries[ipv4ID] = "192.0.2.10/24"
+	if err := fixture.service.SyncNetwork(fixture.jail.CTID, fixture.jail); err != nil {
+		t.Fatalf("sync /24 interface: %v", err)
+	}
+	onLink, err := os.ReadFile(rcConfPath)
+	if err != nil {
+		t.Fatalf("read /24 rc.conf: %v", err)
+	}
+	if strings.Contains(string(onLink), routeName) {
+		t.Fatalf("on-link gateway kept the /32 host route:\n%s", onLink)
+	}
+	for _, line := range []string{`static_routes="user"`, `defaultrouter="192.0.2.1"`} {
+		if got := strings.Count(string(onLink), line); got != 1 {
+			t.Fatalf("/24 line %q count = %d, want 1:\n%s", line, got, onLink)
+		}
+	}
+}
+
+func TestSyncNetworkAddsHostRouteForLinuxSlash32Gateway(t *testing.T) {
+	fixture := newJailNetworkSyncFixture(t, jailModels.JailTypeLinux, 7207)
+	macID := fixture.addObject(t, "Mac", "02:00:00:00:72:08")
+	ipv4ID := fixture.addObject(t, "Network", "192.0.2.20/32")
+	ipv4GatewayID := fixture.addObject(t, "Host", "192.0.2.1")
+	network := fixture.addNetwork(t, jailModels.Network{
+		Name:           "slash32",
+		MacID:          &macID,
+		IPv4ID:         &ipv4ID,
+		IPv4GwID:       &ipv4GatewayID,
+		DefaultGateway: true,
+	})
+
+	if err := fixture.service.SyncNetwork(fixture.jail.CTID, fixture.jail); err != nil {
+		t.Fatalf("sync Linux /32 interface: %v", err)
+	}
+	postStartPath, err := fixture.service.GetHookScriptPath(fixture.jail.CTID, "post-start")
+	if err != nil {
+		t.Fatalf("get Linux post-start hook: %v", err)
+	}
+	postStart, err := os.ReadFile(postStartPath)
+	if err != nil {
+		t.Fatalf("read Linux post-start hook: %v", err)
+	}
+	hash := fixture.service.GetCTIDHash(fixture.jail.CTID)
+	epairB := fmt.Sprintf("%s_net%db", hash, network.ID)
+	hostRoute := fmt.Sprintf("route -j %s add -host 192.0.2.1 -interface %s", hash, epairB)
+	defaultRoute := fmt.Sprintf("route -j %s add default 192.0.2.1", hash)
+	for _, command := range []string{hostRoute, defaultRoute} {
+		if got := strings.Count(string(postStart), command); got != 1 {
+			t.Fatalf("Linux /32 command %q count = %d, want 1:\n%s", command, got, postStart)
+		}
+	}
+	if strings.Index(string(postStart), hostRoute) > strings.Index(string(postStart), defaultRoute) {
+		t.Fatalf("Linux host route must precede the default route:\n%s", postStart)
+	}
+}
+
 func TestSyncNetworkRendersMultipleLinuxStaticInterfaces(t *testing.T) {
 	fixture := newJailNetworkSyncFixture(t, jailModels.JailTypeLinux, 7203)
 	firstMAC := fixture.addObject(t, "Mac", "02:00:00:00:72:04")
