@@ -66,8 +66,21 @@ func ensureNamespace(ctx context.Context, client *gzfs.Client, poolName string, 
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_get_pool_root_dataset_%s: %w", poolName, err)
 	}
-	if err := validateNamespaceFilesystem(root, poolName, poolName); err != nil {
+	if err := validateNamespaceDataset(root, poolName, poolName); err != nil {
 		return nil, err
+	}
+
+	explicitBase := ""
+	if _, err := FilesystemMountpoint(root); err != nil {
+		base := "/" + poolName
+		if normalized, err := NormalizeMountpoint(base); err != nil || normalized != base {
+			return nil, fmt.Errorf(
+				"pool_root_mountpoint_not_usable: pool=%s mountpoint=%s",
+				poolName,
+				root.Mountpoint,
+			)
+		}
+		explicitBase = base
 	}
 
 	var created []*gzfs.Dataset
@@ -85,7 +98,11 @@ func ensureNamespace(ctx context.Context, client *gzfs.Client, poolName string, 
 			continue
 		}
 
-		createdDataset, createErr := client.ZFS.CreateFilesystem(ctx, datasetName, nil)
+		var properties map[string]string
+		if explicitBase != "" && !strings.Contains(suffix, "/") {
+			properties = map[string]string{"mountpoint": explicitBase + "/" + suffix}
+		}
+		createdDataset, createErr := client.ZFS.CreateFilesystem(ctx, datasetName, properties)
 		if createErr != nil {
 			return created, fmt.Errorf("failed_to_create_dataset_%s: %w", datasetName, createErr)
 		}
@@ -103,6 +120,16 @@ func ensureNamespace(ctx context.Context, client *gzfs.Client, poolName string, 
 }
 
 func validateNamespaceFilesystem(dataset *gzfs.Dataset, expectedName, poolName string) error {
+	if err := validateNamespaceDataset(dataset, expectedName, poolName); err != nil {
+		return err
+	}
+	if _, err := FilesystemMountpoint(dataset); err != nil {
+		return fmt.Errorf("managed_dataset_mountpoint_not_usable_%s: %w", expectedName, err)
+	}
+	return nil
+}
+
+func validateNamespaceDataset(dataset *gzfs.Dataset, expectedName, poolName string) error {
 	if dataset == nil || dataset.Name != expectedName {
 		return fmt.Errorf("filesystem_dataset_identity_mismatch: expected=%s", expectedName)
 	}
@@ -120,9 +147,6 @@ func validateNamespaceFilesystem(dataset *gzfs.Dataset, expectedName, poolName s
 			poolName,
 			dataset.Pool,
 		)
-	}
-	if _, err := FilesystemMountpoint(dataset); err != nil {
-		return fmt.Errorf("managed_dataset_mountpoint_not_usable_%s: %w", expectedName, err)
 	}
 	return nil
 }
