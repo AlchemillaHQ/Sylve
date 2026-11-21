@@ -163,6 +163,13 @@ export function objectLists(t: ListsType): { label: string; value: string }[] {
 					value: 'https://iplists.firehol.org/files/abuseipdb_30d.ipset'
 				}
 			];
+		case 'netapi':
+			return [
+				{
+					label: 'NetAPI Honeypot Attackers (48 Hours)',
+					value: 'https://netapi.com/api2/?method=compromised&dataset_type=ip'
+				}
+			];
 		default:
 			return [];
 	}

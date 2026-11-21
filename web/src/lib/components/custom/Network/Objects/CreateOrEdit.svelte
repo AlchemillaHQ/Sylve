@@ -25,7 +25,8 @@
 	const predefinedListOptions = [
 		...objectLists('firehol'),
 		...objectLists('cloudflare'),
-		...objectLists('abusedb')
+		...objectLists('abusedb'),
+		...objectLists('netapi')
 	];
 	import { toast } from 'svelte-sonner';
 	import { SvelteSet } from 'svelte/reactivity';
