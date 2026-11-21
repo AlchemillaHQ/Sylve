@@ -52,6 +52,7 @@ func TestRaftAddressHost(t *testing.T) {
 		want string
 	}{
 		{"192.168.1.1:8180", "192.168.1.1"},
+		{"[2001:db8::10]:8180", "2001:db8::10"},
 		{"node-1", "node-1"},
 		{"", ""},
 	}
@@ -62,6 +63,19 @@ func TestRaftAddressHost(t *testing.T) {
 				t.Fatalf("expected %q, got %q", tt.want, got)
 			}
 		})
+	}
+}
+
+func TestPeerURLsBracketIPv6(t *testing.T) {
+	for _, test := range []struct{ got, want string }{
+		{nodeInfoURL("192.0.2.10", ClusterEmbeddedHTTPSPort), "https://192.0.2.10:8184/api/info/node"},
+		{nodeInfoURL("2001:db8::10", ClusterEmbeddedHTTPSPort), "https://[2001:db8::10]:8184/api/info/node"},
+		{peerHealthURL("192.0.2.10:8180"), "https://192.0.2.10:8184/api/health/http"},
+		{peerHealthURL("[2001:db8::10]:8180"), "https://[2001:db8::10]:8184/api/health/http"},
+	} {
+		if test.got != test.want {
+			t.Errorf("got %q, want %q", test.got, test.want)
+		}
 	}
 }
 

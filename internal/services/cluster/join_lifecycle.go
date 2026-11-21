@@ -110,11 +110,11 @@ func (s *Service) Join(ctx context.Context, leaderIP, nodeIP, clusterKey string)
 // No guest may change while a join is open: the leader claims this node's guest
 // IDs from the inventory sent with the admission.
 func (s *Service) saveJoinIntent(leaderIP, nodeIP, clusterKey string) error {
-	leaderIP, err := normalizeClusterIPv4(leaderIP, "invalid_leader_ip")
+	leaderIP, err := normalizeClusterIP(leaderIP, "invalid_leader_ip")
 	if err != nil {
 		return err
 	}
-	nodeIP, err = normalizeClusterIPv4(nodeIP, "invalid_joining_node_ip")
+	nodeIP, err = normalizeClusterIP(nodeIP, "invalid_joining_node_ip")
 	if err != nil {
 		return err
 	}

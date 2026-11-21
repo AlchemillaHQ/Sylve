@@ -72,15 +72,11 @@ func validReaddressPhase(phase string) bool {
 }
 
 func normalizeReaddressIP(value string) (string, error) {
-	ip := net.ParseIP(strings.TrimSpace(value))
-	if ip == nil || ip.IsUnspecified() || ip.IsLoopback() || ip.IsMulticast() {
+	ip := utils.ParseNodeIP(value)
+	if ip == nil || ip.IsLoopback() {
 		return "", fmt.Errorf("cluster_readdress_ip_invalid")
 	}
-	ipv4 := ip.To4()
-	if ipv4 == nil {
-		return "", fmt.Errorf("cluster_readdress_ipv6_unsupported")
-	}
-	return ipv4.String(), nil
+	return ip.String(), nil
 }
 
 func sameReaddressIP(left string, right string) bool {
@@ -89,9 +85,12 @@ func sameReaddressIP(left string, right string) bool {
 	return leftIP != nil && rightIP != nil && leftIP.Equal(rightIP)
 }
 
-func validateReaddressBind(newIP string) error {
+func validateReaddressBind(ctx context.Context, newIP string) error {
 	if !utils.IsLocalIP(newIP) {
 		return fmt.Errorf("cluster_readdress_ip_not_local")
+	}
+	if err := network.WaitForBindableIP(ctx, newIP, network.TentativeAddressWait); err != nil {
+		return fmt.Errorf("cluster_readdress_ip_not_ready: %w", err)
 	}
 	for _, port := range []int{ClusterRaftPort, ClusterEmbeddedSSHPort, ClusterEmbeddedHTTPSPort} {
 		if err := network.TryBindToPort(newIP, port, "tcp"); err != nil {
@@ -214,13 +213,16 @@ func (s *Service) preflightLocalReaddress(ctx context.Context, record clusterMod
 	if sameReaddressIP(record.RaftIP, newIP) {
 		return fmt.Errorf("cluster_readdress_ip_unchanged")
 	}
+	if utils.IPFamily(record.RaftIP) != utils.IPFamily(newIP) {
+		return fmt.Errorf("cluster_readdress_ip_family_changed: old=%s new=%s", record.RaftIP, newIP)
+	}
 	if record.HasIncompleteJoin() {
 		return fmt.Errorf("cluster_readdress_join_conflict")
 	}
 	if strings.TrimSpace(record.LeavePhase) != "" {
 		return fmt.Errorf("cluster_readdress_leave_conflict")
 	}
-	if err := validateReaddressBind(newIP); err != nil {
+	if err := validateReaddressBind(ctx, newIP); err != nil {
 		return err
 	}
 	if s.Raft() == nil || s.Raft().State() == raft.Shutdown {
@@ -540,6 +542,9 @@ func (s *Service) RepairMemberAddress(
 		return ReaddressResult{
 			NodeID: nodeID, OldIP: oldIP, NewIP: newIP, MembershipCommitted: true,
 		}, nil
+	}
+	if utils.IPFamily(oldIP) != utils.IPFamily(newIP) {
+		return ReaddressResult{}, fmt.Errorf("cluster_readdress_ip_family_changed: old=%s new=%s", oldIP, newIP)
 	}
 	identity, err := s.fetchReaddressIdentity(ctx, nodeID, raft.ServerAddress(RaftServerAddress(newIP)))
 	if err != nil {

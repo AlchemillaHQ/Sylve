@@ -4,7 +4,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { handleAPIError } from '$lib/utils/http';
-	import { isValidIPv4 } from '$lib/utils/string';
+	import { normalizeNodeIP } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
 	import { watch } from 'runed';
 	import SpanWithIcon from '../SpanWithIcon.svelte';
@@ -25,22 +25,17 @@
 
 	watch([() => open, () => window?.location?.hostname, () => resetIP], ([open, hostname]) => {
 		if (open && hostname) {
-			if (isValidIPv4(hostname)) {
-				properties.ip = hostname;
+			const ip = normalizeNodeIP(hostname);
+			if (ip) {
+				properties.ip = ip;
 			}
 		}
 	});
 
 	async function create() {
-		let error = '';
-
-		// Clustering is IPv4-only; the backend rejects IPv6 addresses.
-		if (!isValidIPv4(properties.ip)) {
-			error = 'Node IP must be an IPv4 address';
-		}
-
-		if (error) {
-			toast.error(error, {
+		const ip = normalizeNodeIP(properties.ip);
+		if (!ip) {
+			toast.error('Node IP must be an IPv4 or IPv6 address that other nodes can reach', {
 				position: 'bottom-center'
 			});
 
@@ -49,7 +44,7 @@
 
 		loading = true;
 
-		const response = await createCluster(properties.ip);
+		const response = await createCluster(ip);
 		reload = true;
 		loading = false;
 		if (response.error) {

@@ -97,6 +97,7 @@ func TestWriteJoinAdmissionErrorTellsRefusalsFromRetries(t *testing.T) {
 		{errors.New("joining_node_address_already_in_use"), http.StatusConflict, "cluster_join_refused"},
 		{errors.New("invalid_joining_node_ip"), http.StatusConflict, "cluster_join_refused"},
 		{errors.New("joining_node_hostname_taken: node-1"), http.StatusConflict, "joining_node_hostname_taken"},
+		{errors.New("joining_node_ip_family_mismatch: cluster=IPv4 node=IPv6"), http.StatusConflict, "cluster_join_refused"},
 		{fmt.Errorf("add_nonvoter_failed: %w", raft.ErrLeadershipLost), http.StatusServiceUnavailable, "cluster_join_outcome_uncertain"},
 		{fmt.Errorf("joining_guest_identity_claim_failed: %w", raft.ErrNotLeader), http.StatusServiceUnavailable, "cluster_join_outcome_uncertain"},
 		{cluster.ErrNodeLeaveFenced, http.StatusServiceUnavailable, "cluster_join_admission_unavailable"},

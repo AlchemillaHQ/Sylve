@@ -55,15 +55,28 @@ func TestInitializeReaddressRuntimeFencesAPendingReaddress(t *testing.T) {
 	}
 }
 
-func TestNormalizeReaddressIPRejectsIPv6(t *testing.T) {
-	if _, err := normalizeReaddressIP("2001:db8::20"); err == nil || err.Error() != "cluster_readdress_ipv6_unsupported" {
-		t.Fatalf("IPv6 error = %v", err)
+func TestNormalizeReaddressIP(t *testing.T) {
+	for value, want := range map[string]string{
+		"192.0.2.20": "192.0.2.20", "2001:db8::20": "2001:db8::20", "[2001:DB8::20]": "2001:db8::20",
+	} {
+		if got, err := normalizeReaddressIP(value); err != nil || got != want {
+			t.Fatalf("%q = %q, error = %v", value, got, err)
+		}
 	}
-	if _, err := normalizeReaddressIP("127.0.0.1"); err == nil || err.Error() != "cluster_readdress_ip_invalid" {
-		t.Fatalf("loopback error = %v", err)
+	for _, value := range []string{"127.0.0.1", "::1", "::", "fe80::20", "ff02::1", "[2001:db8::20]:8180"} {
+		if _, err := normalizeReaddressIP(value); err == nil || err.Error() != "cluster_readdress_ip_invalid" {
+			t.Fatalf("%q error = %v", value, err)
+		}
 	}
-	if got, err := normalizeReaddressIP("192.0.2.20"); err != nil || got != "192.0.2.20" {
-		t.Fatalf("IPv4 = %q, error = %v", got, err)
+}
+
+func TestPreflightLocalReaddressKeepsTheIPFamily(t *testing.T) {
+	service := &Service{}
+	for _, tt := range [][2]string{{"192.0.2.10", "2001:db8::20"}, {"2001:db8::10", "192.0.2.20"}} {
+		err := service.preflightLocalReaddress(t.Context(), clusterModels.Cluster{Enabled: true, RaftIP: tt[0]}, tt[1])
+		if err == nil || !strings.HasPrefix(err.Error(), "cluster_readdress_ip_family_changed") {
+			t.Fatalf("%s to %s: error = %v", tt[0], tt[1], err)
+		}
 	}
 }
 

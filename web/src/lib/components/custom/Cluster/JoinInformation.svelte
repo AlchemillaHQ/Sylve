@@ -85,12 +85,12 @@
 				</Table.Row>
 				<Table.Row>
 					<Table.Cell>Leader Node</Table.Cell>
-					<Table.Cell>{cluster?.leaderAddress}</Table.Cell>
+					<Table.Cell class="whitespace-normal break-all">{cluster?.leaderAddress}</Table.Cell>
 				</Table.Row>
 				{#if joinKey}
 					<Table.Row>
 						<Table.Cell>Join Through</Table.Cell>
-						<Table.Cell>{joinAddress}</Table.Cell>
+						<Table.Cell class="whitespace-normal break-all">{joinAddress}</Table.Cell>
 					</Table.Row>
 					<Table.Row>
 						<Table.Cell>Join Key</Table.Cell>

@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync"
@@ -148,6 +149,28 @@ func TestResolveJoinMembershipNeverReplacesAConflictingServer(t *testing.T) {
 	}
 	if server, err := resolveJoinMembership(configuration, "leader", "existing", "127.0.0.2:8180"); err != nil || server == nil || server.ID != "existing" {
 		t.Fatalf("exact member = %+v, %v", server, err)
+	}
+}
+
+func TestRequireClusterIPFamily(t *testing.T) {
+	ipv4 := raft.Configuration{Servers: []raft.Server{
+		{ID: "leader", Address: "192.0.2.10:8180"}, {ID: "named", Address: "node-2"},
+	}}
+	ipv6 := raft.Configuration{Servers: []raft.Server{{ID: "leader", Address: "[2001:db8::10]:8180"}}}
+	for _, tt := range []struct {
+		configuration raft.Configuration
+		nodeIP        string
+		want          string
+	}{
+		{ipv4, "192.0.2.20", ""},
+		{ipv4, "2001:db8::20", "joining_node_ip_family_mismatch: cluster=IPv4 node=IPv6"},
+		{ipv6, "2001:db8::20", ""},
+		{ipv6, "192.0.2.20", "joining_node_ip_family_mismatch: cluster=IPv6 node=IPv4"},
+	} {
+		err := requireClusterIPFamily(tt.configuration, tt.nodeIP)
+		if got := fmt.Sprint(err); (tt.want == "" && err != nil) || (tt.want != "" && got != tt.want) {
+			t.Errorf("%s into %v: error = %v, want %q", tt.nodeIP, tt.configuration.Servers, err, tt.want)
+		}
 	}
 }
 

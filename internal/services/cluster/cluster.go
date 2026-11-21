@@ -80,7 +80,9 @@ type Service struct {
 	peerProbeMu            sync.Mutex
 	peerProbeFailureStreak map[string]int
 
-	embeddedSSHOnce   sync.Once
+	embeddedSSHMu      sync.Mutex
+	embeddedSSHStarted bool
+
 	monitorOnce       sync.Once
 	reconcilerOnce    sync.Once
 	readdressRunning  atomic.Bool
@@ -385,7 +387,7 @@ func (s *Service) rollbackClusterCreate() error {
 }
 
 func (s *Service) CreateCluster(ip string) (err error) {
-	ip, err = normalizeClusterIPv4(ip, "invalid_ip_address")
+	ip, err = normalizeClusterIP(ip, "invalid_ip_address")
 	if err != nil {
 		return err
 	}
@@ -509,7 +511,7 @@ func (s *Service) StartAsJoiner(ip, clusterKey string) error {
 	defer s.clusterJoinMu.Unlock()
 
 	var err error
-	ip, err = normalizeClusterIPv4(ip, "invalid_ip_address")
+	ip, err = canonicalClusterIP(ip, "invalid_ip_address")
 	if err != nil {
 		return err
 	}

@@ -9,7 +9,6 @@
 package cluster
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -18,15 +17,15 @@ import (
 	"github.com/hashicorp/raft"
 )
 
-func TestClusterLifecycleRejectsIPv6BeforeStateAccess(t *testing.T) {
+func TestClusterLifecycleRejectsUnusableIPsBeforeStateAccess(t *testing.T) {
 	service := &Service{}
-	for name, err := range map[string]error{
-		"create": service.CreateCluster("2001:db8::10"),
-		"join":   service.StartAsJoiner("2001:db8::20", "secret"),
-	} {
-		if err == nil || !strings.Contains(err.Error(), "cluster_ipv6_unsupported") {
-			t.Fatalf("%s error = %v", name, err)
+	for _, ip := range []string{"node-1", "0.0.0.0", "::", "ff02::1", "fe80::1", "fe80::1%em0", "[2001:db8::10]:8180"} {
+		if err := service.CreateCluster(ip); err == nil || err.Error() != "invalid_ip_address" {
+			t.Fatalf("create %q error = %v", ip, err)
 		}
+	}
+	if err := service.StartAsJoiner("node-1", "secret"); err == nil || err.Error() != "invalid_ip_address" {
+		t.Fatalf("join error = %v", err)
 	}
 }
 

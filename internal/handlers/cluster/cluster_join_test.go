@@ -53,25 +53,28 @@ func TestCreateClusterRejectsPayloadWithoutIP(t *testing.T) {
 	}
 }
 
-func TestClusterLifecycleRejectsIPv6(t *testing.T) {
+func TestClusterLifecycleRejectsUnusableIPs(t *testing.T) {
 	router := newClusterLifecycleValidationRouter()
 	tests := []struct {
 		name string
 		path string
 		body string
+		code string
 	}{
-		{name: "create", path: "/cluster", body: `{"ip":"2001:db8::10"}`},
+		{name: "create link-local", path: "/cluster", body: `{"ip":"fe80::1"}`, code: "invalid_ip_address"},
+		{name: "create with port", path: "/cluster", body: `{"ip":"[2001:db8::10]:8180"}`, code: "invalid_ip_address"},
+		{name: "create unspecified", path: "/cluster", body: `{"ip":"::"}`, code: "invalid_ip_address"},
 		{
-			name: "join leader", path: "/cluster/join",
-			body: `{"nodeId":"node-1","nodeIp":"192.0.2.20","leaderIp":"2001:db8::10","clusterKey":"secret"}`,
+			name: "join leader zone", path: "/cluster/join", code: "invalid_leader_ip",
+			body: `{"nodeId":"node-1","nodeIp":"192.0.2.20","leaderIp":"fe80::1%em0","clusterKey":"secret"}`,
 		},
 		{
-			name: "join node", path: "/cluster/join",
-			body: `{"nodeId":"node-1","nodeIp":"2001:db8::20","leaderIp":"192.0.2.10","clusterKey":"secret"}`,
+			name: "join node multicast", path: "/cluster/join", code: "invalid_joining_node_ip",
+			body: `{"nodeId":"node-1","nodeIp":"ff02::1","leaderIp":"2001:db8::10","clusterKey":"secret"}`,
 		},
 		{
-			name: "accept join", path: "/cluster/accept-join",
-			body: `{"nodeId":"node-1","nodeIp":"2001:db8::20","nodeVersion":"test","nodeHostname":"node-1","sshPublicKey":"ssh-ed25519 AAAA"}`,
+			name: "accept join link-local", path: "/cluster/accept-join", code: "invalid_joining_node_ip",
+			body: `{"nodeId":"node-1","nodeIp":"fe80::20","nodeVersion":"test","nodeHostname":"node-1","sshPublicKey":"ssh-ed25519 AAAA"}`,
 		},
 	}
 	for _, test := range tests {
@@ -84,10 +87,27 @@ func TestClusterLifecycleRejectsIPv6(t *testing.T) {
 			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 				t.Fatal(err)
 			}
-			if body.Message != "cluster_ipv6_unsupported" {
-				t.Fatalf("message=%q body=%s", body.Message, response.Body.String())
+			if body.Message != "invalid_ip_address" || body.Error != test.code {
+				t.Fatalf("message=%q error=%q body=%s", body.Message, body.Error, response.Body.String())
 			}
 		})
+	}
+}
+
+func TestJoinClusterRejectsMixedIPFamilies(t *testing.T) {
+	router := newClusterLifecycleValidationRouter()
+	for _, body := range []string{
+		`{"nodeId":"node-1","nodeIp":"2001:db8::20","leaderIp":"192.0.2.10","clusterKey":"secret"}`,
+		`{"nodeId":"node-1","nodeIp":"192.0.2.20","leaderIp":"[2001:db8::10]","clusterKey":"secret"}`,
+	} {
+		response := performJSONRequest(t, router, http.MethodPost, "/cluster/join", []byte(body))
+		var resp handlerAPIResponse[any]
+		if err := json.Unmarshal(response.Body.Bytes(), &resp); err != nil {
+			t.Fatal(err)
+		}
+		if response.Code != http.StatusBadRequest || resp.Message != "cluster_ip_family_mismatch" {
+			t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+		}
 	}
 }
 
@@ -135,17 +155,19 @@ func TestAcceptJoinRejectsVersionMismatch(t *testing.T) {
 	r := gin.New()
 	r.POST("/cluster/accept-join", AcceptJoin(service))
 
-	rr := performAcceptJoin(t, r, `{"nodeId":"node-1","nodeIp":"10.0.0.2","nodeVersion":"0.0.0","nodeHostname":"node-1","sshPublicKey":"ssh-ed25519 AAAA"}`, true)
-	if rr.Code != http.StatusConflict {
-		t.Fatalf("expected status 409, got %d with body %s", rr.Code, rr.Body.String())
-	}
+	for _, nodeIP := range []string{"10.0.0.2", "2001:db8::20"} {
+		rr := performAcceptJoin(t, r, `{"nodeId":"node-1","nodeIp":"`+nodeIP+`","nodeVersion":"0.0.0","nodeHostname":"node-1","sshPublicKey":"ssh-ed25519 AAAA"}`, true)
+		if rr.Code != http.StatusConflict {
+			t.Fatalf("%s: expected status 409, got %d with body %s", nodeIP, rr.Code, rr.Body.String())
+		}
 
-	var resp handlerAPIResponse[any]
-	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("invalid json response: %v", err)
-	}
-	if resp.Message != "cluster_version_mismatch" {
-		t.Fatalf("expected cluster_version_mismatch, got %q", resp.Message)
+		var resp handlerAPIResponse[any]
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("invalid json response: %v", err)
+		}
+		if resp.Message != "cluster_version_mismatch" {
+			t.Fatalf("%s: expected cluster_version_mismatch, got %q", nodeIP, resp.Message)
+		}
 	}
 }
 

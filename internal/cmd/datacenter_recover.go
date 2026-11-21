@@ -97,6 +97,9 @@ func recoverOfflineClusterIP(configPath string, requestedIP string, allowDisrupt
 	if !utils.IsLocalIP(newIP) {
 		return offlineClusterIPRecoveryResult{}, fmt.Errorf("cluster_readdress_ip_not_local")
 	}
+	if err := network.WaitForBindableIP(context.Background(), newIP, network.TentativeAddressWait); err != nil {
+		return offlineClusterIPRecoveryResult{}, fmt.Errorf("cluster_readdress_ip_not_ready: %w", err)
+	}
 	for _, port := range []int{8180, 8183, 8184} {
 		if err := network.TryBindToPort(newIP, port, "tcp"); err != nil {
 			return offlineClusterIPRecoveryResult{}, fmt.Errorf(
@@ -185,6 +188,9 @@ func applyOfflineClusterIPRecovery(
 		if result.OldIP == "" {
 			result.OldIP = strings.TrimSpace(record.RaftIP)
 		}
+		if utils.IPFamily(result.OldIP) != utils.IPFamily(newIP) {
+			return fmt.Errorf("cluster_readdress_ip_family_changed: old=%s new=%s", result.OldIP, newIP)
+		}
 		result.Phase = offlineReaddressPhaseLocalRebound
 		result.AlreadySet = phase == offlineReaddressPhaseLocalRebound && sameOfflineClusterIP(record.RaftIP, newIP)
 		if result.AlreadySet {
@@ -225,15 +231,11 @@ func requireOfflineConsole(socketPath string) error {
 }
 
 func normalizeOfflineClusterIP(value string) (string, error) {
-	ip := net.ParseIP(strings.TrimSpace(value))
-	if ip == nil || ip.IsUnspecified() || ip.IsLoopback() || ip.IsMulticast() {
+	ip := utils.ParseNodeIP(value)
+	if ip == nil || ip.IsLoopback() {
 		return "", fmt.Errorf("cluster_readdress_ip_invalid")
 	}
-	ipv4 := ip.To4()
-	if ipv4 == nil {
-		return "", fmt.Errorf("cluster_readdress_ipv6_unsupported")
-	}
-	return ipv4.String(), nil
+	return ip.String(), nil
 }
 
 func sameOfflineClusterIP(left string, right string) bool {

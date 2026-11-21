@@ -60,7 +60,7 @@ func (s *Service) setupRaft(bootstrap bool) (*raft.Raft, error) {
 
 func (s *Service) setupRaftAtIP(bootstrap bool, raftIP string) (*raft.Raft, error) {
 	var err error
-	raftIP, err = normalizeClusterIPv4(raftIP, "invalid_ip_address")
+	raftIP, err = canonicalClusterIP(raftIP, "invalid_ip_address")
 	if err != nil {
 		return nil, err
 	}

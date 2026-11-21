@@ -36,6 +36,11 @@ func TestMapRaftAddrToAPI(t *testing.T) {
 		t.Fatalf("expected https://192.168.1.1:8184, got %q", u)
 	}
 
+	u, err = mapRaftAddrToAPI("[2001:db8::10]:8180")
+	if err != nil || u != "https://[2001:db8::10]:8184" {
+		t.Fatalf("IPv6 = %q, error = %v", u, err)
+	}
+
 	_, err = mapRaftAddrToAPI("no-port")
 	if err == nil {
 		t.Fatal("expected error for address without port")

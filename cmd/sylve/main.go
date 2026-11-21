@@ -312,6 +312,11 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		}
 		utils.SetIntraClusterTLS(clusterSvc.PeerTLSConfig(), clusterSvc.JoinTLSConfig())
 
+		var bootCluster clusterModels.Cluster
+		if err := d.First(&bootCluster).Error; err == nil && bootCluster.Enabled && bootCluster.RaftIP != "" {
+			_ = portnetwork.WaitForBindableIP(qCtx, bootCluster.RaftIP, portnetwork.TentativeAddressWait)
+		}
+
 		if err := cS.InitRaft(); err != nil {
 			// Keep the daemon up so the node can be reset from the UI; cluster
 			// writes fail while Raft is down instead of applying locally.

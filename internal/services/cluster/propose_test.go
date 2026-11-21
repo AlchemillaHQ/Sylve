@@ -153,6 +153,8 @@ func routeTestPeerRequests(nodes []*clusterRaftTestNode) *testPeerNetwork {
 					return respond(http.StatusForbidden, internal.APIResponse[any]{Status: "error", Message: "invalid_cluster_key", Error: err.Error()})
 				case strings.HasPrefix(err.Error(), "joining_node_users_taken"):
 					return respond(http.StatusConflict, internal.APIResponse[any]{Status: "error", Message: "joining_node_users_taken", Error: err.Error()})
+				case strings.HasPrefix(err.Error(), "joining_node_ip_family_mismatch"):
+					return respond(http.StatusConflict, internal.APIResponse[any]{Status: "error", Message: "cluster_join_refused", Error: err.Error()})
 				default:
 					return respond(http.StatusServiceUnavailable, internal.APIResponse[any]{Status: "error", Message: "cluster_join_admission_unavailable", Error: err.Error()})
 				}

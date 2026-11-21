@@ -114,8 +114,12 @@
 		const value = (raw || '').trim();
 		let host = '';
 		let datasetWithSnapshot = value;
+		const bracketed = value.match(/^([^@/[\]]*@)?\[([^\]]+)\]:(.*)$/);
 		const colonIndex = value.indexOf(':');
-		if (colonIndex > 0) {
+		if (bracketed) {
+			host = `${bracketed[1] ?? ''}${bracketed[2]}`;
+			datasetWithSnapshot = bracketed[3];
+		} else if (colonIndex > 0) {
 			host = value.slice(0, colonIndex);
 			datasetWithSnapshot = value.slice(colonIndex + 1);
 		}

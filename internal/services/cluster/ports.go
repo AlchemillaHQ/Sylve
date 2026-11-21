@@ -13,6 +13,8 @@ import (
 	"net"
 	"strconv"
 	"strings"
+
+	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 const (
@@ -29,14 +31,18 @@ func RaftServerAddress(ip string) string {
 	return net.JoinHostPort(strings.TrimSpace(ip), strconv.Itoa(ClusterRaftPort))
 }
 
-func normalizeClusterIPv4(value string, invalidCode string) (string, error) {
+func normalizeClusterIP(value string, invalidCode string) (string, error) {
+	ip := utils.ParseNodeIP(value)
+	if ip == nil {
+		return "", errors.New(invalidCode)
+	}
+	return ip.String(), nil
+}
+
+func canonicalClusterIP(value string, invalidCode string) (string, error) {
 	ip := net.ParseIP(strings.TrimSpace(value))
 	if ip == nil {
 		return "", errors.New(invalidCode)
 	}
-	ipv4 := ip.To4()
-	if ipv4 == nil {
-		return "", errors.New("cluster_ipv6_unsupported")
-	}
-	return ipv4.String(), nil
+	return ip.String(), nil
 }

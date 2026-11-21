@@ -117,6 +117,12 @@ export function getClusterJoinErrorMessage(error: string, retrying: boolean): st
 	) {
 		return 'The leader cannot update membership right now. Restore cluster quorum and connectivity.';
 	}
+	if (contains('ip_family_mismatch')) {
+		return 'A cluster uses one address family. Give this node an address of the same family (IPv4 or IPv6) as the cluster nodes.';
+	}
+	if (contains('invalid_leader_ip')) {
+		return 'Sylve cannot join through the Cluster Node IP. Enter the IPv4 or IPv6 address of a cluster node, without a port.';
+	}
 	if (contains('failed_to_bind_to_port', 'failed_to_bind_raft_port', 'invalid_ip_address')) {
 		return 'Sylve cannot use the selected node IP or Raft port 8180. Check the address and existing listeners.';
 	}

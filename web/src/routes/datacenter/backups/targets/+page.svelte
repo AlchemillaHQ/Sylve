@@ -273,13 +273,20 @@
 		}
 	];
 
+	function sshEndpoint(sshHost: string, port: number): string {
+		const at = sshHost.lastIndexOf('@');
+		const host = sshHost.slice(at + 1);
+		const shown = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+		return `${sshHost.slice(0, at + 1)}${shown}:${port}`;
+	}
+
 	let tableData = $derived({
 		rows: targets.current.map((target) => ({
 			id: target.id,
 			name: target.name,
 			sshHost: target.sshHost,
 			sshPort: target.sshPort || 22,
-			target: `${target.sshHost}:${target.sshPort || 22}`,
+			target: sshEndpoint(target.sshHost, target.sshPort || 22),
 			backupRoot: target.backupRoot,
 			description: target.description || '-',
 			enabled: target.enabled,

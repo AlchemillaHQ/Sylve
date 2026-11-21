@@ -23378,22 +23378,9 @@ msgstr "Cluster - Generate Join Key"
 msgid "Cluster leave cancelled"
 msgstr "Cluster leave cancelled"
 
-#: src/lib/components/custom/Cluster/Create.svelte
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Node IP must be an IPv4 address"
-msgstr "Node IP must be an IPv4 address"
-
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Cluster Node IP must be an IPv4 address"
-msgstr "Cluster Node IP must be an IPv4 address"
-
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Join Key is required"
 msgstr "Join Key is required"
-
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Cluster Node IP (192.168.1.1)"
-msgstr "Cluster Node IP (192.168.1.1)"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
@@ -24573,3 +24560,20 @@ msgstr "Remember Passphrase"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 msgid "A remembered passphrase is kept in the cluster key store so later restores unlock on their own. Otherwise it's used for this restore only."
 msgstr "A remembered passphrase is kept in the cluster key store so later restores unlock on their own. Otherwise it's used for this restore only."
+
+#: src/lib/components/custom/Cluster/Create.svelte
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Node IP must be an IPv4 or IPv6 address that other nodes can reach"
+msgstr "Node IP must be an IPv4 or IPv6 address that other nodes can reach"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Cluster Node IP must be an IPv4 or IPv6 address that this node can reach"
+msgstr "Cluster Node IP must be an IPv4 or IPv6 address that this node can reach"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Cluster Node IP"
+msgstr "Cluster Node IP"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Node IP and Cluster Node IP must both be IPv4 or both be IPv6"
+msgstr "Node IP and Cluster Node IP must both be IPv4 or both be IPv6"

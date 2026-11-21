@@ -88,6 +88,25 @@ func TestApplyOfflineClusterIPRecoveryRejectsIncompleteJoin(t *testing.T) {
 	}
 }
 
+func TestApplyOfflineClusterIPRecoveryKeepsTheIPFamily(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{})
+	if err := database.Create(&clusterModels.Cluster{Enabled: true, RaftIP: "192.0.2.10"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := applyOfflineClusterIPRecovery(database, "node-2", "2001:db8::20")
+	if err == nil || !strings.HasPrefix(err.Error(), "cluster_readdress_ip_family_changed") {
+		t.Fatalf("recovery error = %v", err)
+	}
+	var record clusterModels.Cluster
+	if err := database.First(&record).Error; err != nil {
+		t.Fatal(err)
+	}
+	if record.RaftIP != "192.0.2.10" || record.ReaddressPhase != "" {
+		t.Fatalf("record changed after rejected recovery: %+v", record)
+	}
+}
+
 func TestRequireOfflineConsoleDistinguishesLiveAndAbsentSocket(t *testing.T) {
 	directory, err := os.MkdirTemp("/tmp", "dcs")
 	if err != nil {
@@ -108,15 +127,18 @@ func TestRequireOfflineConsoleDistinguishesLiveAndAbsentSocket(t *testing.T) {
 	}
 }
 
-func TestNormalizeOfflineClusterIPRejectsIPv6(t *testing.T) {
-	if _, err := normalizeOfflineClusterIP("2001:db8::20"); err == nil || err.Error() != "cluster_readdress_ipv6_unsupported" {
-		t.Fatalf("IPv6 error = %v", err)
+func TestNormalizeOfflineClusterIP(t *testing.T) {
+	for value, want := range map[string]string{
+		"192.0.2.20": "192.0.2.20", "2001:db8::20": "2001:db8::20", "[2001:DB8::20]": "2001:db8::20",
+	} {
+		if got, err := normalizeOfflineClusterIP(value); err != nil || got != want {
+			t.Fatalf("%q = %q, error = %v", value, got, err)
+		}
 	}
-	if _, err := normalizeOfflineClusterIP("127.0.0.1"); err == nil || err.Error() != "cluster_readdress_ip_invalid" {
-		t.Fatalf("loopback error = %v", err)
-	}
-	if got, err := normalizeOfflineClusterIP("192.0.2.20"); err != nil || got != "192.0.2.20" {
-		t.Fatalf("IPv4 = %q, error = %v", got, err)
+	for _, value := range []string{"127.0.0.1", "::1", "::", "fe80::20", "ff02::1", "[2001:db8::20]:8180"} {
+		if _, err := normalizeOfflineClusterIP(value); err == nil || err.Error() != "cluster_readdress_ip_invalid" {
+			t.Fatalf("%q error = %v", value, err)
+		}
 	}
 }
 

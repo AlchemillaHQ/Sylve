@@ -123,14 +123,33 @@ func reconcileJoinsUntilVoter(t *testing.T, nodes []*clusterRaftTestNode, joiner
 	})
 }
 
-func TestJoinRejectsIPv6WithoutPersisting(t *testing.T) {
+func TestJoinRejectsUnusableIPsWithoutPersisting(t *testing.T) {
 	service := newJoinTestService(t)
-	for _, ips := range [][2]string{{"2001:db8::10", "192.0.2.20"}, {"192.0.2.10", "2001:db8::20"}} {
-		if _, err := service.Join(t.Context(), ips[0], ips[1], guestIdentityJoinTestKey); err == nil || err.Error() != "cluster_ipv6_unsupported" {
-			t.Fatalf("join %v error = %v", ips, err)
+	for _, test := range []struct{ leader, node, code string }{
+		{"fe80::10", "192.0.2.20", "invalid_leader_ip"},
+		{"2001:db8::10", "ff02::1", "invalid_joining_node_ip"},
+		{"[2001:db8::10]:8180", "2001:db8::20", "invalid_leader_ip"},
+		{"192.0.2.10", "0.0.0.0", "invalid_joining_node_ip"},
+	} {
+		if _, err := service.Join(t.Context(), test.leader, test.node, guestIdentityJoinTestKey); err == nil || err.Error() != test.code {
+			t.Fatalf("join %s via %s error = %v", test.node, test.leader, err)
 		}
 	}
 	requireNoJoin(t, service)
+}
+
+func TestJoinIntentStoresCanonicalIPv6(t *testing.T) {
+	service := newJoinTestService(t)
+	if err := service.saveJoinIntent("[2001:DB8::10]", "2001:db8:0:0::20", guestIdentityJoinTestKey); err != nil {
+		t.Fatal(err)
+	}
+	record, err := service.loadClusterRecord()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.JoinLeaderIP != "2001:db8::10" || record.RaftIP != "2001:db8::20" {
+		t.Fatalf("join intent leader=%q node=%q", record.JoinLeaderIP, record.RaftIP)
+	}
 }
 
 func TestJoinRefusesWhileAGuestIDIsInFlight(t *testing.T) {
@@ -273,6 +292,29 @@ func TestIntegrationRefusedJoinLeavesTheNodeUntouched(t *testing.T) {
 	}
 	if servers := raftConfigurationForGuestIdentityJoinTest(t, leader).Servers; len(servers) != 1 {
 		t.Fatalf("leader configuration = %+v", servers)
+	}
+}
+
+func TestIntegrationJoinRefusesAnotherIPFamily(t *testing.T) {
+	nodes, _ := newJoinTestCluster(t, 1)
+	leader, joiner := nodes[0], nodes[1]
+	joiner.service.joinRaftStarter = func(string, string) error {
+		t.Error("Raft started for a refused join")
+		return nil
+	}
+
+	_, err := joiner.service.Join(t.Context(), raftAddressHost(leader.id), "fd00::2", guestIdentityJoinTestKey)
+	var refused *JoinAdmissionError
+	if !errors.As(err, &refused) || refused.StatusCode != http.StatusConflict ||
+		!strings.Contains(refused.Detail, "joining_node_ip_family_mismatch: cluster=IPv4 node=IPv6") {
+		t.Fatalf("join error = %v, want the family refused", err)
+	}
+	requireNoJoin(t, joiner.service)
+	if servers := raftConfigurationForGuestIdentityJoinTest(t, leader).Servers; len(servers) != 1 {
+		t.Fatalf("leader configuration = %+v", servers)
+	}
+	if !clusterModels.JoinKeyMatches(leader.service.DB, guestIdentityJoinTestSecret) {
+		t.Fatal("a refused admission spent the join key")
 	}
 }
 

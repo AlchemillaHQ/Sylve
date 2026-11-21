@@ -32,13 +32,13 @@ import (
 )
 
 type CreateClusterRequest struct {
-	IP string `json:"ip" binding:"required,ip"`
+	IP string `json:"ip" binding:"required"`
 }
 
 type JoinClusterRequest struct {
 	NodeID     string `json:"nodeId" binding:"required"`
-	NodeIP     string `json:"nodeIp" binding:"required,ip"`
-	LeaderIP   string `json:"leaderIp" binding:"required,ip"`
+	NodeIP     string `json:"nodeIp" binding:"required"`
+	LeaderIP   string `json:"leaderIp" binding:"required"`
 	ClusterKey string `json:"clusterKey" binding:"required"`
 }
 
@@ -223,12 +223,13 @@ func CreateCluster(cS *cluster.Service) gin.HandlerFunc {
 			writeClusterJSONBindError(c, err, "invalid_request_payload")
 			return
 		}
-		if !utils.IsValidIPv4(req.IP) {
-			writeClusterIPv6Unsupported(c, "cluster_ip")
+		ip := utils.ParseNodeIP(req.IP)
+		if ip == nil {
+			writeClusterIPInvalid(c, "invalid_ip_address")
 			return
 		}
 
-		if err := cS.CreateCluster(req.IP); err != nil {
+		if err := cS.CreateCluster(ip.String()); err != nil {
 			var conflict *cluster.GuestIdentityInventoryConflictError
 			if errors.As(err, &conflict) {
 				writeJoinAdmissionError(c, err)
@@ -276,12 +277,22 @@ func JoinCluster(cS *cluster.Service) gin.HandlerFunc {
 			writeClusterJSONBindError(c, err, "invalid_request_payload")
 			return
 		}
-		if !utils.IsValidIPv4(req.LeaderIP) {
-			writeClusterIPv6Unsupported(c, "leader_ip")
+		leaderIP := utils.ParseNodeIP(req.LeaderIP)
+		if leaderIP == nil {
+			writeClusterIPInvalid(c, "invalid_leader_ip")
 			return
 		}
-		if !utils.IsValidIPv4(req.NodeIP) {
-			writeClusterIPv6Unsupported(c, "node_ip")
+		nodeIP := utils.ParseNodeIP(req.NodeIP)
+		if nodeIP == nil {
+			writeClusterIPInvalid(c, "invalid_joining_node_ip")
+			return
+		}
+		req.LeaderIP, req.NodeIP = leaderIP.String(), nodeIP.String()
+		if utils.IPFamily(req.NodeIP) != utils.IPFamily(req.LeaderIP) {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status: "error", Message: "cluster_ip_family_mismatch",
+				Error: fmt.Sprintf("node_ip=%s leader_ip=%s", req.NodeIP, req.LeaderIP),
+			})
 			return
 		}
 		key, err := cluster.ParseJoinKey(req.ClusterKey)
@@ -379,8 +390,8 @@ func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 			writeClusterJSONBindError(c, err, "invalid_request_payload")
 			return
 		}
-		if !utils.IsValidIPv4(req.NodeIP) {
-			writeClusterIPv6Unsupported(c, "node_ip")
+		if utils.ParseNodeIP(req.NodeIP) == nil {
+			writeClusterIPInvalid(c, "invalid_joining_node_ip")
 			return
 		}
 		var pin [sha256.Size]byte

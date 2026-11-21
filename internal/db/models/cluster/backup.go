@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -103,7 +104,11 @@ func (t *BackupTarget) ZeltaEndpoint(suffix string) string {
 	if suffix != "" {
 		root = root + "/" + suffix
 	}
-	return t.SSHHost + ":" + root
+	host := t.SSHHost
+	if destination, err := remoteexec.ParseSSHDestination(host); err == nil {
+		host = destination.ZeltaString()
+	}
+	return host + ":" + root
 }
 
 // BackupJob represents a scheduled Zelta replication job.

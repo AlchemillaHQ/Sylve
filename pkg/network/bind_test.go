@@ -9,9 +9,71 @@
 package network
 
 import (
+	"context"
+	"errors"
 	"net"
+	"os"
+	"syscall"
 	"testing"
+	"time"
 )
+
+func TestWaitForBindableIP(t *testing.T) {
+	tentative := &net.OpError{Op: "listen", Net: "tcp", Err: os.NewSyscallError("bind", syscall.EADDRNOTAVAIL)}
+	assigned := func(string) bool { return true }
+
+	t.Run("bindable now", func(t *testing.T) {
+		if err := WaitForBindableIP(t.Context(), "127.0.0.1", time.Minute); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("not this host's", func(t *testing.T) {
+		start := time.Now()
+		err := WaitForBindableIP(t.Context(), "192.0.2.1", time.Minute)
+		if !errors.Is(err, syscall.EADDRNOTAVAIL) || time.Since(start) > 5*time.Second {
+			t.Fatalf("error = %v after %s; want EADDRNOTAVAIL at once", err, time.Since(start))
+		}
+	})
+
+	t.Run("tentative until ready", func(t *testing.T) {
+		tries := 0
+		bind := func(string) error {
+			if tries++; tries < 3 {
+				return tentative
+			}
+			return nil
+		}
+		if err := waitForBindableIP(t.Context(), "2001:db8::10", time.Minute, bind, assigned); err != nil || tries != 3 {
+			t.Fatalf("error = %v after %d tries", err, tries)
+		}
+	})
+
+	t.Run("tentative past the timeout", func(t *testing.T) {
+		tries := 0
+		bind := func(string) error { tries++; return tentative }
+		if err := waitForBindableIP(t.Context(), "2001:db8::10", 0, bind, assigned); !errors.Is(err, syscall.EADDRNOTAVAIL) || tries != 1 {
+			t.Fatalf("error = %v after %d tries", err, tries)
+		}
+	})
+
+	t.Run("cancelled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		bind := func(string) error { return tentative }
+		if err := waitForBindableIP(ctx, "2001:db8::10", time.Minute, bind, assigned); !errors.Is(err, context.Canceled) {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("other errors", func(t *testing.T) {
+		tries := 0
+		bind := func(string) error { tries++; return syscall.EACCES }
+		if err := waitForBindableIP(t.Context(), "2001:db8::10", time.Minute, bind, assigned); !errors.Is(err, syscall.EACCES) || tries != 1 {
+			t.Fatalf("error = %v after %d tries", err, tries)
+		}
+	})
+}
 
 func TestTryBindToPort(t *testing.T) {
 	t.Run("success tcp bind", func(t *testing.T) {

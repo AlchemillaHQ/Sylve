@@ -28,11 +28,13 @@ Cluster communication is foundational infrastructure. Do not expose its internal
 
 ## Before you begin
 
-- Decide the stable IP address each node will use for cluster communication.
+- Decide the stable IP address each node will use for cluster communication. It can be IPv4 or IPv6, but not an IPv6 link-local (`fe80::/10`) address. A cluster uses one address family: the first node's address sets it, and Sylve refuses to join a node whose address is of the other family. Every member must be able to reach every other member's address.
 - Confirm all nodes are running the same Sylve version.
 - Keep the system clock synchronized on every node; a node whose clock differs from the leader by more than about 30 seconds is rejected with `cluster_join_clock_drift`. See [Keep the system clock accurate](/getting-started/) for NTP setup.
 - Plan the voter count before adding production workloads. Three voters allow one voter failure without losing quorum.
-- Ensure the nodes can communicate over the cluster network on `8180/TCP` for Raft, `8183/TCP` for Sylve's embedded SSH service, and `8184/TCP` for the internal cluster API.
+- Ensure the nodes can communicate over the cluster network on `8180/TCP` for Raft, `8183/TCP` for Sylve's embedded SSH service, and `8184/TCP` for the internal cluster API. With IPv6 cluster addresses, open these ports for IPv6 too, and allow the ICMPv6 neighbour discovery messages IPv6 depends on.
+- Sylve turns off IPv6 duplicate address detection (`net.inet6.ip6.dad_count=0`) when it starts, so FreeBSD won't warn if two hosts use the same IPv6 address. Make sure each node's cluster address is unique.
+- On a node without IPv4, set `ip` in `config.json` to `::` so the web interface listens on IPv6. On FreeBSD, `::` accepts IPv4 connections as well. See the [configuration reference](/getting-started/#configuration-reference).
 - Give every node its own hostname. Requests for a node can name it by hostname, so a cluster refuses a node whose hostname a member already has. Fresh FreeBSD installations often share a default name; rename such a node before joining it.
 
 ### Encrypted cluster traffic
@@ -64,8 +66,8 @@ On the node to add, open **Data Center → Cluster**, select **Join Cluster**, a
 
 | Field | What to enter |
 | --- | --- |
-| **Node IP** | The joining node's own cluster IP address. |
-| **Cluster Node IP** | The **Join Through** address shown with the key: the cluster IP of the member that generated it. Enter only the address, not a URL or port. |
+| **Node IP** | The joining node's own cluster IP address, in the cluster's address family (IPv4 or IPv6). |
+| **Cluster Node IP** | The **Join Through** address shown with the key: the cluster IP of the member that generated it. Enter only the address, not a URL or port. An IPv6 address can be entered with or without brackets. |
 | **Join Key** | The key generated on that member. |
 
 The key only works with the member that generated it. Joining through another member is refused.
@@ -96,7 +98,7 @@ On cooperative leave, the surviving cluster releases the departing node's guest 
 | --- | --- |
 | **Hostname** | Hostname reported by the member. The cluster leader has a crown icon. |
 | **Node ID** | Sylve's stable identifier for the member. |
-| **Address** | The Raft address used for cluster consensus. |
+| **Address** | The Raft address used for cluster consensus: the member's cluster IP and port `8180`. IPv6 addresses appear in brackets, such as `[2001:db8::10]:8180`. |
 | **Status** | Whether Sylve can currently see the member as online or offline. |
 | **Suffrage** | The member's Raft role. A **Voter** participates in quorum; a **Non Voter** does not. A joining node is a **Non Voter** until it has caught up. |
 | **Sylve Version** | Version and build commit reported by the member. The commit is shown when available. A join requires the joining node to run exactly the version of the member it joins through. |

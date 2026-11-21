@@ -47,6 +47,37 @@ func IsValidIPv6(ip string) bool {
 	return parsedIP.To4() == nil && parsedIP.To16() != nil
 }
 
+func ParseNodeIP(value string) net.IP {
+	value = strings.TrimSpace(value)
+	if inner, bracketed := strings.CutPrefix(value, "["); bracketed {
+		inner, closed := strings.CutSuffix(inner, "]")
+		if !closed || !strings.Contains(inner, ":") {
+			return nil
+		}
+		value = inner
+	}
+	ip := net.ParseIP(value)
+	if ip == nil || ip.IsUnspecified() || ip.IsMulticast() || (ip.To4() == nil && ip.IsLinkLocalUnicast()) {
+		return nil
+	}
+	if ipv4 := ip.To4(); ipv4 != nil {
+		return ipv4
+	}
+	return ip
+}
+
+func IPFamily(value string) int {
+	ip := net.ParseIP(strings.TrimSpace(value))
+	switch {
+	case ip == nil:
+		return 0
+	case ip.To4() != nil:
+		return 4
+	default:
+		return 6
+	}
+}
+
 func IsValidVLAN(vlan int) bool {
 	return vlan >= 0 && vlan <= 4095
 }
@@ -200,15 +231,22 @@ func isPortInUse(protocol string, port int) bool {
 
 	portText := strconv.Itoa(port)
 	ipv4Hosts := []string{"127.0.0.1"}
+	ipv6Hosts := []string{"::1"}
 	if addresses, err := net.InterfaceAddrs(); err == nil {
 		for _, address := range addresses {
 			ip, _, parseErr := net.ParseCIDR(address.String())
-			if parseErr == nil && ip != nil && ip.To4() != nil && !ip.IsUnspecified() {
+			if parseErr != nil || ip == nil || ip.IsUnspecified() {
+				continue
+			}
+			if ip.To4() != nil {
 				ipv4Hosts = append(ipv4Hosts, ip.String())
+			} else if !ip.IsLoopback() && !ip.IsLinkLocalUnicast() {
+				ipv6Hosts = append(ipv6Hosts, ip.String())
 			}
 		}
 	}
 	ipv4Hosts = append(ipv4Hosts, "0.0.0.0")
+	ipv6Hosts = append(ipv6Hosts, "::")
 
 	for _, host := range ipv4Hosts {
 		if err := tryBind(protocol+"4", net.JoinHostPort(host, portText)); err != nil {
@@ -216,7 +254,7 @@ func isPortInUse(protocol string, port int) bool {
 		}
 	}
 
-	for _, host := range []string{"::1", "::"} {
+	for _, host := range ipv6Hosts {
 		err := tryBind(protocol+"6", net.JoinHostPort(host, portText))
 		if err != nil &&
 			!errors.Is(err, syscall.EAFNOSUPPORT) &&

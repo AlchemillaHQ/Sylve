@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -266,10 +267,14 @@ func hasSignificantChange(cur curInfo, ex clusterModels.ClusterNode) bool {
 	return false
 }
 
+func nodeInfoURL(host string, port int) string {
+	return "https://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/api/info/node"
+}
+
 func (s *Service) GetNodeInfo(host string, port int) (infoServiceInterfaces.NodeInfo, error) {
 	var nodeInfo infoServiceInterfaces.NodeInfo
 
-	url := fmt.Sprintf("https://%s:%d/api/info/node", host, port)
+	url := nodeInfoURL(host, port)
 	body, _, err := utils.HTTPGetJSONRead(
 		url,
 		map[string]string{"Accept": "application/json"},
@@ -303,7 +308,7 @@ func (s *Service) collectCurrentClusterInfo(cfg raft.Configuration) map[string]c
 
 			uuid := serverID
 			host := raftAddressHost(serverAddr)
-			api := fmt.Sprintf("%s:%d", host, ClusterEmbeddedHTTPSPort)
+			api := ClusterAPIHost(host)
 
 			ci := curInfo{
 				nodeUUID: uuid,
@@ -534,10 +539,12 @@ func (s *Service) classifyPeerStatuses(results map[string]string) ([]string, []s
 	return onlinePeerIDs, offlinePeerIDs
 }
 
+func peerHealthURL(raftAddr string) string {
+	return "https://" + ClusterAPIHost(raftAddressHost(raftAddr)) + "/api/health/http"
+}
+
 func (s *Service) probePeerStatus(raftAddr string) string {
-	host := raftAddressHost(raftAddr)
-	url := fmt.Sprintf("https://%s:%d/api/health/http", host, ClusterEmbeddedHTTPSPort)
-	if _, err := utils.HTTPGetStatus(url, nil); err == nil {
+	if _, err := utils.HTTPGetStatus(peerHealthURL(raftAddr), nil); err == nil {
 		return nodeStatusOnline
 	}
 	return nodeStatusOffline

@@ -19,6 +19,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/cmd"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/raft"
 )
 
@@ -102,6 +103,17 @@ func resolveJoinMembership(
 	return nil, nil
 }
 
+func requireClusterIPFamily(configuration raft.Configuration, nodeIP string) error {
+	family := utils.IPFamily(nodeIP)
+	for _, server := range configuration.Servers {
+		memberFamily := utils.IPFamily(raftAddressHost(string(server.Address)))
+		if memberFamily != 0 && memberFamily != family {
+			return fmt.Errorf("joining_node_ip_family_mismatch: cluster=IPv%d node=IPv%d", memberFamily, family)
+		}
+	}
+	return nil
+}
+
 // The joiner's identity and guest ID claims are recorded before it's added to
 // Raft, so members talk to it from the start and no one takes its IDs while it
 // catches up.
@@ -123,7 +135,7 @@ func (s *Service) AdmitJoiner(
 			Code: "cluster_version_mismatch", NodeID: nodeID, Expected: strings.TrimSpace(cmd.Version), Actual: version,
 		}
 	}
-	nodeIP, err := normalizeClusterIPv4(request.NodeIP, "invalid_joining_node_ip")
+	nodeIP, err := normalizeClusterIP(request.NodeIP, "invalid_joining_node_ip")
 	if err != nil {
 		return status, err
 	}
@@ -147,6 +159,11 @@ func (s *Service) AdmitJoiner(
 	existing, err := resolveJoinMembership(future.Configuration(), s.LocalNodeID(), nodeID, address)
 	if err != nil {
 		return status, err
+	}
+	if existing == nil {
+		if err := requireClusterIPFamily(future.Configuration(), nodeIP); err != nil {
+			return status, err
+		}
 	}
 	identity := clusterModels.ClusterSSHIdentity{
 		NodeUUID: nodeID, SSHUser: "root", SSHHost: nodeIP, SSHPort: ClusterEmbeddedSSHPort,

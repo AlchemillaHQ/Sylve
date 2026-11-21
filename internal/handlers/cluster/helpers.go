@@ -52,11 +52,11 @@ func writeClusterJSONBindError(c *gin.Context, err error, invalidMessage string)
 	})
 }
 
-func writeClusterIPv6Unsupported(c *gin.Context, field string) {
+func writeClusterIPInvalid(c *gin.Context, code string) {
 	c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 		Status:  "error",
-		Message: "cluster_ipv6_unsupported",
-		Error:   field + "_must_be_ipv4",
+		Message: "invalid_ip_address",
+		Error:   code,
 		Data:    nil,
 	})
 }

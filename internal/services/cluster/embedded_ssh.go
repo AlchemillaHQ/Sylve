@@ -17,6 +17,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -25,51 +26,50 @@ import (
 )
 
 func (s *Service) StartEmbeddedSSHServer(ctx context.Context, ip string) error {
-	var startErr error
-	s.embeddedSSHOnce.Do(func() {
-		privatePath, err := s.ClusterSSHPrivateKeyPath()
-		if err != nil {
-			startErr = fmt.Errorf("embedded_ssh_private_key_failed: %w", err)
-			return
-		}
+	s.embeddedSSHMu.Lock()
+	defer s.embeddedSSHMu.Unlock()
+	if s.embeddedSSHStarted {
+		return nil
+	}
 
-		privateRaw, err := os.ReadFile(privatePath)
-		if err != nil {
-			startErr = fmt.Errorf("embedded_ssh_private_key_read_failed: %w", err)
-			return
-		}
+	privatePath, err := s.ClusterSSHPrivateKeyPath()
+	if err != nil {
+		return fmt.Errorf("embedded_ssh_private_key_failed: %w", err)
+	}
 
-		hostSigner, err := ssh.ParsePrivateKey(privateRaw)
-		if err != nil {
-			startErr = fmt.Errorf("embedded_ssh_private_key_parse_failed: %w", err)
-			return
-		}
+	privateRaw, err := os.ReadFile(privatePath)
+	if err != nil {
+		return fmt.Errorf("embedded_ssh_private_key_read_failed: %w", err)
+	}
 
-		serverConfig := &ssh.ServerConfig{
-			PublicKeyCallback: s.embeddedSSHPublicKeyCallback,
-		}
-		serverConfig.AddHostKey(hostSigner)
+	hostSigner, err := ssh.ParsePrivateKey(privateRaw)
+	if err != nil {
+		return fmt.Errorf("embedded_ssh_private_key_parse_failed: %w", err)
+	}
 
-		listenAddr := fmt.Sprintf("%s:%d", ip, ClusterEmbeddedSSHPort)
-		listener, err := net.Listen("tcp", listenAddr)
-		if err != nil {
-			startErr = fmt.Errorf("embedded_ssh_listen_failed: %w", err)
-			return
-		}
+	serverConfig := &ssh.ServerConfig{
+		PublicKeyCallback: s.embeddedSSHPublicKeyCallback,
+	}
+	serverConfig.AddHostKey(hostSigner)
 
-		logger.L.Info().
-			Str("addr", listenAddr).
-			Msg("Embedded SSH server started")
+	listenAddr := net.JoinHostPort(strings.TrimSpace(ip), strconv.Itoa(ClusterEmbeddedSSHPort))
+	listener, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		return fmt.Errorf("embedded_ssh_listen_failed: %w", err)
+	}
+	s.embeddedSSHStarted = true
 
-		go func() {
-			<-ctx.Done()
-			_ = listener.Close()
-		}()
+	logger.L.Info().
+		Str("addr", listenAddr).
+		Msg("Embedded SSH server started")
 
-		go s.embeddedSSHAcceptLoop(ctx, listener, serverConfig)
-	})
+	go func() {
+		<-ctx.Done()
+		_ = listener.Close()
+	}()
 
-	return startErr
+	go s.embeddedSSHAcceptLoop(ctx, listener, serverConfig)
+	return nil
 }
 
 func (s *Service) embeddedSSHPublicKeyCallback(conn ssh.ConnMetadata, presentedKey ssh.PublicKey) (*ssh.Permissions, error) {

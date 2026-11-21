@@ -108,6 +108,26 @@ export function isValidUnmappedIPv6(ip: string): boolean {
 	}
 }
 
+export function normalizeNodeIP(value: string): string | null {
+	let ip = value.trim();
+	if (ip.startsWith('[')) {
+		if (!ip.endsWith(']') || !ip.includes(':')) return null;
+		ip = ip.slice(1, -1);
+	}
+	if (isValidIPv4(ip)) {
+		const address = new Address4(ip);
+		return address.isMulticast() || address.correctForm() === '0.0.0.0' ? null : ip;
+	}
+	if (ip.includes('%') || !isValidIPv6(ip)) return null;
+	const address = new Address6(ip);
+	if (address.isUnspecified() || address.isMulticast()) return null;
+	return address.isInSubnet(new Address6('fe80::/10')) ? null : ip;
+}
+
+export function nodeIPFamily(ip: string): 4 | 6 {
+	return isValidIPv4(ip) || new Address6(ip).isMapped4() ? 4 : 6;
+}
+
 export function isLinkLocalIPv6(ip: string): boolean {
 	try {
 		const parsed = new Address6(ip);

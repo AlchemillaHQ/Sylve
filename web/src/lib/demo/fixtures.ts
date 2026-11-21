@@ -2163,7 +2163,7 @@ export async function handleDemoRequest<T = unknown>(
 	if (path === '/cluster/join-key' && method === 'POST') {
 		return success({
 			key: 'c3lsdmUtZGVtby1qb2luLWtleS1zZWNyZXQtN0Y0QzJBOTE.' + '7f4c2a91'.repeat(8),
-			address: clusterDetails.leaderAddress.split(':')[0]
+			address: clusterDetails.leaderAddress.replace(/:\d+$/, '').replace(/^\[(.*)\]$/, '$1')
 		}) as DemoClientResponse<T>;
 	}
 	if (path === '/cluster/leave-status' && method === 'GET') {

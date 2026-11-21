@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -22,6 +23,33 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"golang.org/x/crypto/ssh"
 )
+
+func TestStartEmbeddedSSHServerRetriesAndListensOnIPv6(t *testing.T) {
+	address := net.JoinHostPort("::1", strconv.Itoa(ClusterEmbeddedSSHPort))
+	holder, err := net.Listen("tcp6", address)
+	if err != nil {
+		t.Skipf("can't hold %s: %v", address, err)
+	}
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	s := withFSM(&Service{DB: newClusterServiceTestDB(t)})
+
+	if err := s.StartEmbeddedSSHServer(t.Context(), "::1"); err == nil || !strings.Contains(err.Error(), "embedded_ssh_listen_failed") {
+		_ = holder.Close()
+		t.Fatalf("start on a held port error = %v", err)
+	}
+	_ = holder.Close()
+	if err := s.StartEmbeddedSSHServer(t.Context(), "::1"); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	connection, err := net.Dial("tcp", address)
+	if err != nil {
+		t.Fatalf("dial %s: %v", address, err)
+	}
+	_ = connection.Close()
+	if err := s.StartEmbeddedSSHServer(t.Context(), "::1"); err != nil {
+		t.Fatalf("start while started: %v", err)
+	}
+}
 
 func TestParseExecRequestPayload(t *testing.T) {
 	tests := []struct {

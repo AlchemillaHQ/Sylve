@@ -8,7 +8,7 @@
 	import Input from '$lib/components/ui/input/input.svelte';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { getClusterJoinErrorMessage } from '$lib/utils/cluster';
-	import { isValidIPv4 } from '$lib/utils/string';
+	import { nodeIPFamily, normalizeNodeIP } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
 	import { watch } from 'runed';
@@ -21,7 +21,7 @@
 
 	let { open = $bindable(), reload = $bindable() }: Props = $props();
 	let options = {
-		ip: isValidIPv4(window.location.hostname) ? window.location.hostname : '',
+		ip: normalizeNodeIP(window.location.hostname) ?? '',
 		clusterKey: '',
 		leaderIp: ''
 	};
@@ -56,18 +56,21 @@
 	}
 
 	async function join() {
-		// Clustering is IPv4-only; the backend rejects IPv6 addresses.
 		let error = '';
 
-		if (!isValidIPv4(properties.ip)) {
-			error = 'Node IP must be an IPv4 address';
-		} else if (!isValidIPv4(properties.leaderIp)) {
-			error = 'Cluster Node IP must be an IPv4 address';
+		const ip = normalizeNodeIP(properties.ip);
+		const leaderIp = normalizeNodeIP(properties.leaderIp);
+		if (!ip) {
+			error = 'Node IP must be an IPv4 or IPv6 address that other nodes can reach';
+		} else if (!leaderIp) {
+			error = 'Cluster Node IP must be an IPv4 or IPv6 address that this node can reach';
+		} else if (nodeIPFamily(ip) !== nodeIPFamily(leaderIp)) {
+			error = 'Node IP and Cluster Node IP must both be IPv4 or both be IPv6';
 		} else if (!properties.clusterKey) {
 			error = 'Join Key is required';
 		}
 
-		if (error) {
+		if (error || !ip || !leaderIp) {
 			toast.error(error, {
 				position: 'bottom-center'
 			});
@@ -78,12 +81,7 @@
 		if (storage.nodeId) {
 			loading = true;
 
-			const response = await joinCluster(
-				storage.nodeId,
-				properties.ip,
-				properties.leaderIp,
-				properties.clusterKey
-			);
+			const response = await joinCluster(storage.nodeId, ip, leaderIp, properties.clusterKey);
 
 			loading = false;
 			reload = true;
@@ -146,7 +144,7 @@
 
 			<CustomValueInput
 				bind:value={properties.leaderIp}
-				placeholder="Cluster Node IP (192.168.1.1)"
+				placeholder="Cluster Node IP"
 				classes="flex-1 space-y-1.5 w-1/2"
 			/>
 

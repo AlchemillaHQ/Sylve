@@ -109,7 +109,7 @@ doas sylve datacenter cluster readdress \
   --allow-disruption
 ```
 
-The new address must be an IPv4 address assigned locally, must not already belong to another member, and must be able to bind Sylve's cluster ports. The local member must be a voter, every member must run the same Sylve version, and no join, leave, or conflicting change may be active. If the member is the leader, Sylve first transfers leadership to another voter.
+The new address must be in the same family (IPv4 or IPv6) as the current one, since a cluster uses one address family, and can't be a loopback or IPv6 link-local address. It must be assigned locally, must not already belong to another member, and must be able to bind Sylve's cluster ports. The local member must be a voter, every member must run the same Sylve version, and no join, leave, or conflicting change may be active. If the member is the leader, Sylve first transfers leadership to another voter.
 
 The command commits the new Raft address and requests a Sylve restart. Expect the web interface, console socket, and cluster connectivity to be interrupted. Update the host's network configuration before running the command so the new IP remains assigned after reboot. In a two-voter cluster, the cluster has no leader while the node restarts; the readdress finishes on its own once the node is back on its new address.
 
@@ -123,7 +123,7 @@ datacenter cluster readdress --new-ip 192.0.2.24 --allow-disruption
 
 Use this two-stage procedure only when a clustered node can no longer start on or reach its recorded IP.
 
-1. Stop Sylve on the affected node and ensure its new IPv4 address is configured locally.
+1. Stop Sylve on the affected node and ensure its new address, in the same family (IPv4 or IPv6) as the old one, is configured locally. FreeBSD doesn't let a newly added IPv6 address be used until it has checked that no other host has it, usually for a second or two; `recover-ip` waits up to 15 seconds for that.
 2. Run the offline recovery command on that node:
 
    ```bash

@@ -118,6 +118,62 @@ func TestIPAndCIDRValidation(t *testing.T) {
 	}
 }
 
+func TestParseNodeIP(t *testing.T) {
+	for value, want := range map[string]string{
+		"192.0.2.10":                "192.0.2.10",
+		" 192.0.2.10 ":              "192.0.2.10",
+		"127.0.0.2":                 "127.0.0.2",
+		"::ffff:192.0.2.10":         "192.0.2.10",
+		"2001:db8::10":              "2001:db8::10",
+		"2001:DB8:0:0:0:0:0:10":     "2001:db8::10",
+		"[2001:db8::10]":            "2001:db8::10",
+		" [2001:db8::10] ":          "2001:db8::10",
+		"::1":                       "::1",
+		"fd00::9":                   "fd00::9",
+		"":                          "",
+		"node-1":                    "",
+		"0.0.0.0":                   "",
+		"::":                        "",
+		"[::]":                      "",
+		"224.0.0.1":                 "",
+		"ff02::1":                   "",
+		"fe80::1":                   "",
+		"fe80::1%em0":               "",
+		"[fe80::1%em0]":             "",
+		"[192.0.2.10]":              "",
+		"[2001:db8::10":             "",
+		"2001:db8::10]":             "",
+		"192.0.2.10:8180":           "",
+		"[2001:db8::10]:8180":       "",
+		"https://[2001:db8::10]/":   "",
+		"[[2001:db8::10]]":          "",
+		"2001:db8::10/64":           "",
+		"192.0.2.10/24":             "",
+		"root@2001:db8::10":         "",
+		"[2001:db8::10]:8180:extra": "",
+	} {
+		got := ""
+		if ip := ParseNodeIP(value); ip != nil {
+			got = ip.String()
+		}
+		if got != want {
+			t.Errorf("ParseNodeIP(%q) = %q, want %q", value, got, want)
+		}
+	}
+}
+
+func TestIPFamily(t *testing.T) {
+	for value, want := range map[string]int{
+		"192.0.2.10": 4, " 192.0.2.10 ": 4, "::ffff:192.0.2.10": 4,
+		"2001:db8::10": 6, "::1": 6,
+		"": 0, "node-1": 0, "[2001:db8::10]": 0, "192.0.2.10:8180": 0,
+	} {
+		if got := IPFamily(value); got != want {
+			t.Errorf("IPFamily(%q) = %d, want %d", value, got, want)
+		}
+	}
+}
+
 func TestAssignableCIDRValidation(t *testing.T) {
 	tests := []struct {
 		name string
@@ -192,6 +248,32 @@ func TestProtocolPortInUse(t *testing.T) {
 		}
 		if IsUDPPortInUse(port) {
 			t.Fatalf("TCP listener on port %d must not occupy UDP", port)
+		}
+	})
+
+	t.Run("tcp on a host IPv6 address", func(t *testing.T) {
+		host := ""
+		if addresses, err := net.InterfaceAddrs(); err == nil {
+			for _, address := range addresses {
+				if ipNet, ok := address.(*net.IPNet); ok && ipNet.IP.To4() == nil &&
+					!ipNet.IP.IsLoopback() && !ipNet.IP.IsLinkLocalUnicast() {
+					host = ipNet.IP.String()
+					break
+				}
+			}
+		}
+		if host == "" {
+			t.Skip("no global or unique-local IPv6 address on this host")
+		}
+		listener, err := net.Listen("tcp6", net.JoinHostPort(host, "0"))
+		if err != nil {
+			t.Skipf("listen on %s: %v", host, err)
+		}
+		defer listener.Close()
+
+		port := listener.Addr().(*net.TCPAddr).Port
+		if !IsTCPPortInUse(port) {
+			t.Fatalf("expected TCP port %d occupied on %s to be detected", port, host)
 		}
 	})
 
