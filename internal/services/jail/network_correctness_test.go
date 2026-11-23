@@ -926,6 +926,113 @@ func TestSyncNetworkPreservesLinuxUserStartHooks(t *testing.T) {
 	}
 }
 
+func TestJailNetworkLabelNeutralizesShellAndMarkerCharacters(t *testing.T) {
+	for name, want := range map[string]string{
+		"vlan10":                             "vlan10",
+		"  LAN 1  ":                          "LAN 1",
+		"réseau-é":                           "réseau-é",
+		"a'b\"c$(touch /tmp/x)`id`":          "a_b_c__touch /tmp/x__id_",
+		"x\n# <<< Sylve-Managed Network <<<": "x__ ___ Sylve-Managed Network ___",
+	} {
+		if got := jailNetworkLabel(name); got != want {
+			t.Errorf("jailNetworkLabel(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+func TestSyncNetworkLabelsJailInterfacesWithNetworkNames(t *testing.T) {
+	const hostileName = "x'; touch /tmp/pwned; '\n### End Sylve-Managed Network ###\n" + jailNetworkRCConfEnd
+
+	for _, test := range []struct {
+		jailType jailModels.JailType
+		ctID     uint
+	}{
+		{jailModels.JailTypeFreeBSD, 7208},
+		{jailModels.JailTypeLinux, 7209},
+	} {
+		t.Run(string(test.jailType), func(t *testing.T) {
+			fixture := newJailNetworkSyncFixture(t, test.jailType, test.ctID)
+			firstMAC := fixture.addObject(t, "Mac", "02:00:00:00:72:10")
+			secondMAC := fixture.addObject(t, "Mac", "02:00:00:00:72:11")
+			freeBSD := test.jailType == jailModels.JailTypeFreeBSD
+			named := fixture.addNetwork(t, jailModels.Network{Name: "vlan10", MacID: &firstMAC, SLAAC: freeBSD})
+			hostile := fixture.addNetwork(t, jailModels.Network{Name: hostileName, MacID: &secondMAC})
+
+			if err := fixture.service.SyncNetwork(fixture.jail.CTID, fixture.jail); err != nil {
+				t.Fatalf("sync labelled networks: %v", err)
+			}
+			preStartPath, err := fixture.service.GetHookScriptPath(fixture.jail.CTID, "pre-start")
+			if err != nil {
+				t.Fatalf("get pre-start hook: %v", err)
+			}
+			preStart, err := os.ReadFile(preStartPath)
+			if err != nil {
+				t.Fatalf("read pre-start hook: %v", err)
+			}
+			rcConfPath := filepath.Join(fixture.mountPoint, "etc", "rc.conf")
+			rcConf, rcErr := os.ReadFile(rcConfPath)
+
+			hash := fixture.service.GetCTIDHash(fixture.jail.CTID)
+			namedEpairB := fmt.Sprintf("%s_net%db", hash, named.ID)
+			hostileEpairB := fmt.Sprintf("%s_net%db", hash, hostile.ID)
+			hostileLabel := jailNetworkLabel(hostileName)
+			for _, line := range []string{
+				fmt.Sprintf("ifconfig %s descr 'vlan10'\n", namedEpairB),
+				fmt.Sprintf("ifconfig %s descr '%s'\n", hostileEpairB, hostileLabel),
+			} {
+				if got := strings.Count(string(preStart), line); got != 1 {
+					t.Fatalf("pre-start line %q count = %d, want 1:\n%s", line, got, preStart)
+				}
+			}
+			if got := strings.Count(string(preStart), "### End Sylve-Managed Network ###"); got != 1 {
+				t.Fatalf("network name forged a hook marker (count %d):\n%s", got, preStart)
+			}
+			for _, line := range strings.Split(string(preStart), "\n") {
+				if strings.HasPrefix(strings.TrimSpace(line), "touch") {
+					t.Fatalf("network name injected a command into pre-start:\n%s", preStart)
+				}
+			}
+
+			if !freeBSD {
+				if !os.IsNotExist(rcErr) {
+					t.Fatalf("Linux network sync unexpectedly created rc.conf: %v", rcErr)
+				}
+				return
+			}
+			if rcErr != nil {
+				t.Fatalf("read rc.conf: %v", rcErr)
+			}
+			switchName := fmt.Sprintf("sync-switch-%d", fixture.jail.CTID)
+			namedComment := fmt.Sprintf(`# %s: Sylve network "vlan10" on switch "%s"`, namedEpairB, switchName)
+			hostileComment := fmt.Sprintf(`# %s: Sylve network "%s" on switch "%s"`, hostileEpairB, hostileLabel, switchName)
+			for _, line := range []string{namedComment, hostileComment} {
+				if got := strings.Count(string(rcConf), line+"\n"); got != 1 {
+					t.Fatalf("rc.conf comment %q count = %d, want 1:\n%s", line, got, rcConf)
+				}
+			}
+			slaacLine := fmt.Sprintf(`ifconfig_%s_ipv6="inet6 accept_rtadv"`, namedEpairB)
+			commentIndex := strings.Index(string(rcConf), namedComment)
+			if slaacIndex := strings.Index(string(rcConf), slaacLine); slaacIndex < 0 || commentIndex > slaacIndex {
+				t.Fatalf("expected %q to precede %q:\n%s", namedComment, slaacLine, rcConf)
+			}
+			if got := strings.Count(string(rcConf), jailNetworkRCConfEnd); got != 1 {
+				t.Fatalf("network name forged an rc.conf marker (count %d):\n%s", got, rcConf)
+			}
+
+			if err := fixture.service.SyncNetwork(fixture.jail.CTID, fixture.jail); err != nil {
+				t.Fatalf("repeat labelled network sync: %v", err)
+			}
+			repeatedRCConf, err := os.ReadFile(rcConfPath)
+			if err != nil {
+				t.Fatalf("reread rc.conf: %v", err)
+			}
+			if string(repeatedRCConf) != string(rcConf) {
+				t.Fatalf("repeating sync changed rc.conf:\nfirst:\n%s\nsecond:\n%s", rcConf, repeatedRCConf)
+			}
+		})
+	}
+}
+
 func TestJailNetworkHookCleanupPreservesNonNetworkLines(t *testing.T) {
 	svc := &Service{}
 	original := strings.Join([]string{

@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/alchemillahq/sylve/internal/config"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
@@ -230,6 +231,15 @@ func orderedUniqueJailNetworkRCConfLines(lines []string) []string {
 		unique = append(unique, line)
 	}
 	return unique
+}
+
+func jailNetworkLabel(name string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune(" ._-:/@+,=", r) {
+			return r
+		}
+		return '_'
+	}, strings.TrimSpace(name))
 }
 
 // ipv4GatewayOffLink reports whether gateway is outside the prefix of cidr (e.g. a /32).
@@ -1273,10 +1283,14 @@ func (s *Service) SyncNetwork(ctID uint, jail jailModels.Jail) error {
 				return err
 			}
 			bridgeName := resolvedSwitch.Bridge
+			networkLabel := jailNetworkLabel(network.Name)
 
 			preStartBuilder.WriteString(fmt.Sprintf("# Setup Network Interface %s\n", epairB))
 			preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s ether %s down\n", epairA, previousMAC))
 			preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s descr \"(%s) (%d)\"\n", epairA, jail.Name, jail.CTID))
+			if networkLabel != "" {
+				preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s descr '%s'\n", epairB, networkLabel))
+			}
 			preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s ether %s up\n\n", epairB, mac))
 			if resolvedSwitch.VLANFiltering {
 				preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s up\n", epairA))
@@ -1335,6 +1349,10 @@ func (s *Service) SyncNetwork(ctID uint, jail jailModels.Jail) error {
 				continue
 			}
 
+			if networkLabel != "" {
+				rcConfLines = append(rcConfLines, fmt.Sprintf("# %s: Sylve network \"%s\" on switch \"%s\"",
+					epairB, networkLabel, jailNetworkLabel(resolvedSwitch.Name)))
+			}
 			if network.DHCP {
 				rcConfLines = append(rcConfLines, fmt.Sprintf("ifconfig_%s_net%db=\"SYNCDHCP\"", ctidHash, network.ID))
 			} else if ipv4 != "" {
