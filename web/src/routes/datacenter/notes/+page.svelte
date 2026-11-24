@@ -342,7 +342,13 @@
 	</Dialog.Root>
 
 	<div class="flex h-full flex-col overflow-hidden">
-		<TreeTable data={tableData} name={tableName} bind:parentActiveRow={activeRow} bind:query />
+		<TreeTable
+			dataTree={false}
+			data={tableData}
+			name={tableName}
+			bind:parentActiveRow={activeRow}
+			bind:query
+		/>
 	</div>
 
 	<AlertDialog

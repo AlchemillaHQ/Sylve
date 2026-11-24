@@ -267,6 +267,7 @@
 		name="tt-dhcp-ranges"
 		bind:parentActiveRow={activeRows}
 		multipleSelect={false}
+		dataTree={false}
 	/>
 </div>
 

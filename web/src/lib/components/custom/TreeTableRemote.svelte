@@ -32,6 +32,7 @@
 		extraParams?: Record<string, string | number | undefined>;
 		customPlaceholder?: string;
 		initialSort?: { column: string; dir: 'asc' | 'desc' }[];
+		dataTree?: boolean;
 		reload: boolean;
 	}
 
@@ -46,6 +47,7 @@
 		extraParams = {},
 		customPlaceholder = 'No data available',
 		initialSort,
+		dataTree = true,
 		reload = $bindable()
 	}: Props = $props();
 
@@ -240,8 +242,8 @@
 				columns: data.columns as ColumnDefinition[],
 				layout: 'fitColumns',
 				selectableRows: multipleSelect ? true : 1,
-				dataTreeChildIndent: 16,
-				dataTree: true,
+				dataTreeChildIndent: dataTree ? 16 : 0,
+				dataTree,
 				dataTreeChildField: 'children',
 				dataTreeStartExpanded: true,
 				persistenceID: name,

@@ -178,6 +178,7 @@
 			multipleSelect={true}
 			borderTop={loadFailed}
 			bind:query
+			dataTree={false}
 		/>{/key}
 </div>
 {#if editorOpen}<Editor bind:open={editorOpen} node={data.node} keytab={editing} bind:reload />{/if}

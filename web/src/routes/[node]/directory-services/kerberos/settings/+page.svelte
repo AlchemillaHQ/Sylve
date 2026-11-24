@@ -111,6 +111,7 @@
 		multipleSelect={false}
 		borderTop={loadFailed}
 		bind:query
+		dataTree={false}
 	/>
 </div>
 {#if settings && editorOpen}<Editor

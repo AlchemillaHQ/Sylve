@@ -87,6 +87,7 @@
 				multipleSelect={false}
 				initialSort={[{ column: 'id', dir: 'desc' }]}
 				customPlaceholder={updates.error || 'No recent operations'}
+				dataTree={false}
 			/>{/key}
 	</div>
 </div>

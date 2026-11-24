@@ -375,6 +375,7 @@
 		name="tt-dhcp-leases"
 		bind:parentActiveRow={activeRows}
 		multipleSelect={false}
+		dataTree={false}
 	/>
 </div>
 

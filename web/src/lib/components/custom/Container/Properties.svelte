@@ -60,6 +60,7 @@ under sponsorship from the FreeBSD Foundation.
 			bind:parentActiveRow={activeRows}
 			multipleSelect={false}
 			bind:query
+			dataTree={false}
 		/>
 	</div>
 </div>

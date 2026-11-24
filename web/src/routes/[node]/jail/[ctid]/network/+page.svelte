@@ -309,6 +309,7 @@ under sponsorship from the FreeBSD Foundation.
 				name="jail-networks-tt"
 				bind:parentActiveRow={activeRows}
 				multipleSelect={false}
+				dataTree={false}
 				bind:query
 			/>
 		{:else}

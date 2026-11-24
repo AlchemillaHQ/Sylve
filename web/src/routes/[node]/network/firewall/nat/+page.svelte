@@ -684,6 +684,7 @@
 					row.getElement().classList.add('managed-row');
 				}
 			}}
+			dataTree={false}
 		/>
 	</div>
 </div>

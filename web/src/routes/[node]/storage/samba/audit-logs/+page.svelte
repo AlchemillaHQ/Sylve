@@ -89,6 +89,12 @@
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-full flex-col overflow-hidden">
-		<TreeTable name="smb-audit-log-tt" data={table} ajaxURL="/api/samba/audit-logs" bind:reload />
+		<TreeTable
+			dataTree={false}
+			name="smb-audit-log-tt"
+			data={table}
+			ajaxURL="/api/samba/audit-logs"
+			bind:reload
+		/>
 	</div>
 </div>

@@ -419,6 +419,7 @@
 		multipleSelect={true}
 		initialSort={[{ column: 'bootorder', dir: 'asc' }]}
 		bind:query
+		dataTree={false}
 	/>
 </div>
 

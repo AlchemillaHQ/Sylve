@@ -314,6 +314,7 @@
 		name="tt-network-objects"
 		bind:parentActiveRow={activeRows}
 		bind:query
+		dataTree={false}
 	/>
 </div>
 

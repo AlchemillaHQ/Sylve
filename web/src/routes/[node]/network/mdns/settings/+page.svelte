@@ -175,7 +175,13 @@
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">
-		<TreeTable data={tableData} name="tt-mdns-settings" multipleSelect={false} bind:query />
+		<TreeTable
+			dataTree={false}
+			data={tableData}
+			name="tt-mdns-settings"
+			multipleSelect={false}
+			bind:query
+		/>
 	</div>
 </div>
 

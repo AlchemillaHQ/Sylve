@@ -539,6 +539,7 @@
 		multipleSelect={false}
 		bind:parentActiveRow={activeRow}
 		bind:query
+		dataTree={false}
 	/>
 
 	<HostInterfaceL3Form

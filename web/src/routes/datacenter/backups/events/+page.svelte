@@ -534,6 +534,7 @@
 				multipleSelect={false}
 				{extraParams}
 				initialSort={[{ column: 'startedAt', dir: 'desc' }]}
+				dataTree={false}
 			/>
 		{/if}
 	</div>

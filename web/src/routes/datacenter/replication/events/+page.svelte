@@ -778,6 +778,7 @@
 			bind:query
 			bind:parentActiveRow={activeRows}
 			multipleSelect={false}
+			dataTree={false}
 		/>
 	</div>
 </div>

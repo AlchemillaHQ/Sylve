@@ -359,6 +359,7 @@
 		ajaxURL="/api/zfs/datasets/paginated"
 		bind:parentActiveRow={activeRows}
 		{extraParams}
+		dataTree={false}
 	/>
 </div>
 

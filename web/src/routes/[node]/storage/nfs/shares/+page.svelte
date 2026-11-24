@@ -333,6 +333,7 @@
 				customPlaceholder="No NFS shares."
 				borderTop={loadFailed || statusFailed || status?.applyStatus === 'pending'}
 				bind:query
+				dataTree={false}
 			/>{/key}{/if}
 </div>
 {#key data.node}

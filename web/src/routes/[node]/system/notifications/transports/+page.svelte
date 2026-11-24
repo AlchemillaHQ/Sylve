@@ -202,6 +202,7 @@
 		name="tt-notification-transports"
 		bind:parentActiveRow={activeRows}
 		bind:query
+		dataTree={false}
 	/>
 </div>
 

@@ -160,6 +160,7 @@
 			multipleSelect={false}
 			{extraParams}
 			initialSort={[{ column: 'name', dir: 'asc' }]}
+			dataTree={false}
 		/>
 	</div>
 </div>

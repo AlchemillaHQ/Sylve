@@ -377,6 +377,7 @@
 		multipleSelect={false}
 		borderTop={!!(loadFailed || status?.error || warning)}
 		bind:query
+		dataTree={false}
 	/>
 </div>
 {#if ad && editorOpen}<Editor

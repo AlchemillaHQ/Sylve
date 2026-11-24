@@ -209,7 +209,13 @@
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">
-		<TreeTable data={table} name="samba-config-tt" multipleSelect={false} bind:query />
+		<TreeTable
+			dataTree={false}
+			data={table}
+			name="samba-config-tt"
+			multipleSelect={false}
+			bind:query
+		/>
 	</div>
 </div>
 

@@ -170,6 +170,7 @@
 			multipleSelect={false}
 			borderTop={loadFailed || (config?.warnings.length ?? 0) > 0}
 			bind:query
+			dataTree={false}
 		/>
 	</div>
 </div>

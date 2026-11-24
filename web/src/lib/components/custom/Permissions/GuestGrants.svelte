@@ -158,6 +158,7 @@
 		name="tt-guest-grants"
 		bind:parentActiveRow={activeRows}
 		multipleSelect={false}
+		dataTree={false}
 	/>
 </div>
 

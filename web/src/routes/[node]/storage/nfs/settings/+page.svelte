@@ -420,6 +420,7 @@
 			multipleSelect={false}
 			borderTop={loadFailed || statusFailed}
 			bind:query
+			dataTree={false}
 		/>{/key}
 </div>
 {#key data.node}
