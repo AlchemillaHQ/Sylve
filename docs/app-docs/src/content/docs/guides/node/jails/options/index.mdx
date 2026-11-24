@@ -124,6 +124,8 @@ children.max = 4;
 
 Sylve stores these statements in a managed block in the jail configuration. Do not repeat settings already managed by another page, add outer jail braces, or copy Sylve's managed block markers into this field.
 
+Networking is managed on the [Network](/guides/node/jails/network/) page, so lines starting with `vnet;`, `vnet.interface`, `ip4=`, or `ip6=` are rejected here. To give a jail a physical NIC, VLAN, or lagg interface, add it as a [host interface](/guides/node/jails/network/#attach-a-host-interface).
+
 :::caution
 Invalid or conflicting statements can prevent the jail from starting. Prefer a dedicated Sylve setting whenever one is available.
 :::

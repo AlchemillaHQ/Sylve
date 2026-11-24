@@ -9,7 +9,12 @@ under sponsorship from the FreeBSD Foundation.
 -->
 
 <script lang="ts">
-	import { addNetwork, updateNetwork } from '$lib/api/jail/jail';
+	import {
+		addNetwork,
+		getHostInterfaces,
+		updateNetwork,
+		type JailNetworkWriteRequest
+	} from '$lib/api/jail/jail';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
@@ -17,7 +22,7 @@ under sponsorship from the FreeBSD Foundation.
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import VLANPolicyEditor from '$lib/components/custom/Network/VLANPolicyEditor.svelte';
-	import type { Jail } from '$lib/types/jail/jail';
+	import type { Jail, JailHostInterfaceTarget } from '$lib/types/jail/jail';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { isSwitchRuntimeAvailable, type SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
@@ -37,6 +42,7 @@ under sponsorship from the FreeBSD Foundation.
 		networkObjects: NetworkObject[];
 		networkSwitches: SwitchList;
 		networkId: number | null;
+		canUseHostInterface: boolean;
 		onSaved: () => void | Promise<void>;
 	}
 
@@ -47,8 +53,29 @@ under sponsorship from the FreeBSD Foundation.
 		networkObjects,
 		networkSwitches,
 		networkId,
+		canUseHostInterface,
 		onSaved
 	}: Props = $props();
+
+	const hostInterfaceReasons: Record<string, string> = {
+		host_interface_switch_port: 'Switch port',
+		host_interface_bridge_member: 'Bridge member',
+		host_interface_lagg_member: 'Lagg member',
+		host_interface_vlan_parent: 'Has VLAN interfaces',
+		host_interface_host_ip_configured: 'Has Host IP configuration',
+		host_interface_has_addresses: 'Has IP addresses',
+		host_interface_in_use_by_container_nat: 'Used for container NAT',
+		host_interface_in_use_by_static_route: 'Used by a static route',
+		host_interface_in_use_by_firewall: 'Used by firewall rules',
+		host_interface_in_use_by_dynamic_dns: 'Used by dynamic DNS',
+		host_interface_in_use_by_mdns: 'Used by mDNS',
+		host_interface_in_use_by_samba: 'Used by Samba',
+		host_interface_in_use_by_wireguard: 'Used by WireGuard'
+	};
+	const hiddenHostInterfaceReasons = [
+		'host_interface_unsupported_type',
+		'host_interface_invalid_name'
+	];
 
 	let selectedNetwork = $derived(
 		networkId === null ? null : jail.networks.find((network) => network.id === networkId) || null
@@ -86,6 +113,7 @@ under sponsorship from the FreeBSD Foundation.
 
 	function initialProperties() {
 		return {
+			kind: selectedNetwork?.switchType === 'host_interface' ? 'host_interface' : 'switch',
 			name: selectedNetwork?.name || '',
 			dhcp: selectedNetwork?.dhcp ?? false,
 			slaac: selectedNetwork?.slaac ?? false,
@@ -102,6 +130,7 @@ under sponsorship from the FreeBSD Foundation.
 	function initialValues() {
 		return {
 			switchName: selectedSwitchName,
+			hostInterface: selectedNetwork?.hostInterface || '',
 			mac: selectedNetwork?.macId?.toString() || '',
 			ipv4:
 				selectedNetwork && !selectedNetwork.dhcp ? selectedNetwork.ipv4Id?.toString() || '' : '',
@@ -125,7 +154,30 @@ under sponsorship from the FreeBSD Foundation.
 	let selectedSwitchIsAvailable = $derived(
 		selectedConfiguredSwitch !== null && isSwitchRuntimeAvailable(selectedConfiguredSwitch)
 	);
+	let isHostInterface = $derived(properties.kind === 'host_interface');
+	let hostInterfaces = $state<JailHostInterfaceTarget[]>([]);
+	let hostInterfaceOptions = $derived(
+		hostInterfaces
+			.filter((target) => !hiddenHostInterfaceReasons.includes(target.reason ?? ''))
+			.map((target) => {
+				const current =
+					target.jailCtId === jail.ctId && target.interface === selectedNetwork?.hostInterface;
+				const reason =
+					target.eligible || current
+						? ''
+						: target.reason === 'host_interface_used_by_jail'
+							? `Used by ${target.jailName || `jail ${target.jailCtId}`}`
+							: hostInterfaceReasons[target.reason ?? ''] || target.reason || '';
+				return {
+					label: reason ? `${target.interface} (${reason})` : target.interface,
+					value: target.interface,
+					disabled: reason !== ''
+				};
+			})
+	);
 	let comboOpen = $state({
+		kind: false,
+		hostInterface: false,
 		switchName: false,
 		mac: false,
 		ipv4: false,
@@ -143,6 +195,24 @@ under sponsorship from the FreeBSD Foundation.
 	watch(
 		() => `${jail.ctId}:${networkId ?? 'new'}:${selectedNetwork?.id ?? 0}`,
 		() => resetForm()
+	);
+
+	async function loadHostInterfaces() {
+		const requestIdentity = `${hostname}:${jail.ctId}`;
+		const result = await getHostInterfaces(jail.ctId, { hostname });
+		if (`${hostname}:${jail.ctId}` !== requestIdentity) return;
+		if (isAPIResponse(result)) {
+			handleAPIError(result);
+			return;
+		}
+		hostInterfaces = result;
+	}
+
+	watch(
+		() => `${properties.kind}:${open}`,
+		() => {
+			if (open && isHostInterface && canUseHostInterface) void loadHostInterfaces();
+		}
 	);
 
 	watch(
@@ -205,11 +275,16 @@ under sponsorship from the FreeBSD Foundation.
 			toast.error('Network name already exists', { position: 'bottom-center' });
 			return;
 		}
-		if (!switchName) {
+		const hostInterface = values.hostInterface.trim();
+		if (isHostInterface && !hostInterface) {
+			toast.error('Host interface is required', { position: 'bottom-center' });
+			return;
+		}
+		if (!isHostInterface && !switchName) {
 			toast.error('Switch is required', { position: 'bottom-center' });
 			return;
 		}
-		if (!selectedSwitchIsAvailable) {
+		if (!isHostInterface && !selectedSwitchIsAvailable) {
 			toast.error('The selected switch runtime state is unavailable', {
 				position: 'bottom-center'
 			});
@@ -221,7 +296,7 @@ under sponsorship from the FreeBSD Foundation.
 		}
 
 		let vlanPolicy;
-		if (selectedSwitchIsFiltered) {
+		if (!isHostInterface && selectedSwitchIsFiltered) {
 			const parsedPolicy = parseVLANPolicyDraft(
 				properties.vlanPolicyMode,
 				properties.vlanPolicyUntagged,
@@ -241,11 +316,8 @@ under sponsorship from the FreeBSD Foundation.
 		const ipv4Gateway = resolveField(values.ipv4Gateway, 'Host');
 		const ipv6 = resolveField(values.ipv6, 'Network');
 		const ipv6Gateway = resolveField(values.ipv6Gateway, 'Host');
-		const payload = {
+		const payload: JailNetworkWriteRequest = {
 			name,
-			switchName,
-			macId: mac.id,
-			macRaw: mac.raw,
 			ip4: ipv4.id,
 			ip4Raw: ipv4.raw,
 			ip4gw: ipv4Gateway.id,
@@ -256,9 +328,18 @@ under sponsorship from the FreeBSD Foundation.
 			ip6gwRaw: ipv6Gateway.raw,
 			dhcp: properties.dhcp,
 			slaac: properties.slaac,
-			defaultGateway: properties.defaultGateway,
-			vlanPolicy
+			defaultGateway: properties.defaultGateway
 		};
+		if (isHostInterface) {
+			if (!selectedNetwork || hostInterface !== selectedNetwork.hostInterface) {
+				payload.hostInterface = hostInterface;
+			}
+		} else {
+			payload.switchName = switchName;
+			payload.macId = mac.id;
+			payload.macRaw = mac.raw;
+			payload.vlanPolicy = vlanPolicy;
+		}
 		const requestIdentity = `${hostname}:${jail.ctId}:${networkId ?? 'new'}`;
 
 		saving = true;
@@ -319,45 +400,86 @@ under sponsorship from the FreeBSD Foundation.
 		</Dialog.Header>
 
 		<div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
-			<div class="grid grid-cols-1 items-end gap-4 sm:grid-cols-3">
+			<div
+				class="grid grid-cols-1 items-end gap-4 {canUseHostInterface && !isHostInterface
+					? 'sm:grid-cols-2 md:grid-cols-4'
+					: 'sm:grid-cols-3'}"
+			>
 				<CustomValueInput
 					label="Name"
 					placeholder="Primary Network"
 					bind:value={properties.name}
 					classes="flex-1 space-y-1"
 				/>
-				<CustomComboBox
-					bind:open={comboOpen.switchName}
-					label="Switch"
-					placeholder="Select Switch"
-					bind:value={values.switchName}
-					data={[...networkSwitches.standard, ...networkSwitches.manual].map((item) => ({
-						label: !isSwitchRuntimeAvailable(item)
-							? `${item.name} (runtime state unavailable)`
-							: item.vlanFiltering
-								? `${item.name} (VLAN filtered)`
-								: item.name,
-						value: item.name,
-						disabled: !isSwitchRuntimeAvailable(item)
-					}))}
-					classes="flex-1 space-y-1"
-					triggerWidth="w-full"
-					width="w-full"
-				/>
-				<CustomComboBox
-					bind:open={comboOpen.mac}
-					label="MAC Address"
-					placeholder="Select or type a MAC"
-					bind:value={values.mac}
-					data={macOptions}
-					classes="flex-1 space-y-1"
-					triggerWidth="w-full"
-					width="w-full"
-					allowCustom={true}
-				/>
+				{#if canUseHostInterface || isHostInterface}
+					<CustomComboBox
+						bind:open={comboOpen.kind}
+						label="Network Type"
+						placeholder="Select type"
+						bind:value={properties.kind}
+						data={[
+							{ label: 'Switch', value: 'switch' },
+							{ label: 'Host interface', value: 'host_interface' }
+						]}
+						classes="flex-1 space-y-1"
+						triggerWidth="w-full"
+						width="w-full"
+						disabled={selectedNetwork !== null}
+					/>
+				{/if}
+				{#if isHostInterface}
+					<CustomComboBox
+						bind:open={comboOpen.hostInterface}
+						label="Host Interface"
+						hint="The interface is moved into the jail while it runs and returns to the host when the jail stops. It is not carried over when the jail is migrated or restored on another node."
+						placeholder="Select interface"
+						bind:value={values.hostInterface}
+						data={hostInterfaceOptions.some((option) => option.value === values.hostInterface) ||
+						!values.hostInterface
+							? hostInterfaceOptions
+							: [
+									{ label: values.hostInterface, value: values.hostInterface, disabled: false },
+									...hostInterfaceOptions
+								]}
+						classes="flex-1 space-y-1"
+						triggerWidth="w-full"
+						width="w-full"
+						disabled={!canUseHostInterface}
+					/>
+				{:else}
+					<CustomComboBox
+						bind:open={comboOpen.switchName}
+						label="Switch"
+						placeholder="Select Switch"
+						bind:value={values.switchName}
+						data={[...networkSwitches.standard, ...networkSwitches.manual].map((item) => ({
+							label: !isSwitchRuntimeAvailable(item)
+								? `${item.name} (runtime state unavailable)`
+								: item.vlanFiltering
+									? `${item.name} (VLAN filtered)`
+									: item.name,
+							value: item.name,
+							disabled: !isSwitchRuntimeAvailable(item)
+						}))}
+						classes="flex-1 space-y-1"
+						triggerWidth="w-full"
+						width="w-full"
+					/>
+					<CustomComboBox
+						bind:open={comboOpen.mac}
+						label="MAC Address"
+						placeholder="Select or type a MAC"
+						bind:value={values.mac}
+						data={macOptions}
+						classes="flex-1 space-y-1"
+						triggerWidth="w-full"
+						width="w-full"
+						allowCustom={true}
+					/>
+				{/if}
 			</div>
 
-			{#if selectedSwitchIsFiltered}
+			{#if !isHostInterface && selectedSwitchIsFiltered}
 				<VLANPolicyEditor
 					title="Jail bridge-member policy"
 					bind:mode={properties.vlanPolicyMode}

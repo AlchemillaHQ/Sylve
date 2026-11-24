@@ -24,6 +24,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
@@ -772,6 +773,9 @@ func (s *Service) preflightJailSnapshotRestore(
 		return plan, err
 	}
 
+	var hostInterfaceWarnings []string
+	restored.Networks, hostInterfaceWarnings = s.keepAvailableHostInterfaceNetworks(current.ID, restored.Networks)
+	plan.Warnings = append(plan.Warnings, hostInterfaceWarnings...)
 	restored.Networks, err = s.normalizeRestoredJailSnapshotNetworks(restored.Networks)
 	if err != nil {
 		return plan, err
@@ -1007,6 +1011,9 @@ func (s *Service) lockJailSnapshotNetworkLifecycle(
 		expected, err := NetworkAttachmentFromMetadata(network)
 		if err != nil {
 			return nil, fmt.Errorf("snapshot_network_source_attachment_invalid: network=%d: %w", idx+1, err)
+		}
+		if expected.SwitchType == networkAttachment.SwitchTypeHostInterface {
+			continue
 		}
 		targetNames = append(targetNames, expected.SwitchName)
 	}

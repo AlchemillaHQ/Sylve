@@ -146,6 +146,7 @@ var jailCreateBadRequestCodes = map[string]struct{}{
 	"invalid_memory":                                 {},
 	"invalid_vlan_policy":                            {},
 	"invalid_vm_name":                                {},
+	"jail_network_option_not_allowed":                {},
 	"lifecycle_hook_script_required":                 {},
 	"linux_jails_cannot_use_dhcp_or_slaac":           {},
 	"memory_limit_exceeds_host_capacity":             {},

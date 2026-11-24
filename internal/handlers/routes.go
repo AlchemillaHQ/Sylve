@@ -834,6 +834,7 @@ func RegisterRoutes(r *gin.Engine,
 		)
 
 		jail.PUT("/:ctid/network/inheritance", jailHandlers.SetNetworkInheritance(jailService))
+		jail.GET("/:ctid/network/host-interfaces", jailHandlers.ListHostInterfaces(jailService))
 		jail.POST("/:ctid/networks", jailHandlers.AddNetwork(jailService, authService))
 		jail.PATCH("/:ctid/networks/:networkId", jailHandlers.EditNetwork(jailService, authService))
 		jail.DELETE("/:ctid/networks/:networkId", jailHandlers.DeleteNetwork(jailService))

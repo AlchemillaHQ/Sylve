@@ -24,6 +24,7 @@ import {
 	JailStatSchema,
 	JailStatsBootstrapSchema,
 	JailNetworkInheritanceResultSchema,
+	JailHostInterfaceTargetSchema,
 	NetworkSchema,
 	SimpleJailSchema,
 	type CreateData,
@@ -37,6 +38,7 @@ import {
 	type JailStatsBootstrap,
 	type JailNetwork,
 	type JailNetworkInheritanceResult,
+	type JailHostInterfaceTarget,
 	type JailState,
 	type SimpleJail,
 	JailTemplateSchema,
@@ -393,9 +395,10 @@ export async function getStatsBootstrap(
 
 export interface JailNetworkWriteRequest {
 	name: string;
-	switchName: string;
-	macId: number;
-	macRaw: string;
+	switchName?: string;
+	hostInterface?: string;
+	macId?: number;
+	macRaw?: string;
 	ip4: number;
 	ip4Raw: string;
 	ip4gw: number;
@@ -442,6 +445,19 @@ export async function deleteNetwork(
 		`/jail/${ctId}/networks/${networkId}`,
 		APIResponseSchema,
 		'DELETE',
+		undefined,
+		options
+	);
+}
+
+export async function getHostInterfaces(
+	ctId: number,
+	options?: NodeAPIDataRequestOptions
+): Promise<JailHostInterfaceTarget[] | APIResponse> {
+	return await apiRequestResult(
+		`/jail/${ctId}/network/host-interfaces`,
+		z.array(JailHostInterfaceTargetSchema),
+		'GET',
 		undefined,
 		options
 	);

@@ -550,6 +550,52 @@ func TestFixJailNetworkNameIndexScopesUniquenessByJail(t *testing.T) {
 	}
 }
 
+func TestJailNetworkHostInterfaceIndexOnUpgradedTable(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{})
+	if err := dbConn.Exec(`
+		CREATE TABLE jail_networks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			jid INTEGER,
+			name TEXT NOT NULL,
+			switch_id INTEGER NOT NULL,
+			switch_type TEXT NOT NULL DEFAULT 'standard',
+			mac_id INTEGER,
+			ipv4_id INTEGER,
+			ipv4_gw_id INTEGER,
+			ipv6_id INTEGER,
+			ipv6_gw_id INTEGER,
+			default_gateway BOOLEAN DEFAULT false,
+			dhcp BOOLEAN DEFAULT false,
+			sla_ac BOOLEAN DEFAULT false
+		)
+	`).Error; err != nil {
+		t.Fatalf("failed creating legacy jail_networks table: %v", err)
+	}
+	if err := dbConn.AutoMigrate(&jailModels.Network{}); err != nil {
+		t.Fatalf("auto migrate failed: %v", err)
+	}
+	ensureJailNetworkHostInterfaceIndex(dbConn)
+	ensureJailNetworkHostInterfaceIndex(dbConn)
+
+	insert := func(jid uint, name, switchType, hostInterface string) error {
+		return dbConn.Exec(
+			`INSERT INTO jail_networks (jid, name, switch_id, switch_type, host_interface) VALUES (?, ?, 0, ?, ?)`,
+			jid, name, switchType, hostInterface,
+		).Error
+	}
+	if err := insert(1, "wan", "host_interface", "ixl0"); err != nil {
+		t.Fatalf("insert first host interface: %v", err)
+	}
+	if err := insert(2, "wan", "host_interface", "ixl0"); err == nil {
+		t.Fatal("expected a second jail claiming ixl0 to violate the unique index")
+	}
+	for jid := uint(3); jid <= 4; jid++ {
+		if err := insert(jid, "lan", "standard", ""); err != nil {
+			t.Fatalf("insert switch-backed network for jail %d: %v", jid, err)
+		}
+	}
+}
+
 func TestFixJailNetworkNameIndexAfterAutoMigrateOrdering(t *testing.T) {
 	dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{})
 

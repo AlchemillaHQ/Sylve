@@ -355,11 +355,16 @@ func TestBuildReplicationJailTargetNetworkCheckFromCapturedMetadata(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
+	hostInterface := networkAttachment.Contract{
+		Version: networkAttachment.CurrentVersion, Kind: networkAttachment.KindJail,
+		SwitchName: "ixl0", SwitchType: networkAttachment.SwitchTypeHostInterface,
+	}
 	raw, err := json.Marshal(jailModels.Jail{
 		CTID: 141,
-		Networks: []jailModels.Network{{
-			Name: "vnet0", Attachment: &contract,
-		}},
+		Networks: []jailModels.Network{
+			{Name: "vnet0", Attachment: &contract},
+			{Name: "wan", SwitchType: networkAttachment.SwitchTypeHostInterface, HostInterface: "ixl0", Attachment: &hostInterface},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)

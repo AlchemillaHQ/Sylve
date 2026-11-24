@@ -521,9 +521,16 @@ func (s *Service) validateStandardSwitchInput(
 		return input, standardSwitchConflict("standard_switch_port_conflict", nil)
 	}
 
+	jailClaimed, err := s.jailClaimedHostInterfaces()
+	if err != nil {
+		return input, err
+	}
 	for _, port := range input.ports {
 		if port == bridgeName {
 			return input, invalidStandardSwitch("standard_switch_cannot_use_own_bridge", nil)
+		}
+		if hasKey(jailClaimed, port) {
+			return input, standardSwitchConflict("standard_switch_port_used_by_jail", nil)
 		}
 		interfaceObj, inspectErr := syncIfaceGet(port)
 		if inspectErr != nil {
@@ -658,14 +665,25 @@ func (s *Service) rejectFilteredStandardBridgeInterfaces(interfaces ...string) e
 }
 
 func (s *Service) checkStandardSwitchExternalUsage(bridgeName string) error {
+	usage, err := s.interfaceExternalUsage(bridgeName)
+	if err != nil {
+		return fmt.Errorf("check standard switch %w", err)
+	}
+	if usage != "" {
+		return standardSwitchInUse("standard_switch_in_use_by_" + usage)
+	}
+	return nil
+}
+
+func (s *Service) interfaceExternalUsage(name string) (string, error) {
 	if s.DB.Migrator().HasTable(&networkModels.StaticRoute{}) {
 		var routes []networkModels.StaticRoute
 		if err := s.DB.Select("interface", "gateway_zone").Find(&routes).Error; err != nil {
-			return fmt.Errorf("check standard switch static route usage: %w", err)
+			return "", fmt.Errorf("static route usage: %w", err)
 		}
 		for _, route := range routes {
-			if strings.TrimSpace(route.Interface) == bridgeName || strings.TrimSpace(route.GatewayZone) == bridgeName {
-				return standardSwitchInUse("standard_switch_in_use_by_static_route")
+			if strings.TrimSpace(route.Interface) == name || strings.TrimSpace(route.GatewayZone) == name {
+				return "static_route", nil
 			}
 		}
 	}
@@ -673,12 +691,12 @@ func (s *Service) checkStandardSwitchExternalUsage(bridgeName string) error {
 	if s.DB.Migrator().HasTable(&networkModels.FirewallTrafficRule{}) {
 		var rules []networkModels.FirewallTrafficRule
 		if err := s.DB.Select("ingress_interfaces", "egress_interfaces", "source_raw", "dest_raw").Find(&rules).Error; err != nil {
-			return fmt.Errorf("check standard switch firewall traffic usage: %w", err)
+			return "", fmt.Errorf("firewall traffic usage: %w", err)
 		}
 		for _, rule := range rules {
-			if interfaceListContains(rule.IngressInterfaces, bridgeName) || interfaceListContains(rule.EgressInterfaces, bridgeName) ||
-				firewallDynamicAddressesReference(bridgeName, rule.SourceRaw, rule.DestRaw) {
-				return standardSwitchInUse("standard_switch_in_use_by_firewall")
+			if interfaceListContains(rule.IngressInterfaces, name) || interfaceListContains(rule.EgressInterfaces, name) ||
+				firewallDynamicAddressesReference(name, rule.SourceRaw, rule.DestRaw) {
+				return "firewall", nil
 			}
 		}
 	}
@@ -686,12 +704,12 @@ func (s *Service) checkStandardSwitchExternalUsage(bridgeName string) error {
 	if s.DB.Migrator().HasTable(&networkModels.FirewallNATRule{}) {
 		var rules []networkModels.FirewallNATRule
 		if err := s.DB.Select("ingress_interfaces", "egress_interfaces", "source_raw", "dest_raw", "translate_to_raw", "dnat_target_raw").Find(&rules).Error; err != nil {
-			return fmt.Errorf("check standard switch firewall NAT usage: %w", err)
+			return "", fmt.Errorf("firewall NAT usage: %w", err)
 		}
 		for _, rule := range rules {
-			if interfaceListContains(rule.IngressInterfaces, bridgeName) || interfaceListContains(rule.EgressInterfaces, bridgeName) ||
-				firewallDynamicAddressesReference(bridgeName, rule.SourceRaw, rule.DestRaw, rule.TranslateToRaw, rule.DNATTargetRaw) {
-				return standardSwitchInUse("standard_switch_in_use_by_firewall")
+			if interfaceListContains(rule.IngressInterfaces, name) || interfaceListContains(rule.EgressInterfaces, name) ||
+				firewallDynamicAddressesReference(name, rule.SourceRaw, rule.DestRaw, rule.TranslateToRaw, rule.DNATTargetRaw) {
+				return "firewall", nil
 			}
 		}
 	}
@@ -699,11 +717,11 @@ func (s *Service) checkStandardSwitchExternalUsage(bridgeName string) error {
 	if s.DB.Migrator().HasTable(&dynamicDNSModels.Entry{}) {
 		var entries []dynamicDNSModels.Entry
 		if err := s.DB.Select("source_type", "source_settings").Find(&entries).Error; err != nil {
-			return fmt.Errorf("check standard switch dynamic DNS usage: %w", err)
+			return "", fmt.Errorf("dynamic DNS usage: %w", err)
 		}
 		for _, entry := range entries {
-			if entry.SourceType == dynamicDNSModels.SourceTypeInterface && strings.TrimSpace(entry.SourceSettings["interface"]) == bridgeName {
-				return standardSwitchInUse("standard_switch_in_use_by_dynamic_dns")
+			if entry.SourceType == dynamicDNSModels.SourceTypeInterface && strings.TrimSpace(entry.SourceSettings["interface"]) == name {
+				return "dynamic_dns", nil
 			}
 		}
 	}
@@ -711,33 +729,33 @@ func (s *Service) checkStandardSwitchExternalUsage(bridgeName string) error {
 	if s.DB.Migrator().HasTable(&mdnsModels.MdnsSettings{}) {
 		var settings []mdnsModels.MdnsSettings
 		if err := s.DB.Select("interfaces").Find(&settings).Error; err != nil {
-			return fmt.Errorf("check standard switch mDNS settings usage: %w", err)
+			return "", fmt.Errorf("mDNS settings usage: %w", err)
 		}
 		for _, setting := range settings {
-			if commaSeparatedInterfacesContain(setting.Interfaces, bridgeName) {
-				return standardSwitchInUse("standard_switch_in_use_by_mdns")
+			if commaSeparatedInterfacesContain(setting.Interfaces, name) {
+				return "mdns", nil
 			}
 		}
 	}
 	if s.DB.Migrator().HasTable(&mdnsModels.MdnsRecord{}) {
 		var records []mdnsModels.MdnsRecord
 		if err := s.DB.Select("interfaces").Find(&records).Error; err != nil {
-			return fmt.Errorf("check standard switch mDNS record usage: %w", err)
+			return "", fmt.Errorf("mDNS record usage: %w", err)
 		}
 		for _, record := range records {
-			if commaSeparatedInterfacesContain(record.Interfaces, bridgeName) {
-				return standardSwitchInUse("standard_switch_in_use_by_mdns")
+			if commaSeparatedInterfacesContain(record.Interfaces, name) {
+				return "mdns", nil
 			}
 		}
 	}
 	if s.DB.Migrator().HasTable(&sambaModels.SambaSettings{}) {
 		var settings []sambaModels.SambaSettings
 		if err := s.DB.Select("interfaces").Find(&settings).Error; err != nil {
-			return fmt.Errorf("check standard switch Samba usage: %w", err)
+			return "", fmt.Errorf("Samba usage: %w", err)
 		}
 		for _, setting := range settings {
-			if commaSeparatedInterfacesContain(setting.Interfaces, bridgeName) {
-				return standardSwitchInUse("standard_switch_in_use_by_samba")
+			if commaSeparatedInterfacesContain(setting.Interfaces, name) {
+				return "samba", nil
 			}
 		}
 	}
@@ -745,17 +763,17 @@ func (s *Service) checkStandardSwitchExternalUsage(bridgeName string) error {
 	if s.DB.Migrator().HasTable(&networkModels.WireGuardServer{}) {
 		var servers []networkModels.WireGuardServer
 		if err := s.DB.Select("masquerade_ipv4_interface", "masquerade_ipv6_interface").Find(&servers).Error; err != nil {
-			return fmt.Errorf("check standard switch WireGuard usage: %w", err)
+			return "", fmt.Errorf("WireGuard usage: %w", err)
 		}
 		for _, server := range servers {
-			if strings.TrimSpace(server.MasqueradeIPv4Interface) == bridgeName ||
-				strings.TrimSpace(server.MasqueradeIPv6Interface) == bridgeName {
-				return standardSwitchInUse("standard_switch_in_use_by_wireguard")
+			if strings.TrimSpace(server.MasqueradeIPv4Interface) == name ||
+				strings.TrimSpace(server.MasqueradeIPv6Interface) == name {
+				return "wireguard", nil
 			}
 		}
 	}
 
-	return nil
+	return "", nil
 }
 
 func (s *Service) checkStandardSwitchHostInterfaceUsage(id uint, interfaceName string) error {

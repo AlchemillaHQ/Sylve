@@ -406,6 +406,18 @@ func containsJailOptionMarker(value string) bool {
 	return false
 }
 
+func validateJailAdditionalOptions(options string) error {
+	if containsJailOptionMarker(options) {
+		return fmt.Errorf("reserved_jail_option_marker")
+	}
+	for _, line := range strings.Split(options, "\n") {
+		if isJailNetworkConfigLine(strings.TrimSpace(line)) {
+			return fmt.Errorf("jail_network_option_not_allowed")
+		}
+	}
+	return nil
+}
+
 func jailAdditionalOptionsConfigBlock(options string) string {
 	if options == "" {
 		return ""
@@ -1209,8 +1221,8 @@ func (s *Service) ModifyDevfsRuleset(ctID uint, rules string) error {
 }
 
 func (s *Service) ModifyAdditionalOptions(ctID uint, options string) error {
-	if options != "" && containsJailOptionMarker(options) {
-		return fmt.Errorf("reserved_jail_option_marker")
+	if err := validateJailAdditionalOptions(options); err != nil {
+		return err
 	}
 	return s.mutateJailOption(ctID, func(jail *jailModels.Jail) error {
 		configPath, currentConfig, err := s.loadJailOptionConfig(ctID)

@@ -126,6 +126,9 @@ func (s *Service) jailAction(ctId int, action, transitionRunID string) error {
 		if err := s.DB.Preload("Networks").Where("ct_id = ?", ctId).First(&jailWithNetworks).Error; err != nil {
 			return fmt.Errorf("failed to load jail networks before start: %w", err)
 		}
+		if err := s.ensureJailHostInterfacesReady(jailWithNetworks); err != nil {
+			return err
+		}
 
 		if err := s.SyncNetwork(uint(ctId), jailWithNetworks); err != nil {
 			return fmt.Errorf("failed to sync jail network before start: %w", err)

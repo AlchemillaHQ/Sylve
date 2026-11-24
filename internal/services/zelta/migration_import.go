@@ -221,6 +221,10 @@ func (s *Service) ImportMigratedJailWithRoots(
 	if err := s.rebaseMigratedJailFstab(migratedMetadata, metadataMountpoint); err != nil {
 		return nil, err
 	}
+	_, hostInterfaces := jailService.SplitHostInterfaceNetworks(migratedMetadata.Jail.Networks)
+	for _, name := range hostInterfaces {
+		warnings = append(warnings, fmt.Sprintf("warning_host_interface_not_migrated: %s", name))
+	}
 
 	if err := s.reconcileMigratedJailFromDataset(ctx, metadataDataset); err != nil {
 		return warnings, fmt.Errorf("failed_to_import_migrated_jail: %w", err)

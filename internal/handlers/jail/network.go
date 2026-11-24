@@ -80,14 +80,25 @@ func jailNetworkErrorStatus(err error) int {
 		"network_object_requires_single_entry", "conflicting_network_value_sources", "network_mac_required",
 		"default_gateway_requires_gateway", "cannot_set_dhcp_slaac_and_default_gateway_together",
 		"cannot_set_dhcp_or_slaac_when_linux_jail", "vlan_policy_requires_switch",
-		"vlan_policy_requires_filtered_switch", "filtered_switch_vlan_policy_required", "invalid_vlan_policy"):
+		"vlan_policy_requires_filtered_switch", "filtered_switch_vlan_policy_required", "invalid_vlan_policy",
+		"switch_and_host_interface_are_mutually_exclusive", "invalid_host_interface_name",
+		"host_interface_mac_unsupported", "jail_network_host_interface_vlan_unsupported",
+		"jail_network_attachment_type_change_unsupported", "host_interface_invalid_name",
+		"host_interface_unsupported_type"):
 		return http.StatusBadRequest
 	case utils.HasErrorCode(codes, "replication_lease_not_owned"):
 		return http.StatusForbidden
 	case utils.HasErrorCode(codes,
-		"jail_not_found", "network_not_found", "switch_not_found", "network_object_not_found"):
+		"jail_not_found", "network_not_found", "switch_not_found", "network_object_not_found",
+		"host_interface_not_found"):
 		return http.StatusNotFound
 	case utils.HasErrorCode(codes,
+		"host_interface_used_by_jail", "host_interface_switch_port", "host_interface_bridge_member",
+		"host_interface_lagg_member", "host_interface_vlan_parent", "host_interface_host_ip_configured",
+		"host_interface_has_addresses", "host_interface_in_use_by_container_nat",
+		"host_interface_in_use_by_static_route", "host_interface_in_use_by_firewall",
+		"host_interface_in_use_by_dynamic_dns", "host_interface_in_use_by_mdns",
+		"host_interface_in_use_by_samba", "host_interface_in_use_by_wireguard",
 		"restore_in_progress", "jail_network_change_requires_inactive",
 		"cannot_add_network_when_inheriting_network", "cannot_edit_network_when_inheriting_network",
 		"jail_network_name_exists", "jail_default_gateway_exists", "network_object_already_used",
@@ -207,7 +218,7 @@ func AddNetwork(jailService jailNetworkService, authService *auth.Service) gin.H
 		if !bindJailJSON(c, &req, "invalid_request_data") {
 			return
 		}
-		if !allowJailNetworkChange(c, authService, ctID, req.SwitchName) {
+		if !allowJailNetworkChange(c, authService, ctID, req.SwitchName, strings.TrimSpace(req.HostInterface) != "") {
 			return
 		}
 
@@ -268,7 +279,7 @@ func EditNetwork(jailService jailNetworkService, authService *auth.Service) gin.
 		if req.SwitchName != nil {
 			switchName = *req.SwitchName
 		}
-		if !allowJailNetworkChange(c, authService, ctID, switchName) {
+		if !allowJailNetworkChange(c, authService, ctID, switchName, req.HostInterface != nil) {
 			return
 		}
 
@@ -329,6 +340,43 @@ func DeleteNetwork(jailService jailNetworkService) gin.HandlerFunc {
 			Message: "network_deleted_from_jail",
 			Error:   "",
 			Data:    nil,
+		})
+	}
+}
+
+type jailHostInterfaceService interface {
+	ListHostInterfaces() ([]jailServiceInterfaces.HostInterfaceTarget, error)
+}
+
+// @Summary List host interfaces for jail networks
+// @Description List host interfaces that can be moved into a vnet jail, with the reason when one is not eligible and the jail that already uses it
+// @Tags Jail
+// @Produce json
+// @Security BearerAuth
+// @Param ctid path int true "Jail CTID" minimum(1)
+// @Success 200 {object} internal.APIResponse[[]jailServiceInterfaces.HostInterfaceTarget] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /jail/{ctid}/network/host-interfaces [get]
+func ListHostInterfaces(jailService jailHostInterfaceService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if _, ok := positiveJailNetworkParam(c, "ctid", "invalid_ct_id"); !ok {
+			return
+		}
+
+		targets, err := jailService.ListHostInterfaces()
+		if err != nil {
+			writeJailNetworkError(c, "failed_to_list_host_interfaces", err)
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[[]jailServiceInterfaces.HostInterfaceTarget]{
+			Status:  "success",
+			Message: "host_interfaces_listed",
+			Error:   "",
+			Data:    targets,
 		})
 	}
 }

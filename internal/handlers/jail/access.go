@@ -122,9 +122,12 @@ func allowJailTemplateCreate(c *gin.Context, authService *auth.Service, service 
 	return true
 }
 
-func allowJailNetworkChange(c *gin.Context, authService *auth.Service, ctid uint, switchName string) bool {
+func allowJailNetworkChange(c *gin.Context, authService *auth.Service, ctid uint, switchName string, hostInterface bool) bool {
 	if !middleware.Allowed(c, authService, auth.GuestPath("jail", ctid), auth.GuestConfigNetwork) {
 		return false
+	}
+	if hostInterface {
+		return middleware.RequireHostAdmin(c, authService)
 	}
 	return !usesSwitch(switchName) || middleware.Allowed(c, authService, auth.SwitchPath(switchName), auth.NetworkUse)
 }

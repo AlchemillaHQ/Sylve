@@ -56,6 +56,10 @@ type Network struct {
 	SLAAC bool `json:"slaac" gorm:"default:false"`
 
 	VLANPolicy bridgevlan.PortPolicy `json:"vlanPolicy" gorm:"embedded;embeddedPrefix:vlan_"`
+
+	// Declared last: GORM's SQLite migrator rebuilds the table from its old
+	// schema when it alters an earlier column, dropping columns added before.
+	HostInterface string `json:"hostInterface,omitempty" gorm:"column:host_interface"`
 }
 
 func (n *Network) AfterFind(tx *gorm.DB) error {
@@ -93,6 +97,8 @@ func (n *Network) AfterFind(tx *gorm.DB) error {
 			return fmt.Errorf("load manual switch %d: %w", n.SwitchID, err)
 		}
 		n.ManualSwitch = &m
+
+	case networkAttachment.SwitchTypeHostInterface:
 
 	default:
 		return fmt.Errorf("unknown switch type: %s", n.SwitchType)

@@ -137,7 +137,7 @@ under sponsorship from the FreeBSD Foundation.
 		networkObjects.current.identity === data.node ? networkObjects.current.value : []
 	);
 	let inherited = $derived(!!(currentJail?.inheritIPv4 || currentJail?.inheritIPv6));
-	let canInherit = $derived(allowed('Sys.Modify', nodePath(data.node)));
+	let isHostAdmin = $derived(allowed('Sys.Modify', nodePath(data.node)));
 	let inactive = $derived(
 		jailState.current?.ctId === data.ctId &&
 			jailState.current.state === 'INACTIVE' &&
@@ -188,8 +188,12 @@ under sponsorship from the FreeBSD Foundation.
 		const rows: Row[] = currentJail.networks.map((network) => ({
 			id: network.id,
 			name: network.name,
-			switch: (network.standardSwitch ?? network.manualSwitch)?.name || '-',
-			mac: objectLabel(network.macObj),
+			switch:
+				network.switchType === 'host_interface'
+					? `${network.hostInterface} (host interface)`
+					: (network.standardSwitch ?? network.manualSwitch)?.name || '-',
+			hostInterface: network.switchType === 'host_interface',
+			mac: network.switchType === 'host_interface' ? 'Hardware' : objectLabel(network.macObj),
 			vlanPolicy: vlanPolicyText(network.vlanPolicy) || '-',
 			vlanPolicyRaw: network.vlanPolicy,
 			ipv4: network.dhcp
@@ -258,8 +262,8 @@ under sponsorship from the FreeBSD Foundation.
 			onclick={() => (modals.inherit = true)}
 			size="sm"
 			variant="outline"
-			disabled={!inactive || !canInherit}
-			title={!canInherit
+			disabled={!inactive || !isHostAdmin}
+			title={!isHostAdmin
 				? 'Needs Sys.Modify on this node'
 				: inactive
 					? 'Change network inheritance'
@@ -332,7 +336,9 @@ under sponsorship from the FreeBSD Foundation.
 {#if modals.delete && activeRow}
 	<AlertDialog
 		bind:open={modals.delete}
-		customTitle={`This will detach the jail from the switch <b>${escapeHTML(String(activeRow.switch || '-'))}</b>.`}
+		customTitle={activeRow.hostInterface
+			? `This will release <b>${escapeHTML(String(activeRow.switch || '-'))}</b> from the jail.`
+			: `This will detach the jail from the switch <b>${escapeHTML(String(activeRow.switch || '-'))}</b>.`}
 		loading={deleting}
 		loadingLabel="Deleting..."
 		keepOpenOnConfirm={true}
@@ -351,6 +357,7 @@ under sponsorship from the FreeBSD Foundation.
 		networkObjects={currentObjects}
 		networkSwitches={currentSwitches}
 		networkId={null}
+		canUseHostInterface={isHostAdmin}
 		onSaved={reloadNetworkData}
 	/>
 {/if}
@@ -363,6 +370,7 @@ under sponsorship from the FreeBSD Foundation.
 		networkObjects={currentObjects}
 		networkSwitches={currentSwitches}
 		networkId={modals.edit.id}
+		canUseHostInterface={isHostAdmin}
 		onSaved={reloadNetworkData}
 	/>
 {/if}

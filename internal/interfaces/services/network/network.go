@@ -66,6 +66,12 @@ type HostInterfaceL3TargetEntry struct {
 	Reason    string `json:"reason"`
 }
 
+type JailHostInterfaceTarget struct {
+	Interface string `json:"interface"`
+	Eligible  bool   `json:"eligible"`
+	Reason    string `json:"reason,omitempty"`
+}
+
 type HostInterfaceL3List struct {
 	Rows    []HostInterfaceL3Entry       `json:"rows"`
 	Targets []HostInterfaceL3TargetEntry `json:"targets"`
@@ -143,6 +149,7 @@ type NetworkServiceInterface interface {
 	DisableWireGuardService(ctx context.Context) error
 	ReconcileManagedRoutes() error
 	RegisterOnJailObjectUpdateCallback(cb func(jailIDs []uint))
+	JailHostInterfaceTargets() ([]JailHostInterfaceTarget, error)
 }
 
 type StartupNetworkServiceInterface interface {

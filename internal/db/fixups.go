@@ -76,6 +76,7 @@ func Fixups(db *gorm.DB) error {
 
 	runNetworkDeltaMigration(db)
 	fixJailNetworkNameIndex(db)
+	ensureJailNetworkHostInterfaceIndex(db)
 	backfillVMStorageEnableDefaults(db)
 	backfillVMNetworkEnableDefaults(db)
 	backfillTemplateSourceGuestIDs(db)
@@ -731,6 +732,18 @@ func fixJailNetworkNameIndex(db *gorm.DB) {
 	db.Table("migrations").Create(map[string]any{
 		"name": name,
 	})
+}
+
+func ensureJailNetworkHostInterfaceIndex(db *gorm.DB) {
+	if !db.Migrator().HasTable("jail_networks") {
+		return
+	}
+	if err := db.Exec(
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_jail_network_host_interface " +
+			"ON jail_networks(host_interface) WHERE switch_type = 'host_interface'",
+	).Error; err != nil {
+		logger.L.Err(err).Msg("failed creating jail network host interface index")
+	}
 }
 
 func backfillVMStorageEnableDefaults(db *gorm.DB) {

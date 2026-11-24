@@ -190,6 +190,16 @@ func (s *Service) GetHostInterfaceL3() (networkServiceInterfaces.HostInterfaceL3
 		reservations,
 		s.hostInterfaceL3EligibilityCode,
 	)
+	jailClaimed, err := s.jailClaimedHostInterfaces()
+	if err != nil {
+		return list, err
+	}
+	for index := range list.Targets {
+		if list.Targets[index].Eligible && hasKey(jailClaimed, list.Targets[index].Interface) {
+			list.Targets[index].Eligible = false
+			list.Targets[index].Reason = "host_interface_l3_used_by_jail"
+		}
+	}
 	return list, nil
 }
 

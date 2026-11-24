@@ -104,6 +104,33 @@ func TestSlirpContractIsVMOnlyAndUnfiltered(t *testing.T) {
 	}
 }
 
+func TestHostInterfaceContractIsJailOnlyAndUnfiltered(t *testing.T) {
+	contract, err := Normalize(Contract{
+		Version: CurrentVersion, Kind: KindJail, SwitchName: " ixl0.10 ", SwitchType: "HOST_INTERFACE",
+	})
+	if err != nil {
+		t.Fatalf("normalize host interface contract: %v", err)
+	}
+	if contract.SwitchName != "ixl0.10" || contract.SwitchType != SwitchTypeHostInterface {
+		t.Fatalf("unexpected host interface contract: %#v", contract)
+	}
+
+	for name, value := range map[string]Contract{
+		"vm":           {Kind: KindVM, SwitchName: "ixl0"},
+		"empty":        {Kind: KindJail, SwitchName: " "},
+		"shell":        {Kind: KindJail, SwitchName: "ixl0;reboot"},
+		"quote":        {Kind: KindJail, SwitchName: `ixl0"`},
+		"too long":     {Kind: KindJail, SwitchName: "abcdefghijklmnop"},
+		"vlan filters": {Kind: KindJail, SwitchName: "ixl0", VLANFiltering: true},
+	} {
+		value.Version = CurrentVersion
+		value.SwitchType = SwitchTypeHostInterface
+		if _, err := Normalize(value); err == nil {
+			t.Errorf("%s: expected host interface contract to be rejected", name)
+		}
+	}
+}
+
 func TestLegacyUnfilteredIsNarrow(t *testing.T) {
 	contract, err := LegacyUnfiltered(KindVM, "LAN", "")
 	if err != nil {

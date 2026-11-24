@@ -9,9 +9,11 @@
 package jail
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
@@ -30,6 +32,22 @@ type jailNetworkValidationFakeNetworkService struct {
 	ensureEpairErr   error
 	deleteEpairCalls []string
 	deleteEpairErr   error
+	hostInterfaces   []networkServiceInterfaces.JailHostInterfaceTarget
+	db               *gorm.DB
+}
+
+// JailHostInterfaceTargets queries the shared database like the real network
+// service does, so a call made while a transaction holds the only pooled
+// connection times out instead of passing.
+func (f *jailNetworkValidationFakeNetworkService) JailHostInterfaceTargets() ([]networkServiceInterfaces.JailHostInterfaceTarget, error) {
+	if f.db != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := f.db.WithContext(ctx).Exec("SELECT 1").Error; err != nil {
+			return nil, err
+		}
+	}
+	return f.hostInterfaces, nil
 }
 
 func (f *jailNetworkValidationFakeNetworkService) IsObjectUsed(_ uint) (bool, string, error) {
@@ -74,7 +92,7 @@ func newJailNetworkValidationService(
 		&clusterModels.ReplicationPolicy{},
 		&clusterModels.ReplicationLease{},
 	)
-	network := &jailNetworkValidationFakeNetworkService{entries: map[uint]string{}}
+	network := &jailNetworkValidationFakeNetworkService{entries: map[uint]string{}, db: db}
 	return &Service{
 		DB: db, NetworkService: network, ctidHashByCTID: make(map[uint]string),
 	}, db, network

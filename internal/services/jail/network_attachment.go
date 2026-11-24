@@ -86,12 +86,51 @@ func jailNetworkPolicy(network jailModels.Network) *bridgevlan.PortPolicy {
 	return &policy
 }
 
+func isHostInterfaceNetwork(network jailModels.Network) bool {
+	return network.SwitchType == networkAttachment.SwitchTypeHostInterface ||
+		(network.Attachment != nil && network.Attachment.SwitchType == networkAttachment.SwitchTypeHostInterface)
+}
+
+// SplitHostInterfaceNetworks separates networks that hold a host interface,
+// which never move to another node, from the portable ones.
+func SplitHostInterfaceNetworks(networks []jailModels.Network) ([]jailModels.Network, []string) {
+	kept := make([]jailModels.Network, 0, len(networks))
+	var dropped []string
+	for _, network := range networks {
+		if !isHostInterfaceNetwork(network) {
+			kept = append(kept, network)
+			continue
+		}
+		name := network.HostInterface
+		if name == "" && network.Attachment != nil {
+			name = network.Attachment.SwitchName
+		}
+		dropped = append(dropped, name)
+	}
+	return kept, dropped
+}
+
+func resolveHostInterfaceNetworkAttachment(
+	network *jailModels.Network,
+) (networkAttachment.Contract, networkAttachment.ResolvedSwitch, error) {
+	sw := networkAttachment.HostInterfaceSwitch(network.HostInterface)
+	contract, err := sw.Contract(networkAttachment.KindJail, jailNetworkPolicy(*network))
+	if err != nil {
+		return networkAttachment.Contract{}, networkAttachment.ResolvedSwitch{}, err
+	}
+	normalizeJailNetworkPolicy(network, contract)
+	return contract, sw, nil
+}
+
 func ResolveDesiredNetworkAttachment(
 	db *gorm.DB,
 	network *jailModels.Network,
 ) (networkAttachment.Contract, networkAttachment.ResolvedSwitch, error) {
 	if network == nil {
 		return networkAttachment.Contract{}, networkAttachment.ResolvedSwitch{}, fmt.Errorf("jail_network_required")
+	}
+	if isHostInterfaceNetwork(*network) {
+		return resolveHostInterfaceNetworkAttachment(network)
 	}
 	contract, sw, err := jailNetworkAttachmentResolver(db).DesiredContractByID(
 		networkAttachment.KindJail, network.SwitchType, network.SwitchID, jailNetworkPolicy(*network),
@@ -109,6 +148,9 @@ func ResolveEffectiveNetworkAttachment(
 ) (networkAttachment.Contract, networkAttachment.ResolvedSwitch, error) {
 	if network == nil {
 		return networkAttachment.Contract{}, networkAttachment.ResolvedSwitch{}, fmt.Errorf("jail_network_required")
+	}
+	if isHostInterfaceNetwork(*network) {
+		return resolveHostInterfaceNetworkAttachment(network)
 	}
 	contract, sw, err := jailNetworkAttachmentResolver(db).EffectiveContractByID(
 		networkAttachment.KindJail, network.SwitchType, network.SwitchID, jailNetworkPolicy(*network),
@@ -166,6 +208,8 @@ func NetworkAttachmentFromMetadata(network jailModels.Network) (networkAttachmen
 			return networkAttachment.Contract{}, fmt.Errorf("legacy_filtered_jail_network_attachment_unsupported")
 		}
 		switchName = network.StandardSwitch.Name
+	case networkAttachment.SwitchTypeHostInterface:
+		switchName = network.HostInterface
 	}
 
 	return networkAttachment.LegacyUnfiltered(

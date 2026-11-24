@@ -563,8 +563,8 @@ func (s *Service) validateCreate(ctx context.Context, data jailServiceInterfaces
 	if data.StartOrder < 0 {
 		return fmt.Errorf("start_order_must_be_greater_than_or_equal_to_0")
 	}
-	if data.AdditionalOptions != "" && containsJailOptionMarker(data.AdditionalOptions) {
-		return fmt.Errorf("reserved_jail_option_marker")
+	if err := validateJailAdditionalOptions(data.AdditionalOptions); err != nil {
+		return err
 	}
 	if err := validateJailMetadata(data.MetadataMeta, data.MetadataEnv); err != nil {
 		return err

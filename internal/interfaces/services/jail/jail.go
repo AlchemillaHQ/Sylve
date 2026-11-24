@@ -177,7 +177,8 @@ type GuestNetworkStatistics struct {
 
 type AddJailNetworkRequest struct {
 	Name           string                 `json:"name" binding:"required"`
-	SwitchName     string                 `json:"switchName" binding:"required"`
+	SwitchName     string                 `json:"switchName"`
+	HostInterface  string                 `json:"hostInterface"`
 	MacID          *uint                  `json:"macId"`
 	MACRaw         string                 `json:"macRaw"`
 	IP4            *uint                  `json:"ip4"`
@@ -197,6 +198,7 @@ type AddJailNetworkRequest struct {
 type EditJailNetworkRequest struct {
 	Name           *string                `json:"name"`
 	SwitchName     *string                `json:"switchName"`
+	HostInterface  *string                `json:"hostInterface"`
 	MacID          *uint                  `json:"macId"`
 	MACRaw         *string                `json:"macRaw"`
 	IP4            *uint                  `json:"ip4"`
@@ -211,6 +213,14 @@ type EditJailNetworkRequest struct {
 	SLAAC          *bool                  `json:"slaac"`
 	DefaultGateway *bool                  `json:"defaultGateway"`
 	VLANPolicy     *bridgevlan.PortPolicy `json:"vlanPolicy"`
+}
+
+type HostInterfaceTarget struct {
+	Interface string `json:"interface"`
+	Eligible  bool   `json:"eligible"`
+	Reason    string `json:"reason,omitempty"`
+	JailCTID  uint   `json:"jailCtId,omitempty"`
+	JailName  string `json:"jailName,omitempty"`
 }
 
 type JailNetworkInheritanceResult struct {

@@ -2085,13 +2085,17 @@ function attachDemoJailNetwork(jail: DemoJail, payload: Record<string, unknown>)
 	fullJail(jail);
 	const networks = jail.networks!;
 	const id = nextRecordId(networks);
-	const selectedSwitch = demoSwitch(stringField(payload, 'switchName', 'production'));
+	const hostInterface = stringField(payload, 'hostInterface');
+	const selectedSwitch = hostInterface
+		? { id: 0, type: 'host_interface' }
+		: demoSwitch(stringField(payload, 'switchName', 'production'));
 	const network: Record<string, unknown> = {
 		id,
 		jid: jail.id,
 		name: stringField(payload, 'name', `epair${networks.length}`),
 		switchId: selectedSwitch.id,
 		switchType: selectedSwitch.type,
+		hostInterface: hostInterface || undefined,
 		macId: numberField(payload, 'macId') || null,
 		macObj: null,
 		ipv4Id: numberField(payload, 'ip4') || null,
@@ -3205,6 +3209,14 @@ export async function handleDemoRequest<T = unknown>(
 		if (!found) return missing(path) as DemoClientResponse<T>;
 		updateDemoJailDetails(found.jail, match[2], requestPayload(config));
 		return mutationSuccess('jail_configuration_updated') as DemoClientResponse<T>;
+	}
+	match = path.match(/^\/jail\/(\d+)\/network\/host-interfaces$/);
+	if (match && method === 'GET') {
+		return success([
+			{ interface: 'em0', eligible: false, reason: 'host_interface_has_addresses' },
+			{ interface: 'ix1', eligible: true },
+			{ interface: 'ix1.20', eligible: true }
+		]) as DemoClientResponse<T>;
 	}
 	match = path.match(/^\/jail\/(\d+)\/network\/inheritance$/);
 	if (match && method === 'PUT') {

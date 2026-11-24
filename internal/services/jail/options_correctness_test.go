@@ -297,6 +297,27 @@ func TestJailResolvConfEmptyValueRemovesManagedFile(t *testing.T) {
 	}
 }
 
+func TestValidateJailAdditionalOptionsRejectsSylveNetworkLines(t *testing.T) {
+	for options, want := range map[string]string{
+		"": "",
+		"enforce_statfs = 2;\nallow.raw_sockets;":               "",
+		"exec.created += \"/sbin/ifconfig ixl0 vnet ${name}\";": "",
+		"vnet;":                         "jail_network_option_not_allowed",
+		"  vnet.interface += \"ixl0\";": "jail_network_option_not_allowed",
+		"enforce_statfs = 2;\r\nip4=inherit;\r\n": "jail_network_option_not_allowed",
+		"ip6=disable;":           "jail_network_option_not_allowed",
+		jailAdditionalOptionsEnd: "reserved_jail_option_marker",
+	} {
+		err := validateJailAdditionalOptions(options)
+		if want == "" && err != nil {
+			t.Errorf("validateJailAdditionalOptions(%q) = %v, want nil", options, err)
+		}
+		if want != "" && (err == nil || err.Error() != want) {
+			t.Errorf("validateJailAdditionalOptions(%q) = %v, want %s", options, err, want)
+		}
+	}
+}
+
 func TestJailMetadataIsEscapedAndAdditionalOptionsArePreserved(t *testing.T) {
 	const additional = "\texec.clean;\n\tallow.raw_sockets;"
 	service, _, configPath, _ := newJailOptionsTestService(t, 904, func(record *jailModels.Jail) {

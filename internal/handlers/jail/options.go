@@ -134,7 +134,7 @@ func classifyJailOptionError(err error) (int, string) {
 		"start_order_must_be_greater_than_or_equal_to_0", "exec_timeout_out_of_range",
 		"invalid_jail_allowed_options",
 		"invalid_jail_metadata", "invalid_lifecycle_hooks", "lifecycle_hook_script_required",
-		"reserved_jail_option_marker"):
+		"reserved_jail_option_marker", "jail_network_option_not_allowed"):
 		return http.StatusBadRequest, firstJailOptionErrorCode(err)
 	case utils.HasErrorCode(codes, "replication_lease_not_owned"):
 		return http.StatusForbidden, "replication_lease_not_owned"

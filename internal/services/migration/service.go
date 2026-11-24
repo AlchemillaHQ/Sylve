@@ -601,21 +601,22 @@ func (s *Service) remoteCheckVMTarget(ctx context.Context, targetNode clusterMod
 	return cluster.CallNode[vmTargetProbe, vmTargetResult](ctx, s.Cluster, targetNode.NodeUUID, "migration-check-vm-target", probe)
 }
 
-func (s *Service) buildJailTargetProbe(jailID uint) (jailTargetProbe, error) {
+func (s *Service) buildJailTargetProbe(jailID uint) (jailTargetProbe, []string, error) {
 	var probe jailTargetProbe
 	var networks []jailModels.Network
 	if err := s.DB.Session(&gorm.Session{SkipHooks: true}).
 		Where("jid = ?", jailID).
 		Order("id ASC").
 		Find(&networks).Error; err != nil {
-		return probe, fmt.Errorf("jail_network_lookup_failed: %w", err)
+		return probe, nil, fmt.Errorf("jail_network_lookup_failed: %w", err)
 	}
 
+	networks, hostInterfaces := jail.SplitHostInterfaceNetworks(networks)
 	for index := range networks {
 		network := &networks[index]
 		contract, err := resolveMigrationJailNetworkAttachment(s.DB, network)
 		if err != nil {
-			return probe, fmt.Errorf("network_%d_source_switch_incompatible: %w", index+1, err)
+			return probe, nil, fmt.Errorf("network_%d_source_switch_incompatible: %w", index+1, err)
 		}
 		probe.Networks = append(probe.Networks, networkAttachment.NamedContract{
 			Name:       strings.TrimSpace(network.Name),
@@ -623,7 +624,7 @@ func (s *Service) buildJailTargetProbe(jailID uint) (jailTargetProbe, error) {
 		})
 	}
 
-	return probe, nil
+	return probe, hostInterfaces, nil
 }
 
 func (s *Service) remoteCheckJailTarget(
@@ -654,9 +655,12 @@ func (s *Service) validateJailPreflight(ctx context.Context, ctID uint, targetNo
 		)}
 	}
 
-	probe, probeErr := s.buildJailTargetProbe(sourceJail.ID)
+	probe, hostInterfaces, probeErr := s.buildJailTargetProbe(sourceJail.ID)
 	if probeErr != nil {
 		return append(reasons, probeErr.Error())
+	}
+	for _, name := range hostInterfaces {
+		reasons = append(reasons, fmt.Sprintf("warning_host_interface_not_migrated: %s", name))
 	}
 	if len(probe.Networks) > 0 {
 		result, checkErr := s.remoteCheckJailTarget(ctx, targetNode, probe)

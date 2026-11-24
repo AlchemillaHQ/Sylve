@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -29,7 +30,7 @@ func (s *Service) jailEpairNames(jail jailModels.Jail) ([]string, error) {
 	var networkIDs []uint
 	if err := s.DB.
 		Table((jailModels.Network{}).TableName()).
-		Where("jid = ?", jail.ID).
+		Where("jid = ? AND switch_type <> ?", jail.ID, networkAttachment.SwitchTypeHostInterface).
 		Order("id ASC").
 		Pluck("id", &networkIDs).Error; err != nil {
 		return nil, fmt.Errorf("load_jail_epair_network_ids: %w", err)

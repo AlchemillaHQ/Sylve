@@ -149,10 +149,11 @@ func replicationJailTargetNetworkCheckFromMetadata(
 		)
 	}
 
+	networks, _ := jailService.SplitHostInterfaceNetworks(metadata.Networks)
 	probe := replicationJailTargetProbe{
-		Networks: make([]networkAttachment.NamedContract, 0, len(metadata.Networks)),
+		Networks: make([]networkAttachment.NamedContract, 0, len(networks)),
 	}
-	for index, network := range metadata.Networks {
+	for index, network := range networks {
 		contract, err := jailService.NetworkAttachmentFromMetadata(network)
 		if err != nil {
 			return replicationTargetNetworkCheck{}, fmt.Errorf(

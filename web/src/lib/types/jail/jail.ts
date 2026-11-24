@@ -112,9 +112,10 @@ export const NetworkSchema = z.object({
 	jid: z.number().int(),
 	name: z.string(),
 	switchId: z.number().int(),
-	switchType: z.enum(['standard', 'manual']),
+	switchType: z.enum(['standard', 'manual', 'host_interface']),
 	standardSwitch: z.object({ name: z.string() }).nullish(),
 	manualSwitch: z.object({ name: z.string() }).nullish(),
+	hostInterface: z.string().optional(),
 	macId: z.number().int().nullable(),
 	macObj: NetworkObjectSchema.optional().nullable(),
 	ipv4Id: z.number().int().nullable(),
@@ -129,6 +130,14 @@ export const NetworkSchema = z.object({
 	slaac: z.boolean().nullable().default(false),
 	defaultGateway: z.boolean().default(false),
 	vlanPolicy: VLANPortPolicySchema
+});
+
+export const JailHostInterfaceTargetSchema = z.object({
+	interface: z.string(),
+	eligible: z.boolean(),
+	reason: z.string().optional(),
+	jailCtId: z.number().int().optional(),
+	jailName: z.string().optional()
 });
 
 export const JailNetworkInheritanceResultSchema = z.object({
@@ -351,6 +360,7 @@ export type JailStorage = z.infer<typeof JailStorageSchema>;
 export type JailRootMountPoint = z.infer<typeof JailRootMountPointSchema>;
 export type JailNetwork = z.infer<typeof NetworkSchema>;
 export type JailNetworkInheritanceResult = z.infer<typeof JailNetworkInheritanceResultSchema>;
+export type JailHostInterfaceTarget = z.infer<typeof JailHostInterfaceTargetSchema>;
 export type JailTemplate = z.infer<typeof JailTemplateSchema>;
 export type JailTemplateCaptureTaskResponse = z.infer<typeof JailTemplateCaptureTaskResponseSchema>;
 export type JailTemplateInstantiationTaskResponse = z.infer<

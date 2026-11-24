@@ -11,6 +11,7 @@ package attachment
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -35,6 +36,14 @@ const (
 
 func IsSlirpSwitchName(name string) bool {
 	return strings.EqualFold(strings.TrimSpace(name), SlirpSwitchName)
+}
+
+const SwitchTypeHostInterface = "host_interface"
+
+var hostInterfaceNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.]{1,15}$`)
+
+func ValidHostInterfaceName(name string) bool {
+	return hostInterfaceNamePattern.MatchString(name)
 }
 
 var (
@@ -88,7 +97,7 @@ func NormalizeSwitchType(value string) (string, error) {
 	if value == "" {
 		value = "standard"
 	}
-	if value != "standard" && value != "manual" && value != SwitchTypeSlirp {
+	if value != "standard" && value != "manual" && value != SwitchTypeSlirp && value != SwitchTypeHostInterface {
 		return "", fmt.Errorf("%w: %q", ErrInvalidSwitch, value)
 	}
 	return value, nil
@@ -124,6 +133,19 @@ func Normalize(value Contract) (Contract, error) {
 			return value, fmt.Errorf("vm_network_slirp_vlan_unsupported")
 		}
 		value.SwitchName = SlirpSwitchName
+		return value, nil
+	}
+
+	if switchType == SwitchTypeHostInterface {
+		if value.Kind != KindJail {
+			return value, fmt.Errorf("%w: host interfaces are only supported for jails", ErrInvalidSwitch)
+		}
+		if !ValidHostInterfaceName(value.SwitchName) {
+			return value, fmt.Errorf("%w: invalid host interface name %q", ErrInvalidSwitch, value.SwitchName)
+		}
+		if value.VLANFiltering || value.DefaultAccessVLAN != nil || value.VLANPolicy != nil {
+			return value, fmt.Errorf("jail_network_host_interface_vlan_unsupported")
+		}
 		return value, nil
 	}
 

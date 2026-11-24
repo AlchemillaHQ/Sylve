@@ -22,6 +22,7 @@ Stop the jail before changing its network configuration. The create, inheritance
 | --- | --- | --- |
 | **Inherited** | The jail shares the selected host protocol stack without a custom switch attachment. | Simple services that do not require an isolated network stack. |
 | **Custom attachments** | Each interface connects through a manual or standard Sylve switch and has its own MAC, VLAN, and addressing configuration. | VNET jails, multiple interfaces, VLANs, and independently addressed workloads. |
+| **Host interfaces** | A physical NIC, VLAN, or lagg interface is moved into the jail while it runs. It can be combined with switch attachments. | Routers, firewalls, and other jails that need line-rate access to a dedicated port. |
 | **No networking** | Both inheritance options are disabled and no custom attachments exist. | Isolated workloads or initial configuration. |
 
 Inheritance and custom attachments cannot be combined. Enabling either inherited protocol removes every existing custom attachment.
@@ -33,8 +34,8 @@ When inheritance is disabled, the table shows each custom attachment:
 | Column | Meaning |
 | --- | --- |
 | **Name** | The attachment's unique name within this jail. |
-| **Switch** | The manual or standard switch carrying the interface. |
-| **MAC** | The selected or automatically generated MAC address. |
+| **Switch** | The manual or standard switch carrying the interface, or the host interface name. |
+| **MAC** | The selected or automatically generated MAC address. Host interfaces keep their hardware MAC. |
 | **VLAN** | The VLAN tag, or `-` when the attachment is untagged. |
 | **IPv4** | `DHCP`, a static address with its gateway, or `-`. |
 | **IPv6** | `SLAAC`, a static address with its gateway, or `-`. |
@@ -111,9 +112,45 @@ For static addressing, selecting **Default Gateway** requires at least one IPv4 
   alt="New jail network dialog with switch, MAC, VLAN, IPv4, IPv6, and default gateway fields"
 />
 
+## Attach a host interface
+
+A host interface gives the jail exclusive use of a NIC, VLAN, or lagg interface on this node. Select **New**, set **Network Type** to **Host interface**, and choose the interface. Addressing, DHCP, SLAAC, and the default route work the same way as for switch attachments. The MAC address and VLAN policy fields do not apply.
+
+Only host administrators can add a host interface or change which interface a network uses. Other users with network permission on the jail can still edit its addressing.
+
+When the jail starts, the interface is moved into the jail and disappears from the host. When the jail stops, it returns to the host. Inside a FreeBSD jail the interface keeps its name, so `ixl0.10` is configured through `ifconfig_ixl0_10` in the jail's `rc.conf`.
+
+The interface list marks interfaces that cannot be used, with the reason. An interface is not eligible when it:
+
+- Has IPv4 addresses or IPv6 addresses other than link-local ones.
+- Is a switch port, a bridge member, or a lagg member.
+- Is the parent of a VLAN interface.
+- Has Host IP configuration or is referenced by a static route, firewall rule, dynamic DNS entry, mDNS, Samba, WireGuard, or container NAT.
+- Is already used by another jail.
+
+Sylve checks these conditions again every time the jail starts, and refuses to start it if the interface is no longer eligible.
+
+### Configure the interface yourself
+
+To manage addressing inside the jail instead, leave the address fields empty and DHCP, SLAAC, and **Default Gateway** disabled. Sylve then only moves the interface into the jail and leaves your own lines in the jail's `rc.conf` untouched:
+
+```text
+ifconfig_ixl0_10="inet 198.51.100.2/24"
+defaultrouter="198.51.100.1"
+```
+
+Keep these points in mind:
+
+- Do not rename the interface inside the jail, for example with `ifconfig_ixl0_10_name`. It returns to the host under the new name when the jail stops, and the next start fails because the original name no longer exists. To recover, rename it back on the host with `ifconfig <new-name> name <original-name>`.
+- When moving a setting from Sylve to `rc.conf`, disable it in Sylve and save first, then add your line. If you add an identical line while Sylve still manages it, Sylve removes your copy on the next save.
+
+:::note
+A host interface belongs to this node. It is not carried over when the jail is migrated, restored from a backup, or activated on another node by replication. Sylve removes it with a warning, and you can add a suitable interface on the new node. Snapshot rollback keeps it if the interface is still available.
+:::
+
 ## Edit an attachment
 
-Select one attachment and choose **Edit**. The same validation rules used during creation apply when changing its switch, MAC address, VLAN, addressing, or default-route role.
+Select one attachment and choose **Edit**. The same validation rules used during creation apply when changing its switch, MAC address, VLAN, addressing, or default-route role. An attachment cannot be changed between a switch and a host interface; delete it and create a new one instead.
 
 Switching to DHCP clears the saved static IPv4 address and gateway. Switching to SLAAC does the same for IPv6. Those values are not restored automatically if the dynamic option is disabled later.
 
@@ -142,6 +179,7 @@ A network change can be rejected when:
 - A referenced switch or network object no longer exists.
 - A raw address, gateway, MAC address, or VLAN is invalid.
 - A single-use network object or value is already assigned.
+- A host interface is missing, not eligible, or already used by another jail.
 
 Correct the conflicting value, or wait for the active operation to finish, then retry while the jail is inactive.
 

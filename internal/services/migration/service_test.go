@@ -273,6 +273,11 @@ func TestBuildJailTargetProbePreservesVLANPolicy(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed network: %v", err)
 	}
+	if err := db.Create(&jailModels.Network{
+		JailID: jail.ID, Name: "wan", SwitchType: networkAttachment.SwitchTypeHostInterface, HostInterface: "ixl0",
+	}).Error; err != nil {
+		t.Fatalf("seed host interface network: %v", err)
+	}
 
 	originalResolve := resolveMigrationJailNetworkAttachment
 	resolverCalled := false
@@ -289,12 +294,15 @@ func TestBuildJailTargetProbePreservesVLANPolicy(t *testing.T) {
 	}
 	t.Cleanup(func() { resolveMigrationJailNetworkAttachment = originalResolve })
 
-	probe, err := (&Service{DB: db}).buildJailTargetProbe(jail.ID)
+	probe, hostInterfaces, err := (&Service{DB: db}).buildJailTargetProbe(jail.ID)
 	if err != nil {
 		t.Fatalf("build probe: %v", err)
 	}
 	if !resolverCalled || len(probe.Networks) != 1 {
 		t.Fatalf("resolverCalled=%t probe=%+v", resolverCalled, probe)
+	}
+	if len(hostInterfaces) != 1 || hostInterfaces[0] != "ixl0" {
+		t.Fatalf("dropped host interfaces = %v, want [ixl0]", hostInterfaces)
 	}
 	got := probe.Networks[0]
 	if got.Name != "vnet0" || got.Attachment.SwitchName != "LAN" ||

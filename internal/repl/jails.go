@@ -18,6 +18,7 @@ import (
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 )
 
 type jailActionResult struct {
@@ -207,10 +208,15 @@ func formatJailNetworks(jail *jailModels.Jail) string {
 		if network.MacAddressObj != nil && len(network.MacAddressObj.Entries) > 0 {
 			mac = network.MacAddressObj.Entries[0].Value
 		}
+		attachedTo := strconv.FormatUint(uint64(network.SwitchID), 10)
+		if network.SwitchType == networkAttachment.SwitchTypeHostInterface {
+			attachedTo = network.HostInterface
+			mac = "hardware"
+		}
 		rows = append(rows, []string{
 			strconv.FormatUint(uint64(network.ID), 10),
 			network.Name,
-			strconv.FormatUint(uint64(network.SwitchID), 10),
+			attachedTo,
 			network.SwitchType,
 			strconv.FormatBool(network.DHCP),
 			mac,

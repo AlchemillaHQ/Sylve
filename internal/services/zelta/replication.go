@@ -3516,6 +3516,7 @@ func (s *Service) buildReplicationJailTargetProbe(guestID uint) (replicationJail
 		return probe, fmt.Errorf("replication_jail_network_lookup_failed: %w", err)
 	}
 
+	networks, _ = jailService.SplitHostInterfaceNetworks(networks)
 	for index := range networks {
 		network := &networks[index]
 		contract, err := resolveReplicationJailNetworkAttachment(s.DB, network)

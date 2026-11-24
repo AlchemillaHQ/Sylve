@@ -148,6 +148,7 @@ var routeRules = map[string]routeRule{
 	"POST /api/jail/validate":                             inHandler,
 	"POST /api/jail/templates/:templateId/jails":          inHandler,
 	"PUT /api/jail/:ctid/network/inheritance":             hostAdmin,
+	"GET /api/jail/:ctid/network/host-interfaces":         hostAdmin,
 	"POST /api/jail/:ctid/networks":                       inHandler,
 	"PATCH /api/jail/:ctid/networks/:networkId":           inHandler,
 	"GET /api/container":                                  inHandler,

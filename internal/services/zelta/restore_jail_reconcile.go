@@ -276,6 +276,16 @@ func (s *Service) upsertRestoredJailState(
 		return nil, fmt.Errorf("failed_to_normalize_restored_jail_hardware: %w", err)
 	}
 
+	var hostInterfaces []string
+	restored.Networks, hostInterfaces = jailService.SplitHostInterfaceNetworks(restored.Networks)
+	if len(hostInterfaces) > 0 {
+		message := fmt.Sprintf("warning_host_interface_not_restored: %s", strings.Join(hostInterfaces, ", "))
+		if restoreExecutionFromContext(ctx).EventID != 0 {
+			s.appendRestoreOutput(ctx, message)
+		}
+		logger.L.Warn().Uint("ct_id", ctid).Strs("host_interfaces", hostInterfaces).Msg("restored_jail_host_interfaces_dropped")
+	}
+
 	if restoreNetwork {
 		unlockNetworkLifecycle, lockErr := lockRestoredNetworkLifecycle(
 			s.DB, "jail", restored.Networks, jailService.NetworkAttachmentFromMetadata,

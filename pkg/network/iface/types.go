@@ -97,6 +97,7 @@ type Interface struct {
 	Groups        []string       `json:"groups"`
 	VLANParent    string         `json:"vlanParent,omitempty"`
 	VLANTag       int            `json:"vlanTag,omitempty"`
+	LaggPort      bool           `json:"laggPort,omitempty"`
 
 	IPv4 []IPv4 `json:"ipv4"`
 	IPv6 []IPv6 `json:"ipv6"`

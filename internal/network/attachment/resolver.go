@@ -45,6 +45,10 @@ func slirpSwitch() ResolvedSwitch {
 	return ResolvedSwitch{Name: SlirpSwitchName, Type: SwitchTypeSlirp}
 }
 
+func HostInterfaceSwitch(name string) ResolvedSwitch {
+	return ResolvedSwitch{Name: name, Type: SwitchTypeHostInterface}
+}
+
 func NewResolver(db *gorm.DB) Resolver {
 	return Resolver{
 		DB:                     db,
@@ -80,6 +84,9 @@ func (r Resolver) ResolveIdentityByID(switchType string, switchID uint) (Resolve
 	if switchType == SwitchTypeSlirp {
 		return slirpSwitch(), nil
 	}
+	if switchType == SwitchTypeHostInterface {
+		return ResolvedSwitch{}, fmt.Errorf("host_interface_requires_name")
+	}
 	if switchID == 0 {
 		return ResolvedSwitch{}, fmt.Errorf("%w: switch_not_found: %s:%d", ErrSwitchNotFound, switchType, switchID)
 	}
@@ -105,6 +112,12 @@ func (r Resolver) ResolveIdentityByName(switchType, switchName string) (Resolved
 			return ResolvedSwitch{}, fmt.Errorf("%w: switch_not_found: slirp", ErrSwitchNotFound)
 		}
 		return slirpSwitch(), nil
+	}
+	if switchType == SwitchTypeHostInterface {
+		if !ValidHostInterfaceName(switchName) {
+			return ResolvedSwitch{}, fmt.Errorf("%w: switch_not_found: host_interface", ErrSwitchNotFound)
+		}
+		return HostInterfaceSwitch(switchName), nil
 	}
 	return r.resolve(switchType, func(destination any) error {
 		return r.DB.Where("name = ?", switchName).First(destination).Error

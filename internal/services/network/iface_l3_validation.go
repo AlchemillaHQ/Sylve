@@ -139,6 +139,13 @@ func (s *Service) hostInterfaceL3MembershipGuardWithInterfaces(
 	name string,
 	liveInterfaces []*iface.Interface,
 ) error {
+	jailClaimed, err := s.jailClaimedHostInterfaces()
+	if err != nil {
+		return err
+	}
+	if hasKey(jailClaimed, name) {
+		return hostInterfaceL3Conflict("host_interface_l3_used_by_jail", nil)
+	}
 	var portCount int64
 	if err := s.DB.Model(&networkModels.NetworkPort{}).Where("name = ?", name).Count(&portCount).Error; err != nil {
 		return fmt.Errorf("check standard switch ports for %s: %w", name, err)

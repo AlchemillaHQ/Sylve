@@ -140,6 +140,52 @@ func TestUpsertRestoredJailStateNormalizesHardwareBeforePersistence(t *testing.T
 	}
 }
 
+func TestUpsertRestoredJailStateDropsHostInterfaceNetworks(t *testing.T) {
+	service, db := newTestZeltaServiceWithDB(
+		t,
+		&jailModels.Jail{},
+		&jailModels.Storage{},
+		&jailModels.JailHooks{},
+		&jailModels.JailSnapshot{},
+		&jailModels.Network{},
+		&networkModels.StandardSwitch{},
+		&networkModels.ManualSwitch{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ObjectResolution{},
+	)
+	service.Jail = &restoredJailHardwareNormalizerStub{}
+	attachment := networkAttachment.Contract{
+		Version: networkAttachment.CurrentVersion, Kind: networkAttachment.KindJail,
+		SwitchType: networkAttachment.SwitchTypeHostInterface, SwitchName: "ixl0",
+	}
+
+	reconciled, err := service.upsertRestoredJailState(
+		t.Context(),
+		"tank/sylve/jails/24",
+		&restoredJailMetadata{Jail: jailModels.Jail{
+			CTID: 24, Name: "router", Type: jailModels.JailTypeFreeBSD,
+			Networks: []jailModels.Network{{
+				Name: "wan", SwitchType: networkAttachment.SwitchTypeHostInterface,
+				HostInterface: "ixl0", Attachment: &attachment,
+			}},
+		}},
+		true,
+		false,
+		false,
+	)
+	if err != nil {
+		t.Fatalf("upsertRestoredJailState failed: %v", err)
+	}
+	var count int64
+	if err := db.Model(&jailModels.Network{}).Where("jid = ?", reconciled.ID).Count(&count).Error; err != nil {
+		t.Fatalf("count restored networks: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("restored %d host interface networks, want 0", count)
+	}
+}
+
 func TestObjectIDPtr(t *testing.T) {
 	obj := &networkModels.Object{ID: 5}
 	ptr := objectIDPtr(obj)
