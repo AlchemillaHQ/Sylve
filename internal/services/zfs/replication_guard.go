@@ -281,7 +281,7 @@ func (s *Service) RequireReplicationDatasetGUIDMutationAllowed(ctx context.Conte
 	}
 	names := make([]string, 0, len(guids))
 	for _, guid := range guids {
-		dataset, err := s.GZFS.ZFS.GetByGUID(ctx, strings.TrimSpace(guid), false)
+		dataset, err := s.DatasetByGUID(ctx, strings.TrimSpace(guid))
 		if err != nil || dataset == nil {
 			return datasetLookupError(err, "replication_dataset_guid_not_found:%s", guid)
 		}

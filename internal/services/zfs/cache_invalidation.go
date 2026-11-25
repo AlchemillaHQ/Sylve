@@ -184,7 +184,10 @@ func completeCacheInvalidation(conn *gorm.DB, invalidation models.ZFSCacheInvali
 func (s *Service) refreshInvalidatedCache(ctx context.Context, kind string) error {
 	switch kind {
 	case db.ZFSCacheKindSnapshot:
-		return s.RefreshDatasets(ctx, gzfs.DatasetTypeSnapshot, datasetCacheTTL)
+		if err := s.RefreshDatasets(ctx, gzfs.DatasetTypeSnapshot, datasetCacheTTL); err != nil {
+			return err
+		}
+		return s.RefreshSnapshotSummaries(ctx, datasetCacheTTL)
 	case db.ZFSCacheKindGenericDataset:
 		if err := s.RefreshDatasets(ctx, gzfs.DatasetTypeFilesystem, datasetCacheTTL); err != nil {
 			return err

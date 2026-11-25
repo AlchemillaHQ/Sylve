@@ -29,13 +29,14 @@ type SystemServiceInterface interface {
 
 	StartNetlinkWatcher(ctx context.Context)
 	StartDiskSmartMonitor(ctx context.Context)
+	SweepFileExplorerPartials(ctx context.Context) (int, error)
 
 	Traverse(path string) ([]FileNode, error)
 	AddFileOrFolder(path string, name string, isFolder bool) error
-	DeleteFilesOrFolders(paths []string) error
+	DeleteFilesOrFolders(ctx context.Context, paths []string) error
 	RenameFileOrFolder(oldPath string, newName string) error
 	DownloadFile(id string) (*FileDownload, error)
-	CopyOrMoveFilesOrFolders(items []FileTransferItem, move bool) error
+	CopyOrMoveFilesOrFolders(ctx context.Context, items []FileTransferItem, move bool) error
 
 	SyncPPTDevices() error
 	ReconcilePreparedPPTDevices() error

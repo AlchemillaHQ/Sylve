@@ -81,6 +81,7 @@ type Service struct {
 	ataPowerModeSource        func(string) (smart.ATAPowerMode, error)
 	scsiPowerModeSource       func(string) (smart.SCSIPowerMode, error)
 	diskGPTSource             func(string, int) bool
+	poolDeviceMeshSource      func() (diskServiceInterfaces.Mesh, error)
 }
 
 func NewDiskService(db *gorm.DB, zfsService zfsServiceInterfaces.ZfsServiceInterface, gzfs *gzfs.Client) diskServiceInterfaces.DiskServiceInterface {

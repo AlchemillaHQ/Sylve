@@ -16,6 +16,7 @@
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 	import { getGuestSections, type GuestSection } from '$lib/guest-navigation';
 	import { isSuperuser, nodePath, visibleItems, type Need } from '$lib/stores/permissions.svelte';
+	import { ui } from '$lib/stores/interface.svelte';
 
 	let node = $derived(page.url.pathname.split('/')[1] || '');
 
@@ -524,76 +525,80 @@
 	let isConsoleRoute = $derived.by(() => page.url.pathname.endsWith('/console'));
 </script>
 
-<div class="flex h-full w-full flex-col">
-	<div class="flex h-10 w-full items-center justify-between border-b p-2">
-		<span>Node — <b>{node}</b></span>
-		<div class="flex items-center gap-2">
-			<NotificationBell />
-			<Button
-				size="sm"
-				class="h-6"
-				onclick={() => window.open('https://sylve.io/docs', '_blank')}
-				title="Documentation"
-			>
-				<div class="flex items-center">
-					<span class="icon-[lucide--circle-help] mr-2 h-5 w-5"></span>
-					<span>Help</span>
-				</div>
-			</Button>
-			<Button
-				size="sm"
-				class="h-6"
-				onclick={() => {
-					storage.openAbout = true;
-				}}
-				title="Sponsor"
-			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--heart] h-5 w-5"></span>
-				</div>
-			</Button>
+{#if ui.zen}
+	{@render children?.()}
+{:else}
+	<div class="flex h-full w-full flex-col">
+		<div class="flex h-10 w-full items-center justify-between border-b p-2">
+			<span>Node — <b>{node}</b></span>
+			<div class="flex items-center gap-2">
+				<NotificationBell />
+				<Button
+					size="sm"
+					class="h-6"
+					onclick={() => window.open('https://sylve.io/docs', '_blank')}
+					title="Documentation"
+				>
+					<div class="flex items-center">
+						<span class="icon-[lucide--circle-help] mr-2 h-5 w-5"></span>
+						<span>Help</span>
+					</div>
+				</Button>
+				<Button
+					size="sm"
+					class="h-6"
+					onclick={() => {
+						storage.openAbout = true;
+					}}
+					title="Sponsor"
+				>
+					<div class="flex items-center">
+						<span class="icon-[mdi--heart] h-5 w-5"></span>
+					</div>
+				</Button>
+			</div>
 		</div>
-	</div>
 
-	<Resizable.PaneGroup
-		direction="horizontal"
-		class="h-full w-full"
-		id="main-pane-auto"
-		autoSaveId="main-pane-auto-save"
-	>
-		<!-- A lone Summary is the lock page for users without host access; no menu for that. -->
-		{#if nodeItems.length > 1}
-			<Resizable.Pane defaultSize={15} order={1}>
-				<div class="h-full px-1.5">
-					<nav aria-label="Difuse-sidebar" class="menu thin-scrollbar h-full min-h-0 w-full">
-						<ul class="h-full min-h-0">
-							<ScrollArea
-								orientation="both"
-								class="h-full w-full"
-								scrollbarXClasses="hidden"
-								scrollbarYClasses="hidden"
-								fade
-							>
-								{#each nodeItems as item (item.href ?? item.icon)}
-									<TreeView {item} />
-								{/each}
-							</ScrollArea>
-						</ul>
-					</nav>
-				</div>
-			</Resizable.Pane>
-			<Resizable.Handle withHandle gripPreferenceKey="main-navigation" />
-		{/if}
-		<Resizable.Pane order={2}>
-			{#if isConsoleRoute}
-				<div class="h-full w-full overflow-hidden">
-					{@render children?.()}
-				</div>
-			{:else}
-				<div class="h-full w-full overflow-y-auto">
-					{@render children?.()}
-				</div>
+		<Resizable.PaneGroup
+			direction="horizontal"
+			class="h-full w-full"
+			id="main-pane-auto"
+			autoSaveId="main-pane-auto-save"
+		>
+			<!-- A lone Summary is the lock page for users without host access; no menu for that. -->
+			{#if nodeItems.length > 1}
+				<Resizable.Pane defaultSize={15} order={1}>
+					<div class="h-full px-1.5">
+						<nav aria-label="Difuse-sidebar" class="menu thin-scrollbar h-full min-h-0 w-full">
+							<ul class="h-full min-h-0">
+								<ScrollArea
+									orientation="both"
+									class="h-full w-full"
+									scrollbarXClasses="hidden"
+									scrollbarYClasses="hidden"
+									fade
+								>
+									{#each nodeItems as item (item.href ?? item.icon)}
+										<TreeView {item} />
+									{/each}
+								</ScrollArea>
+							</ul>
+						</nav>
+					</div>
+				</Resizable.Pane>
+				<Resizable.Handle withHandle gripPreferenceKey="main-navigation" />
 			{/if}
-		</Resizable.Pane>
-	</Resizable.PaneGroup>
-</div>
+			<Resizable.Pane order={2}>
+				{#if isConsoleRoute}
+					<div class="h-full w-full overflow-hidden">
+						{@render children?.()}
+					</div>
+				{:else}
+					<div class="h-full w-full overflow-y-auto">
+						{@render children?.()}
+					</div>
+				{/if}
+			</Resizable.Pane>
+		</Resizable.PaneGroup>
+	</div>
+{/if}

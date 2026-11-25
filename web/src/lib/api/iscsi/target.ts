@@ -14,6 +14,16 @@ export async function getTargets(): Promise<ISCSITarget[]> {
 	return await apiRequestData('/iscsi/targets', z.array(ISCSITargetSchema), 'GET');
 }
 
+export async function getTargetsResult(
+	hostname: string,
+	signal?: AbortSignal
+): Promise<ISCSITarget[] | APIResponse> {
+	return await apiRequestResult('/iscsi/targets', z.array(ISCSITargetSchema), 'GET', undefined, {
+		hostname,
+		signal
+	});
+}
+
 export async function createTarget(
 	targetName: string,
 	alias: string = '',

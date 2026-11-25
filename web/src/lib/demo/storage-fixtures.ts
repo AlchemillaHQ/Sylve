@@ -3182,6 +3182,34 @@ export function handleDemoStorageRequest<T = unknown>(
 		const id = parsed.searchParams.get('id') ?? '/';
 		return success(directoryEntries(state, id)) as DemoStorageResponse<T>;
 	}
+	if (path === '/system/file-explorer/list' && method === 'GET') {
+		const entries = directoryEntries(state, parsed.searchParams.get('id') ?? '/');
+		const limit = Number(parsed.searchParams.get('limit')) || 10000;
+		const query = (parsed.searchParams.get('q') ?? '').trim().toLowerCase();
+		const matched = query
+			? entries.filter((entry) =>
+					entry.id
+						.slice(entry.id.lastIndexOf('/') + 1)
+						.toLowerCase()
+						.includes(query)
+				)
+			: entries;
+		return success({
+			entries: matched.slice(0, limit),
+			total: entries.length,
+			matched: matched.length,
+			truncated: matched.length > limit
+		}) as DemoStorageResponse<T>;
+	}
+	if (path === '/auth/download-tickets' && method === 'POST') {
+		return success(
+			{
+				ticket: `demo-${Date.now().toString(36)}`,
+				expiresAt: new Date(Date.now() + 60_000).toISOString()
+			},
+			'download_ticket_created'
+		) as DemoStorageResponse<T>;
+	}
 	if (path === '/system/file-explorer' && method === 'POST') {
 		const parent = normalizePath(stringValue(body, 'path', '/'));
 		const name = stringValue(body, 'name').trim();

@@ -11,7 +11,14 @@ export const BasicInfoSchema = z.object({
 	sylveCommit: z.string().default('unknown'),
 	devFSDisabled: z.boolean().default(false),
 	architecture: ArchitectureSchema.default('amd64'),
-	maxVCPUs: z.number().int().nonnegative().default(0)
+	maxVCPUs: z.number().int().nonnegative().default(0),
+	hardware: z
+		.object({
+			vendor: z.string().default(''),
+			product: z.string().default(''),
+			serial: z.string().default('')
+		})
+		.default({ vendor: '', product: '', serial: '' })
 });
 
 export type BasicInfo = z.infer<typeof BasicInfoSchema>;

@@ -18,6 +18,10 @@
 	import Login from '$lib/components/custom/Login.svelte';
 	import Throbber from '$lib/components/custom/Throbber.svelte';
 	import Shell from '$lib/components/skeleton/Shell.svelte';
+	import ZenShell from '$lib/components/zen/Shell.svelte';
+	import ZenThrobber from '$lib/components/zen/Throbber.svelte';
+	import Unavailable from '$lib/components/zen/Unavailable.svelte';
+	import { entering, homePath, ui, zenRoutes } from '$lib/stores/interface.svelte';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
 	import { addTabulatorFilters } from '$lib/utils/table';
 	import { mode, ModeWatcher, setMode } from 'mode-watcher';
@@ -63,6 +67,7 @@
 		passkey: false,
 		initialization: false
 	});
+	let showZenThrobber = $derived(entering.zen || (loading.throbber && ui.zen));
 
 	function handleDemoMessage(event: MessageEvent) {
 		if (
@@ -90,8 +95,8 @@
 			rebooted = true;
 
 			if (page.url.pathname === '/') {
-				await preloadData('/datacenter/summary');
-				await useSafeGoto(resolve('/datacenter/summary'), { replaceState: true });
+				await preloadData(homePath());
+				await useSafeGoto(homePath(), { replaceState: true });
 			}
 
 			requestAnimationFrame(() => {
@@ -128,8 +133,8 @@
 			loading.initialization = false;
 
 			if (initialized && rebooted && page.url.pathname === '/') {
-				await preloadData('/datacenter/summary');
-				await useSafeGoto(resolve('/datacenter/summary'), { replaceState: true });
+				await preloadData(homePath());
+				await useSafeGoto(homePath(), { replaceState: true });
 			}
 
 			const minimumThrobberDelay = sleep(1500);
@@ -208,7 +213,7 @@
 			}
 
 			if (target === '/') {
-				target = resolve('/datacenter/summary');
+				target = homePath();
 			}
 
 			await preloadData(target);
@@ -339,6 +344,7 @@
 	);
 
 	onNavigate((navigation) => {
+		if (showZenThrobber) return;
 		if (!document.startViewTransition) return;
 		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
@@ -368,9 +374,15 @@
 	<DemoHostRuntimeComponent hostname={storage.hostname || 'leto'} />
 {/if}
 
+{#if showZenThrobber}
+	<ZenThrobber />
+{/if}
+
 <Tooltip.Provider>
 	{#if loading.throbber}
-		<Throbber />
+		{#if !ui.zen}
+			<Throbber />
+		{/if}
 	{:else if storage.token && !loading.throbber && !loading.login}
 		{#if initialized === null}
 			<!-- Waiting for initialization state -->
@@ -393,10 +405,21 @@
 					zIndex={9999}
 					bind:busy
 				/>
-				<Shell>
-					<Index />
-					{@render children()}
-				</Shell>
+				{#if ui.zen}
+					<ZenShell>
+						<Index />
+						{#if !page.route.id || zenRoutes.includes(page.route.id)}
+							{@render children()}
+						{:else}
+							<Unavailable />
+						{/if}
+					</ZenShell>
+				{:else}
+					<Shell>
+						<Index />
+						{@render children()}
+					</Shell>
+				{/if}
 				{#if connection.sseConnected === false}
 					<div
 						transition:fade={{ duration: 300 }}

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -200,6 +201,60 @@ func GetCPUModel() string {
 		return ""
 	}
 	return model
+}
+
+func hottestCelsius(deciKelvin []int64) float64 {
+	if len(deciKelvin) == 0 {
+		return 0
+	}
+
+	return math.Round(float64(slices.Max(deciKelvin))-2731.5) / 10
+}
+
+func GetCPUTemperature() float64 {
+	readings := []int64{}
+	for core := range GetLogicalCores() {
+		if value, err := getSysctlInt64(fmt.Sprintf("dev.cpu.%d.temperature", core)); err == nil {
+			readings = append(readings, value)
+		}
+	}
+
+	return hottestCelsius(readings)
+}
+
+var smbiosPlaceholders = []string{
+	"To Be Filled By O.E.M.",
+	"Default string",
+	"System manufacturer",
+	"System Product Name",
+	"System Serial Number",
+	"Not Specified",
+	"None",
+}
+
+func smbiosValue(raw string) string {
+	value := strings.TrimSpace(raw)
+	if slices.ContainsFunc(smbiosPlaceholders, func(placeholder string) bool {
+		return strings.EqualFold(value, placeholder)
+	}) {
+		return ""
+	}
+
+	return value
+}
+
+var cachedSMBIOS [3]string
+var smbiosOnce sync.Once
+
+func GetSystemSMBIOS() (vendor, product, serial string) {
+	smbiosOnce.Do(func() {
+		for i, key := range []string{"maker", "product", "serial"} {
+			out, _ := RunCommand("/bin/kenv", "-q", "smbios.system."+key)
+			cachedSMBIOS[i] = smbiosValue(out)
+		}
+	})
+
+	return cachedSMBIOS[0], cachedSMBIOS[1], cachedSMBIOS[2]
 }
 
 func GetLogicalCores() int {

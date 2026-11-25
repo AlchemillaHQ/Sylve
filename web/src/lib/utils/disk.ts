@@ -16,7 +16,7 @@ import { generateNumberFromString } from './numbers';
 import { formatBytesBinary } from './bytes';
 import { renderWithIcon } from './table';
 
-function formatBigIntBytes(bytes: bigint): string {
+export function formatBigIntBytes(bytes: bigint): string {
 	const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB'];
 	let unitIndex = 0;
 	let divisor = 1n;
@@ -31,7 +31,7 @@ function formatBigIntBytes(bytes: bigint): string {
 	return `${whole.toString()}${fraction ? `.${fraction}` : ''} ${units[unitIndex]}`;
 }
 
-function parseNVMeCounter(exact: string, fallback: number): bigint | undefined {
+export function parseNVMeCounter(exact: string, fallback: number): bigint | undefined {
 	let value = exact.trim();
 	if (value === '' && Number.isFinite(fallback)) value = Math.trunc(fallback).toString();
 	if (!/^\d+$/.test(value)) return undefined;

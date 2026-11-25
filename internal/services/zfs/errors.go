@@ -18,6 +18,8 @@ var (
 	ErrSnapshotJobNotFound = errors.New("snapshot_job_not_found")
 	ErrSourceNotFound      = errors.New("source_not_found")
 	ErrConflict            = errors.New("conflict")
+
+	ErrPoolDeviceStatusUnavailable = errors.New("pool_device_status_unavailable")
 )
 
 // classifiedError lets handlers inspect an error category while preserving the

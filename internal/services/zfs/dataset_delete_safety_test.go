@@ -5,6 +5,7 @@ package zfs
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -63,6 +64,125 @@ func TestValidateDatasetDeletionTargetsRejectsPoolRoot(t *testing.T) {
 
 	if err := validateDatasetDeletionTargets(child, root); !errors.Is(err, ErrCannotDeletePoolRootDataset) {
 		t.Fatalf("pool root deletion was not rejected: %v", err)
+	}
+}
+
+func TestValidateCriticalDatasetDeletion(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{name: "tank/sylve", want: "cannot_delete_critical_filesystem"},
+		{name: "tank/sylve/virtual-machines", want: "cannot_delete_critical_filesystem"},
+		{name: "tank/sylve/jails", want: "cannot_delete_critical_filesystem"},
+		{name: "tank/sylve/downloads", want: "cannot_delete_critical_filesystem"},
+		{name: "tank/sylve/containers", want: "cannot_delete_critical_filesystem"},
+		{name: "tank/sylve/containers/images", want: "cannot_delete_critical_filesystem"},
+		{name: "tank/sylve/containers/images/layer", want: "cannot_delete_container_image_layer"},
+		{name: "tank/sylve/containers/images/layer@snapshot", want: "cannot_delete_container_image_layer"},
+		{name: "tank/sylve/jails/101"},
+		{name: "tank/sylve/containers/web"},
+		{name: "tank/data/sylve"},
+		{name: "tank/sylve-backup"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateCriticalDatasetDeletion(&gzfs.Dataset{Name: test.name, Pool: "tank"})
+			if test.want == "" {
+				if err != nil {
+					t.Fatalf("deletion was rejected: %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, ErrConflict) || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("deletion returned %v, want ErrConflict with %s", err, test.want)
+			}
+		})
+	}
+}
+
+func TestIsSystemMountpoint(t *testing.T) {
+	tests := map[string]bool{
+		"/":            true,
+		"/boot":        true,
+		"/etc":         true,
+		"/home":        true,
+		"/root":        true,
+		"/tmp":         true,
+		"/usr":         true,
+		"/usr/":        true,
+		"/usr/ports":   true,
+		"/var":         true,
+		"/var/log":     true,
+		"/home/hayzam": false,
+		"/tmp/scratch": false,
+		"/usr2":        false,
+		"/variety":     false,
+		"/zroot/data":  false,
+		"none":         false,
+		"legacy":       false,
+		"-":            false,
+		"":             false,
+	}
+
+	for mountpoint, want := range tests {
+		if got := isSystemMountpoint(mountpoint); got != want {
+			t.Errorf("isSystemMountpoint(%q) = %v, want %v", mountpoint, got, want)
+		}
+	}
+}
+
+func TestValidateSystemFilesystemDeletion(t *testing.T) {
+	filesystem := func(name, mountpoint string) *gzfs.Dataset {
+		return &gzfs.Dataset{Name: name, Mountpoint: mountpoint, Type: gzfs.DatasetTypeFilesystem}
+	}
+	tests := []struct {
+		name     string
+		affected []*gzfs.Dataset
+		blocked  bool
+	}{
+		{
+			name:     "boot environment container",
+			affected: []*gzfs.Dataset{filesystem("zroot/ROOT", "none"), filesystem("zroot/ROOT/default", "/")},
+			blocked:  true,
+		},
+		{
+			name:     "operating system tree",
+			affected: []*gzfs.Dataset{filesystem("zroot/var/log", "/var/log")},
+			blocked:  true,
+		},
+		{
+			name:     "home container",
+			affected: []*gzfs.Dataset{filesystem("zroot/home", "/home"), filesystem("zroot/home/hayzam", "/home/hayzam")},
+			blocked:  true,
+		},
+		{
+			name:     "single home folder",
+			affected: []*gzfs.Dataset{filesystem("zroot/home/hayzam", "/home/hayzam")},
+		},
+		{
+			name:     "data file system",
+			affected: []*gzfs.Dataset{filesystem("zroot/data", "/zroot/data"), filesystem("zroot/data/media", "/zroot/data/media")},
+		},
+		{
+			name: "boot environment snapshot",
+			affected: []*gzfs.Dataset{
+				{Name: "zroot/ROOT/default@upgrade", Mountpoint: "/", Type: gzfs.DatasetTypeSnapshot},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateSystemFilesystemDeletion(test.affected)
+			if test.blocked && !errors.Is(err, ErrCannotDeleteSystemFilesystem) {
+				t.Fatalf("deletion returned %v, want ErrCannotDeleteSystemFilesystem", err)
+			}
+			if !test.blocked && err != nil {
+				t.Fatalf("deletion was rejected: %v", err)
+			}
+		})
 	}
 }
 
@@ -173,6 +293,40 @@ func TestIndependentDatasetDeletionRoots(t *testing.T) {
 	roots := independentDatasetDeletionRoots([]*gzfs.Dataset{child, snapshot, other, parent})
 	if len(roots) != 2 || roots[0] != other || roots[1] != parent {
 		t.Fatalf("independent roots = %#v, want [other parent]", roots)
+	}
+}
+
+func TestIntegrationBulkDeleteDatasetSnapshotKeepsSameNamedDescendantsRealZFS(t *testing.T) {
+	zfstest.SkipIfUnavailable(t)
+	pool, client, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	parentName := pool + "/recursive-set"
+	childName := parentName + "/child"
+	zfstest.EnsureDataset(t, client, parentName)
+	zfstest.EnsureDataset(t, client, childName)
+	snapshot, err := client.ZFS.Snapshot(ctx, parentName, "set", true)
+	if err != nil || snapshot == nil {
+		t.Fatalf("create recursive snapshot: %v", err)
+	}
+
+	database := testutil.NewSQLiteTestDB(t, &vmModels.VMStorageDataset{}, &utilitiesModels.Downloads{}, &utilitiesModels.Upload{})
+	service := &Service{
+		DB:        database,
+		GZFS:      client,
+		syncMutex: &sync.Mutex{},
+	}
+
+	target := []zfsServiceInterfaces.DatasetDeletionTarget{{Name: snapshot.Name, GUID: snapshot.GUID}}
+	if err := service.BulkDeleteDataset(ctx, target); err != nil {
+		t.Fatalf("bulk delete snapshot: %v", err)
+	}
+	if existing, err := client.ZFS.Get(ctx, snapshot.Name, false); err == nil && existing != nil {
+		t.Fatalf("snapshot %s still exists after deletion", snapshot.Name)
+	}
+	if existing, err := client.ZFS.Get(ctx, childName+"@set", false); err != nil || existing == nil {
+		t.Fatalf("same-named descendant snapshot was deleted: %v", err)
 	}
 }
 

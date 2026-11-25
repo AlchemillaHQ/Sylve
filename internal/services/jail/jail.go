@@ -55,7 +55,8 @@ type Service struct {
 	System         systemServiceInterfaces.SystemServiceInterface
 	GZFS           *gzfs.Client
 
-	DownloadStorage *downloadstorage.Resolver
+	DownloadStorage     *downloadstorage.Resolver
+	LookupDatasetByGUID func(ctx context.Context, guid string) (*gzfs.Dataset, error)
 
 	crudMutex              sync.Mutex
 	createMutex            sync.Mutex
@@ -114,6 +115,13 @@ func (s *Service) SetGuestIdentityCoordinator(
 ) {
 	s.guestIdentityCoordinator = coordinator
 	s.guestIdentityChecker = coordinator
+}
+
+func (s *Service) datasetByGUID(ctx context.Context, guid string) (*gzfs.Dataset, error) {
+	if s.LookupDatasetByGUID != nil {
+		return s.LookupDatasetByGUID(ctx, guid)
+	}
+	return s.GZFS.ZFS.GetByGUID(ctx, guid, false)
 }
 
 func NewJailService(

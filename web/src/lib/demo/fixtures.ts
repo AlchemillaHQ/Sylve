@@ -917,14 +917,20 @@ function nodeCPU(hostname: string) {
 		cacheLine: 64,
 		cache: { l1d: 32768, l1i: 32768, l2: 1048576, l3: profile.l3 },
 		frequency: profile.frequency,
-		usage: demoUsagePercent(hostname, 'cpu')
+		usage: demoUsagePercent(hostname, 'cpu'),
+		temperature: 38 + Math.round(demoUsagePercent(hostname, 'cpu'))
 	};
 }
 
 function nodeRAM(hostname: string) {
 	const total = hostname === 'paul' ? 48 * GIB : hostname === 'alia' ? 96 * GIB : 64 * GIB;
 	const usedPercent = demoUsagePercent(hostname, 'memory');
-	return { total, free: total * (1 - usedPercent / 100), usedPercent };
+	return {
+		total,
+		free: total * (1 - usedPercent / 100),
+		usedPercent,
+		arc: (total * usedPercent) / 250
+	};
 }
 
 function historyPoints(hostname: string) {
@@ -2621,7 +2627,12 @@ export async function handleDemoRequest<T = unknown>(
 			bootMode: 'UEFI',
 			sylveVersion: '0.3.0',
 			sylveCommit: 'public-demo',
-			devFSDisabled: false
+			devFSDisabled: false,
+			hardware: {
+				vendor: 'Supermicro',
+				product: ['AS-1114S-WN10RT', 'AS-3015A-I', 'AS-1114S-WTRT'][nodeIndex],
+				serial: ['S452919X3A07188', 'S478212X4B11043', 'S452919X3C02957'][nodeIndex]
+			}
 		}) as DemoClientResponse<T>;
 	}
 	if (path === '/info/cpu') return success(nodeCPU(hostname)) as DemoClientResponse<T>;

@@ -410,3 +410,59 @@ func TestIsGPT(t *testing.T) {
 		})
 	}
 }
+
+func TestGetCPUTemperature(t *testing.T) {
+	original := getSysctlInt64
+	t.Cleanup(func() { getSysctlInt64 = original })
+
+	tests := []struct {
+		name     string
+		readings map[string]int64
+		want     float64
+	}{
+		{
+			name: "hottest core wins",
+			readings: map[string]int64{
+				"dev.cpu.0.temperature": 3111,
+				"dev.cpu.1.temperature": 3151,
+				"dev.cpu.3.temperature": 3091,
+			},
+			want: 42,
+		},
+		{name: "no sensor", readings: map[string]int64{}, want: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			getSysctlInt64 = func(key string) (int64, error) {
+				if key == "hw.ncpu" {
+					return 4, nil
+				}
+				value, ok := tt.readings[key]
+				if !ok {
+					return 0, errors.New("unknown oid")
+				}
+				return value, nil
+			}
+
+			if got := GetCPUTemperature(); got != tt.want {
+				t.Fatalf("GetCPUTemperature() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSMBIOSValue(t *testing.T) {
+	tests := map[string]string{
+		"Supermicro\n":           "Supermicro",
+		"To Be Filled By O.E.M.": "",
+		"default string":         "",
+		"":                       "",
+	}
+
+	for raw, want := range tests {
+		if got := smbiosValue(raw); got != want {
+			t.Fatalf("smbiosValue(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}

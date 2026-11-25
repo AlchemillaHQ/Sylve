@@ -218,7 +218,7 @@ func ScrubPool(infoService *info.Service, zfsService *zfs.Service) gin.HandlerFu
 }
 
 // @Summary Delete Pool
-// @Description Delete a ZFS pool
+// @Description Delete a ZFS pool. Returns 409 when it holds jails, containers or datasets in use, or a volume an iSCSI target shares.
 // @Tags ZFS
 // @Produce json
 // @Security BearerAuth
@@ -278,7 +278,7 @@ func ReplaceDevice(infoService *info.Service, zfsService *zfs.Service) gin.Handl
 		}
 
 		ctx := c.Request.Context()
-		err := zfsService.ReplaceDevice(ctx, guid, request.Old, request.New)
+		err := zfsService.ReplaceDevice(ctx, guid, request.Old, request.New, request.PoolDeviceMutationOptions)
 		if err != nil {
 			writeZFSServiceError(c, err, "device_replace_failed")
 			return
@@ -336,8 +336,40 @@ func EditPool(infoService *info.Service, zfsService *zfs.Service) gin.HandlerFun
 	}
 }
 
+// @Summary Attach Device
+// @Description Add a mirror member to an existing disk or mirror VDEV
+// @Tags ZFS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param guid path string true "Pool GUID"
+// @Param request body zfsServiceInterfaces.AttachDevice true "Request"
+// @Success 202 {object} internal.APIResponse[any] "Accepted"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 503 {object} internal.APIResponse[any] "Status Unavailable"
+// @Router /zfs/pools/{guid}/attach [post]
+func AttachDevice(zfsService *zfs.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var request zfsServiceInterfaces.AttachDevice
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status: "error", Message: "invalid_request", Error: err.Error(),
+			})
+			return
+		}
+		if err := zfsService.AttachDevice(c.Request.Context(), c.Param("guid"), request.Device, request.New, request.PoolDeviceMutationOptions); err != nil {
+			writeZFSServiceError(c, err, "attach_failed")
+			return
+		}
+		c.JSON(http.StatusAccepted, internal.APIResponse[any]{Status: "success", Message: "device_attached"})
+	}
+}
+
 type DetachRequest struct {
-	Device string `json:"device" binding:"required"`
+	zfsServiceInterfaces.PoolDeviceMutationOptions
+	Device string `json:"device" binding:"required,min=1,max=1024"`
 }
 
 // @Summary Detach Device
@@ -369,7 +401,7 @@ func DetachDevice(infoService *info.Service, zfsService *zfs.Service) gin.Handle
 		}
 
 		ctx := c.Request.Context()
-		if err := zfsService.DetachDevice(ctx, guid, request.Device); err != nil {
+		if err := zfsService.DetachDevice(ctx, guid, request.Device, request.PoolDeviceMutationOptions); err != nil {
 			writeZFSServiceError(c, err, "detach_failed")
 			return
 		}

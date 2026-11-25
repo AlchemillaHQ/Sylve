@@ -9,6 +9,7 @@
 package samba
 
 import (
+	"context"
 	"os"
 	"sync"
 	"time"
@@ -62,6 +63,13 @@ func NewSambaService(
 
 func (s *Service) SetInterfaceReferenceCoordinator(coordinator *interfaceref.Coordinator) {
 	s.interfaceReferenceCoordinator = coordinator
+}
+
+func (s *Service) datasetByGUID(ctx context.Context, guid string) (*gzfs.Dataset, error) {
+	if s.ZFS != nil {
+		return s.ZFS.DatasetByGUID(ctx, guid)
+	}
+	return s.GZFS.ZFS.GetByGUID(ctx, guid, false)
 }
 
 func (s *Service) lockInterfaceReferencesRead() func() {

@@ -91,7 +91,7 @@ func shouldRedactAuditPayload(path string) bool {
 
 func shouldRedactAuditResponse(path string) bool {
 	path = strings.TrimSpace(path)
-	if path == "/api/auth/passkeys/register/begin" {
+	if path == "/api/auth/passkeys/register/begin" || isFileExplorerDownloadPath(path) {
 		return true
 	}
 	if path == "/api/auth/passkeys/register/finish" {
@@ -100,8 +100,14 @@ func shouldRedactAuditResponse(path string) bool {
 	return shouldRedactAuditPayload(path) && path != "/api/utilities/downloader-uploads"
 }
 
+func isFileExplorerDownloadPath(path string) bool {
+	_, ok := fileExplorerDownloadKinds[path]
+	return ok
+}
+
 func isImportantAuditGetPath(path string) bool {
 	if slices.Contains(importantGetPaths, path) ||
+		isFileExplorerDownloadPath(path) ||
 		isVMConsoleWebSocketPath(path) ||
 		isJailConsoleWebSocketPath(path) ||
 		isContainerConsoleWebSocketPath(path) ||
@@ -121,7 +127,8 @@ func isImportantAuditGetPath(path string) bool {
 }
 
 func isRoutineUnauditedRequest(method, path string) bool {
-	return method == http.MethodPost && strings.TrimSpace(path) == "/api/auth/sse-tokens"
+	path = strings.TrimSpace(path)
+	return method == http.MethodPost && (path == "/api/auth/sse-tokens" || path == "/api/auth/download-tickets")
 }
 
 func auditPathMatches(path, prefix string) bool {
@@ -141,6 +148,7 @@ func isSensitiveAuditKey(key string) bool {
 		"refreshtoken",
 		"clustertoken",
 		"hash",
+		"ticket",
 		"authorization",
 		"clusterauthorization",
 		"clusterkey",
@@ -594,18 +602,6 @@ func getClaims(c *gin.Context, authService *authService.Service) (claim, error) 
 	claims = claim{}
 
 	token := c.GetString("Token")
-
-	if token == "" {
-		if hash := c.Query("hash"); hash != "" {
-			t, err := authService.GetTokenBySHA256(hash)
-
-			if err != nil {
-				return claims, fmt.Errorf("invalid_hash: %w", err)
-			}
-
-			token = t
-		}
-	}
 
 	if token == "" {
 		return claims, fmt.Errorf("token_not_found")

@@ -15,6 +15,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	nfsModels "github.com/alchemillahq/sylve/internal/db/models/nfs"
+	diskService "github.com/alchemillahq/sylve/internal/services/disk"
 	jailService "github.com/alchemillahq/sylve/internal/services/jail"
 	libvirtService "github.com/alchemillahq/sylve/internal/services/libvirt"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
@@ -81,6 +82,12 @@ func TestNewServiceRegistryReusesNetworkServiceInstance(t *testing.T) {
 	}
 	if startupSvc.NFS != registry.NFSService || registry.SystemService.(*systemService.Service).NFS != registry.NFSService || registry.ZfsService.(*zfsService.Service).StorageTopologyGuard == nil {
 		t.Fatal("NFS startup, service settings and ZFS mutations must share one runtime coordinator")
+	}
+	if registry.ZfsService.(*zfsService.Service).PoolDeviceDisks != registry.DiskService.(*diskService.Service) {
+		t.Fatal("ZFS device changes and disk mutations must share the same disk-operation lock")
+	}
+	if jailSvc.LookupDatasetByGUID == nil {
+		t.Fatal("jail dataset lookups must use the ZFS service's cached GUID lookup")
 	}
 	containers := registry.ContainerService
 	if containers == nil || startupSvc.Containers != containers || registry.SystemService.(*systemService.Service).Containers != containers || containers.PrepareHost == nil {

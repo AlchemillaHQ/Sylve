@@ -803,6 +803,19 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_zfs_SnapshotSummary:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.SnapshotSummary'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_auth_ImportableUnixUser:
     properties:
       data:
@@ -1838,6 +1851,17 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_system_FileListing:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_system.FileListing'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_network_reconcile_SwitchStatus:
     properties:
       data:
@@ -2414,6 +2438,28 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/internal_handlers_notifications.NotificationListResponse'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_system_DownloadTicketResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers_system.DownloadTicketResponse'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_system_FileExplorerUploadErrorData:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers_system.FileExplorerUploadErrorData'
       error:
         type: string
       message:
@@ -8333,17 +8379,62 @@ definitions:
       last_page:
         type: integer
     type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_system.FileListing:
+    properties:
+      entries:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_system.FileNode'
+        type: array
+      matched:
+        type: integer
+      total:
+        type: integer
+      truncated:
+        type: boolean
+    type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_system.FileNode:
     properties:
+      broken:
+        type: boolean
       date:
+        type: string
+      group:
         type: string
       id:
         type: string
       lazy:
         type: boolean
+      link:
+        type: string
+      mode:
+        type: string
+      mount:
+        type: string
+      owner:
+        type: string
+      protected:
+        enum:
+        - root
+        - system_folder
+        - base_system
+        - mount_point
+        - contains_mount_point
+        - jail_root
+        - sylve_data
+        - contains_sylve_data
+        type: string
       size:
         type: integer
+      special:
+        enum:
+        - fifo
+        - socket
+        - device
+        type: string
       type:
+        enum:
+        - file
+        - folder
         type: string
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_system.FileTransferItem:
@@ -8798,12 +8889,14 @@ definitions:
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_zfs.EditVolumeRequest:
     properties:
+      inherit:
+        items:
+          type: string
+        type: array
       properties:
         additionalProperties:
           type: string
         type: object
-    required:
-    - properties
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_zfs.ModifyPeriodicSnapshotRetentionRequest:
     properties:
@@ -8920,6 +9013,33 @@ definitions:
         type: number
       usage:
         type: number
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_zfs.SnapshotSummary:
+    properties:
+      clones:
+        items:
+          type: string
+        type: array
+      createTxg:
+        type: integer
+      createdAt:
+        type: string
+      dataset:
+        type: string
+      guid:
+        type: string
+      holds:
+        type: integer
+      name:
+        type: string
+      pool:
+        type: string
+      referenced:
+        type: integer
+      snapshot:
+        type: string
+      used:
+        type: integer
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_zfs.Vdev:
     properties:
@@ -11443,6 +11563,13 @@ definitions:
         maxItems: 128
         minItems: 1
         type: array
+      types:
+        description: Optional gpart type per size, e.g. freebsd-swap. Omit it to create
+          freebsd-zfs partitions.
+        items:
+          type: string
+        maxItems: 128
+        type: array
     required:
     - sizes
     type: object
@@ -12273,6 +12400,38 @@ definitions:
             type: string
         type: object
     type: object
+  internal_handlers_system.DownloadTicketRequest:
+    properties:
+      id:
+        type: string
+      ids:
+        items:
+          type: string
+        type: array
+      kind:
+        enum:
+        - file
+        - archive
+        type: string
+    required:
+    - kind
+    type: object
+  internal_handlers_system.DownloadTicketResponse:
+    properties:
+      expiresAt:
+        type: string
+      ticket:
+        type: string
+    type: object
+  internal_handlers_system.FileExplorerUploadErrorData:
+    properties:
+      code:
+        type: string
+      limitBytes:
+        type: integer
+      retryable:
+        type: boolean
+    type: object
   internal_handlers_system.RemovePassthroughDeviceResponse:
     properties:
       rebootRequired:
@@ -12605,12 +12764,14 @@ definitions:
     type: object
   internal_handlers_zfs.EditFilesystemRequest:
     properties:
+      inherit:
+        items:
+          type: string
+        type: array
       properties:
         additionalProperties:
           type: string
         type: object
-    required:
-    - properties
     type: object
   internal_handlers_zfs.FlashVolumeRequest:
     properties:
@@ -12634,6 +12795,10 @@ definitions:
     properties:
       destroyMoreRecent:
         type: boolean
+      expectedNewer:
+        items:
+          type: string
+        type: array
       name:
         type: string
     type: object
@@ -12795,6 +12960,50 @@ paths:
       summary: Set permission group
       tags:
       - Permissions
+  /auth/download-tickets:
+    post:
+      consumes:
+      - application/json
+      description: Issue a single-use ticket, valid for one minute, that authenticates one GET of /system/file-explorer/download (kind file) or /system/file-explorer/archive (kind archive) for exactly the given id, or for exactly the given ids in that order (kind archive, up to 512). Pass it as the ticket query parameter so no login token appears in the URL. Tickets are kept on the node that issues them, so send the download through that node, using /nodes/{node}/... for another cluster member.
+      parameters:
+      - description: Download ticket request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_system.DownloadTicketRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Ticket issued
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_system_DownloadTicketResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Administrator access and a local session required
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "429":
+          description: Too many outstanding tickets
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Create a Download Ticket
+      tags:
+      - System
   /auth/grants:
     delete:
       consumes:
@@ -18622,14 +18831,15 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create one or more GPT partitions on a physical disk
+      description: Create one or more GPT partitions on a physical disk. Each partition
+        is freebsd-zfs unless a type is given for every size.
       parameters:
       - description: Physical disk device
         in: path
         name: device
         required: true
         type: string
-      - description: Partition sizes in bytes
+      - description: Partition sizes in bytes and optional gpart types
         in: body
         name: request
         required: true
@@ -27290,7 +27500,7 @@ paths:
       - System
   /system/file-explorer:
     get:
-      description: List the direct entries in an absolute directory path
+      description: "List the direct entries in an absolute directory path. Symbolic links report their target in link and take the type of what they point to; broken links are marked broken. Entries include their mode, owner and group, the file system mounted there (mount), and why delete, rename and move refuse them (protected)."
       parameters:
       - description: Absolute directory path; defaults to /
         in: query
@@ -27375,18 +27585,72 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "507":
+          description: Insufficient storage or quota
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
       security:
       - BearerAuth: []
       summary: Create a File or Folder
+      tags:
+      - System
+  /system/file-explorer/archive:
+    get:
+      description: Stream a zip archive, built while it downloads. With one id, the id must be a folder and the archive holds that folder and everything inside it. With 2 to 512 ids, all in the same folder, the archive holds those items at its top level and is named after the folder and the item count, like "photos - 3 items.zip". Symbolic links are stored as links, not followed. FIFOs, sockets, devices and unreadable items are skipped and listed in SYLVE-SKIPPED.txt inside the archive, next to the archived items. Browsers authenticate with a ticket from POST /auth/download-tickets (kind archive) issued for the same ids in the same order.
+      parameters:
+      - collectionFormat: multi
+        description: Absolute path; repeat for several items in one folder
+        in: query
+        items:
+          type: string
+        name: id
+        required: true
+        type: array
+      - description: Single-use ticket from POST /auth/download-tickets
+        in: query
+        name: ticket
+        type: string
+      produces:
+      - application/zip
+      responses:
+        "200":
+          description: Zip archive
+          schema:
+            type: file
+        "400":
+          description: Invalid path, a single id that is not a folder, or more than 512 ids
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Administrator access or filesystem permission required
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Item not found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: The ids are not in the same folder or repeat a path
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Unexpected filesystem failure
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Download a Folder or Several Items as Zip
       tags:
       - System
   /system/file-explorer/copy-or-move-batch:
     post:
       consumes:
       - application/json
-      description: Copy or move up to 512 regular files, folders, or symbolic links
-        without overwriting existing entries; an existing destination directory receives
-        the source basename
+      description: "Copy or move up to 512 regular files, folders, or symbolic links without overwriting existing entries; an existing destination directory receives the source basename. Copies keep owner, group, mode, modification time, ACLs, user extended attributes and file flags, and files hard-linked to each other stay hard-linked within one request. Moving a protected path (/, top-level entries, the base system, mount points and anything containing one, jail roots and Sylve data) is refused with 403 and data {path, reason}. If a move across file systems copies everything but cannot remove all of the source, the copy is kept and file_explorer_move_incomplete is returned. Closing the request cancels a copy in progress: the partly copied item is removed and file_explorer_cancelled is returned. If a batch stops part-way, data.completed lists the sources already copied or moved."
       parameters:
       - description: Copy or move files or folders request
         in: body
@@ -27410,7 +27674,7 @@ paths:
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "403":
-          description: Administrator access or filesystem permission required
+          description: Administrator access or filesystem permission required, or a protected path
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "404":
@@ -27418,8 +27682,7 @@ paths:
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "409":
-          description: Destination exists, batch paths conflict, or restore is in
-            progress
+          description: Destination exists, batch paths conflict, restore is in progress, or the request was cancelled
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "413":
@@ -27428,6 +27691,10 @@ paths:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "500":
           description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "507":
+          description: Insufficient storage or quota
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
       security:
@@ -27439,8 +27706,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Delete one or more files, folders, or symbolic links after validating
-        the complete bounded request
+      description: "Delete one or more files, folders, or symbolic links after validating the complete bounded request. Protected paths (/, top-level entries, the base system, mount points and anything containing one, jail roots and Sylve data) are refused with 403 and data {path, reason}. A refusal deletes nothing. If deleting stops part-way, data.completed lists the paths already deleted. Closing the request stops a delete in progress: whatever was not deleted yet is kept and file_explorer_cancelled is returned. Symbolic links are removed, never followed, and deleting never descends into another mounted file system; a mount found inside a folder stops the delete with 403 and reason mount_point."
       parameters:
       - description: Delete files or folders request
         in: body
@@ -27464,7 +27730,7 @@ paths:
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "403":
-          description: Administrator access or filesystem permission required
+          description: Administrator access or filesystem permission required, or a protected path
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "404":
@@ -27472,7 +27738,7 @@ paths:
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "409":
-          description: Restore is in progress
+          description: Restore is in progress, the entry is busy, or the request was cancelled
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "413":
@@ -27490,21 +27756,16 @@ paths:
       - System
   /system/file-explorer/download:
     get:
-      description: Stream a regular file from an absolute system path with HTTP range
-        support
+      description: Stream a regular file from an absolute system path with HTTP range support. Browsers authenticate with a single-use ticket from POST /auth/download-tickets (kind file) instead of a login token.
       parameters:
       - description: Absolute path to the regular file
         in: query
         name: id
         required: true
         type: string
-      - description: SHA-256 token hash alternative to Bearer authentication
+      - description: Single-use ticket from POST /auth/download-tickets
         in: query
-        name: hash
-        type: string
-      - description: Hex-encoded selected-node routing payload used by browser downloads
-        in: query
-        name: auth
+        name: ticket
         type: string
       produces:
       - application/octet-stream
@@ -27546,12 +27807,59 @@ paths:
       summary: Download a file
       tags:
       - System
+  /system/file-explorer/list:
+    get:
+      description: List an absolute directory path, returning at most limit entries (default 10000, maximum 50000). When q is set, only entries whose names contain it (case-insensitive) are returned. total counts every entry, matched counts the entries that match q, and truncated is set when matched exceeds limit; the returned entries are then the first by folders first and name.
+      parameters:
+      - description: Absolute directory path; defaults to /
+        in: query
+        name: id
+        type: string
+      - description: Maximum entries to return
+        in: query
+        name: limit
+        type: integer
+      - description: Case-insensitive name filter
+        in: query
+        name: q
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Folder listed
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_system_FileListing'
+        "400":
+          description: Invalid directory path
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Administrator access or filesystem permission required
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Directory not found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List a Folder
+      tags:
+      - System
   /system/file-explorer/rename:
     post:
       consumes:
       - application/json
-      description: Rename a file, folder, or symbolic link without overwriting an
-        existing entry
+      description: "Rename a file, folder, or symbolic link without overwriting an existing entry. Protected paths (/, top-level entries, the base system, mount points and anything containing one, jail roots and Sylve data) are refused with 403 and data {path, reason}."
       parameters:
       - description: Rename file or folder request
         in: body
@@ -27575,7 +27883,7 @@ paths:
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "403":
-          description: Administrator access or filesystem permission required
+          description: "Administrator access or filesystem permission required, or a protected path"
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "404":
@@ -27603,8 +27911,7 @@ paths:
     delete:
       consumes:
       - application/json
-      description: Delete the unchanged file associated with a short-lived, server-issued
-        FilePond upload identity
+      description: Delete the unchanged file associated with a short-lived, server-issued FilePond upload identity
       parameters:
       - description: Upload revert request
         in: body
@@ -27655,8 +27962,7 @@ paths:
     post:
       consumes:
       - multipart/form-data
-      description: Upload exactly one file to an absolute destination folder through
-        FilePond without overwriting an existing entry
+      description: Upload exactly one file to an absolute destination folder through FilePond without overwriting an existing entry. The uploaded file gets mode 0644. Error responses carry data {code, retryable, limitBytes}, and server failures report only the code.
       parameters:
       - description: Destination folder path (e.g. /zroot/share)
         in: query
@@ -27678,7 +27984,7 @@ paths:
         "400":
           description: Invalid path, filename, or multipart request
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_system_FileExplorerUploadErrorData'
         "401":
           description: Unauthorized
           schema:
@@ -27690,31 +27996,31 @@ paths:
         "404":
           description: Destination folder not found
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_system_FileExplorerUploadErrorData'
         "408":
           description: Upload cancelled or timed out
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_system_FileExplorerUploadErrorData'
         "409":
           description: Destination exists or restore is in progress
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_system_FileExplorerUploadErrorData'
         "413":
           description: File or multipart request too large
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_system_FileExplorerUploadErrorData'
         "429":
           description: Upload capacity exhausted
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_system_FileExplorerUploadErrorData'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_system_FileExplorerUploadErrorData'
         "507":
           description: Insufficient storage or quota
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_system_FileExplorerUploadErrorData'
       security:
       - BearerAuth: []
       summary: Upload a File
@@ -32157,7 +32463,7 @@ paths:
       - ZFS
   /zfs/datasets:
     delete:
-      description: Delete one or more ZFS datasets using exact name and GUID pairs
+      description: Delete one or more ZFS datasets using exact name and GUID pairs. Returns 409 when anything being deleted is in use, including a volume an iSCSI target shares.
       parameters:
       - collectionFormat: multi
         description: Exact dataset name; pair by index with each guid parameter
@@ -32278,7 +32584,7 @@ paths:
       - ZFS
   /zfs/datasets/filesystem/{guid}:
     delete:
-      description: Delete a ZFS filesystem
+      description: Delete a ZFS filesystem and everything inside it. Returns 409 when anything inside it is in use, including a volume an iSCSI target shares.
       parameters:
       - description: Filesystem GUID
         in: path
@@ -32381,7 +32687,7 @@ paths:
         in: query
         name: search
         type: string
-      - description: Comma-separated dataset name substrings to exclude
+      - description: 'Comma-separated filters to exclude. bk_j, svms_, sjs_, ha_ and _template match Sylve snapshot kinds by snapshot name; other values exclude names containing them'
         in: query
         name: nameFilter
         type: string
@@ -32390,6 +32696,7 @@ paths:
         - name
         - used
         - referenced
+        - creation
         in: query
         name: sort[0][field]
         type: string
@@ -32510,7 +32817,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Rollback to a ZFS snapshot
+      description: 'Rollback to a ZFS snapshot. Refused with 409 for datasets Sylve manages (under <pool>/sylve; roll those back from their VM or jail), for operating-system file systems, and while the file system is used by a running VM or a container. When expectedNewer is set, it must list the GUIDs of every snapshot newer than the target, or the rollback is refused with 409.'
       parameters:
       - description: Snapshot GUID
         in: path
@@ -32762,7 +33069,7 @@ paths:
       - ZFS
   /zfs/datasets/volume/{guid}:
     delete:
-      description: Delete a ZFS volume
+      description: Delete a ZFS volume and its snapshots. Returns 409 when a VM uses it or an iSCSI target shares it.
       parameters:
       - description: Volume GUID
         in: path
@@ -32796,7 +33103,7 @@ paths:
     patch:
       consumes:
       - application/json
-      description: Edit a ZFS volume
+      description: 'Edit a ZFS volume. Properties listed in inherit are reset to their inherited value. Shrinking the volume or changing its volume mode is refused with 409 while a running VM uses it or an iSCSI target shares it.'
       parameters:
       - description: Volume GUID
         in: path
@@ -32841,7 +33148,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Flash a ZFS volume with a UUID pointing to a disk iso/img
+      description: Write a downloaded ISO or disk image onto a ZFS volume, starting at its first byte. Disk images in formats other than raw, such as QCOW2 or VMDK, are converted to raw as they are written, and images with a backing file are refused. The image, or its virtual size for disk images, must fit in the volume. Returns 409 when the volume is in use, shared by an iSCSI target, read only or too small. The write continues if the client disconnects.
       parameters:
       - description: Volume GUID
         in: path
@@ -32948,7 +33255,7 @@ paths:
       - ZFS
   /zfs/pools/{guid}:
     delete:
-      description: Delete a ZFS pool
+      description: Delete a ZFS pool. Returns 409 when it holds jails, containers or datasets in use, or a volume an iSCSI target shares.
       parameters:
       - description: Pool GUID
         in: path
@@ -33363,6 +33670,26 @@ paths:
       security:
       - BearerAuth: []
       summary: Update a ZFS scrub schedule
+      tags:
+      - ZFS
+  /zfs/snapshots:
+    get:
+      description: List snapshots on usable pools with their creation time and space
+        usage
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_zfs_SnapshotSummary'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List ZFS snapshots
       tags:
       - ZFS
 securityDefinitions:

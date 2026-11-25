@@ -17,6 +17,7 @@
 	import { resource } from 'runed';
 	import { isDemoMode } from '$lib/demo/runtime';
 	import { allowed } from '$lib/stores/permissions.svelte';
+	import { setInterface } from '$lib/stores/interface.svelte';
 	import type { ActiveLifecycleGuest } from '$lib/types/task/lifecycle';
 
 	interface Props {
@@ -323,6 +324,11 @@
 								</DropdownMenu.Content>
 							</DropdownMenu.Root></DropdownMenu.Sub
 						>
+
+						<DropdownMenu.Item class="cursor-pointer" onclick={() => setInterface('zen')}>
+							<span class="icon-[lucide--arrow-left-right] mr-2 h-4 w-4"></span>
+							<span>Zen interface</span>
+						</DropdownMenu.Item>
 					</DropdownMenu.Group>
 
 					{#if !isDemoMode}

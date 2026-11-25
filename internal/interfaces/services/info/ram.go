@@ -12,6 +12,7 @@ type RAMInfo struct {
 	Total       uint64  `json:"total"`
 	Free        uint64  `json:"free"`
 	UsedPercent float64 `json:"usedPercent"`
+	ARC         uint64  `json:"arc,omitempty"`
 }
 
 type SwapInfo struct {

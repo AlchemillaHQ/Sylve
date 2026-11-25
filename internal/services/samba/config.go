@@ -680,7 +680,7 @@ func (s *Service) shareConfig(ctx context.Context, shares []sambaModels.SambaSha
 
 		ds, exists := datasets[share.Dataset]
 		if !exists {
-			ds, err = s.GZFS.ZFS.GetByGUID(ctx, share.Dataset, false)
+			ds, err = s.datasetByGUID(ctx, share.Dataset)
 			if err != nil {
 				return "", fmt.Errorf("failed to fetch dataset for share %s: %v", share.Name, err)
 			}

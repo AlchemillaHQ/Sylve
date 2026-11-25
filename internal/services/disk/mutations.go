@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/alchemillahq/gzfs"
@@ -22,6 +23,15 @@ import (
 )
 
 const minimumPartitionSize = 1024 * 1024
+
+var PartitionTypes = []string{
+	"freebsd-zfs",
+	"freebsd-ufs",
+	"freebsd-swap",
+	"linux-data",
+	"linux-swap",
+	"ms-basic-data",
+}
 
 func normalizePartitionName(partition string) (string, error) {
 	partition = strings.TrimSpace(partition)
@@ -244,6 +254,21 @@ func validatePartitionSizes(sizes []uint64) (uint64, error) {
 	return total, nil
 }
 
+func validatePartitionTypes(types []string, count int) error {
+	if len(types) == 0 {
+		return nil
+	}
+	if len(types) != count {
+		return invalidDiskRequest("a partition type is required for each partition size", nil)
+	}
+	for _, partitionType := range types {
+		if !slices.Contains(PartitionTypes, partitionType) {
+			return invalidDiskRequest(fmt.Sprintf("unsupported partition type %q", partitionType), nil)
+		}
+	}
+	return nil
+}
+
 func ensurePartitionSpace(disk diskServiceInterfaces.DiskInfo, requested uint64) error {
 	mediaSize := uint64(disk.MediaSize)
 	allocated := uint64(0)
@@ -337,12 +362,15 @@ func (s *Service) InitializeGPT(device string) error {
 	return s.InitializeGPTContext(context.Background(), device)
 }
 
-func (s *Service) CreatePartitionsContext(ctx context.Context, device string, sizes []uint64) error {
+func (s *Service) CreatePartitionsContext(ctx context.Context, device string, sizes []uint64, types []string) error {
 	s.DiskOperationMutex.Lock()
 	defer s.DiskOperationMutex.Unlock()
 
 	requested, err := validatePartitionSizes(sizes)
 	if err != nil {
+		return err
+	}
+	if err := validatePartitionTypes(types, len(sizes)); err != nil {
 		return err
 	}
 	disk, err := s.resolveMutationDisk(device)
@@ -359,7 +387,7 @@ func (s *Service) CreatePartitionsContext(ctx context.Context, device string, si
 	if err := ensurePartitionSpace(disk, requested); err != nil {
 		return err
 	}
-	if err := diskUtils.CreatePartitions(path, sizes); err != nil {
+	if err := diskUtils.CreatePartitions(path, sizes, types); err != nil {
 		return classifyDiskCommandError("create partitions", disk.Name, err)
 	}
 	return nil
@@ -379,8 +407,8 @@ func (s *Service) DeletePartitionContext(ctx context.Context, partitionName stri
 	return nil
 }
 
-func (s *Service) CreatePartitions(device string, sizes []uint64) error {
-	return s.CreatePartitionsContext(context.Background(), device, sizes)
+func (s *Service) CreatePartitions(device string, sizes []uint64, types []string) error {
+	return s.CreatePartitionsContext(context.Background(), device, sizes, types)
 }
 
 func (s *Service) DeletePartition(partition string) error {

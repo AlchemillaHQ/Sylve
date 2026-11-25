@@ -43,6 +43,18 @@
 		mountpoint: dataset.properties?.mountpoint || ''
 	};
 
+	const initial = Object.freeze({ ...options });
+	const tunableKeys = [
+		'atime',
+		'checksum',
+		'compression',
+		'dedup',
+		'readonly',
+		'aclinherit',
+		'aclmode',
+		'recordsize'
+	] as const;
+
 	let zfsProperties = $state(createFSProps);
 	let properties = $state(options);
 	let compressionOpen = $state(false);
@@ -62,7 +74,7 @@
 	});
 
 	async function edit() {
-		let quota = '0B';
+		let quota = 0;
 		if (properties.quota !== '') {
 			const parsed = parseSizeInputToBytes(properties.quota);
 			if (parsed === null) {
@@ -72,21 +84,25 @@
 				return;
 			}
 
-			quota = toZfsBytesString(parsed);
+			quota = parsed;
 		}
 
-		const editedProperties: Record<string, string> = {
-			atime: properties.atime,
-			checksum: properties.checksum,
-			compression: properties.compression,
-			dedup: properties.dedup,
-			readonly: properties.readonly,
-			quota: quota,
-			aclinherit: properties.aclinherit,
-			aclmode: properties.aclmode,
-			recordsize: properties.recordsize
-		};
-		if (!managedDataset) editedProperties.mountpoint = properties.mountpoint || '';
+		const editedProperties: Record<string, string> = {};
+		for (const key of tunableKeys) {
+			if (properties[key] !== initial[key]) editedProperties[key] = properties[key];
+		}
+		const initialQuota = initial.quota === '' ? 0 : (parseSizeInputToBytes(initial.quota) ?? 0);
+		if (quota !== initialQuota) editedProperties.quota = quota > 0 ? toZfsBytesString(quota) : '0B';
+		if (!managedDataset && (properties.mountpoint || '') !== initial.mountpoint) {
+			editedProperties.mountpoint = properties.mountpoint || '';
+		}
+
+		if (Object.keys(editedProperties).length === 0) {
+			toast.info('No changes to save', {
+				position: 'bottom-center'
+			});
+			return;
+		}
 
 		const response = await editFileSystem(dataset.guid as string, editedProperties);
 

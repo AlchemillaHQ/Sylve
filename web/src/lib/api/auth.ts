@@ -16,7 +16,6 @@ import type { APIResponse } from '$lib/types/common';
 import { kvStorage } from '$lib/types/db';
 import { apiRequestResult, handleAPIError } from '$lib/utils/http';
 import { buildLoginOptions, isPasskeySupported, serializeCredential } from '$lib/utils/passkeys';
-import { sha256 } from '$lib/utils/string';
 import { toast } from 'svelte-sonner';
 
 const SYSTEM_HOSTNAME_NOT_CONFIGURED = 'system_hostname_not_configured';
@@ -537,15 +536,6 @@ export function getJWTClaims(): JWTClaims | null {
 	}
 
 	return null;
-}
-
-export async function getTokenHash(): Promise<string | null> {
-	const token = getToken();
-	if (!token) {
-		return null;
-	}
-
-	return await sha256(token);
 }
 
 export async function isInitialized(): Promise<boolean[]> {

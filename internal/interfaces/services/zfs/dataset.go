@@ -8,7 +8,11 @@
 
 package zfsServiceInterfaces
 
-import "github.com/alchemillahq/gzfs"
+import (
+	"time"
+
+	"github.com/alchemillahq/gzfs"
+)
 
 // type zDataset struct {
 // 	Dataset zfs.Dataset
@@ -61,6 +65,20 @@ type CreatePeriodicSnapshotJobRequest struct {
 	KeepWeekly  *int `json:"keepWeekly"`
 	KeepMonthly *int `json:"keepMonthly"`
 	KeepYearly  *int `json:"keepYearly"`
+}
+
+type SnapshotSummary struct {
+	Name       string    `json:"name"`
+	Dataset    string    `json:"dataset"`
+	Snapshot   string    `json:"snapshot"`
+	Pool       string    `json:"pool"`
+	GUID       string    `json:"guid"`
+	CreatedAt  time.Time `json:"createdAt"`
+	CreateTXG  uint64    `json:"createTxg"`
+	Used       uint64    `json:"used"`
+	Referenced uint64    `json:"referenced"`
+	Clones     []string  `json:"clones"`
+	Holds      int       `json:"holds"`
 }
 
 type BulkDeletePeriodicSnapshotsRequest struct {

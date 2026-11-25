@@ -147,16 +147,18 @@ func TestCreatePartitionsValidatesSizesBeforeDeviceAccess(t *testing.T) {
 	tests := []struct {
 		name    string
 		sizes   []uint64
+		types   []string
 		wantErr string
 	}{
 		{name: "empty", sizes: nil, wantErr: "at least one partition size"},
 		{name: "below one megabyte", sizes: []uint64{1024}, wantErr: "at least 1MB"},
 		{name: "overflow", sizes: []uint64{^uint64(0), 1024 * 1024}, wantErr: "overflows uint64"},
+		{name: "types do not match sizes", sizes: []uint64{1024 * 1024}, types: []string{"freebsd-zfs", "freebsd-swap"}, wantErr: "types must match"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := CreatePartitions("/path/that/does/not/exist", tt.sizes)
+			err := CreatePartitions("/path/that/does/not/exist", tt.sizes, tt.types)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("error = %v; want error containing %q", err, tt.wantErr)
 			}

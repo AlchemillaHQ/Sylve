@@ -2197,7 +2197,7 @@
 <Tabs.Root value="cluster" class="flex h-full w-full flex-col">
 	<Tabs.Content value="cluster" class="flex h-full flex-col border-x border-b">
 		<div class="relative flex h-full flex-col" transition:fade|global={{ duration: 400 }}>
-			<div class="flex-1 min-h-0 overflow-auto" style="overflow-anchor: none">
+			<div class="panel-table-scroll flex-1 min-h-0 overflow-auto" style="overflow-anchor: none">
 				<Table.Root class="w-full table-auto border-collapse">
 					<Table.Header class="bg-background sticky top-0 z-10">
 						<Table.Row class="dark:hover:bg-background ">
@@ -2297,7 +2297,7 @@
 />
 
 <style>
-	:global([data-slot='table-container']) {
+	.panel-table-scroll :global([data-slot='table-container']) {
 		overflow: visible;
 	}
 </style>

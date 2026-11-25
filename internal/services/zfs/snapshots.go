@@ -12,7 +12,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -262,7 +264,7 @@ func (s *Service) CreateSnapshot(ctx context.Context, guid string, name string, 
 		return err
 	}
 
-	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
+	dataset, err := s.DatasetByGUID(ctx, guid)
 	if err != nil || dataset == nil {
 		return datasetLookupError(err, "dataset_with_guid_%s_not_found", guid)
 	}
@@ -505,7 +507,7 @@ func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfa
 		return err
 	}
 
-	ds, err := s.GZFS.ZFS.GetByGUID(ctx, req.GUID, false)
+	ds, err := s.DatasetByGUID(ctx, req.GUID)
 	if err != nil || ds == nil {
 		return datasetLookupError(err, "dataset_with_guid_not_found")
 	}
@@ -803,7 +805,7 @@ func (s *Service) pruneSnapshots(
 		job.KeepYearly == 0 {
 		return
 	}
-	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, job.GUID, false)
+	dataset, err := s.DatasetByGUID(ctx, job.GUID)
 	if err != nil || dataset == nil {
 		logger.L.Debug().Err(err).Msgf("Dataset unavailable for pruning %s", job.GUID)
 		return
@@ -955,7 +957,7 @@ func (s *Service) runPeriodicSnapshot(ctx context.Context, job zfsModels.Periodi
 	}
 
 	name := job.Prefix + "-" + runAtLocal.Format("2006-01-02-15-04")
-	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, job.GUID, false)
+	dataset, err := s.DatasetByGUID(ctx, job.GUID)
 	if err != nil || dataset == nil {
 		logger.L.Debug().Err(err).Msgf("Dataset unavailable for snapshot job %s", job.GUID)
 		return false
@@ -1018,7 +1020,7 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 	}()
 }
 
-func (s *Service) RollbackSnapshot(ctx context.Context, guid, name string, destroyMoreRecent bool) error {
+func (s *Service) RollbackSnapshot(ctx context.Context, guid, name string, destroyMoreRecent bool, expectedNewer []string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
@@ -1035,12 +1037,37 @@ func (s *Service) RollbackSnapshot(ctx context.Context, guid, name string, destr
 	if err := s.RequireReplicationDatasetMutationAllowed(ctx, dataset.Name); err != nil {
 		return err
 	}
+	parentName, _, _ := strings.Cut(dataset.Name, "@")
+	if isSylveManagedDataset(parentName) {
+		return classifyError(ErrConflict, "cannot_roll_back_managed_dataset_%s", parentName)
+	}
 
 	releaseTopology, err := s.guardStorageTopologyMutation(ctx, dataset)
 	if err != nil {
 		return err
 	}
 	defer releaseTopology()
+
+	parent, err := s.GZFS.ZFS.Get(ctx, parentName, false)
+	if err != nil || parent == nil {
+		return datasetLookupError(err, "dataset_%s_not_found", parentName)
+	}
+	if parent.Type == gzfs.DatasetTypeFilesystem && isSystemMountpoint(parent.Mountpoint) {
+		return classifyError(ErrConflict, "cannot_roll_back_system_filesystem_%s", parentName)
+	}
+	if s.IsDatasetInUse(parent.GUID, false) {
+		return classifyError(ErrConflict, "dataset_%s_in_use", parentName)
+	}
+	if expectedNewer != nil {
+		newer, err := s.snapshotsNewerThan(ctx, dataset)
+		if err != nil {
+			return err
+		}
+		if !sameMembers(newer, expectedNewer) {
+			return classifyError(ErrConflict, "newer_snapshots_changed_for_%s", parentName)
+		}
+	}
+
 	err = dataset.Rollback(ctx, destroyMoreRecent)
 	if err != nil {
 		return fmt.Errorf("failed_to_rollback_snapshot: %v", err)
@@ -1049,4 +1076,37 @@ func (s *Service) RollbackSnapshot(ctx context.Context, guid, name string, destr
 	s.SignalDSChange(dataset.Pool, dataset.Name, "snapshot", "rollback")
 
 	return nil
+}
+
+func (s *Service) snapshotsNewerThan(ctx context.Context, snapshot *gzfs.Dataset) ([]string, error) {
+	parentName, _, _ := strings.Cut(snapshot.Name, "@")
+	target, err := strconv.ParseUint(snapshot.CreateTXG, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("snapshot_%s_has_no_creation_txg", snapshot.Name)
+	}
+	siblings, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeSnapshot, false, parentName)
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_list_snapshots_of_%s: %w", parentName, err)
+	}
+	newer := []string{}
+	for _, sibling := range siblings {
+		if sibling == nil || !strings.HasPrefix(sibling.Name, parentName+"@") {
+			continue
+		}
+		txg, err := strconv.ParseUint(sibling.CreateTXG, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("snapshot_%s_has_no_creation_txg", sibling.Name)
+		}
+		if txg > target {
+			newer = append(newer, sibling.GUID)
+		}
+	}
+	return newer, nil
+}
+
+func sameMembers(a, b []string) bool {
+	left, right := slices.Clone(a), slices.Clone(b)
+	slices.Sort(left)
+	slices.Sort(right)
+	return slices.Equal(slices.Compact(left), slices.Compact(right))
 }

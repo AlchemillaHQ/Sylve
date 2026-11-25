@@ -28,6 +28,7 @@ type DiskActionRequest struct {
 
 type DiskPartitionRequest struct {
 	Sizes []uint64 `json:"sizes" binding:"required,min=1,max=128,dive,gte=1048576"`
+	Types []string `json:"types" binding:"omitempty,max=128"`
 }
 
 type DiskSelfTestRequest struct {
@@ -49,7 +50,7 @@ type diskSelfTestService interface {
 type diskMutationService interface {
 	DestroyPartitionTableContext(context.Context, string) error
 	InitializeGPTContext(context.Context, string) error
-	CreatePartitionsContext(context.Context, string, []uint64) error
+	CreatePartitionsContext(context.Context, string, []uint64, []string) error
 	DeletePartitionContext(context.Context, string) error
 }
 
@@ -292,12 +293,12 @@ func InitializeGPT(service diskMutationService) gin.HandlerFunc {
 }
 
 // @Summary Create disk partitions
-// @Description Create one or more GPT partitions on a physical disk
+// @Description Create one or more GPT partitions on a physical disk. Each partition is freebsd-zfs unless a type is given for every size.
 // @Tags Disk
 // @Accept json
 // @Produce json
 // @Param device path string true "Physical disk device"
-// @Param request body DiskPartitionRequest true "Partition sizes in bytes"
+// @Param request body DiskPartitionRequest true "Partition sizes in bytes and optional gpart types"
 // @Security BearerAuth
 // @Success 201 {object} internal.APIResponse[any] "Created"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -312,7 +313,7 @@ func CreatePartitions(service diskMutationService) gin.HandlerFunc {
 		if !bindDiskJSON(c, &request, DiskPartitionRequest{}) {
 			return
 		}
-		if err := service.CreatePartitionsContext(c.Request.Context(), c.Param("device"), request.Sizes); err != nil {
+		if err := service.CreatePartitionsContext(c.Request.Context(), c.Param("device"), request.Sizes, request.Types); err != nil {
 			writeDiskMutationError(c, "error_creating_partitions", err)
 			return
 		}

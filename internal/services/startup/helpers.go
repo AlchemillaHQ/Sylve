@@ -29,6 +29,7 @@ import (
 	"github.com/alchemillahq/sylve/pkg/pkg"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
+	cpuid "github.com/klauspost/cpuid/v2"
 	"gorm.io/gorm"
 )
 
@@ -211,6 +212,25 @@ func loadKernelModule(module string) error {
 	}
 
 	return nil
+}
+
+func loadCPUTemperatureModule() error {
+	module := ""
+	switch cpuid.CPU.VendorID {
+	case cpuid.Intel:
+		module = "coretemp"
+	case cpuid.AMD, cpuid.Hygon:
+		module = "amdtemp"
+	default:
+		return nil
+	}
+
+	if _, err := startupRunCommand("/sbin/kldstat", "-q", "-n", module); err == nil {
+		return nil
+	}
+
+	_, err := startupRunCommand("/sbin/kldload", "-n", module)
+	return err
 }
 
 func (s *Service) FreeBSDCheck() error {
@@ -492,6 +512,10 @@ func (s *Service) CheckKernelModules(basicSettings models.BasicSettings) error {
 		if err := loadKernelModule("pflog"); err != nil {
 			logger.L.Warn().Err(err).Msg("pflog kernel module unavailable; packet-log capture will retry in the background")
 		}
+	}
+
+	if err := loadCPUTemperatureModule(); err != nil {
+		logger.L.Warn().Err(err).Msg("CPU temperature kernel module unavailable")
 	}
 
 	if slices.Contains(basicSettings.Services, models.Jails) {

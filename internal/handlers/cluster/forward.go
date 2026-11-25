@@ -78,6 +78,7 @@ func ForwardTo(c *gin.Context, cS *cluster.Service, host string, body []byte) {
 			query := r.Out.URL.Query()
 			query.Del("hash")
 			query.Del("auth")
+			query.Del("ticket")
 			r.Out.URL.RawQuery = query.Encode()
 		},
 		Transport:     forwardTransport,

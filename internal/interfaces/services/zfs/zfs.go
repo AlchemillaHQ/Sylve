@@ -28,7 +28,8 @@ type SimpleZFSDiskUsage struct {
 }
 
 type EditVolumeRequest struct {
-	Properties map[string]string `json:"properties" binding:"required"`
+	Properties map[string]string `json:"properties"`
+	Inherit    []string          `json:"inherit"`
 }
 
 type ZfsServiceInterface interface {
@@ -38,15 +39,17 @@ type ZfsServiceInterface interface {
 	Cron(ctx context.Context)
 
 	CreateFilesystem(ctx context.Context, name string, parent string, props map[string]string) error
-	EditFilesystem(ctx context.Context, guid string, props map[string]string) error
+	EditFilesystem(ctx context.Context, guid string, props map[string]string, inherit []string) error
 	DeleteFilesystem(ctx context.Context, guid string) error
 
 	CreateVolume(ctx context.Context, name string, parent string, props map[string]string) error
-	EditVolume(ctx context.Context, guid string, props map[string]string) error
+	EditVolume(ctx context.Context, guid string, props map[string]string, inherit []string) error
 	DeleteVolume(ctx context.Context, guid string) error
 	FlashVolume(ctx context.Context, guid string, uuid string) error
 
 	GetDatasets(ctx context.Context, t gzfs.DatasetType) ([]*gzfs.Dataset, error)
+	DatasetByGUID(ctx context.Context, guid string) (*gzfs.Dataset, error)
+	GetSnapshotSummaries(ctx context.Context) ([]SnapshotSummary, error)
 	BulkDeleteDataset(ctx context.Context, targets []DatasetDeletionTarget) error
 	IsDatasetInUse(guid string, failEarly bool) bool
 
@@ -55,8 +58,9 @@ type ZfsServiceInterface interface {
 	CreatePool(ctx context.Context, req CreateZPoolRequest) error
 	EditPool(ctx context.Context, guid string, props map[string]string, spares *[]string) error
 	DeletePool(ctx context.Context, guid string) error
-	ReplaceDevice(ctx context.Context, guid, old, latest string) error
-	DetachDevice(ctx context.Context, guid, device string) error
+	ReplaceDevice(ctx context.Context, guid, old, latest string, options ...PoolDeviceMutationOptions) error
+	AttachDevice(ctx context.Context, guid, device, latest string, options ...PoolDeviceMutationOptions) error
+	DetachDevice(ctx context.Context, guid, device string, options ...PoolDeviceMutationOptions) error
 	GetDashboardSnapshot(ctx context.Context) (DashboardSnapshot, error)
 	GetDashboardHistory(ctx context.Context, query DashboardHistoryQuery) (DashboardHistory, error)
 	GetDashboardHistoryDelta(ctx context.Context, query DashboardDeltaQuery) (DashboardHistory, error)
@@ -69,7 +73,7 @@ type ZfsServiceInterface interface {
 	DeletePeriodicSnapshot(ctx context.Context, id uint) error
 	BulkDeletePeriodicSnapshots(ctx context.Context, ids []uint) error
 	StartSnapshotScheduler(ctx context.Context)
-	RollbackSnapshot(ctx context.Context, guid, name string, destroyMoreRecent bool) error
+	RollbackSnapshot(ctx context.Context, guid, name string, destroyMoreRecent bool, expectedNewer []string) error
 
 	GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error)
 	GetDisksUsage(ctx context.Context) (SimpleZFSDiskUsage, error)

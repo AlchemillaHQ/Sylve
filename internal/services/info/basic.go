@@ -34,6 +34,7 @@ func (s *Service) GetBasicInfo() (basicInfo infoServiceInterfaces.BasicInfo, err
 	}
 
 	maxVCPUs, _ := utils.GetVMMMaxCPUs()
+	vendor, product, serial := utils.GetSystemSMBIOS()
 
 	return infoServiceInterfaces.BasicInfo{
 		Hostname:      hostname,
@@ -46,5 +47,6 @@ func (s *Service) GetBasicInfo() (basicInfo infoServiceInterfaces.BasicInfo, err
 		DevFSDisabled: config.IsDevFSDisabled(),
 		Architecture:  infoServiceInterfaces.Architecture(runtime.GOARCH),
 		MaxVCPUs:      maxVCPUs,
+		Hardware:      infoServiceInterfaces.Hardware{Vendor: vendor, Product: product, Serial: serial},
 	}, nil
 }

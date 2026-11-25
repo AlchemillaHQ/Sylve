@@ -3,8 +3,10 @@
 package zfsHandlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -38,8 +40,25 @@ func snapshotHandlerService(t *testing.T) (*zfsService.Service, *gzfstest.MockRu
 	runner.AddCommand("zfs list ", response, "", nil)
 	runner.AddCommand("zfs destroy ", "", "", nil)
 	runner.AddCommand("zfs rollback ", "", "", nil)
-	client := gzfs.NewClient(gzfs.Options{Runner: runner})
+	client := gzfs.NewClient(gzfs.Options{Runner: parentListingRunner{runner}})
 	return zfsService.NewZfsService(database, nil, nil, client).(*zfsService.Service), runner
+}
+
+type parentListingRunner struct {
+	*gzfstest.MockRunner
+}
+
+func (r parentListingRunner) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
+	if len(args) > 2 && args[0] == "list" {
+		parent := args[len(args)-2]
+		if parent == "tank/source" || parent == "backup/replica" || parent == "tank/unique" {
+			pool, _, _ := strings.Cut(parent, "/")
+			_, err := fmt.Fprintf(stdout, `{"datasets":{%q:{"name":%q,"pool":%q,"type":"FILESYSTEM","properties":{"guid":{"value":"fs-%s"}}}}}`,
+				parent, parent, pool, parent)
+			return err
+		}
+	}
+	return r.MockRunner.Run(ctx, stdin, stdout, stderr, name, args...)
 }
 
 func TestSnapshotMutationHandlersUseNameAndExpectedGUID(t *testing.T) {

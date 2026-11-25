@@ -47,7 +47,17 @@ export default defineConfig(({ mode }) => {
 			__SYLVE_DEMO__: JSON.stringify(demo)
 		},
 		server: {
-			allowedHosts: true
+			allowedHosts: true,
+			watch:
+				process.platform === 'freebsd'
+					? {
+							usePolling: true,
+							interval: 300,
+							ignored: ['build', 'static', '.svelte-kit/generated/client-optimized'].map((dir) =>
+								fileURLToPath(new URL(`./${dir}/**`, import.meta.url))
+							)
+						}
+					: undefined
 		},
 		plugins: [
 			!demo && productionDemoIsolation(),

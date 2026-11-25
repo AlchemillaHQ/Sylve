@@ -44,7 +44,7 @@ func TestFilesystemTopologyChangesConsultNFSBeforeZFSSet(t *testing.T) {
 			if property == "mountpoint" {
 				value = "/mnt/export"
 			}
-			err := service.EditFilesystem(t.Context(), "123", map[string]string{property: value})
+			err := service.EditFilesystem(t.Context(), "123", map[string]string{property: value}, nil)
 			if property == "compression" {
 				if err != nil || guarded || runner.setCalls != 1 {
 					t.Fatalf("unrelated property was blocked: guarded=%t calls=%d err=%v", guarded, runner.setCalls, err)
@@ -64,7 +64,7 @@ func TestSnapshotRollbackConsultsNFSBeforeMutation(t *testing.T) {
 		}
 		return nil, errors.New("disable NFS first")
 	}
-	if err := service.RollbackSnapshot(t.Context(), "1", "tank/source@selected", true); !errors.Is(err, ErrConflict) {
+	if err := service.RollbackSnapshot(t.Context(), "1", "tank/source@selected", true, nil); !errors.Is(err, ErrConflict) {
 		t.Fatalf("rollback crossed the NFS fence: %v", err)
 	}
 	for _, call := range runner.CallHistory {

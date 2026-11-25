@@ -47,28 +47,61 @@
 		return options;
 	});
 
+	const INHERIT = 'inherit';
+	const tunableKeys = [
+		'atime',
+		'checksum',
+		'compression',
+		'dedup',
+		'aclinherit',
+		'aclmode',
+		'recordsize'
+	] as const;
+	type TunableKey = (typeof tunableKeys)[number];
+	type Choice = { label: string; value: string };
+
 	let options = {
 		name: '',
 		parent: {
 			open: false,
 			value: ''
 		},
-		atime: 'on',
-		checksum: 'on',
-		compression: 'on',
-		dedup: 'off',
+		atime: INHERIT,
+		checksum: INHERIT,
+		compression: INHERIT,
+		dedup: INHERIT,
 		encryption: 'off',
 		encryptionKey: '',
 		quota: '',
-		aclinherit: 'passthrough',
-		aclmode: 'passthrough',
-		recordsize: '131072',
+		aclinherit: INHERIT,
+		aclmode: INHERIT,
+		recordsize: INHERIT,
 		mountpoint: '' as string | undefined
 	};
 
 	let zfsProperties = $state(createFSProps);
 	let properties = $state(options);
 	let compressionOpen = $state(false);
+
+	let parentDataset = $derived(
+		datasets.find((dataset) => dataset.name === properties.parent.value)
+	);
+
+	function withInherit(key: TunableKey, choices: Choice[]): Choice[] {
+		const value = parentDataset?.properties?.[key];
+		const shown = value ? (choices.find((choice) => choice.value === value)?.label ?? value) : '';
+		return [{ label: shown ? `Inherit (${shown})` : 'Inherit', value: INHERIT }, ...choices];
+	}
+
+	let choices = $derived({
+		atime: withInherit('atime', zfsProperties.atime),
+		checksum: withInherit('checksum', zfsProperties.checksum),
+		compression: withInherit('compression', zfsProperties.compression),
+		dedup: withInherit('dedup', zfsProperties.dedup),
+		aclinherit: withInherit('aclinherit', zfsProperties.aclInherit),
+		aclmode: withInherit('aclmode', zfsProperties.aclMode),
+		recordsize: withInherit('recordsize', zfsProperties.recordsize)
+	});
 
 	let remainingSpace = $state(0);
 
@@ -120,6 +153,8 @@
 		if (!parentEncrypted && properties.encryption === 'inherit') {
 			properties.encryption = 'off';
 			properties.encryptionKey = '';
+		} else if (parentEncrypted && properties.encryption === 'off') {
+			properties.encryption = 'inherit';
 		}
 	});
 
@@ -163,16 +198,12 @@
 		const isInheriting = properties.encryption === 'inherit';
 
 		const props: Record<string, string | undefined> = {
-			atime: properties.atime,
-			checksum: properties.checksum,
-			compression: properties.compression,
-			dedup: properties.dedup,
 			quota: quota,
-			aclinherit: properties.aclinherit,
-			aclmode: properties.aclmode,
-			recordsize: properties.recordsize,
 			mountpoint: properties.mountpoint || undefined
 		};
+		for (const key of tunableKeys) {
+			if (properties[key] !== INHERIT) props[key] = properties[key];
+		}
 
 		if (!isInheriting) {
 			props.encryption = properties.encryption;
@@ -255,7 +286,7 @@
 				<SimpleSelect
 					label="ATime"
 					placeholder="Select ATime"
-					options={zfsProperties.atime}
+					options={choices.atime}
 					bind:value={properties.atime}
 					onChange={(value) => (properties.atime = value)}
 					classes={{
@@ -269,7 +300,7 @@
 				<SimpleSelect
 					label="Checksum"
 					placeholder="Select Checksum"
-					options={zfsProperties.checksum}
+					options={choices.checksum}
 					bind:value={properties.checksum}
 					onChange={(value) => (properties.checksum = value)}
 					classes={{
@@ -284,7 +315,7 @@
 					bind:open={compressionOpen}
 					label="Compression"
 					bind:value={properties.compression}
-					data={zfsProperties.compression}
+					data={choices.compression}
 					classes="space-y-1"
 					placeholder="Select or type compression"
 					triggerWidth="w-full"
@@ -295,7 +326,7 @@
 				<SimpleSelect
 					label="Deduplication"
 					placeholder="Select Deduplication"
-					options={zfsProperties.dedup}
+					options={choices.dedup}
 					bind:value={properties.dedup}
 					onChange={(value) => (properties.dedup = value)}
 					classes={{
@@ -379,7 +410,7 @@
 				<SimpleSelect
 					label="ACL Inherit"
 					placeholder="Select ACL Inherit"
-					options={zfsProperties.aclInherit}
+					options={choices.aclinherit}
 					bind:value={properties.aclinherit}
 					onChange={(value) => (properties.aclinherit = value)}
 					classes={{
@@ -393,7 +424,7 @@
 				<SimpleSelect
 					label="ACL Mode"
 					placeholder="Select ACL Mode"
-					options={zfsProperties.aclMode}
+					options={choices.aclmode}
 					bind:value={properties.aclmode}
 					onChange={(value) => (properties.aclmode = value)}
 					classes={{
@@ -407,7 +438,7 @@
 				<SimpleSelect
 					label="Record Size"
 					placeholder="Select Record Size"
-					options={zfsProperties.recordsize}
+					options={choices.recordsize}
 					bind:value={properties.recordsize}
 					onChange={(value) => (properties.recordsize = value)}
 					classes={{

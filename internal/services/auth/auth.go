@@ -71,6 +71,8 @@ type Service struct {
 	proposer              Proposer
 	oidcMu                sync.Mutex
 	oidcProviders         map[string]*oidcProvider
+	downloadTicketsMu     sync.Mutex
+	downloadTickets       map[string]downloadTicket
 }
 
 type ClusterIssuerMembership struct {

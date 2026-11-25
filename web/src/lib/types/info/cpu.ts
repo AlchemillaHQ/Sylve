@@ -40,7 +40,8 @@ export const CPUInfoSchema = z.object({
 		l3: z.number().default(0)
 	}),
 	frequency: z.number().default(0),
-	usage: z.number().default(0)
+	usage: z.number().default(0),
+	temperature: z.number().default(0)
 });
 
 export type Architecture = z.infer<typeof ArchitectureSchema>;

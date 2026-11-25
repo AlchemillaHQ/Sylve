@@ -59,6 +59,34 @@ func TestValidatePartitionSizes(t *testing.T) {
 	}
 }
 
+func TestValidatePartitionTypes(t *testing.T) {
+	tests := []struct {
+		name    string
+		types   []string
+		count   int
+		wantErr bool
+	}{
+		{name: "omitted", types: nil, count: 2},
+		{name: "one per size", types: []string{"freebsd-zfs", "freebsd-swap"}, count: 2},
+		{name: "fewer than sizes", types: []string{"freebsd-zfs"}, count: 2, wantErr: true},
+		{name: "boot type", types: []string{"freebsd-boot"}, count: 1, wantErr: true},
+		{name: "efi type", types: []string{"efi"}, count: 1, wantErr: true},
+		{name: "unknown type", types: []string{"freebsd-zfs; reboot"}, count: 1, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validatePartitionTypes(tt.types, tt.count)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("error = %v; wantErr %t", err, tt.wantErr)
+			}
+			if err != nil && !errors.Is(err, ErrInvalidDiskRequest) {
+				t.Fatalf("error = %v; want ErrInvalidDiskRequest", err)
+			}
+		})
+	}
+}
+
 func TestEnsurePartitionSpaceUsesUnallocatedCapacity(t *testing.T) {
 	disk := diskServiceInterfaces.DiskInfo{
 		MediaSize: 10 * minimumPartitionSize,
@@ -92,7 +120,7 @@ func TestWholeDiskMutationsRejectProtectedResources(t *testing.T) {
 	}
 
 	service = mutationTestService([]diskServiceInterfaces.DiskInfo{baseDisk}, map[string]string{"/dev/gptid/zfs-member": "tank"}, true)
-	if err := service.CreatePartitionsContext(context.Background(), "nda0", []uint64{minimumPartitionSize}); !errors.Is(err, ErrDiskOperationConflict) {
+	if err := service.CreatePartitionsContext(context.Background(), "nda0", []uint64{minimumPartitionSize}, nil); !errors.Is(err, ErrDiskOperationConflict) {
 		t.Fatalf("ZFS disk error = %v; want ErrDiskOperationConflict", err)
 	}
 }
@@ -133,13 +161,16 @@ func TestCreatePartitionsPreflight(t *testing.T) {
 	}
 
 	service := mutationTestService([]diskServiceInterfaces.DiskInfo{disk}, map[string]string{}, false)
-	if err := service.CreatePartitionsContext(context.Background(), "nda0", []uint64{minimumPartitionSize}); !errors.Is(err, ErrDiskOperationConflict) {
+	if err := service.CreatePartitionsContext(context.Background(), "nda0", []uint64{minimumPartitionSize}, nil); !errors.Is(err, ErrDiskOperationConflict) {
 		t.Fatalf("missing GPT error = %v; want ErrDiskOperationConflict", err)
 	}
 
 	service = mutationTestService([]diskServiceInterfaces.DiskInfo{disk}, map[string]string{}, true)
-	if err := service.CreatePartitionsContext(context.Background(), "nda0", []uint64{2 * minimumPartitionSize}); !errors.Is(err, ErrDiskOperationConflict) {
+	if err := service.CreatePartitionsContext(context.Background(), "nda0", []uint64{2 * minimumPartitionSize}, nil); !errors.Is(err, ErrDiskOperationConflict) {
 		t.Fatalf("space error = %v; want ErrDiskOperationConflict", err)
+	}
+	if err := service.CreatePartitionsContext(context.Background(), "nda0", []uint64{minimumPartitionSize}, []string{"efi"}); !errors.Is(err, ErrInvalidDiskRequest) {
+		t.Fatalf("type error = %v; want ErrInvalidDiskRequest", err)
 	}
 }
 

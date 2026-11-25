@@ -7,7 +7,10 @@ declare global {
 		// interface Error {}
 		// interface Locals {}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			explorerPath?: string;
+			loggedOut?: boolean;
+		}
 		// interface Platform {}
 	}
 }

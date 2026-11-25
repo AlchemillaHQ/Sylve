@@ -22,12 +22,13 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/config"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	uploadCore "github.com/alchemillahq/sylve/internal/upload"
-	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/sync/semaphore"
+	"golang.org/x/sys/unix"
 )
 
 const fileExplorerUploadField = "filepond"
@@ -37,7 +38,7 @@ type fileExplorerUploadPolicy struct {
 	maxRequestBytes int64
 }
 
-type fileExplorerUploadErrorData struct {
+type FileExplorerUploadErrorData struct {
 	Code       string `json:"code"`
 	Retryable  bool   `json:"retryable"`
 	LimitBytes int64  `json:"limitBytes,omitempty"`
@@ -199,11 +200,13 @@ func receiveFileExplorerMultipartUpload(
 	systemService *system.Service,
 	maxFileBytes int64,
 ) (UploadFileResponse, *uploadCore.Failure) {
+	var partialID string
+	defer func() { systemService.ReleaseFileExplorerPartial(partialID) }()
 	staged, receiveFailure := uploadCore.ReceiveSingle(ctx, reader, uploadCore.ReceiveOptions{
 		Field:        fileExplorerUploadField,
 		MaxFileBytes: maxFileBytes,
 		NormalizeName: func(name string) (string, error) {
-			if err := utils.IsValidFilename(name); err != nil {
+			if err := system.ValidateFileExplorerName(name); err != nil {
 				return "", err
 			}
 			return name, nil
@@ -223,7 +226,13 @@ func receiveFileExplorerMultipartUpload(
 				return nil, "", "", uploadCore.FilesystemFailure(err, "destination_stat_failed")
 			}
 
-			file, partialPath, err := uploadCore.CreateRandomPartial(destination)
+			partialPath := system.FileExplorerPartialPath(destination)
+			id, err := systemService.RegisterFileExplorerPartial(partialPath, owner)
+			if err != nil {
+				return nil, "", "", uploadCore.NewFailure(http.StatusInternalServerError, "partial_register_failed", err)
+			}
+			partialID = id
+			file, err := uploadCore.OpenExclusive(partialPath)
 			if err != nil {
 				return nil, "", "", uploadCore.FilesystemFailure(err, "partial_create_failed")
 			}
@@ -241,6 +250,9 @@ func receiveFileExplorerMultipartUpload(
 
 	if err := systemService.EnsureFileExplorerMutationAllowed(staged.FinalPath); err != nil {
 		return UploadFileResponse{}, fileExplorerUploadMutationFailure(err)
+	}
+	if err := unix.Fchmodat(unix.AT_FDCWD, staged.PartialPath, 0o644, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		return UploadFileResponse{}, uploadCore.FilesystemFailure(err, "publish_failed")
 	}
 	if err := uploadCore.PublishNoReplace(staged.PartialPath, staged.FinalPath); err != nil {
 		if errors.Is(err, os.ErrExist) {
@@ -287,11 +299,16 @@ func writeFileExplorerUploadFailure(c *gin.Context, failure *uploadCore.Failure)
 	if failure.RetryAfter != "" {
 		c.Header("Retry-After", failure.RetryAfter)
 	}
-	c.JSON(failure.StatusCode, internal.APIResponse[fileExplorerUploadErrorData]{
+	message := failure.Error()
+	if failure.StatusCode >= http.StatusInternalServerError {
+		logger.L.Error().Str("code", failure.Code).Msgf("File Explorer upload failed: %v", failure)
+		message = failure.Code
+	}
+	c.JSON(failure.StatusCode, internal.APIResponse[FileExplorerUploadErrorData]{
 		Status:  "error",
 		Message: failure.Code,
-		Error:   failure.Error(),
-		Data: fileExplorerUploadErrorData{
+		Error:   message,
+		Data: FileExplorerUploadErrorData{
 			Code:       failure.Code,
 			Retryable:  failure.Retryable,
 			LimitBytes: failure.LimitBytes,

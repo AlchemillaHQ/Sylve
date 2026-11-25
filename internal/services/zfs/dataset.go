@@ -13,8 +13,12 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db"
@@ -27,6 +31,7 @@ import (
 )
 
 var ErrCannotDeletePoolRootDataset = errors.New("cannot_delete_pool_root_dataset")
+var ErrCannotDeleteSystemFilesystem = errors.New("cannot_delete_system_filesystem")
 
 func (s *Service) guardStorageTopologyMutation(ctx context.Context, datasets ...*gzfs.Dataset) (func(), error) {
 	if s.StorageTopologyGuard == nil {
@@ -67,6 +72,55 @@ func validateDatasetDeletionTargets(datasets ...*gzfs.Dataset) error {
 		}
 	}
 
+	return nil
+}
+
+var criticalFilesystems = []string{
+	"sylve",
+	"sylve/virtual-machines",
+	"sylve/jails",
+	"sylve/downloads",
+	"sylve/containers",
+	containerModels.ImagesDataset,
+}
+
+func validateCriticalDatasetDeletion(dataset *gzfs.Dataset) error {
+	relativeName := strings.TrimPrefix(dataset.Name, dataset.Pool+"/")
+	if slices.Contains(criticalFilesystems, relativeName) {
+		return classifyError(ErrConflict, "cannot_delete_critical_filesystem")
+	}
+	if strings.HasPrefix(relativeName, containerModels.ImagesDataset+"/") {
+		return classifyError(ErrConflict, "cannot_delete_container_image_layer")
+	}
+	return nil
+}
+
+var systemMountpoints = []string{"/", "/etc", "/home", "/root", "/tmp"}
+var systemMountpointTrees = []string{"/boot", "/usr", "/var"}
+
+func isSystemMountpoint(mountpoint string) bool {
+	mountpoint = strings.TrimSpace(mountpoint)
+	if !filepath.IsAbs(mountpoint) {
+		return false
+	}
+	mountpoint = filepath.Clean(mountpoint)
+	if slices.Contains(systemMountpoints, mountpoint) {
+		return true
+	}
+	for _, tree := range systemMountpointTrees {
+		if mountpoint == tree || strings.HasPrefix(mountpoint, tree+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func validateSystemFilesystemDeletion(affected []*gzfs.Dataset) error {
+	for _, dataset := range affected {
+		if dataset != nil && dataset.Type == gzfs.DatasetTypeFilesystem && isSystemMountpoint(dataset.Mountpoint) {
+			return fmt.Errorf("%w: %s", ErrCannotDeleteSystemFilesystem, dataset.Name)
+		}
+	}
 	return nil
 }
 
@@ -222,7 +276,6 @@ func (s *Service) BulkDeleteDataset(
 		return err
 	}
 
-	cantDelete := []string{"sylve", "sylve/virtual-machines", "sylve/jails", "sylve/downloads", "sylve/containers", containerModels.ImagesDataset}
 	selected := make([]*gzfs.Dataset, 0, len(targets))
 	for _, target := range targets {
 		dataset, lookupErr := s.GZFS.ZFS.Get(ctx, target.Name, false)
@@ -241,14 +294,8 @@ func (s *Service) BulkDeleteDataset(
 		if err := validateDatasetDeletionTargets(dataset); err != nil {
 			return err
 		}
-		relativeName := strings.TrimPrefix(dataset.Name, dataset.Pool+"/")
-		for _, name := range cantDelete {
-			if relativeName == name {
-				return classifyError(ErrConflict, "cannot_delete_critical_filesystem")
-			}
-		}
-		if strings.HasPrefix(relativeName, containerModels.ImagesDataset+"/") {
-			return classifyError(ErrConflict, "cannot_delete_container_image_layer")
+		if err := validateCriticalDatasetDeletion(dataset); err != nil {
+			return err
 		}
 		selected = append(selected, dataset)
 	}
@@ -281,6 +328,12 @@ func (s *Service) BulkDeleteDataset(
 	if err != nil {
 		return err
 	}
+	if err := validateSystemFilesystemDeletion(affectedDatasets); err != nil {
+		return err
+	}
+	if err := s.requireVolumesNotShared(ctx, affectedDatasets); err != nil {
+		return err
+	}
 	affectedGUIDs := make([]string, 0, len(affectedDatasets))
 	for _, dataset := range affectedDatasets {
 		affectedGUIDs = append(affectedGUIDs, dataset.GUID)
@@ -304,8 +357,9 @@ func (s *Service) BulkDeleteDataset(
 	}
 
 	for _, dataset := range roots {
-		if err := dataset.Destroy(ctx, true, false); err != nil {
-			return fmt.Errorf("failed_to_delete_dataset_with_guid_%s:_%w", dataset.GUID, err)
+		if err := dataset.Destroy(ctx, dataset.Type != gzfs.DatasetTypeSnapshot, false); err != nil {
+			return s.reconcileFailedDeletion(ctx, affectedDatasets,
+				fmt.Errorf("failed_to_delete_dataset_with_guid_%s:_%w", dataset.GUID, err))
 		}
 	}
 
@@ -330,6 +384,72 @@ func (s *Service) BulkDeleteDataset(
 	}
 
 	return s.notifyDatasetsDeleted(ctx, affectedGUIDs)
+}
+
+func (s *Service) reconcileFailedDeletion(ctx context.Context, affected []*gzfs.Dataset, destroyErr error) error {
+	reconcileCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+	defer cancel()
+	s.SignalDSChange("", "", "generic-dataset", "delete_partial")
+	s.SignalDSChange("", "", "snapshot", "delete_partial")
+
+	gone, err := s.datasetsNoLongerPresent(reconcileCtx, affected)
+	if err != nil {
+		logger.L.Warn().Err(err).Msg("Could not check which datasets a failed deletion removed")
+		return destroyErr
+	}
+	guids := make([]string, 0, len(gone))
+	for _, dataset := range gone {
+		guids = append(guids, dataset.GUID)
+		if dataset.Type != gzfs.DatasetTypeSnapshot && dataset.IsEncrypted() {
+			cleanupEncryptionKeyForDataset(dataset)
+		}
+	}
+	if err := s.notifyDatasetsDeleted(reconcileCtx, guids); err != nil {
+		return errors.Join(destroyErr, err)
+	}
+	return destroyErr
+}
+
+func (s *Service) datasetsNoLongerPresent(ctx context.Context, datasets []*gzfs.Dataset) ([]*gzfs.Dataset, error) {
+	poolOf := func(dataset *gzfs.Dataset) string {
+		if dataset.Pool != "" {
+			return dataset.Pool
+		}
+		pool, _, _ := strings.Cut(dataset.Name, "/")
+		pool, _, _ = strings.Cut(pool, "@")
+		return pool
+	}
+	present := make(map[string]struct{})
+	listedPools := make(map[string]struct{})
+	for _, dataset := range datasets {
+		if dataset == nil || poolOf(dataset) == "" {
+			continue
+		}
+		pool := poolOf(dataset)
+		if _, listed := listedPools[pool]; listed {
+			continue
+		}
+		listedPools[pool] = struct{}{}
+		current, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeAll, true, pool)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list pool %s: %w", pool, err)
+		}
+		for _, existing := range current {
+			if existing != nil {
+				present[existing.GUID] = struct{}{}
+			}
+		}
+	}
+	gone := make([]*gzfs.Dataset, 0, len(datasets))
+	for _, dataset := range datasets {
+		if dataset == nil || dataset.GUID == "" || poolOf(dataset) == "" {
+			continue
+		}
+		if _, exists := present[dataset.GUID]; !exists {
+			gone = append(gone, dataset)
+		}
+	}
+	return gone, nil
 }
 
 func (s *Service) IsDatasetInUse(guid string, failEarly bool) bool {
@@ -394,7 +514,7 @@ func (s *Service) RefreshDatasets(
 		return err
 	}
 
-	cacheKey := fmt.Sprintf("zfs:datasets:%s:v1", datasetType)
+	cacheKey := datasetCacheKey(datasetType)
 
 	b, err := MsgpackEncode(datasets)
 	if err != nil {
@@ -412,7 +532,7 @@ func (s *Service) getCachedDatasets(
 	ctx context.Context,
 	datasetType gzfs.DatasetType,
 ) ([]*gzfs.Dataset, error) {
-	cacheKey := fmt.Sprintf("zfs:datasets:%s:v1", datasetType)
+	cacheKey := datasetCacheKey(datasetType)
 
 	if b, ok := db.GetValue(cacheKey); ok {
 		datasets, err := MsgpackDecode(b)
@@ -423,6 +543,36 @@ func (s *Service) getCachedDatasets(
 
 	logger.L.Debug().Msg("getCachedDatasets miss, returning empty :(")
 	return []*gzfs.Dataset{}, nil
+}
+
+func (s *Service) DatasetByGUID(ctx context.Context, guid string) (*gzfs.Dataset, error) {
+	if name := s.cachedDatasetName(ctx, guid); name != "" {
+		dataset, err := s.GZFS.ZFS.Get(ctx, name, false)
+		if err == nil && dataset != nil && dataset.GUID == guid {
+			return dataset, nil
+		}
+	}
+	return s.GZFS.ZFS.GetByGUID(ctx, guid, false)
+}
+
+func (s *Service) cachedDatasetName(ctx context.Context, guid string) string {
+	if db.CacheDB == nil || guid == "" {
+		return ""
+	}
+	name := ""
+	for _, datasetType := range []gzfs.DatasetType{gzfs.DatasetTypeFilesystem, gzfs.DatasetTypeVolume} {
+		datasets, _ := s.getCachedDatasets(ctx, datasetType)
+		for _, dataset := range datasets {
+			if dataset == nil || dataset.GUID != guid {
+				continue
+			}
+			if name != "" {
+				return ""
+			}
+			name = dataset.Name
+		}
+	}
+	return name
 }
 
 func applySort(datasets []*gzfs.Dataset, field, dir string) {
@@ -445,17 +595,26 @@ func applySort(datasets []*gzfs.Dataset, field, dir string) {
 		less = func(i, j int) bool {
 			return datasets[i].Referenced < datasets[j].Referenced
 		}
+	case "creation":
+		less = func(i, j int) bool {
+			return datasetCreation(datasets[i]) < datasetCreation(datasets[j])
+		}
 	default:
 		return
 	}
 
 	if dir == "desc" {
-		sort.Slice(datasets, func(i, j int) bool {
-			return !less(i, j)
+		sort.SliceStable(datasets, func(i, j int) bool {
+			return less(j, i)
 		})
 	} else {
-		sort.Slice(datasets, less)
+		sort.SliceStable(datasets, less)
 	}
+}
+
+func datasetCreation(dataset *gzfs.Dataset) int64 {
+	created, _ := strconv.ParseInt(dataset.Properties["creation"].Value, 10, 64)
+	return created
 }
 
 func (s *Service) GetPaginatedDatasets(
@@ -478,30 +637,29 @@ func (s *Service) GetPaginatedDatasets(
 			nameFilters = append(nameFilters, f)
 		}
 	}
-	datasets, err := s.getCachedDatasets(ctx, req.DatasetType)
+	var (
+		wg           sync.WaitGroup
+		summaries    []zfsServiceInterfaces.SnapshotSummary
+		summariesErr error
+	)
+	if req.DatasetType == gzfs.DatasetTypeSnapshot || req.DatasetType == gzfs.DatasetTypeAll {
+		wg.Go(func() {
+			summaries, summariesErr = s.snapshotSummariesForRead(ctx)
+		})
+	}
 
+	datasets, err := s.datasetsForRead(ctx, req.DatasetType)
+	wg.Wait()
 	if err != nil {
 		return nil, err
 	}
 
-	filtered := make([]*gzfs.Dataset, 0, len(datasets))
-	for _, ds := range datasets {
-		if search != "" &&
-			!strings.Contains(strings.ToLower(ds.Name), search) {
-			continue
-		}
-		lowName := strings.ToLower(ds.Name)
-		skip := false
-		for _, f := range nameFilters {
-			if strings.Contains(lowName, f) {
-				skip = true
-				break
-			}
-		}
-		if skip {
-			continue
-		}
-		filtered = append(filtered, ds)
+	filtered := filterPaginatedDatasets(datasets, search, nameFilters)
+
+	if summariesErr != nil {
+		logger.L.Warn().Err(summariesErr).Msg("Failed to load snapshot details for the paginated list")
+	} else if summaries != nil {
+		attachSnapshotDetails(filtered, summaries)
 	}
 
 	if len(req.Sort) > 0 {
@@ -536,6 +694,64 @@ func (s *Service) GetPaginatedDatasets(
 		LastPage: lastPage,
 		Data:     filtered[start:end],
 	}, nil
+}
+
+func isContainerImageDataset(name string) bool {
+	dataset, _, _ := strings.Cut(name, "@")
+	pool, relative, ok := strings.Cut(dataset, "/")
+	if !ok || pool == "" {
+		return false
+	}
+	return relative == containerModels.ImagesDataset || strings.HasPrefix(relative, containerModels.ImagesDataset+"/")
+}
+
+func filterPaginatedDatasets(datasets []*gzfs.Dataset, search string, nameFilters []string) []*gzfs.Dataset {
+	filtered := make([]*gzfs.Dataset, 0, len(datasets))
+	for _, ds := range datasets {
+		if ds == nil || isContainerImageDataset(ds.Name) {
+			continue
+		}
+		lowName := strings.ToLower(ds.Name)
+		if search != "" && !strings.Contains(lowName, search) {
+			continue
+		}
+		skip := false
+		for _, f := range nameFilters {
+			if matchesNameFilter(lowName, f) {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			filtered = append(filtered, ds)
+		}
+	}
+	return filtered
+}
+
+var builtinSnapshotNameFilters = map[string][]string{
+	"bk_j":      {"bk_j"},
+	"svms_":     {"svms_"},
+	"sjs_":      {"sjs_"},
+	"ha_":       {"ha_"},
+	"_template": {"sylve_template_", "sylve_vm_template_"},
+}
+
+func matchesNameFilter(lowName, filter string) bool {
+	prefixes, builtin := builtinSnapshotNameFilters[filter]
+	if !builtin {
+		return strings.Contains(lowName, filter)
+	}
+	_, snapshot, isSnapshot := strings.Cut(lowName, "@")
+	if !isSnapshot {
+		return false
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(snapshot, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) SignalDSChange(_, _, kind, _ string) {

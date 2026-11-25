@@ -4,8 +4,9 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Table from '$lib/components/ui/table';
 	import { GZFSDatasetTypeSchema, type PeriodicSnapshot } from '$lib/types/zfs/dataset';
-	import { handleAPIError } from '$lib/utils/http';
-	import { cronToHuman, dateToAgo } from '$lib/utils/time';
+	import { getAPIErrorText, handleAPIError } from '$lib/utils/http';
+	import { dateToAgo } from '$lib/utils/time';
+	import { snapshotScheduleLabel } from '$lib/utils/zfs/snapshot';
 	import { getDatasetByGUID } from '$lib/utils/zfs/dataset/dataset';
 	import { toast } from 'svelte-sonner';
 	import Retention from './Retention.svelte';
@@ -40,27 +41,6 @@
 			return dataset.name;
 		}
 		return '';
-	}
-
-	function intervalToString(interval: number) {
-		switch (interval) {
-			case 0:
-				return 'None';
-			case 60:
-				return 'Every Minute';
-			case 3600:
-				return 'Every Hour';
-			case 86400:
-				return 'Every Day';
-			case 604800:
-				return 'Every Week';
-			case 2419200:
-				return 'Every Month';
-			case 29030400:
-				return 'Every Year';
-			default:
-				return `${interval} seconds`;
-		}
 	}
 
 	function isKnownRunTime(date: Date | null | undefined): date is Date {
@@ -101,6 +81,7 @@
 			if (response.status !== 'success') {
 				handleAPIError(response);
 				toast.error('Failed to delete periodic snapshots', {
+					description: getAPIErrorText(response),
 					position: 'bottom-center'
 				});
 				return;
@@ -159,11 +140,9 @@
 								<Table.Cell>{getDatasetName(snapshot.guid)}</Table.Cell>
 								<Table.Cell>{snapshot.prefix}</Table.Cell>
 
-								{#if snapshot.interval !== 0}
-									<Table.Cell>{intervalToString(snapshot.interval)}</Table.Cell>
-								{:else if snapshot.cronExpr}
-									<Table.Cell>{cronToHuman(snapshot.cronExpr)}</Table.Cell>
-								{/if}
+								<Table.Cell
+									>{snapshotScheduleLabel(snapshot.interval, snapshot.cronExpr ?? '')}</Table.Cell
+								>
 
 								<Table.Cell>
 									<div class="flex flex-col whitespace-nowrap text-xs">

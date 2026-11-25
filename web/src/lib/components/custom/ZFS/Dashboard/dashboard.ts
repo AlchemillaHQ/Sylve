@@ -359,9 +359,9 @@ export function summarizeVerification(pools: ZFSDashboardPoolSnapshot[]): Verifi
 					? `${unverified.length} pool${unverified.length === 1 ? '' : 's'} unverified`
 					: 'Never scrubbed',
 			detail:
-				pools.length > 1
+				unverified.length === 1
 					? `No scrub recorded for ${unverified[0].name}`
-					: 'No completed scrub is recorded',
+					: `No scrub recorded for ${unverified.length} pools`,
 			footer: 'Run a scrub to verify stored data',
 			tone: 'warning',
 			progress: null

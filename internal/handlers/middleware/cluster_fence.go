@@ -29,6 +29,7 @@ var mutationAdmissionBypass = map[string]map[string]struct{}{
 		"/api/auth/passkeys/login/finish":            {},
 		"/api/auth/logout":                           {},
 		"/api/auth/sse-tokens":                       {},
+		"/api/auth/download-tickets":                 {},
 		"/api/basic/system/reboot":                   {},
 		"/api/intra-cluster/node/readdress-identity": {},
 		"/api/intra-cluster/node/readdress-member":   {},

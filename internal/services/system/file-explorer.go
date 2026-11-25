@@ -9,15 +9,20 @@
 package system
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"os/user"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -115,8 +120,9 @@ func normalizeFileExplorerPath(path string, defaultRoot bool) (string, error) {
 	return filepath.Clean(path), nil
 }
 
-func validateFileExplorerName(name string) error {
-	if name == "" || strings.IndexByte(name, 0) >= 0 || strings.ContainsRune(name, filepath.Separator) || name == "." || name == ".." || filepath.Base(name) != name {
+func ValidateFileExplorerName(name string) error {
+	if name == "" || name == "." || name == ".." || len(name) > 255 || !utf8.ValidString(name) ||
+		strings.ContainsRune(name, filepath.Separator) || strings.IndexFunc(name, unicode.IsControl) >= 0 {
 		return wrapFileExplorerError(ErrFileExplorerInvalidName, name, nil)
 	}
 	return nil
@@ -160,30 +166,176 @@ func (s *Service) Traverse(path string) ([]systemServiceInterfaces.FileNode, err
 	if err != nil {
 		return nil, wrapFileExplorerIOError(cleanPath, err)
 	}
+	names := make([]string, len(entries))
+	for index, entry := range entries {
+		names[index] = entry.Name()
+	}
+	return s.fileExplorerNodes(cleanPath, names), nil
+}
 
-	nodes := make([]systemServiceInterfaces.FileNode, 0, len(entries))
-	for _, e := range entries {
-		full := filepath.Join(cleanPath, e.Name())
-		info, err := e.Info()
-		if err != nil {
+const (
+	DefaultFileExplorerListLimit = 10000
+	MaxFileExplorerListLimit     = 50000
+)
+
+func (s *Service) ListDirectory(path string, limit int, query string) (systemServiceInterfaces.FileListing, error) {
+	cleanPath, err := normalizeFileExplorerPath(path, true)
+	if err != nil {
+		return systemServiceInterfaces.FileListing{}, err
+	}
+	if limit <= 0 {
+		limit = DefaultFileExplorerListLimit
+	}
+	limit = min(limit, MaxFileExplorerListLimit)
+
+	directory, err := os.Open(cleanPath)
+	if err != nil {
+		return systemServiceInterfaces.FileListing{}, wrapFileExplorerIOError(cleanPath, err)
+	}
+	defer directory.Close()
+	entries, err := directory.ReadDir(-1)
+	if err != nil {
+		return systemServiceInterfaces.FileListing{}, wrapFileExplorerIOError(cleanPath, err)
+	}
+
+	type candidate struct {
+		name   string
+		folder bool
+		key    string
+	}
+	query = strings.ToLower(strings.TrimSpace(query))
+	matched := make([]candidate, 0, min(len(entries), limit))
+	for _, entry := range entries {
+		key := strings.ToLower(entry.Name())
+		if query != "" && !strings.Contains(key, query) {
 			continue
 		}
+		matched = append(matched, candidate{name: entry.Name(), folder: entry.IsDir(), key: key})
+	}
 
-		node := systemServiceInterfaces.FileNode{
-			ID:   full,
-			Date: info.ModTime(),
+	listing := systemServiceInterfaces.FileListing{
+		Total:     len(entries),
+		Matched:   len(matched),
+		Truncated: len(matched) > limit,
+	}
+	if listing.Truncated {
+		sort.Slice(matched, func(i, j int) bool {
+			if matched[i].folder != matched[j].folder {
+				return matched[i].folder
+			}
+			if matched[i].key != matched[j].key {
+				return matched[i].key < matched[j].key
+			}
+			return matched[i].name < matched[j].name
+		})
+		matched = matched[:limit]
+	}
+	names := make([]string, len(matched))
+	for index, entry := range matched {
+		names[index] = entry.name
+	}
+	listing.Entries = s.fileExplorerNodes(cleanPath, names)
+	return listing, nil
+}
+
+func (s *Service) fileExplorerNodes(directory string, names []string) []systemServiceInterfaces.FileNode {
+	protection, err := s.fileExplorerProtection()
+	if err != nil {
+		protection = nil
+	}
+	resolvedDirectory := resolveFileExplorerGuardPath(directory)
+	owners := newFileExplorerOwners()
+	nodes := make([]systemServiceInterfaces.FileNode, 0, len(names))
+	for _, name := range names {
+		node, ok := fileExplorerNode(filepath.Join(directory, name), owners)
+		if !ok {
+			continue
 		}
-		if info.IsDir() {
-			node.Type = "folder"
-			node.Lazy = true
-		} else {
-			node.Type = "file"
-			node.Size = info.Size()
+		if protection != nil {
+			entry := filepath.Join(resolvedDirectory, name)
+			node.Protected = protection.reason(entry)
+			node.Mount = protection.mountSource(entry)
 		}
 		nodes = append(nodes, node)
 	}
+	return nodes
+}
 
-	return nodes, nil
+type fileExplorerOwners struct {
+	users  map[uint32]string
+	groups map[uint32]string
+}
+
+func newFileExplorerOwners() *fileExplorerOwners {
+	return &fileExplorerOwners{users: map[uint32]string{}, groups: map[uint32]string{}}
+}
+
+func (o *fileExplorerOwners) user(id uint32) string {
+	if name, ok := o.users[id]; ok {
+		return name
+	}
+	name := strconv.FormatUint(uint64(id), 10)
+	if account, err := user.LookupId(name); err == nil {
+		name = account.Username
+	}
+	o.users[id] = name
+	return name
+}
+
+func (o *fileExplorerOwners) group(id uint32) string {
+	if name, ok := o.groups[id]; ok {
+		return name
+	}
+	name := strconv.FormatUint(uint64(id), 10)
+	if group, err := user.LookupGroupId(name); err == nil {
+		name = group.Name
+	}
+	o.groups[id] = name
+	return name
+}
+
+func fileExplorerNode(path string, owners *fileExplorerOwners) (systemServiceInterfaces.FileNode, bool) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return systemServiceInterfaces.FileNode{}, false
+	}
+	node := systemServiceInterfaces.FileNode{ID: path}
+	if info.Mode()&fs.ModeSymlink != 0 {
+		if target, err := os.Readlink(path); err == nil {
+			node.Link = target
+		}
+		if resolved, err := os.Stat(path); err == nil {
+			info = resolved
+		} else {
+			node.Broken = true
+		}
+	}
+
+	node.Date = info.ModTime()
+	mode := info.Mode()
+	switch {
+	case mode.IsDir():
+		node.Type = "folder"
+		node.Lazy = true
+	default:
+		node.Type = "file"
+		switch {
+		case mode.IsRegular():
+			node.Size = info.Size()
+		case mode&fs.ModeNamedPipe != 0:
+			node.Special = "fifo"
+		case mode&fs.ModeSocket != 0:
+			node.Special = "socket"
+		case mode&fs.ModeDevice != 0:
+			node.Special = "device"
+		}
+	}
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+		node.Mode = fmt.Sprintf("%04o", stat.Mode&0o7777)
+		node.Owner = owners.user(stat.Uid)
+		node.Group = owners.group(stat.Gid)
+	}
+	return node, true
 }
 
 func (s *Service) AddFileOrFolder(path string, name string, isFolder bool) error {
@@ -191,7 +343,7 @@ func (s *Service) AddFileOrFolder(path string, name string, isFolder bool) error
 	if err != nil {
 		return err
 	}
-	if err := validateFileExplorerName(name); err != nil {
+	if err := ValidateFileExplorerName(name); err != nil {
 		return err
 	}
 
@@ -223,7 +375,7 @@ func (s *Service) AddFileOrFolder(path string, name string, isFolder bool) error
 	return nil
 }
 
-func (s *Service) DeleteFilesOrFolders(paths []string) error {
+func (s *Service) DeleteFilesOrFolders(ctx context.Context, paths []string) error {
 	normalized, err := normalizeFileExplorerDeletePaths(paths)
 	if err != nil {
 		return err
@@ -234,14 +386,19 @@ func (s *Service) DeleteFilesOrFolders(paths []string) error {
 			return wrapFileExplorerIOError(path, err)
 		}
 	}
+	if err := s.requireFileExplorerPathsUnprotected(normalized...); err != nil {
+		return err
+	}
 	if err := s.EnsureFileExplorerMutationAllowed(normalized...); err != nil {
 		return err
 	}
 
+	completed := make([]string, 0, len(normalized))
 	for _, path := range normalized {
-		if err := os.RemoveAll(path); err != nil {
-			return wrapFileExplorerIOError(path, err)
+		if err := removeFileExplorerTree(ctx, path); err != nil {
+			return batchFailure(completed, wrapFileExplorerIOError(path, err))
 		}
+		completed = append(completed, path)
 	}
 
 	return nil
@@ -255,7 +412,7 @@ func (s *Service) RenameFileOrFolder(oldPath string, newName string) error {
 	if cleanOldPath == string(filepath.Separator) {
 		return wrapFileExplorerError(ErrFileExplorerRootMutation, cleanOldPath, nil)
 	}
-	if err := validateFileExplorerName(newName); err != nil {
+	if err := ValidateFileExplorerName(newName); err != nil {
 		return err
 	}
 
@@ -267,6 +424,9 @@ func (s *Service) RenameFileOrFolder(oldPath string, newName string) error {
 	if newPath == cleanOldPath {
 		return nil
 	}
+	if err := s.requireFileExplorerPathsUnprotected(cleanOldPath); err != nil {
+		return err
+	}
 	if err := s.EnsureFileExplorerMutationAllowed(cleanOldPath, newPath); err != nil {
 		return err
 	}
@@ -277,7 +437,7 @@ func (s *Service) RenameFileOrFolder(oldPath string, newName string) error {
 		return wrapFileExplorerIOError(newPath, err)
 	}
 
-	if err := os.Rename(cleanOldPath, newPath); err != nil {
+	if err := renameNoReplace(cleanOldPath, newPath); err != nil {
 		return wrapFileExplorerIOError(cleanOldPath, err)
 	}
 	return nil
@@ -472,10 +632,17 @@ func (s *Service) prepareFileExplorerTransfers(
 	}
 
 	guardedPaths := make([]string, 0, len(prepared)*2)
+	movedSources := make([]string, 0, len(prepared))
 	for _, item := range prepared {
 		guardedPaths = append(guardedPaths, item.target)
 		if move {
 			guardedPaths = append(guardedPaths, item.source)
+			movedSources = append(movedSources, item.source)
+		}
+	}
+	if len(movedSources) > 0 {
+		if err := s.requireFileExplorerPathsUnprotected(movedSources...); err != nil {
+			return nil, err
 		}
 	}
 	if err := s.EnsureFileExplorerMutationAllowed(guardedPaths...); err != nil {
@@ -491,12 +658,71 @@ func (s *Service) prepareFileExplorerTransfers(
 	return prepared, nil
 }
 
-func copyFileExplorerRegularFile(source, target string, mode fs.FileMode) error {
-	sourceFile, err := os.Open(source)
+const fileExplorerModeBits = fs.ModePerm | fs.ModeSetuid | fs.ModeSetgid | fs.ModeSticky
+
+type fileExplorerInode struct {
+	device uint64
+	inode  uint64
+}
+
+type fileExplorerCopier struct {
+	ctx    context.Context
+	buffer []byte
+	links  map[fileExplorerInode]string
+	flags  []fileExplorerPendingFlags
+}
+
+func newFileExplorerCopier(ctx context.Context) *fileExplorerCopier {
+	return &fileExplorerCopier{
+		ctx:    ctx,
+		buffer: make([]byte, fileExplorerCopyBufferSize),
+		links:  map[fileExplorerInode]string{},
+	}
+}
+
+func copyFileExplorerRegularFile(ctx context.Context, source, target string, info fs.FileInfo) error {
+	copier := newFileExplorerCopier(ctx)
+	if err := copier.regular(source, target, info); err != nil {
+		return err
+	}
+	copier.applyFlags()
+	return nil
+}
+
+func copyFileExplorerEntry(ctx context.Context, source, target string) error {
+	return newFileExplorerCopier(ctx).item(source, target)
+}
+
+func (c *fileExplorerCopier) item(source, target string) error {
+	if err := c.entry(source, target); err != nil {
+		c.discardFlags()
+		return err
+	}
+	c.applyFlags()
+	return nil
+}
+
+func (c *fileExplorerCopier) regular(source, target string, info fs.FileInfo) error {
+	var identity *fileExplorerInode
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Nlink > 1 {
+		identity = &fileExplorerInode{device: uint64(stat.Dev), inode: stat.Ino}
+		if first, seen := c.links[*identity]; seen {
+			if err := os.Link(first, target); err == nil {
+				return nil
+			}
+		}
+	}
+
+	sourceFile, err := os.OpenFile(source, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return wrapFileExplorerIOError(source, err)
 	}
 	defer sourceFile.Close()
+	if opened, err := sourceFile.Stat(); err != nil {
+		return wrapFileExplorerIOError(source, err)
+	} else if !opened.Mode().IsRegular() {
+		return wrapFileExplorerError(ErrFileExplorerUnsupportedType, source, nil)
+	}
 
 	targetFile, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
@@ -513,11 +739,7 @@ func copyFileExplorerRegularFile(source, target string, mode fs.FileMode) error 
 		}
 	}()
 
-	buffer := make([]byte, fileExplorerCopyBufferSize)
-	if _, err := io.CopyBuffer(targetFile, sourceFile, buffer); err != nil {
-		return wrapFileExplorerIOError(target, err)
-	}
-	if err := targetFile.Chmod(mode.Perm()); err != nil {
+	if _, err := io.CopyBuffer(targetFile, contextReader{ctx: c.ctx, reader: sourceFile}, c.buffer); err != nil {
 		return wrapFileExplorerIOError(target, err)
 	}
 	if err := targetFile.Close(); err != nil {
@@ -525,11 +747,21 @@ func copyFileExplorerRegularFile(source, target string, mode fs.FileMode) error 
 		return wrapFileExplorerIOError(target, err)
 	}
 	closed = true
+	if err := applyFileExplorerMetadata(source, target, info); err != nil {
+		return err
+	}
 	complete = true
+	c.deferFlags(target, info)
+	if identity != nil {
+		c.links[*identity] = target
+	}
 	return nil
 }
 
-func copyFileExplorerEntry(source, target string) (err error) {
+func (c *fileExplorerCopier) entry(source, target string) error {
+	if err := c.ctx.Err(); err != nil {
+		return wrapFileExplorerIOError(source, err)
+	}
 	info, err := os.Lstat(source)
 	if err != nil {
 		return wrapFileExplorerIOError(source, err)
@@ -537,7 +769,7 @@ func copyFileExplorerEntry(source, target string) (err error) {
 
 	switch mode := info.Mode(); {
 	case mode.IsRegular():
-		return copyFileExplorerRegularFile(source, target, mode)
+		return c.regular(source, target, info)
 	case mode&fs.ModeSymlink != 0:
 		linkTarget, err := os.Readlink(source)
 		if err != nil {
@@ -546,7 +778,7 @@ func copyFileExplorerEntry(source, target string) (err error) {
 		if err := os.Symlink(linkTarget, target); err != nil {
 			return wrapFileExplorerIOError(target, err)
 		}
-		return nil
+		return applyFileExplorerMetadata(source, target, info)
 	case mode.IsDir():
 		if err := os.Mkdir(target, 0o700); err != nil {
 			return wrapFileExplorerIOError(target, err)
@@ -563,16 +795,14 @@ func copyFileExplorerEntry(source, target string) (err error) {
 			return wrapFileExplorerIOError(source, err)
 		}
 		for _, entry := range entries {
-			if err := copyFileExplorerEntry(
-				filepath.Join(source, entry.Name()),
-				filepath.Join(target, entry.Name()),
-			); err != nil {
+			if err := c.entry(filepath.Join(source, entry.Name()), filepath.Join(target, entry.Name())); err != nil {
 				return err
 			}
 		}
-		if err := os.Chmod(target, mode.Perm()); err != nil {
-			return wrapFileExplorerIOError(target, err)
+		if err := applyFileExplorerMetadata(source, target, info); err != nil {
+			return err
 		}
+		c.deferFlags(target, info)
 		complete = true
 		return nil
 	default:
@@ -580,28 +810,14 @@ func copyFileExplorerEntry(source, target string) (err error) {
 	}
 }
 
-func removeCopiedFileExplorerEntry(path string) error {
-	info, err := os.Lstat(path)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if info.IsDir() {
-		return os.RemoveAll(path)
-	}
-	return os.Remove(path)
-}
-
-func (s *Service) moveFileExplorerEntry(item preparedFileExplorerTransfer) error {
+func (s *Service) moveFileExplorerEntry(copier *fileExplorerCopier, item preparedFileExplorerTransfer) error {
 	if _, err := os.Lstat(item.target); err == nil {
 		return wrapFileExplorerError(ErrFileExplorerAlreadyExists, item.target, nil)
 	} else if !os.IsNotExist(err) {
 		return wrapFileExplorerIOError(item.target, err)
 	}
 
-	rename := os.Rename
+	rename := renameNoReplace
 	if s.fileExplorerRename != nil {
 		rename = s.fileExplorerRename
 	}
@@ -611,7 +827,7 @@ func (s *Service) moveFileExplorerEntry(item preparedFileExplorerTransfer) error
 		return wrapFileExplorerIOError(item.target, err)
 	}
 
-	if err := copyFileExplorerEntry(item.source, item.target); err != nil {
+	if err := copier.item(item.source, item.target); err != nil {
 		return err
 	}
 
@@ -624,36 +840,55 @@ func (s *Service) moveFileExplorerEntry(item preparedFileExplorerTransfer) error
 	if removeErr == nil {
 		return nil
 	}
+	return wrapFileExplorerError(ErrFileExplorerMoveIncomplete, item.source, removeErr)
+}
 
-	sourceErr := wrapFileExplorerIOError(item.source, removeErr)
-	if cleanupErr := removeCopiedFileExplorerEntry(item.target); cleanupErr != nil {
-		return fmt.Errorf("%w: destination cleanup failed: %v", sourceErr, cleanupErr)
+func (s *Service) acquireFileExplorerTransfer(ctx context.Context) (func(), error) {
+	s.fileExplorerTransferOnce.Do(func() {
+		s.fileExplorerTransferSlot = make(chan struct{}, 1)
+	})
+	if err := ctx.Err(); err != nil {
+		return nil, wrapFileExplorerError(ErrFileExplorerCancelled, "waiting_for_transfer", err)
 	}
-	return sourceErr
+	select {
+	case s.fileExplorerTransferSlot <- struct{}{}:
+		return func() { <-s.fileExplorerTransferSlot }, nil
+	case <-ctx.Done():
+		return nil, wrapFileExplorerError(ErrFileExplorerCancelled, "waiting_for_transfer", ctx.Err())
+	}
 }
 
 func (s *Service) CopyOrMoveFilesOrFolders(
+	ctx context.Context,
 	items []systemServiceInterfaces.FileTransferItem,
 	move bool,
 ) error {
-	s.fileExplorerMutationMutex.Lock()
-	defer s.fileExplorerMutationMutex.Unlock()
+	release, err := s.acquireFileExplorerTransfer(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	prepared, err := s.prepareFileExplorerTransfers(items, move)
 	if err != nil {
 		return err
 	}
 
+	copier := newFileExplorerCopier(ctx)
+	completed := make([]string, 0, len(prepared))
 	for _, item := range prepared {
+		if err := ctx.Err(); err != nil {
+			return batchFailure(completed, wrapFileExplorerIOError(item.source, err))
+		}
 		if move {
-			if err := s.moveFileExplorerEntry(item); err != nil {
-				return err
-			}
-			continue
+			err = s.moveFileExplorerEntry(copier, item)
+		} else {
+			err = copier.item(item.source, item.target)
 		}
-		if err := copyFileExplorerEntry(item.source, item.target); err != nil {
-			return err
+		if err != nil {
+			return batchFailure(completed, err)
 		}
+		completed = append(completed, item.source)
 	}
 
 	return nil

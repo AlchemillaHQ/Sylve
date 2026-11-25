@@ -19,7 +19,7 @@ import {
 	type SmartSelfTestScheduleInput,
 	type SmartSelfTestStartKind
 } from '$lib/types/disk/disk';
-import { apiRequest } from '$lib/utils/http';
+import { apiRequest, apiRequestResult, type NodeAPIDataRequestOptions } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
 function normalizeDiskAPIResult<T>(response: unknown, schema: z.ZodType<T>): T | APIResponse {
@@ -47,50 +47,67 @@ export async function listDisks(smart: 'full' | 'none' = 'full'): Promise<Disk[]
 	return Array.isArray(response) ? response : [];
 }
 
+export async function listDisksResult(
+	smart: 'full' | 'none' = 'full',
+	options?: NodeAPIDataRequestOptions
+): Promise<Disk[] | APIResponse> {
+	const endpoint = smart === 'none' ? '/disk?smart=none' : '/disk';
+	return await apiRequestResult(endpoint, z.array(DiskSchema), 'GET', undefined, options);
+}
+
 export async function getSmartSelfTest(
-	device: string
+	device: string,
+	options?: NodeAPIDataRequestOptions
 ): Promise<SmartSelfTestDetails | APIResponse> {
 	const query = new URLSearchParams({ device });
 	const response = await apiRequest(
 		`/disk/smart/self-test?${query.toString()}`,
 		SmartSelfTestDetailsSchema,
-		'GET'
+		'GET',
+		undefined,
+		options
 	);
 	return normalizeDiskAPIResult(response, SmartSelfTestDetailsSchema);
 }
 
 export async function startSmartSelfTest(
 	device: string,
-	testType: SmartSelfTestStartKind
+	testType: SmartSelfTestStartKind,
+	options?: NodeAPIDataRequestOptions
 ): Promise<SmartSelfTestDetails | APIResponse> {
-	const response = await apiRequest('/disk/smart/self-test', SmartSelfTestDetailsSchema, 'POST', {
-		device,
-		testType
-	});
+	const response = await apiRequest(
+		'/disk/smart/self-test',
+		SmartSelfTestDetailsSchema,
+		'POST',
+		{ device, testType },
+		options
+	);
 	return normalizeDiskAPIResult(response, SmartSelfTestDetailsSchema);
 }
 
 export async function abortSmartSelfTest(
-	device: string
+	device: string,
+	options?: NodeAPIDataRequestOptions
 ): Promise<SmartSelfTestDetails | APIResponse> {
 	const response = await apiRequest(
 		'/disk/smart/self-test/abort',
 		SmartSelfTestDetailsSchema,
 		'POST',
-		{
-			device
-		}
+		{ device },
+		options
 	);
 	return normalizeDiskAPIResult(response, SmartSelfTestDetailsSchema);
 }
 
-export async function listSmartSelfTestSchedules(): Promise<SmartSelfTestSchedule[] | APIResponse> {
+export async function listSmartSelfTestSchedules(
+	options?: NodeAPIDataRequestOptions
+): Promise<SmartSelfTestSchedule[] | APIResponse> {
 	const response = await apiRequest(
 		'/disk/smart/self-test/schedules',
 		APIResponseSchema,
 		'GET',
 		undefined,
-		{ raw: true }
+		{ ...options, raw: true }
 	);
 	const envelope = APIResponseSchema.safeParse(response);
 	if (!envelope.success) {
@@ -103,64 +120,101 @@ export async function listSmartSelfTestSchedules(): Promise<SmartSelfTestSchedul
 }
 
 export async function createSmartSelfTestSchedule(
-	input: SmartSelfTestScheduleInput
+	input: SmartSelfTestScheduleInput,
+	options?: NodeAPIDataRequestOptions
 ): Promise<SmartSelfTestSchedule | APIResponse> {
 	const response = await apiRequest(
 		'/disk/smart/self-test/schedules',
 		SmartSelfTestScheduleSchema,
 		'POST',
-		input
+		input,
+		options
 	);
 	return normalizeDiskAPIResult(response, SmartSelfTestScheduleSchema);
 }
 
 export async function updateSmartSelfTestSchedule(
 	id: number,
-	input: SmartSelfTestScheduleInput
+	input: SmartSelfTestScheduleInput,
+	options?: NodeAPIDataRequestOptions
 ): Promise<SmartSelfTestSchedule | APIResponse> {
 	const response = await apiRequest(
 		`/disk/smart/self-test/schedules/${id}`,
 		SmartSelfTestScheduleSchema,
 		'PUT',
-		input
+		input,
+		options
 	);
 	return normalizeDiskAPIResult(response, SmartSelfTestScheduleSchema);
 }
 
-export async function deleteSmartSelfTestSchedule(id: number): Promise<APIResponse> {
-	return await apiRequest(`/disk/smart/self-test/schedules/${id}`, APIResponseSchema, 'DELETE');
+export async function deleteSmartSelfTestSchedule(
+	id: number,
+	options?: NodeAPIDataRequestOptions
+): Promise<APIResponse> {
+	return await apiRequest(
+		`/disk/smart/self-test/schedules/${id}`,
+		APIResponseSchema,
+		'DELETE',
+		undefined,
+		options
+	);
 }
 
 function diskPathSegment(device: string): string {
 	return encodeURIComponent(device.replace(/^\/dev\//, ''));
 }
 
-export async function destroyPartition(partition: string): Promise<APIResponse> {
+export async function destroyPartition(
+	partition: string,
+	options?: NodeAPIDataRequestOptions
+): Promise<APIResponse> {
 	return await apiRequest(
 		`/disk/partitions/${diskPathSegment(partition)}`,
 		APIResponseSchema,
-		'DELETE'
+		'DELETE',
+		undefined,
+		options
 	);
 }
 
-export async function initializeGPT(disk: string): Promise<APIResponse> {
+export async function initializeGPT(
+	disk: string,
+	options?: NodeAPIDataRequestOptions
+): Promise<APIResponse> {
 	return await apiRequest(
 		`/disk/${diskPathSegment(disk)}/partition-table`,
 		APIResponseSchema,
-		'POST'
+		'POST',
+		undefined,
+		options
 	);
 }
 
-export async function clearPartitionTable(disk: string): Promise<APIResponse> {
+export async function clearPartitionTable(
+	disk: string,
+	options?: NodeAPIDataRequestOptions
+): Promise<APIResponse> {
 	return await apiRequest(
 		`/disk/${diskPathSegment(disk)}/partition-table`,
 		APIResponseSchema,
-		'DELETE'
+		'DELETE',
+		undefined,
+		options
 	);
 }
 
-export async function createPartitions(disk: string, sizes: number[]): Promise<APIResponse> {
-	return await apiRequest(`/disk/${diskPathSegment(disk)}/partitions`, APIResponseSchema, 'POST', {
-		sizes
-	});
+export async function createPartitions(
+	disk: string,
+	sizes: number[],
+	types?: string[],
+	options?: NodeAPIDataRequestOptions
+): Promise<APIResponse> {
+	return await apiRequest(
+		`/disk/${diskPathSegment(disk)}/partitions`,
+		APIResponseSchema,
+		'POST',
+		{ sizes, ...(types ? { types } : {}) },
+		options
+	);
 }

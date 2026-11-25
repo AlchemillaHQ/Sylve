@@ -101,6 +101,7 @@ func (s *Service) GetCPUInfo(usageOnly bool) (infoServiceInterfaces.CPUInfo, err
 	info.CacheLine = int16(cpuid.CPU.CacheLine)
 	info.Cache = cache
 	info.Frequency = freq
+	info.Temperature = utils.GetCPUTemperature()
 
 	return info, nil
 }

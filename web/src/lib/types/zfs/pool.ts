@@ -260,9 +260,23 @@ export const CreateZpoolSchema = z.object({
 	spares: z.array(z.string()).optional()
 });
 
-export const ReplaceDeviceSchema = z.object({
+export const PoolDeviceMutationOptionsSchema = z.object({
+	expectedNewIdentity: z.string().optional(),
+	expectedParentGuid: z.string().optional(),
+	expectedMemberGuids: z.array(z.string()).optional()
+});
+
+export type PoolDeviceMutationOptions = z.infer<typeof PoolDeviceMutationOptionsSchema>;
+
+export const ReplaceDeviceSchema = PoolDeviceMutationOptionsSchema.extend({
 	guid: z.string(),
 	old: z.string(),
+	new: z.string()
+});
+
+export const AttachDeviceSchema = PoolDeviceMutationOptionsSchema.extend({
+	guid: z.string(),
+	device: z.string(),
 	new: z.string()
 });
 
@@ -413,6 +427,7 @@ export const PoolsDiskUsageSchema = z.object({
 export type ZpoolStatusPool = z.infer<typeof ZPoolStatusPoolSchema>;
 export type Zpool = z.infer<typeof ZpoolSchema>;
 export type ReplaceDevice = z.infer<typeof ReplaceDeviceSchema>;
+export type AttachDevice = z.infer<typeof AttachDeviceSchema>;
 export type CreateZpool = z.infer<typeof CreateZpoolSchema>;
 export type ZpoolRaidType = z.infer<typeof ZpoolRaidTypeSchema>;
 export type VdevType = z.infer<typeof VdevTypeSchema>;

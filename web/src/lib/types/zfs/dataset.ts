@@ -46,6 +46,49 @@ export const DatasetSchema = z.object({
 		.optional()
 });
 
+export const DatasetPropertyDetailSchema = z.union([
+	z.object({
+		value: z.string(),
+		source: z.object({ type: z.string(), data: z.string() }).optional()
+	}),
+	z
+		.string()
+		.transform((value): { value: string; source?: { type: string; data: string } } => ({ value }))
+]);
+
+export const DetailedDatasetSchema = z.preprocess(
+	(raw) =>
+		raw && typeof raw === 'object' && !('propertyDetails' in raw)
+			? { ...raw, propertyDetails: (raw as { properties?: unknown }).properties }
+			: raw,
+	DatasetSchema.extend({
+		propertyDetails: z.record(z.string(), DatasetPropertyDetailSchema).optional()
+	})
+);
+
+export const SnapshotSummarySchema = z.object({
+	name: z.string(),
+	dataset: z.string(),
+	snapshot: z.string(),
+	pool: z.string(),
+	guid: z.string(),
+	createdAt: z.coerce.date(),
+	createTxg: z
+		.number()
+		.nullish()
+		.transform((txg) => txg ?? 0),
+	used: z.number(),
+	referenced: z.number(),
+	clones: z
+		.array(z.string())
+		.nullish()
+		.transform((clones) => clones ?? []),
+	holds: z
+		.number()
+		.nullish()
+		.transform((holds) => holds ?? 0)
+});
+
 export const PeriodicSnapshotSchema = z.object({
 	id: z.number(),
 	guid: z.string(),
@@ -80,5 +123,8 @@ export const GroupedByPoolSchema = z.object({
 
 export type GZFSDatasetType = z.infer<typeof GZFSDatasetTypeSchema>;
 export type Dataset = z.infer<typeof DatasetSchema>;
+export type DetailedDataset = z.infer<typeof DetailedDatasetSchema>;
+export type DatasetPropertyDetail = z.infer<typeof DatasetPropertyDetailSchema>;
 export type GroupedByPool = z.infer<typeof GroupedByPoolSchema>;
 export type PeriodicSnapshot = z.infer<typeof PeriodicSnapshotSchema>;
+export type SnapshotSummary = z.infer<typeof SnapshotSummarySchema>;

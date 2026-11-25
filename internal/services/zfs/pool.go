@@ -244,6 +244,17 @@ func (s *Service) EditPool(ctx context.Context, guid string, props map[string]st
 	})
 }
 
+func poolPropertiesRequireStorageGuard(props map[string]string) bool {
+	for property := range props {
+		switch property {
+		case "autoexpand", "autoreplace", "autotrim", "comment", "delegation", "failmode":
+		default:
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Service) guardPoolStorageMutation(ctx context.Context, pool *gzfs.ZPool) (func(), error) {
 	releaseDownload, err := s.guardDownloadStorageMutation(ctx, pool.Name)
 	if err != nil {
@@ -294,7 +305,7 @@ func (s *Service) editPool(ctx context.Context, guid string, props map[string]st
 	if pool.PoolGUID != guid {
 		return classifyError(ErrConflict, "pool_identity_changed")
 	}
-	if len(props) > 0 {
+	if poolPropertiesRequireStorageGuard(props) {
 		release, err := s.guardPoolStorageMutation(ctx, pool)
 		if err != nil {
 			return err
@@ -422,6 +433,9 @@ func (s *Service) deletePool(ctx context.Context, guid string) error {
 	if err != nil {
 		return fmt.Errorf("failed_to_get_datasets: %v", err)
 	}
+	if err := s.requireVolumesNotShared(ctx, datasets); err != nil {
+		return err
+	}
 
 	if len(datasets) > 0 {
 		for _, ds := range datasets {
@@ -479,45 +493,4 @@ func (s *Service) deletePool(ctx context.Context, guid string) error {
 		deletedGUIDs = append(deletedGUIDs, dataset.GUID)
 	}
 	return s.notifyDatasetsDeleted(ctx, deletedGUIDs)
-}
-
-func (s *Service) ReplaceDevice(ctx context.Context, guid, old, latest string) error {
-	return s.withPoolScrubMutation(ctx, guid, func(ctx context.Context) error {
-		s.syncMutex.Lock()
-		defer s.syncMutex.Unlock()
-
-		pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
-		if err != nil || pool == nil {
-			return poolLookupError(err, "pool_not_found")
-		}
-
-		if err := pool.ReplaceDevice(ctx, old, latest, false); err != nil {
-			return classifyError(ErrConflict, "failed_to_replace_device %s: %v", old, err)
-		}
-
-		pool, err = s.GZFS.Zpool.GetByGUID(ctx, guid)
-		if err != nil || pool == nil {
-			return fmt.Errorf("pool_not_found_after_replace")
-		}
-
-		return nil
-	})
-}
-
-func (s *Service) DetachDevice(ctx context.Context, guid, device string) error {
-	return s.withPoolScrubMutation(ctx, guid, func(ctx context.Context) error {
-		s.syncMutex.Lock()
-		defer s.syncMutex.Unlock()
-
-		pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
-		if err != nil || pool == nil {
-			return poolLookupError(err, "pool_not_found")
-		}
-
-		if err := pool.Detach(ctx, device); err != nil {
-			return classifyError(ErrConflict, "detach_failed: %v", err)
-		}
-
-		return nil
-	})
 }

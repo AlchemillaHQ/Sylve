@@ -1,0 +1,435 @@
+<script lang="ts">
+	import { getBasicSettings } from '$lib/api/system/settings';
+	import { getDownloadsResult } from '$lib/api/utilities/downloader';
+	import { bulkDelete, deleteVolume, getDatasets } from '$lib/api/zfs/datasets';
+	import AlertDialogModal from '$lib/components/custom/Dialog/Alert.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
+	import TreeTable from '$lib/components/custom/TreeTable.svelte';
+	import Search from '$lib/components/custom/TreeTable/Search.svelte';
+	import CreateVolume from '$lib/components/custom/ZFS/datasets/volumes/Create.svelte';
+	import EditVolume from '$lib/components/custom/ZFS/datasets/volumes/Edit.svelte';
+	import FlashFile from '$lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte';
+	import CreateDetailed from '$lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte';
+	import Button from '$lib/components/ui/button/button.svelte';
+	import type { Column, Row } from '$lib/types/components/tree-table';
+	import type { BasicSettings } from '$lib/types/system/settings';
+	import type { APIResponse } from '$lib/types/common';
+	import type { Download } from '$lib/types/utilities/downloader';
+	import { GZFSDatasetTypeSchema, type Dataset, type GroupedByPool } from '$lib/types/zfs/dataset';
+	import {
+		handleAPIError,
+		isAPIResponse,
+		isRequestCancellation,
+		updateCache
+	} from '$lib/utils/http';
+	import { groupByPoolNames } from '$lib/utils/zfs/dataset/dataset';
+	import { generateTableData } from '$lib/utils/zfs/dataset/volume';
+	import { resource, watch } from 'runed';
+	import { onMount, untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+
+	interface Data {
+		node: string;
+		datasets: Dataset[];
+		downloads: Download[];
+		settings: BasicSettings;
+		loadErrors: APIResponse[];
+	}
+
+	let { data }: { data: Data } = $props();
+	const initialData = untrack(() => data);
+	let tableName = 'tt-zfsVolumes';
+
+	// svelte-ignore state_referenced_locally
+	const datasets = resource(
+		() => 'zfs-volumes',
+		async () => {
+			const datasets = await getDatasets(GZFSDatasetTypeSchema.enum.VOLUME);
+			updateCache('zfs-volumes', datasets);
+			return datasets;
+		},
+		{
+			initialValue: data.datasets
+		}
+	);
+
+	const lastDownloadsByNode: Record<string, Download[]> = Object.create(null);
+	lastDownloadsByNode[initialData.node] = initialData.downloads;
+	const downloads = resource(
+		() => data.node,
+		async (node, _previousNode, { signal }) => {
+			try {
+				const result = await getDownloadsResult({ hostname: node, signal });
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return lastDownloadsByNode[node] ?? [];
+				}
+				lastDownloadsByNode[node] = result;
+				await updateCache('download-list', result, node);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) return lastDownloadsByNode[node] ?? [];
+				throw error;
+			}
+		},
+		{
+			initialValue: initialData.downloads
+		}
+	);
+
+	onMount(() => {
+		for (const loadError of data.loadErrors) handleAPIError(loadError);
+	});
+
+	// svelte-ignore state_referenced_locally
+	const pools = resource(
+		() => 'basic-settings',
+		async () => {
+			const settings = await getBasicSettings();
+			if (isAPIResponse(settings)) {
+				return data.settings.pools;
+			}
+			updateCache('basic-settings', settings);
+			return settings.pools;
+		},
+		{
+			initialValue: data.settings.pools
+		}
+	);
+
+	let reload = $state(false);
+
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
+				datasets.refetch();
+				downloads.refetch();
+				pools.refetch();
+
+				reload = false;
+			}
+		}
+	);
+
+	let grouped: GroupedByPool[] = $derived(groupByPoolNames(pools.current, datasets.current));
+	let table: {
+		rows: Row[];
+		columns: Column[];
+	} = $derived(generateTableData(grouped));
+
+	let activeRows = $state<Row[] | null>(null);
+	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
+	let activePool: string | null = $derived.by(() => {
+		const pool = pools.current.find((pool) => pool === activeRow?.name);
+		return pool ?? null;
+	});
+
+	let activeDatasets: Dataset[] = $derived.by(() => {
+		if (activeRows) {
+			let datasets: Dataset[] = [];
+			for (const row of activeRows) {
+				for (const dataset of grouped) {
+					const volumes = dataset.volumes;
+					const snapshots = dataset.snapshots;
+
+					for (const vol of volumes) {
+						if (vol.name === row.name) {
+							datasets.push(vol);
+						}
+					}
+
+					for (const snap of snapshots) {
+						if (snap.name === row.name) {
+							datasets.push(snap);
+						}
+					}
+				}
+			}
+			return datasets;
+		}
+
+		return [];
+	});
+
+	let activeVolume: Dataset | null = $derived.by(() => {
+		if (activePool) return null;
+		const volumes = datasets.current.filter(
+			(volume) => volume.type === GZFSDatasetTypeSchema.enum.VOLUME
+		);
+		const volume = volumes.find((volume) => volume.name.endsWith(activeRow?.name as string));
+		return volume ?? null;
+	});
+
+	let poolsSelected = $derived.by(() => {
+		if (activeRows && activeRows.length > 0) {
+			const filtered = activeRows.filter((row) => {
+				return row.type === 'pool';
+			});
+
+			return filtered.length > 0;
+		}
+
+		return false;
+	});
+
+	let modals = $state({
+		volume: {
+			flash: {
+				open: false
+			},
+			delete: {
+				open: false
+			},
+			create: {
+				open: false
+			},
+			edit: {
+				open: false
+			}
+		},
+		snapshot: {
+			create: {
+				open: false,
+				pool: '',
+				dataset: ''
+			},
+			delete: {
+				open: false
+			}
+		},
+		bulk: {
+			delete: {
+				open: false,
+				title: ''
+			}
+		}
+	});
+
+	let query = $state('');
+</script>
+
+{#snippet button(type: string)}
+	{#if activeRows && activeRows.length == 1}
+		{#if type === 'snapshot-volume' && activeVolume?.type === GZFSDatasetTypeSchema.enum.VOLUME}
+			<Button
+				onclick={async () => {
+					if (activeVolume) {
+						modals.snapshot.create.open = true;
+						modals.snapshot.create.pool = activeVolume.pool;
+						modals.snapshot.create.dataset = activeVolume.name;
+					}
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<SpanWithIcon icon="icon-[mdi--camera]" size="h-4 w-4" gap="gap-2" title="Snapshot" />
+			</Button>
+		{/if}
+
+		{#if type === 'flash-file' && activeVolume?.type === GZFSDatasetTypeSchema.enum.VOLUME}
+			<Button
+				onclick={async () => {
+					if (activeVolume) {
+						modals.volume.flash.open = true;
+					}
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<SpanWithIcon
+					icon="icon-[mdi--usb-flash-drive-outline]"
+					size="h-4 w-4"
+					gap="gap-2"
+					title="Flash File"
+				/>
+			</Button>
+		{/if}
+
+		{#if type === 'delete-volume' && activeVolume?.type === GZFSDatasetTypeSchema.enum.VOLUME}
+			<Button
+				onclick={() => {
+					if (activeVolume) {
+						modals.volume.delete.open = true;
+					}
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
+			</Button>
+		{/if}
+
+		{#if type === 'edit-volume' && activeVolume?.type === GZFSDatasetTypeSchema.enum.VOLUME}
+			<Button
+				onclick={() => {
+					if (activeVolume) {
+						modals.volume.edit.open = true;
+					}
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
+			</Button>
+		{/if}
+	{:else if activeRows && activeRows.length > 1}
+		{#if activeDatasets.length > 0 && !poolsSelected}
+			{#if type === 'bulk-delete'}
+				<Button
+					onclick={async () => {
+						let title = `${activeDatasets.length} dataset${activeDatasets.length > 1 ? 's' : ''}`;
+
+						modals.bulk.delete.open = true;
+						modals.bulk.delete.title = title;
+					}}
+					size="sm"
+					variant="outline"
+					class="h-6.5"
+				>
+					<SpanWithIcon
+						icon="icon-[mdi--delete]"
+						size="h-4 w-4"
+						gap="gap-2"
+						title="Delete Volumes"
+					/>
+				</Button>
+			{/if}
+		{/if}
+	{/if}
+{/snippet}
+
+<div class="flex h-full w-full flex-col">
+	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
+		<Search bind:query />
+		<Button
+			onclick={() => {
+				modals.volume.create.open = true;
+			}}
+			size="sm"
+			class="h-6"
+		>
+			<div class="flex items-center">
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
+
+				<span>New</span>
+			</div>
+		</Button>
+
+		{@render button('snapshot-volume')}
+		{@render button('flash-file')}
+		{@render button('edit-volume')}
+		{@render button('delete-volume')}
+		{@render button('delete-volumes')}
+		{@render button('bulk-delete')}
+	</div>
+
+	<TreeTable
+		data={table}
+		name={tableName}
+		bind:parentActiveRow={activeRows}
+		bind:query
+		multipleSelect={true}
+	/>
+</div>
+
+{#if modals.snapshot.create.open && activeVolume && activeVolume.type === GZFSDatasetTypeSchema.enum.VOLUME}
+	<CreateDetailed
+		bind:open={modals.snapshot.create.open}
+		basicSettings={data.settings}
+		prefill={{ pool: modals.snapshot.create.pool, dataset: modals.snapshot.create.dataset }}
+		bind:reload
+	/>
+{/if}
+
+<!-- Flash File to Volume -->
+{#if modals.volume.flash.open && activeVolume && activeVolume.type === GZFSDatasetTypeSchema.enum.VOLUME}
+	<FlashFile
+		bind:open={modals.volume.flash.open}
+		dataset={activeVolume}
+		downloads={downloads.current}
+		bind:reload
+	/>
+{/if}
+
+<!-- Delete Volume -->
+{#if modals.volume.delete.open && activeVolume && activeVolume.type === GZFSDatasetTypeSchema.enum.VOLUME}
+	<AlertDialogModal
+		bind:open={modals.volume.delete.open}
+		names={{
+			parent: 'volume',
+			element: activeVolume.name
+		}}
+		actions={{
+			onConfirm: async () => {
+				if (activeVolume.guid) {
+					const response = await deleteVolume(activeVolume);
+					reload = true;
+					if (response.status === 'success') {
+						toast.success(`Deleted volume ${activeVolume.name}`, {
+							position: 'bottom-center'
+						});
+					} else {
+						handleAPIError(response);
+						toast.error(`Failed to delete volume ${activeVolume.name}`, {
+							position: 'bottom-center'
+						});
+					}
+				} else {
+					toast.error('Volume GUID not found', {
+						position: 'bottom-center'
+					});
+				}
+
+				modals.volume.delete.open = false;
+			},
+			onCancel: () => {
+				modals.volume.delete.open = false;
+			}
+		}}
+	/>
+{/if}
+
+<!-- Bulk Delete -->
+{#if modals.bulk.delete.open && activeDatasets.length > 0}
+	<AlertDialogModal
+		bind:open={modals.bulk.delete.open}
+		customTitle={`This will delete ${modals.bulk.delete.title}. This action cannot be undone.`}
+		actions={{
+			onConfirm: async () => {
+				const activeSnapshot = $state.snapshot(activeDatasets);
+				const response = await bulkDelete(activeDatasets);
+				reload = true;
+				if (response.status === 'success') {
+					toast.success(`Deleted ${activeSnapshot.length} datasets`, {
+						position: 'bottom-center'
+					});
+				} else {
+					handleAPIError(response);
+					toast.error('Failed to delete datasets', {
+						position: 'bottom-center'
+					});
+				}
+
+				modals.bulk.delete.open = false;
+			},
+			onCancel: () => {
+				modals.bulk.delete.open = false;
+			}
+		}}
+	/>
+{/if}
+
+<!-- Create Volume -->
+{#if modals.volume.create.open}
+	<CreateVolume bind:open={modals.volume.create.open} bind:reload />
+{/if}
+
+<!-- Edit Volume -->
+{#if modals.volume.edit.open && activeVolume}
+	<EditVolume bind:open={modals.volume.edit.open} dataset={activeVolume} bind:reload />
+{/if}

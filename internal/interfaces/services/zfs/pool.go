@@ -45,8 +45,21 @@ type CreateZPoolRequest struct {
 }
 
 type ReplaceDevice struct {
-	Old string `json:"old" binding:"required,min=1,max=24"`
-	New string `json:"new" binding:"required,min=1,max=24"`
+	PoolDeviceMutationOptions
+	Old string `json:"old" binding:"required,min=1,max=1024"`
+	New string `json:"new" binding:"required,min=1,max=1024"`
+}
+
+type AttachDevice struct {
+	PoolDeviceMutationOptions
+	Device string `json:"device" binding:"required,min=1,max=1024"`
+	New    string `json:"new" binding:"required,min=1,max=1024"`
+}
+
+type PoolDeviceMutationOptions struct {
+	ExpectedNewIdentity string   `json:"expectedNewIdentity,omitempty" binding:"omitempty,max=1024"`
+	ExpectedParentGUID  string   `json:"expectedParentGuid,omitempty" binding:"omitempty,max=20"`
+	ExpectedMemberGUIDs []string `json:"expectedMemberGuids,omitempty" binding:"omitempty,max=4096,dive,required,max=20"`
 }
 
 type PoolStatPoint struct {

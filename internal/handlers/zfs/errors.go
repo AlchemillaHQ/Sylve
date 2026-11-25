@@ -29,9 +29,11 @@ func zfsErrorStatus(err error) int {
 		errors.Is(err, db.ErrPoolScrubBusy),
 		errors.Is(err, gorm.ErrDuplicatedKey),
 		errors.Is(err, zfs.ErrCannotDeletePoolRootDataset),
+		errors.Is(err, zfs.ErrCannotDeleteSystemFilesystem),
 		errors.Is(err, zfs.ErrSnapshotCreationBlocked):
 		return http.StatusConflict
-	case errors.Is(err, zfs.ErrScrubStatusUnavailable):
+	case errors.Is(err, zfs.ErrScrubStatusUnavailable),
+		errors.Is(err, zfs.ErrPoolDeviceStatusUnavailable):
 		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError

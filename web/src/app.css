@@ -3,7 +3,9 @@
 @source not "./locales";
 
 @custom-variant dark (&:is(.dark *));
-@plugin "@iconify/tailwind4";
+@plugin "@iconify/tailwind4" {
+	icon-sets: from-json(sylve, './src/lib/icons/sylve.json');
+}
 @plugin "@tailwindcss/typography";
 
 :root {
@@ -34,6 +36,11 @@
 	--zfs-read: #0ea5e9;
 	--zfs-write: #8b5cf6;
 	--zfs-chart-grid: rgba(24, 24, 27, 0.08);
+	--zen-accent: #2a78d6;
+	--zen-accent-soft: #86b6ef;
+	--zen-highlight: #dceafb;
+	--zen-highlight-foreground: #1d5fae;
+	--zen-contrast: #eb6834;
 	--sidebar: oklch(0.955 0.003 90);
 	--sidebar-foreground: oklch(0.25 0 0);
 	--sidebar-primary: oklch(0.3 0 0);
@@ -71,6 +78,11 @@
 	--zfs-read: #38bdf8;
 	--zfs-write: #a78bfa;
 	--zfs-chart-grid: rgba(255, 255, 255, 0.08);
+	--zen-accent: #3987e5;
+	--zen-accent-soft: #1c5cab;
+	--zen-highlight: #213854;
+	--zen-highlight-foreground: #8fbcf4;
+	--zen-contrast: #d95926;
 	--sidebar: oklch(0.26 0 0);
 	--sidebar-foreground: oklch(0.94 0 0);
 	--sidebar-primary: oklch(0.488 0.243 264.376);
@@ -86,6 +98,15 @@
 	--cp-button-hover-color: var(--accent);
 }
 
+.zen {
+	--radius: 0.625rem;
+}
+
+.zen:not(.dark) {
+	--card: oklch(0.99 0.002 90);
+	--border: oklch(0.915 0.004 90);
+}
+
 @theme inline {
 	--radius-sm: calc(var(--radius) - 4px);
 	--radius-md: calc(var(--radius) - 2px);
@@ -93,6 +114,11 @@
 	--radius-xl: calc(var(--radius) + 4px);
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
+	--color-zen-accent: var(--zen-accent);
+	--color-zen-accent-soft: var(--zen-accent-soft);
+	--color-zen-highlight: var(--zen-highlight);
+	--color-zen-highlight-foreground: var(--zen-highlight-foreground);
+	--color-zen-contrast: var(--zen-contrast);
 	--color-card: var(--card);
 	--color-card-foreground: var(--card-foreground);
 	--color-popover: var(--popover);

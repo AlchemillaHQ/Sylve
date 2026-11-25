@@ -9,6 +9,7 @@
 package system
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -30,8 +31,33 @@ var (
 	ErrFileExplorerBatchConflict     = errors.New("file_explorer_batch_conflict")
 	ErrFileExplorerBatchTooLarge     = errors.New("file_explorer_batch_too_large")
 	ErrFileExplorerRestoreInProgress = errors.New("restore_in_progress")
+	ErrFileExplorerBusy              = errors.New("file_explorer_busy")
+	ErrFileExplorerNameTooLong       = errors.New("file_explorer_name_too_long")
+	ErrFileExplorerNoSpace           = errors.New("file_explorer_no_space")
+	ErrFileExplorerMoveIncomplete    = errors.New("file_explorer_move_incomplete")
+	ErrFileExplorerCancelled         = errors.New("file_explorer_cancelled")
 	ErrFileExplorerOperationFailed   = errors.New("file_explorer_operation_failed")
 )
+
+type FileExplorerBatchError struct {
+	Completed []string
+	Err       error
+}
+
+func (e *FileExplorerBatchError) Error() string {
+	return fmt.Sprintf("%v (after %d completed)", e.Err, len(e.Completed))
+}
+
+func (e *FileExplorerBatchError) Unwrap() error {
+	return e.Err
+}
+
+func batchFailure(completed []string, err error) error {
+	if len(completed) == 0 {
+		return err
+	}
+	return &FileExplorerBatchError{Completed: append([]string(nil), completed...), Err: err}
+}
 
 func wrapFileExplorerError(kind error, resource string, cause error) error {
 	if cause == nil {
@@ -42,6 +68,10 @@ func wrapFileExplorerError(kind error, resource string, cause error) error {
 
 func wrapFileExplorerIOError(resource string, err error) error {
 	switch {
+	case errors.Is(err, ErrFileExplorerCancelled), errors.Is(err, ErrFileExplorerProtectedPath):
+		return err
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return wrapFileExplorerError(ErrFileExplorerCancelled, resource, err)
 	case errors.Is(err, fs.ErrNotExist):
 		return wrapFileExplorerError(ErrFileExplorerNotFound, resource, err)
 	case errors.Is(err, fs.ErrPermission), errors.Is(err, syscall.EROFS):
@@ -50,6 +80,16 @@ func wrapFileExplorerIOError(resource string, err error) error {
 		return wrapFileExplorerError(ErrFileExplorerAlreadyExists, resource, err)
 	case errors.Is(err, syscall.ENOTDIR):
 		return wrapFileExplorerError(ErrFileExplorerNotDirectory, resource, err)
+	case errors.Is(err, syscall.EBUSY), errors.Is(err, syscall.ENOTEMPTY):
+		return wrapFileExplorerError(ErrFileExplorerBusy, resource, err)
+	case errors.Is(err, syscall.ENAMETOOLONG):
+		return wrapFileExplorerError(ErrFileExplorerNameTooLong, resource, err)
+	case errors.Is(err, syscall.ENOSPC), errors.Is(err, syscall.EDQUOT):
+		return wrapFileExplorerError(ErrFileExplorerNoSpace, resource, err)
+	case errors.Is(err, syscall.ELOOP):
+		return wrapFileExplorerError(ErrFileExplorerInvalidPath, resource, err)
+	case errors.Is(err, syscall.EISDIR):
+		return wrapFileExplorerError(ErrFileExplorerInvalidOperation, resource, err)
 	default:
 		return wrapFileExplorerError(ErrFileExplorerOperationFailed, resource, err)
 	}
@@ -81,6 +121,18 @@ func FileExplorerErrorCode(err error) string {
 		return ErrFileExplorerBatchTooLarge.Error()
 	case errors.Is(err, ErrFileExplorerRestoreInProgress):
 		return ErrFileExplorerRestoreInProgress.Error()
+	case errors.Is(err, ErrFileExplorerProtectedPath):
+		return ErrFileExplorerProtectedPath.Error()
+	case errors.Is(err, ErrFileExplorerBusy):
+		return ErrFileExplorerBusy.Error()
+	case errors.Is(err, ErrFileExplorerNameTooLong):
+		return ErrFileExplorerNameTooLong.Error()
+	case errors.Is(err, ErrFileExplorerNoSpace):
+		return ErrFileExplorerNoSpace.Error()
+	case errors.Is(err, ErrFileExplorerMoveIncomplete):
+		return ErrFileExplorerMoveIncomplete.Error()
+	case errors.Is(err, ErrFileExplorerCancelled):
+		return ErrFileExplorerCancelled.Error()
 	default:
 		return ErrFileExplorerOperationFailed.Error()
 	}

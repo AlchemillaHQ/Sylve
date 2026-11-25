@@ -269,8 +269,11 @@ func RegisterRoutes(r *gin.Engine,
 				zfsHandlers.DeletePool(infoService, zfsService),
 			)
 			pools.POST("/:guid/replace-device", zfsHandlers.ReplaceDevice(infoService, zfsService))
+			pools.POST("/:guid/attach", zfsHandlers.AttachDevice(zfsService))
 			pools.POST("/:guid/detach", zfsHandlers.DetachDevice(infoService, zfsService))
 		}
+
+		zfs.GET("/snapshots", zfsHandlers.GetSnapshots(zfsService, authService))
 
 		datasets := zfs.Group("/datasets")
 		{
@@ -669,6 +672,7 @@ func RegisterRoutes(r *gin.Engine,
 		fileExplorerCore.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 		{
 			fileExplorerCore.GET("", systemHandlers.Files(systemService))
+			fileExplorerCore.GET("/list", systemHandlers.ListFolder(systemService))
 			fileExplorerCore.POST("", systemHandlers.AddFileOrFolder(systemService))
 			fileExplorerCore.POST("/delete", systemHandlers.DeleteFilesOrFolders(systemService))
 			fileExplorerCore.POST("/rename", systemHandlers.RenameFileOrFolder(systemService))
@@ -679,6 +683,7 @@ func RegisterRoutes(r *gin.Engine,
 		fileExplorerTransfer.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 		{
 			fileExplorerTransfer.GET("/download", systemHandlers.DownloadFile(systemService))
+			fileExplorerTransfer.GET("/archive", systemHandlers.DownloadFolder(systemService))
 			fileExplorerTransfer.POST("/upload", systemHandlers.UploadFile(systemService, uploadAdmission))
 		}
 
@@ -893,6 +898,7 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		authSession.POST("/logout", authHandlers.LogoutHandler(authService))
 		authSession.POST("/sse-tokens", eventsHandlers.CreateSSEToken(authService))
+		authSession.POST("/download-tickets", systemHandlers.CreateDownloadTicket(authService))
 		authSession.GET("/preferences", authHandlers.GetUserPreferencesHandler(authService))
 		authSession.GET("/permissions", authHandlers.PermissionsHandler(authService))
 	}

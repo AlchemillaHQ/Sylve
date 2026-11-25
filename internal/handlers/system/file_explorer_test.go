@@ -242,28 +242,50 @@ func TestFileExplorerDownloadRequiresAuthenticatedCurrentAdmin(t *testing.T) {
 		t.Fatal(err)
 	}
 	endpoint := "/api/system/file-explorer/download?id=" + url.QueryEscape(path)
-	hashEndpoint := endpoint + "&hash=" + url.QueryEscape(utils.SHA256(token, 1))
+	ticketEndpoint := func(kind, id string) string {
+		t.Helper()
+		ticket, _, err := auth.IssueDownloadTicket(token, middleware.FileExplorerTicketScope(kind, id))
+		if err != nil {
+			t.Fatalf("issue ticket: %v", err)
+		}
+		return endpoint + "&ticket=" + url.QueryEscape(ticket)
+	}
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(middleware.EnsureAuthenticated(auth))
 	router.GET("/api/system/file-explorer/download", DownloadFile(&system.Service{}))
-
-	unauthenticated := testutil.PerformRequest(t, router, http.MethodGet, endpoint, nil, nil)
-	if unauthenticated.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated status = %d; want %d", unauthenticated.Code, http.StatusUnauthorized)
+	status := func(target string) int {
+		t.Helper()
+		return testutil.PerformRequest(t, router, http.MethodGet, target, nil, nil).Code
 	}
-	authorized := testutil.PerformRequest(t, router, http.MethodGet, hashEndpoint, nil, nil)
+
+	if code := status(endpoint); code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status = %d; want %d", code, http.StatusUnauthorized)
+	}
+	if code := status(endpoint + "&hash=" + url.QueryEscape(utils.SHA256(token, 1))); code != http.StatusUnauthorized {
+		t.Fatalf("token hash status = %d; the hash must no longer authenticate", code)
+	}
+	ticketed := ticketEndpoint("file", path)
+	authorized := testutil.PerformRequest(t, router, http.MethodGet, ticketed, nil, nil)
 	if authorized.Code != http.StatusOK || authorized.Body.String() != "authorized contents" {
 		t.Fatalf("authorized response=%d body=%q", authorized.Code, authorized.Body.String())
+	}
+	if code := status(ticketed); code != http.StatusUnauthorized {
+		t.Fatalf("reused ticket status = %d; want %d", code, http.StatusUnauthorized)
+	}
+	if code := status(ticketEndpoint("file", path+".other")); code != http.StatusUnauthorized {
+		t.Fatalf("ticket for another file status = %d; want %d", code, http.StatusUnauthorized)
+	}
+	if code := status(ticketEndpoint("archive", path)); code != http.StatusUnauthorized {
+		t.Fatalf("archive ticket used for a file download status = %d; want %d", code, http.StatusUnauthorized)
 	}
 
 	if err := database.Model(&models.User{}).Where("id = ?", user.ID).Update("admin", false).Error; err != nil {
 		t.Fatalf("demote user: %v", err)
 	}
-	unauthorized := testutil.PerformRequest(t, router, http.MethodGet, hashEndpoint, nil, nil)
-	if unauthorized.Code != http.StatusUnauthorized {
-		t.Fatalf("demoted user status = %d; want %d", unauthorized.Code, http.StatusUnauthorized)
+	if code := status(ticketEndpoint("file", path)); code != http.StatusUnauthorized {
+		t.Fatalf("demoted user status = %d; want %d", code, http.StatusUnauthorized)
 	}
 }
 
@@ -511,6 +533,11 @@ func TestFileExplorerErrorStatus(t *testing.T) {
 		{system.ErrFileExplorerAlreadyExists, http.StatusConflict},
 		{system.ErrFileExplorerBatchConflict, http.StatusConflict},
 		{system.ErrFileExplorerRestoreInProgress, http.StatusConflict},
+		{system.ErrFileExplorerBusy, http.StatusConflict},
+		{system.ErrFileExplorerNameTooLong, http.StatusBadRequest},
+		{system.ErrFileExplorerNoSpace, http.StatusInsufficientStorage},
+		{system.ErrFileExplorerMoveIncomplete, http.StatusInternalServerError},
+		{&system.FileExplorerProtectedError{Path: "/etc", Reason: system.FileExplorerProtectedSystemFolder}, http.StatusForbidden},
 		{errors.New("internal details"), http.StatusInternalServerError},
 	}
 
@@ -518,6 +545,22 @@ func TestFileExplorerErrorStatus(t *testing.T) {
 		if got := fileExplorerErrorStatus(test.err); got != test.wantStatus {
 			t.Errorf("fileExplorerErrorStatus(%v) = %d; want %d", test.err, got, test.wantStatus)
 		}
+	}
+}
+
+func TestFileExplorerProtectedErrorReportsPathAndReason(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/protected", func(c *gin.Context) {
+		writeFileExplorerError(c, &system.FileExplorerProtectedError{Path: "/usr/bin", Reason: system.FileExplorerProtectedBaseSystem})
+	})
+	response := testutil.PerformJSONRequest(t, router, http.MethodGet, "/protected", nil)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d; want 403; body = %s", response.Code, response.Body.String())
+	}
+	body := testutil.DecodeJSONResponse[internal.APIResponse[FileExplorerErrorData]](t, response)
+	if body.Error != system.ErrFileExplorerProtectedPath.Error() || body.Data.Path != "/usr/bin" || body.Data.Reason != system.FileExplorerProtectedBaseSystem {
+		t.Fatalf("body = %+v; want the protected code with its path and reason", body)
 	}
 }
 

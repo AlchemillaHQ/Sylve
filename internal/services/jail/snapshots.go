@@ -824,7 +824,7 @@ func (s *Service) normalizeRestoredJailSnapshotStorages(
 			return nil, fmt.Errorf("restored_jail_storage_duplicate: guid %s", storage.GUID)
 		}
 		seenGUIDs[storage.GUID] = struct{}{}
-		dataset, err := s.GZFS.ZFS.GetByGUID(ctx, storage.GUID, false)
+		dataset, err := s.datasetByGUID(ctx, storage.GUID)
 		if err != nil {
 			if isDatasetNotFoundError(err) {
 				return nil, fmt.Errorf("restored_jail_storage_dataset_missing: guid %s: %w", storage.GUID, err)

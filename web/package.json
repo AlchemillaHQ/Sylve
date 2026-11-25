@@ -67,6 +67,7 @@
 		"@fontsource/noto-sans": "^5.2.7",
 		"@noble/curves": "^2.3.0",
 		"@noble/hashes": "^2.3.0",
+		"@tanstack/svelte-table": "^9.3.1",
 		"@wuchale/svelte": "^0.19.0",
 		"cronstrue": "^3.0.0",
 		"date-fns": "^4.1.0",

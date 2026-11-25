@@ -1,8 +1,20 @@
 import { getFiles } from '$lib/api/system/file-explorer';
+import { ui } from '$lib/stores/interface.svelte';
+import { isSuperuser, loadPermissions } from '$lib/stores/permissions.svelte';
 import { cachedFetch, isAPIResponse } from '$lib/utils/http';
 import { error } from '@sveltejs/kit';
 
 export async function load({ params }) {
+	if (ui.zen) {
+		await loadPermissions();
+		return {
+			node: params.node,
+			files: [],
+			filesError: null,
+			denied: !isSuperuser()
+		};
+	}
+
 	const result = await cachedFetch(
 		'fx-files',
 		async () => await getFiles(undefined, params.node),
@@ -15,13 +27,15 @@ export async function load({ params }) {
 		return {
 			node: params.node,
 			files: [],
-			filesError: result
+			filesError: result,
+			denied: false
 		};
 	}
 
 	return {
 		node: params.node,
 		files: result,
-		filesError: null
+		filesError: null,
+		denied: false
 	};
 }

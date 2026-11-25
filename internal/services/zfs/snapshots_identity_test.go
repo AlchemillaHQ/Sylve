@@ -55,6 +55,11 @@ func newSnapshotIdentityService(t *testing.T) (*Service, *gzfstest.MockRunner) {
 	runner.AddCommand(" -r -t snap -j", snapshotIdentityResponse(t, snapshots...), "", nil)
 	for _, snapshot := range snapshots {
 		runner.AddCommand(" "+snapshot.Name+" -j", snapshotIdentityResponse(t, snapshot), "", nil)
+		parent, _, _ := strings.Cut(snapshot.Name, "@")
+		runner.AddCommand(" "+parent+" -j", snapshotIdentityResponse(t, &gzfs.Dataset{
+			Name: parent, Pool: snapshot.Pool, Type: gzfs.DatasetTypeFilesystem,
+			Properties: map[string]gzfs.ZFSProperty{"guid": {Value: "fs-" + parent}},
+		}), "", nil)
 	}
 	runner.AddCommand("zfs destroy ", "", "", nil)
 	runner.AddCommand("zfs rollback ", "", "", nil)
@@ -67,7 +72,7 @@ func TestSnapshotMutationsSelectExactCopy(t *testing.T) {
 		run  func(*Service, context.Context, string, string, bool) error
 	}{
 		{"delete", (*Service).DeleteSnapshot},
-		{"rollback", (*Service).RollbackSnapshot},
+		{"rollback", rollbackWithoutExpectation},
 	} {
 		for _, target := range []struct{ name, guid, resolved string }{
 			{"tank/source@selected", "1", "tank/source@selected"},
@@ -90,6 +95,9 @@ func TestSnapshotMutationsSelectExactCopy(t *testing.T) {
 				if target.name == "" {
 					wantCalls++
 				}
+				if mutation.name == "rollback" {
+					wantCalls++
+				}
 				if len(runner.CallHistory) != wantCalls {
 					t.Fatalf("unexpected lookup commands: %#v", runner.CallHistory)
 				}
@@ -104,7 +112,7 @@ func TestSnapshotMutationsRejectAmbiguousStaleAndInvalidTargets(t *testing.T) {
 		run  func(*Service, context.Context, string, string, bool) error
 	}{
 		{"delete", (*Service).DeleteSnapshot},
-		{"rollback", (*Service).RollbackSnapshot},
+		{"rollback", rollbackWithoutExpectation},
 	} {
 		for _, target := range []struct {
 			label, guid, name string
@@ -151,7 +159,7 @@ func TestSnapshotMutationsRetainReplicationProtection(t *testing.T) {
 		run  func(*Service, context.Context, string, string, bool) error
 	}{
 		{"delete", (*Service).DeleteSnapshot},
-		{"rollback", (*Service).RollbackSnapshot},
+		{"rollback", rollbackWithoutExpectation},
 	} {
 		t.Run(mutation.name, func(t *testing.T) {
 			_, runner := newSnapshotIdentityService(t)
@@ -214,7 +222,11 @@ func TestBulkDeleteSnapshotsWithSharedGUID(t *testing.T) {
 			destroyed = append(destroyed, call.Cmd)
 		}
 	}
-	if len(destroyed) != 2 || destroyed[0] != "zfs destroy -r "+targets[0].Name || destroyed[1] != "zfs destroy -r "+targets[1].Name {
+	if len(destroyed) != 2 || destroyed[0] != "zfs destroy "+targets[0].Name || destroyed[1] != "zfs destroy "+targets[1].Name {
 		t.Fatalf("bulk deletion did not target both exact copies: %v", destroyed)
 	}
+}
+
+func rollbackWithoutExpectation(s *Service, ctx context.Context, guid, name string, destroyMoreRecent bool) error {
+	return s.RollbackSnapshot(ctx, guid, name, destroyMoreRecent, nil)
 }

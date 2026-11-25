@@ -119,7 +119,7 @@ func TestDeleteFilesOrFoldersDeletesDanglingSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := (&Service{}).DeleteFilesOrFolders([]string{link}); err != nil {
+	if err := (&Service{}).DeleteFilesOrFolders(t.Context(), []string{link}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Lstat(link); !os.IsNotExist(err) {
@@ -134,7 +134,7 @@ func TestDeleteFilesOrFoldersPreflightsEntireBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := (&Service{}).DeleteFilesOrFolders([]string{existing, filepath.Join(root, "missing")})
+	err := (&Service{}).DeleteFilesOrFolders(t.Context(), []string{existing, filepath.Join(root, "missing")})
 	if !errors.Is(err, ErrFileExplorerNotFound) {
 		t.Fatalf("error = %v; want %v", err, ErrFileExplorerNotFound)
 	}
@@ -298,7 +298,7 @@ func TestCopyOrMoveFilesOrFoldersStreamsRegularFileAndPreservesMode(t *testing.T
 		t.Fatal(err)
 	}
 
-	err := (&Service{}).CopyOrMoveFilesOrFolders(
+	err := (&Service{}).CopyOrMoveFilesOrFolders(t.Context(),
 		[]systemServiceInterfaces.FileTransferItem{{Source: source, Destination: destination}},
 		false,
 	)
@@ -331,7 +331,7 @@ func TestCopyOrMoveFilesOrFoldersPreservesDanglingSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := (&Service{}).CopyOrMoveFilesOrFolders(
+	err := (&Service{}).CopyOrMoveFilesOrFolders(t.Context(),
 		[]systemServiceInterfaces.FileTransferItem{{Source: source, Destination: target}},
 		false,
 	)
@@ -355,7 +355,7 @@ func TestCopyOrMoveFilesOrFoldersRejectsSpecialFileWithoutOpeningIt(t *testing.T
 		t.Fatal(err)
 	}
 
-	err := (&Service{}).CopyOrMoveFilesOrFolders(
+	err := (&Service{}).CopyOrMoveFilesOrFolders(t.Context(),
 		[]systemServiceInterfaces.FileTransferItem{{Source: source, Destination: target}},
 		false,
 	)
@@ -376,7 +376,7 @@ func TestCopyOrMoveFilesOrFoldersRejectsSelfAndDescendantTargets(t *testing.T) {
 
 	for _, target := range []string{source, filepath.Join(source, "nested-copy")} {
 		t.Run(target, func(t *testing.T) {
-			err := (&Service{}).CopyOrMoveFilesOrFolders(
+			err := (&Service{}).CopyOrMoveFilesOrFolders(t.Context(),
 				[]systemServiceInterfaces.FileTransferItem{{Source: source, Destination: target}},
 				false,
 			)
@@ -398,7 +398,7 @@ func TestCopyOrMoveFilesOrFoldersDoesNotOverwriteDestination(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := (&Service{}).CopyOrMoveFilesOrFolders(
+	err := (&Service{}).CopyOrMoveFilesOrFolders(t.Context(),
 		[]systemServiceInterfaces.FileTransferItem{{Source: source, Destination: target}},
 		false,
 	)
@@ -422,7 +422,7 @@ func TestCopyOrMoveFilesOrFoldersPreflightsEntireBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := (&Service{}).CopyOrMoveFilesOrFolders(
+	err := (&Service{}).CopyOrMoveFilesOrFolders(t.Context(),
 		[]systemServiceInterfaces.FileTransferItem{
 			{Source: source, Destination: firstTarget},
 			{Source: filepath.Join(root, "missing"), Destination: filepath.Join(root, "second-target")},
@@ -444,7 +444,7 @@ func TestCopyOrMoveFilesOrFoldersRejectsDuplicateSources(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := (&Service{}).CopyOrMoveFilesOrFolders(
+	err := (&Service{}).CopyOrMoveFilesOrFolders(t.Context(),
 		[]systemServiceInterfaces.FileTransferItem{
 			{Source: source, Destination: filepath.Join(root, "target-one")},
 			{Source: source, Destination: filepath.Join(root, "target-two")},
@@ -458,7 +458,7 @@ func TestCopyOrMoveFilesOrFoldersRejectsDuplicateSources(t *testing.T) {
 
 func TestCopyOrMoveFilesOrFoldersBoundsBatch(t *testing.T) {
 	items := make([]systemServiceInterfaces.FileTransferItem, MaxFileExplorerBatchItems+1)
-	err := (&Service{}).CopyOrMoveFilesOrFolders(items, false)
+	err := (&Service{}).CopyOrMoveFilesOrFolders(t.Context(), items, false)
 	if !errors.Is(err, ErrFileExplorerBatchTooLarge) {
 		t.Fatalf("error = %v; want %v", err, ErrFileExplorerBatchTooLarge)
 	}
@@ -477,7 +477,7 @@ func TestCopyOrMoveFilesOrFoldersFallsBackAcrossFilesystems(t *testing.T) {
 			return &os.LinkError{Op: "rename", Old: oldPath, New: newPath, Err: syscall.EXDEV}
 		},
 	}
-	if err := service.CopyOrMoveFilesOrFolders(
+	if err := service.CopyOrMoveFilesOrFolders(t.Context(),
 		[]systemServiceInterfaces.FileTransferItem{{Source: source, Destination: target}},
 		true,
 	); err != nil {
@@ -509,7 +509,7 @@ func TestCopyFileExplorerEntryCleansPartialDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := copyFileExplorerEntry(source, target)
+	err := copyFileExplorerEntry(t.Context(), source, target)
 	if !errors.Is(err, ErrFileExplorerUnsupportedType) {
 		t.Fatalf("error = %v; want %v", err, ErrFileExplorerUnsupportedType)
 	}

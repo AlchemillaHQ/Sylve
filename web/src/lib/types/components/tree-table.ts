@@ -17,6 +17,7 @@ export interface Column {
 	formatter?:
 		| ((cell: CellComponent, formatterParams: FormatterParams, onRendered: EmptyCallback) => void)
 		| string;
+	mutator?: (value: unknown, data: Record<string, unknown>) => unknown;
 	minWidth?: number | string;
 	widthGrow?: number;
 	sorter?: string;

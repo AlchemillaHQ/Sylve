@@ -15,6 +15,8 @@ import {
 	type ZFSDashboardHistory,
 	type ZFSDashboardSnapshot,
 	type ReplaceDevice,
+	type AttachDevice,
+	type PoolDeviceMutationOptions,
 	type Zpool,
 	type ZpoolStatusPool
 } from '$lib/types/zfs/pool';
@@ -84,21 +86,40 @@ export async function getPoolsDiskUsageFull(
 	);
 }
 
-export async function createPool(data: CreateZpool) {
-	return await apiRequest('/zfs/pools', APIResponseSchema, 'POST', {
-		...data
-	});
+export async function createPool(data: CreateZpool, options?: NodeAPIDataRequestOptions) {
+	return await apiRequest('/zfs/pools', APIResponseSchema, 'POST', { ...data }, options);
 }
 
-export async function replaceDevice(data: ReplaceDevice) {
+export async function replaceDevice(data: ReplaceDevice, options?: NodeAPIDataRequestOptions) {
 	const { guid, ...request } = data;
-	return await apiRequest(`/zfs/pools/${guid}/replace-device`, APIResponseSchema, 'POST', {
-		...request
-	});
+	return await apiRequest(
+		`/zfs/pools/${encodeURIComponent(guid)}/replace-device`,
+		APIResponseSchema,
+		'POST',
+		request,
+		options
+	);
 }
 
-export async function deletePool(guid: string) {
-	return await apiRequest(`/zfs/pools/${guid}`, APIResponseSchema, 'DELETE');
+export async function attachDevice(data: AttachDevice, options?: NodeAPIDataRequestOptions) {
+	const { guid, ...request } = data;
+	return await apiRequest(
+		`/zfs/pools/${encodeURIComponent(guid)}/attach`,
+		APIResponseSchema,
+		'POST',
+		request,
+		options
+	);
+}
+
+export async function deletePool(guid: string, options?: NodeAPIDataRequestOptions) {
+	return await apiRequest(
+		`/zfs/pools/${encodeURIComponent(guid)}`,
+		APIResponseSchema,
+		'DELETE',
+		undefined,
+		options
+	);
 }
 
 export async function scrubPool(guid: string, options?: NodeAPIDataRequestOptions) {
@@ -224,16 +245,29 @@ export async function getZFSDashboardSnapshot(
 export async function editPool(
 	guid: string,
 	properties: Record<string, string>,
-	spares: string[] = []
+	spares?: string[],
+	options?: NodeAPIDataRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequest(`/zfs/pools/${guid}`, APIResponseSchema, 'PATCH', {
-		properties,
-		spares
-	});
+	return await apiRequest(
+		`/zfs/pools/${encodeURIComponent(guid)}`,
+		APIResponseSchema,
+		'PATCH',
+		{ properties, ...(spares === undefined ? {} : { spares }) },
+		options
+	);
 }
 
-export async function detachDevice(guid: string, device: string): Promise<APIResponse> {
-	return await apiRequest(`/zfs/pools/${guid}/detach`, APIResponseSchema, 'POST', {
-		device
-	});
+export async function detachDevice(
+	guid: string,
+	device: string,
+	options?: NodeAPIDataRequestOptions,
+	preconditions?: PoolDeviceMutationOptions
+): Promise<APIResponse> {
+	return await apiRequest(
+		`/zfs/pools/${encodeURIComponent(guid)}/detach`,
+		APIResponseSchema,
+		'POST',
+		{ ...preconditions, device },
+		options
+	);
 }

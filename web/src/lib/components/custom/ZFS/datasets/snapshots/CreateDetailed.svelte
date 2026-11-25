@@ -9,7 +9,13 @@
 	import type { BasicSettings } from '$lib/types/system/settings';
 	import type { APIResponse } from '$lib/types/common';
 	import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
-	import { getAPIErrorMessages, handleAPIError } from '$lib/utils/http';
+	import { getAPIErrorMessages, getAPIErrorText, handleAPIError } from '$lib/utils/http';
+	import { isSylveDataset } from '$lib/components/zen/Storage/FileSystems/filesystems';
+	import {
+		presetToSchedule,
+		snapshotCreateErrorMessage,
+		snapshotSchedulePresets
+	} from '$lib/utils/zfs/snapshot';
 	import { cronToHuman } from '$lib/utils/time';
 	import { getDashedDate } from '$lib/utils/time.svelte';
 	import { deepEqual } from 'fast-equals';
@@ -73,14 +79,7 @@
 					cron: '',
 					interval: {
 						open: false,
-						data: [
-							{ value: '60', label: 'Every Minute' },
-							{ value: '3600', label: 'Every Hour' },
-							{ value: '86400', label: 'Every Day' },
-							{ value: '604800', label: 'Every Week' },
-							{ value: '2419200', label: 'Every Month' },
-							{ value: '29030400', label: 'Every Year' }
-						],
+						data: [...snapshotSchedulePresets],
 						value: ''
 					}
 				}
@@ -112,7 +111,11 @@
 	watch([() => properties.pool.value, () => datasets.current], ([poolValue]) => {
 		if (poolValue) {
 			const sets = datasets.current
-				.filter((dataset) => dataset.pool === poolValue)
+				.filter(
+					(dataset) =>
+						dataset.pool === poolValue &&
+						(!isSylveDataset(dataset.name) || dataset.name === prefill?.dataset)
+				)
 				.map((dataset) => ({
 					label: dataset.name,
 					value: dataset.name
@@ -140,6 +143,7 @@
 
 		handleAPIError(response);
 		toast.error('Failed to create snapshot', {
+			description: snapshotCreateErrorMessage(getAPIErrorText(response), snapshotName),
 			position: 'bottom-center'
 		});
 	}
@@ -192,7 +196,9 @@
 				open = false;
 				return;
 			} else if (intervalType === 'minutes') {
-				minutes = parseInt(properties.interval.values.interval.value) || 0;
+				const schedule = presetToSchedule(properties.interval.values.interval.value);
+				minutes = schedule.interval;
+				cron = schedule.cronExpr;
 			} else if (intervalType === 'cronExpr') {
 				cron = properties.interval.values.cron;
 			}

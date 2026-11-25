@@ -9,6 +9,7 @@
 package system
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -23,7 +24,89 @@ import (
 	"gorm.io/gorm"
 )
 
-const fileExplorerUploadIdentityTTL = 24 * time.Hour
+const (
+	fileExplorerUploadIdentityTTL = 24 * time.Hour
+	fileExplorerPartialPrefix     = ".sylve-upload-"
+	fileExplorerPartialSuffix     = ".partial"
+)
+
+var fileExplorerProcessStart = time.Now()
+
+func FileExplorerPartialPath(directory string) string {
+	return filepath.Join(directory, fileExplorerPartialPrefix+utils.GenerateRandomUUID()+fileExplorerPartialSuffix)
+}
+
+func (s *Service) RegisterFileExplorerPartial(path, owner string) (string, error) {
+	if s == nil || s.DB == nil {
+		return "", nil
+	}
+	node, err := utils.GetSystemHostname()
+	if err != nil || strings.TrimSpace(node) == "" {
+		return "", fmt.Errorf("file_explorer_upload_node_failed: %v", err)
+	}
+	record := utilitiesModels.Upload{
+		ID:        utils.GenerateRandomUUID(),
+		Scope:     utilitiesModels.UploadScopeFileExplorer,
+		Path:      path,
+		Name:      filepath.Base(path),
+		Owner:     owner,
+		Node:      node,
+		Status:    utilitiesModels.UploadStatusReceiving,
+		CreatedAt: time.Now(),
+	}
+	if err := s.DB.Create(&record).Error; err != nil {
+		return "", fmt.Errorf("file_explorer_partial_register_failed: %w", err)
+	}
+	return record.ID, nil
+}
+
+func (s *Service) ReleaseFileExplorerPartial(id string) {
+	if s == nil || s.DB == nil || id == "" {
+		return
+	}
+	_ = s.DB.Where("id = ? AND status = ?", id, utilitiesModels.UploadStatusReceiving).
+		Delete(&utilitiesModels.Upload{}).Error
+}
+
+func (s *Service) SweepFileExplorerPartials(ctx context.Context) (int, error) {
+	if s == nil || s.DB == nil {
+		return 0, nil
+	}
+	node, err := utils.GetSystemHostname()
+	if err != nil {
+		return 0, fmt.Errorf("file_explorer_upload_node_failed: %w", err)
+	}
+	var records []utilitiesModels.Upload
+	if err := s.DB.WithContext(ctx).Where(
+		"scope = ? AND status = ? AND node = ? AND created_at < ?",
+		utilitiesModels.UploadScopeFileExplorer,
+		utilitiesModels.UploadStatusReceiving,
+		node,
+		fileExplorerProcessStart,
+	).Find(&records).Error; err != nil {
+		return 0, fmt.Errorf("file_explorer_partial_lookup_failed: %w", err)
+	}
+
+	removed := 0
+	var sweepErr error
+	for index := range records {
+		record := &records[index]
+		name := filepath.Base(record.Path)
+		if strings.HasPrefix(name, fileExplorerPartialPrefix) && strings.HasSuffix(name, fileExplorerPartialSuffix) {
+			if info, err := os.Lstat(record.Path); err == nil && info.Mode().IsRegular() {
+				if err := os.Remove(record.Path); err != nil && !os.IsNotExist(err) {
+					sweepErr = errors.Join(sweepErr, err)
+					continue
+				}
+				removed++
+			}
+		}
+		if err := s.DB.WithContext(ctx).Delete(record).Error; err != nil {
+			sweepErr = errors.Join(sweepErr, err)
+		}
+	}
+	return removed, sweepErr
+}
 
 var (
 	ErrFileExplorerUploadNotFound = errors.New("file_explorer_upload_not_found")

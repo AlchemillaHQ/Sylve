@@ -11,7 +11,8 @@ export const RAMInfoHistoricalSchema = z.array(
 export const RAMInfoSchema = z.object({
 	total: z.number().default(0),
 	free: z.number().default(0),
-	usedPercent: z.number().default(0)
+	usedPercent: z.number().default(0),
+	arc: z.number().optional()
 });
 
 export type RAMInfo = z.infer<typeof RAMInfoSchema>;

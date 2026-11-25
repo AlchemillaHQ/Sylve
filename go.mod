@@ -13,7 +13,7 @@ ignore assets
 ignore internal/testutil
 
 require (
-	github.com/alchemillahq/gzfs v0.0.0-20261025152323-c0bf3add0a07
+	github.com/alchemillahq/gzfs v0.0.0-20261124095215-5cfa2959e5fe
 	github.com/anacrolix/torrent v1.61.0
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 	github.com/beevik/etree v1.6.0

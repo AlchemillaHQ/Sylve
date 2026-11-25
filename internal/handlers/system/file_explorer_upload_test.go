@@ -121,8 +121,8 @@ func TestUploadFileUsesServerIssuedIdentityForRevert(t *testing.T) {
 	}
 	if info, err := os.Stat(wantPath); err != nil {
 		t.Fatalf("stat uploaded file: %v", err)
-	} else if info.Mode().Perm() != 0o600 {
-		t.Fatalf("uploaded mode=%#o want=0600", info.Mode().Perm())
+	} else if info.Mode().Perm() != 0o644 {
+		t.Fatalf("uploaded mode=%#o want=0644", info.Mode().Perm())
 	}
 
 	for _, other := range []string{"user:1", "node:node-2:sylve:admin"} {
@@ -865,7 +865,7 @@ func TestFileExplorerUploadMutationFailuresDistinguishRestoreConflict(t *testing
 	}
 }
 
-type uploadFailureResponse = internal.APIResponse[fileExplorerUploadErrorData]
+type uploadFailureResponse = internal.APIResponse[FileExplorerUploadErrorData]
 
 func assertUploadFailure(
 	t *testing.T,

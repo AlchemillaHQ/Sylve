@@ -367,6 +367,14 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		logger.L.Info().Msg("Starting background watchers and queues")
 		go sysS.StartNetlinkWatcher(qCtx)
 		sysS.StartDiskSmartMonitor(qCtx)
+		go func() {
+			removed, err := sysS.SweepFileExplorerPartials(qCtx)
+			if err != nil {
+				logger.L.Warn().Err(err).Msg("Failed to clean up interrupted File Explorer uploads")
+			} else if removed > 0 {
+				logger.L.Info().Int("files", removed).Msg("Removed interrupted File Explorer uploads")
+			}
+		}()
 		go dS.(*disk.Service).StartSelfTestScheduler(qCtx)
 		go zS.(*zfs.Service).StartPoolScrubScheduler(qCtx)
 
@@ -460,7 +468,13 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	r := gin.Default()
 	r.Use(gzip.Gzip(
 		gzip.BestSpeed,
-		gzip.WithExcludedPaths([]string{"/api/utilities/downloads", "/api/nodes/", "/metrics"}),
+		gzip.WithExcludedPaths([]string{
+			"/api/utilities/downloads",
+			"/api/system/file-explorer/download",
+			"/api/system/file-explorer/archive",
+			"/api/nodes/",
+			"/metrics",
+		}),
 	))
 
 	handlers.RegisterRoutes(r,

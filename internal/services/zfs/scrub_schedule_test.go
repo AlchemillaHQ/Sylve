@@ -663,6 +663,8 @@ func TestPoolScrubConcurrentStartsAndMutationsShareOwnership(t *testing.T) {
 		func() error { return secondService.ScrubPool(t.Context(), "101") },
 		func() error { return secondService.DeletePool(t.Context(), "101") },
 		func() error { return secondService.ReplaceDevice(t.Context(), "101", "old", "new") },
+		func() error { return secondService.AttachDevice(t.Context(), "101", "old", "new") },
+		func() error { return secondService.DetachDevice(t.Context(), "101", "old") },
 		func() error {
 			return secondService.WithUsablePoolsChange(t.Context(), nil, func(*gorm.DB) error { return nil })
 		},
@@ -677,6 +679,25 @@ func TestPoolScrubConcurrentStartsAndMutationsShareOwnership(t *testing.T) {
 	}
 	if len(b.starts) != 1 {
 		t.Fatalf("concurrent starts: %v", b.starts)
+	}
+}
+
+func TestPoolDeviceMutationsRefuseActiveScrubs(t *testing.T) {
+	service, backend := newPoolScrubTestService(t)
+	if err := service.DB.Create(&zfsModels.PoolScrubRun{
+		RunKey: "active-device-guard", PoolGUID: "101", PoolName: "tank", Source: "manual",
+		RequestedAt: backend.now, Status: "running",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, attempt := range []func() error{
+		func() error { return service.ReplaceDevice(t.Context(), "101", "202", "/dev/da7") },
+		func() error { return service.AttachDevice(t.Context(), "101", "202", "/dev/da7") },
+		func() error { return service.DetachDevice(t.Context(), "101", "202") },
+	} {
+		if err := attempt(); !errors.Is(err, db.ErrPoolScrubActive) {
+			t.Fatalf("device mutation bypassed an active scrub: %v", err)
+		}
 	}
 }
 

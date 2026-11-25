@@ -37,7 +37,8 @@ type CreateFilesystemRequest struct {
 }
 
 type EditFilesystemRequest struct {
-	Properties map[string]string `json:"properties" binding:"required"`
+	Properties map[string]string `json:"properties"`
+	Inherit    []string          `json:"inherit"`
 }
 
 type CreateVolumeRequest struct {
@@ -47,8 +48,9 @@ type CreateVolumeRequest struct {
 }
 
 type RollbackSnapshotRequest struct {
-	Name              string `json:"name"`
-	DestroyMoreRecent bool   `json:"destroyMoreRecent"`
+	Name              string   `json:"name"`
+	DestroyMoreRecent bool     `json:"destroyMoreRecent"`
+	ExpectedNewer     []string `json:"expectedNewer"`
 }
 
 type FlashVolumeRequest struct {
@@ -138,6 +140,43 @@ func GetDatasets(zfsService *zfs.Service, authService *auth.Service) gin.Handler
 			Message: "datasets",
 			Error:   "",
 			Data:    datasets,
+		})
+	}
+}
+
+// @Summary List ZFS snapshots
+// @Description List snapshots on usable pools with their creation time and space usage
+// @Tags ZFS
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[[]zfsServiceInterfaces.SnapshotSummary] "Success"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /zfs/snapshots [get]
+func GetSnapshots(zfsService *zfs.Service, authService *auth.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		snapshots, err := zfsService.GetSnapshotSummaries(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		snapshots, ok := middleware.Visible(c, authService, snapshots, auth.DatastoreAudit, func(snapshot zfsServiceInterfaces.SnapshotSummary) string {
+			return "/storage/" + snapshot.Pool
+		})
+		if !ok {
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[[]zfsServiceInterfaces.SnapshotSummary]{
+			Status:  "success",
+			Message: "snapshots",
+			Error:   "",
+			Data:    snapshots,
 		})
 	}
 }
@@ -238,7 +277,7 @@ func CreateSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 }
 
 // @Summary Rollback to a ZFS snapshot
-// @Description Rollback to a ZFS snapshot
+// @Description Rollback to a ZFS snapshot. Refused with 409 for datasets Sylve manages (under <pool>/sylve; roll those back from their VM or jail), for operating-system file systems, and while the file system is used by a running VM or a container. When expectedNewer is set, it must list the GUIDs of every snapshot newer than the target, or the rollback is refused with 409.
 // @Tags ZFS
 // @Accept json
 // @Produce json
@@ -266,7 +305,7 @@ func RollbackSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 		}
 
 		ctx := c.Request.Context()
-		err := zfsService.RollbackSnapshot(ctx, guid, request.Name, request.DestroyMoreRecent)
+		err := zfsService.RollbackSnapshot(ctx, guid, request.Name, request.DestroyMoreRecent, request.ExpectedNewer)
 		if err != nil {
 			writeZFSServiceError(c, err, "snapshot_rollback_failed")
 			return
@@ -557,7 +596,7 @@ func EditFilesystem(zfsService *zfs.Service) gin.HandlerFunc {
 		}
 
 		ctx := c.Request.Context()
-		err := zfsService.EditFilesystem(ctx, guid, request.Properties)
+		err := zfsService.EditFilesystem(ctx, guid, request.Properties, request.Inherit)
 
 		if err != nil {
 			writeZFSServiceError(c, err, "filesystem_edit_failed")
@@ -574,7 +613,7 @@ func EditFilesystem(zfsService *zfs.Service) gin.HandlerFunc {
 }
 
 // @Summary Delete a ZFS filesystem
-// @Description Delete a ZFS filesystem
+// @Description Delete a ZFS filesystem and everything inside it. Returns 409 when anything inside it is in use, including a volume an iSCSI target shares.
 // @Tags ZFS
 // @Produce json
 // @Security BearerAuth
@@ -649,7 +688,7 @@ func CreateVolume(zfsService *zfs.Service) gin.HandlerFunc {
 }
 
 // @Summary Edit a ZFS volume
-// @Description Edit a ZFS volume
+// @Description Edit a ZFS volume. Properties listed in inherit are reset to their inherited value. Shrinking the volume or changing its volume mode is refused with 409 while a running VM uses it or an iSCSI target shares it.
 // @Tags ZFS
 // @Accept json
 // @Produce json
@@ -677,7 +716,7 @@ func EditVolume(zfsService *zfs.Service) gin.HandlerFunc {
 		}
 
 		ctx := c.Request.Context()
-		err := zfsService.EditVolume(ctx, guid, request.Properties)
+		err := zfsService.EditVolume(ctx, guid, request.Properties, request.Inherit)
 
 		if err != nil {
 			writeZFSServiceError(c, err, "volume_edit_failed")
@@ -694,7 +733,7 @@ func EditVolume(zfsService *zfs.Service) gin.HandlerFunc {
 }
 
 // @Summary Delete a ZFS volume
-// @Description Delete a ZFS volume
+// @Description Delete a ZFS volume and its snapshots. Returns 409 when a VM uses it or an iSCSI target shares it.
 // @Tags ZFS
 // @Produce json
 // @Security BearerAuth
@@ -725,7 +764,7 @@ func DeleteVolume(zfsService *zfs.Service) gin.HandlerFunc {
 }
 
 // @Summary Bulk delete ZFS datasets
-// @Description Delete one or more ZFS datasets using exact name and GUID pairs
+// @Description Delete one or more ZFS datasets using exact name and GUID pairs. Returns 409 when anything being deleted is in use, including a volume an iSCSI target shares.
 // @Tags ZFS
 // @Produce json
 // @Security BearerAuth
@@ -763,7 +802,7 @@ func BulkDeleteDataset(zfsService *zfs.Service) gin.HandlerFunc {
 }
 
 // @Summary Flash a ZFS volume
-// @Description Flash a ZFS volume with a UUID pointing to a disk iso/img
+// @Description Write a downloaded ISO or disk image onto a ZFS volume, starting at its first byte. Disk images in formats other than raw, such as QCOW2 or VMDK, are converted to raw as they are written, and images with a backing file are refused. The image, or its virtual size for disk images, must fit in the volume. Returns 409 when the volume is in use, shared by an iSCSI target, read only or too small. The write continues if the client disconnects.
 // @Tags ZFS
 // @Accept json
 // @Produce json
@@ -817,8 +856,8 @@ func FlashVolume(zfsService *zfs.Service) gin.HandlerFunc {
 // @Param page query int false "Page number" default(1)
 // @Param size query int false "Page size" default(25)
 // @Param search query string false "Search dataset names"
-// @Param nameFilter query string false "Comma-separated dataset name substrings to exclude"
-// @Param sort[0][field] query string false "Sort field" Enums(name,used,referenced)
+// @Param nameFilter query string false "Comma-separated filters to exclude. bk_j, svms_, sjs_, ha_ and _template match Sylve snapshot kinds by snapshot name; other values exclude names containing them"
+// @Param sort[0][field] query string false "Sort field" Enums(name,used,referenced,creation)
 // @Param sort[0][dir] query string false "Sort direction" Enums(asc,desc)
 // @Success 200 {object} internal.APIResponse[zfsServiceInterfaces.PaginatedDatasetsResponse] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -850,6 +889,7 @@ func GetPaginatedDatasets(zfsService *zfs.Service) gin.HandlerFunc {
 			"name":       {},
 			"used":       {},
 			"referenced": {},
+			"creation":   {},
 		}
 
 		if len(request.Sort) > 0 {
@@ -859,7 +899,7 @@ func GetPaginatedDatasets(zfsService *zfs.Service) gin.HandlerFunc {
 				c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "invalid_sort_field",
-					Error:   "sort field must be one of: name, used, referenced",
+					Error:   "sort field must be one of: name, used, referenced, creation",
 					Data:    nil,
 				})
 				return

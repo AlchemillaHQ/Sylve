@@ -41,6 +41,7 @@ type CPUInfo struct {
 		L2  int16 `json:"l2"`
 		L3  int16 `json:"l3"`
 	} `json:"cache"`
-	Frequency int64   `json:"frequency"`
-	Usage     float64 `json:"usage"`
+	Frequency   int64   `json:"frequency"`
+	Usage       float64 `json:"usage"`
+	Temperature float64 `json:"temperature,omitempty"`
 }

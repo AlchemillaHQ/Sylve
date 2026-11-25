@@ -61,11 +61,13 @@ type Service struct {
 	tunRead          func(string) (string, error)
 	tunApply         func(string, string) error
 
-	fileExplorerMutationMutex sync.Mutex
-	fileExplorerRename        func(string, string) error
-	jailed                    bool
-	restartRequester          func()
-	runCommand                func(string, ...string) (string, error)
+	fileExplorerTransferOnce     sync.Once
+	fileExplorerTransferSlot     chan struct{}
+	fileExplorerRename           func(string, string) error
+	fileExplorerProtectionLoader func() (*fileExplorerProtection, error)
+	jailed                       bool
+	restartRequester             func()
+	runCommand                   func(string, ...string) (string, error)
 
 	bootstrapServicePrecheckFn func(models.AvailableService) error
 	ensureBootstrapPoolFn      func(context.Context, string) (bool, error)

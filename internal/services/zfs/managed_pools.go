@@ -24,6 +24,8 @@ type managedPoolScope struct {
 	guids   []string
 	nameSet map[string]struct{}
 	guidSet map[string]struct{}
+
+	importedPools []*gzfs.ZPool
 }
 
 func (s *Service) loadManagedPoolScope(ctx context.Context) (managedPoolScope, error) {
@@ -56,6 +58,7 @@ func (s *Service) loadManagedPoolScope(ctx context.Context) (managedPoolScope, e
 	if err != nil {
 		return scope, fmt.Errorf("list pools for managed scope: %w", err)
 	}
+	scope.importedPools = hostPools
 
 	hostByName := make(map[string]*gzfs.ZPool, len(hostPools))
 	for _, pool := range hostPools {

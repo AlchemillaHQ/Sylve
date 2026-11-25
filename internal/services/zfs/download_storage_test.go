@@ -124,9 +124,9 @@ func TestIntegrationDownloadStorageDestructiveEntryPointsRealZFS(t *testing.T) {
 		}},
 		{"pool destroy", func() error { return service.DeletePool(t.Context(), rootPool.PoolGUID) }},
 		{"readonly edit", func() error {
-			return service.EditFilesystem(t.Context(), dataset.GUID, map[string]string{"readonly": "on"})
+			return service.EditFilesystem(t.Context(), dataset.GUID, map[string]string{"readonly": "on"}, nil)
 		}},
-		{"snapshot rollback", func() error { return service.RollbackSnapshot(t.Context(), snapshot.GUID, snapshot.Name, false) }},
+		{"snapshot rollback", func() error { return service.RollbackSnapshot(t.Context(), snapshot.GUID, snapshot.Name, false, nil) }},
 	} {
 		t.Run(operation.name, func(t *testing.T) {
 			if err := operation.run(); !errors.Is(err, ErrConflict) {

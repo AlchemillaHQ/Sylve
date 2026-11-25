@@ -13,6 +13,7 @@ import (
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	infoServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/info"
 	"github.com/alchemillahq/sylve/pkg/system/swapctl"
+	"github.com/alchemillahq/sylve/pkg/utils/sysctl"
 
 	ram "github.com/shirou/gopsutil/mem"
 )
@@ -23,10 +24,13 @@ func (s *Service) GetRAMInfo() (infoServiceInterfaces.RAMInfo, error) {
 		return infoServiceInterfaces.RAMInfo{}, err
 	}
 
+	arc, _ := sysctl.GetUint64("kstat.zfs.misc.arcstats.size")
+
 	return infoServiceInterfaces.RAMInfo{
 		Total:       ramInfo.Total,
 		Free:        ramInfo.Free,
 		UsedPercent: ramInfo.UsedPercent,
+		ARC:         arc,
 	}, nil
 }
 

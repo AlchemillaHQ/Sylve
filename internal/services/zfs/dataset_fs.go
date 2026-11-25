@@ -12,9 +12,11 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/alchemillahq/gzfs"
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
 )
@@ -82,23 +84,36 @@ func (s *Service) CreateFilesystem(ctx context.Context, name string, parent stri
 	return nil
 }
 
-func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[string]string) error {
+func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[string]string, inherit []string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
+	if len(props) == 0 && len(inherit) == 0 {
+		return classifyError(ErrInvalidRequest, "no_properties_to_edit")
+	}
+	for _, property := range inherit {
+		if _, set := props[property]; set {
+			return classifyError(ErrInvalidRequest, "property_%s_cannot_be_set_and_inherited", property)
+		}
+	}
+	edits := func(property string) bool {
+		_, set := props[property]
+		return set || slices.Contains(inherit, property)
+	}
+
+	dataset, err := s.DatasetByGUID(ctx, guid)
 
 	if err != nil || dataset == nil || dataset.Type != gzfs.DatasetTypeFilesystem {
 		return datasetLookupError(err, "filesystem with guid %s not found", guid)
 	}
-	if _, editsMountpoint := props["mountpoint"]; editsMountpoint && isSylveManagedDataset(dataset.Name) {
+	if edits("mountpoint") && isSylveManagedDataset(dataset.Name) {
 		return classifyError(ErrConflict, "managed_dataset_mountpoint_edit_not_supported")
 	}
 	if mp, ok := props["mountpoint"]; ok && mp == "" {
 		props["mountpoint"] = fmt.Sprintf("/%s", dataset.Name)
 	}
 	for _, property := range []string{"mountpoint", "canmount", "readonly", "keylocation"} {
-		if _, changes := props[property]; changes {
+		if edits(property) {
 			release, err := s.guardDownloadStorageMutation(ctx, dataset.Name)
 			if err != nil {
 				return err
@@ -108,7 +123,7 @@ func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[str
 		}
 	}
 	for _, property := range []string{"mountpoint", "canmount", "readonly", "sharenfs"} {
-		if _, changes := props[property]; changes {
+		if edits(property) {
 			releaseTopology, err := s.guardStorageTopologyMutation(ctx, dataset, &gzfs.Dataset{Mountpoint: props["mountpoint"]})
 			if err != nil {
 				return err
@@ -122,11 +137,19 @@ func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[str
 		props["quota"] = strings.ReplaceAll(q, " ", "")
 	}
 
-	err = s.GZFS.ZFS.EditFilesystem(ctx, dataset.Name, props)
-	if err == nil {
+	if len(props) > 0 {
+		if err := s.GZFS.ZFS.EditFilesystem(ctx, dataset.Name, props); err != nil {
+			return err
+		}
 		s.SignalDSChange(dataset.Pool, dataset.Name, "generic-dataset", "edit")
 	}
-	return err
+	if len(inherit) > 0 {
+		if err := s.GZFS.ZFS.InheritProperties(ctx, dataset.Name, inherit...); err != nil {
+			return err
+		}
+		s.SignalDSChange(dataset.Pool, dataset.Name, "generic-dataset", "edit")
+	}
+	return nil
 }
 
 func isSylveManagedDataset(name string) bool {
@@ -138,7 +161,7 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	foundFS, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
+	foundFS, err := s.DatasetByGUID(ctx, guid)
 
 	if err != nil || foundFS == nil || foundFS.Type != gzfs.DatasetTypeFilesystem {
 		return datasetLookupError(err, "filesystem with guid %s not found", guid)
@@ -148,12 +171,8 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 		return err
 	}
 
-	noDelete := []string{"sylve", "sylve/virtual-machines", "sylve/jails", "sylve/downloads"}
-	relativeName := strings.TrimPrefix(foundFS.Name, foundFS.Pool+"/")
-	for _, name := range noDelete {
-		if relativeName == name {
-			return classifyError(ErrConflict, "cannot_delete_critical_filesystem")
-		}
+	if err := validateCriticalDatasetDeletion(foundFS); err != nil {
+		return err
 	}
 
 	release, err := s.guardDownloadStorageMutation(ctx, foundFS.Name)
@@ -171,6 +190,18 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 	if err != nil {
 		return fmt.Errorf("failed to list datasets before deletion: %w", err)
 	}
+	affected := []*gzfs.Dataset{foundFS}
+	for _, dataset := range allDatasets {
+		if dataset != nil && dataset.Name != foundFS.Name && datasetNameInTree(dataset.Name, foundFS.Name) {
+			affected = append(affected, dataset)
+		}
+	}
+	if err := validateSystemFilesystemDeletion(affected); err != nil {
+		return err
+	}
+	if err := s.requireVolumesNotShared(ctx, affected); err != nil {
+		return err
+	}
 	affectedGUIDs := datasetGUIDsInTrees(allDatasets, []*gzfs.Dataset{foundFS})
 	if len(affectedGUIDs) == 0 {
 		affectedGUIDs = []string{guid}
@@ -185,8 +216,15 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 	if count > 0 {
 		return classifyError(ErrConflict, "dataset_in_use_by_vm")
 	}
+	inUse, err := containerModels.DatasetsInUse(s.DB, affectedGUIDs)
+	if err != nil {
+		return fmt.Errorf("failed to check if dataset is in use: %w", err)
+	}
+	if inUse {
+		return classifyError(ErrConflict, "dataset_in_use_by_container")
+	}
 	if err := foundFS.Destroy(ctx, true, false); err != nil {
-		return err
+		return s.reconcileFailedDeletion(ctx, affected, err)
 	}
 
 	cleanedRoot := false

@@ -22,6 +22,7 @@ type UploadStatus string
 const (
 	UploadStatusStaged    UploadStatus = "staged"
 	UploadStatusCompleted UploadStatus = "completed"
+	UploadStatusReceiving UploadStatus = "receiving"
 )
 
 // Upload is the server-side resolution record for an opaque upload identity.

@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -188,19 +189,38 @@ func authenticateConsole(c *gin.Context, authService *authSvc.Service) bool {
 	return true
 }
 
+var fileExplorerDownloadKinds = map[string]string{
+	"/api/system/file-explorer/download": "file",
+	"/api/system/file-explorer/archive":  "archive",
+}
+
+func FileExplorerTicketScope(kind string, ids ...string) string {
+	return kind + ":" + strings.Join(ids, "\x00")
+}
+
+func FileExplorerDownloadScope(path string, ids []string) (string, bool) {
+	kind, ok := fileExplorerDownloadKinds[path]
+	if !ok || len(ids) == 0 || slices.Contains(ids, "") {
+		return "", false
+	}
+	return FileExplorerTicketScope(kind, ids...), true
+}
+
 func authenticateLocalRequest(c *gin.Context, authService *authSvc.Service) bool {
 	if isConsoleWebSocketPath(c.Request.URL.Path) {
 		return authenticateConsole(c, authService)
 	}
 
-	if c.Request.Method == http.MethodGet && c.Request.URL.Path == "/api/system/file-explorer/download" {
-		if hash := c.Query("hash"); hash != "" {
-			token, err := authService.GetTokenBySHA256(hash)
-			if err != nil {
-				abortAuthentication(c, http.StatusUnauthorized, "invalid_hash")
-				return false
+	if c.Request.Method == http.MethodGet {
+		if scope, ok := FileExplorerDownloadScope(c.Request.URL.Path, c.QueryArray("id")); ok {
+			if ticket := c.Query("ticket"); ticket != "" {
+				token, err := authService.RedeemDownloadTicket(ticket, scope)
+				if err != nil {
+					abortAuthentication(c, http.StatusUnauthorized, authSvc.ErrDownloadTicketInvalid.Error())
+					return false
+				}
+				return setLocalAuthentication(c, authService, token)
 			}
-			return setLocalAuthentication(c, authService, token)
 		}
 	}
 

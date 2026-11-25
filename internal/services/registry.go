@@ -221,6 +221,8 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	directoryService.ValidateSamba = sambaSvc.ValidateDirectoryConfig
 	directoryService.SharePrincipalsInUse = sambaSvc.DirectoryPrincipalsInUse
 	zfsSvc := zfsService.(*zfs.Service)
+	zfsSvc.PoolDeviceDisks = diskService.(*disk.Service)
+	jailService.(*jail.Service).LookupDatasetByGUID = zfsSvc.DatasetByGUID
 	mdnsSvc := mdnsService.(*mdns.Service)
 	sysSvc := systemService.(*system.Service)
 	sysSvc.NFS = nfsService

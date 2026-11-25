@@ -19,10 +19,12 @@ import (
 	"github.com/alchemillahq/gzfs"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	"github.com/alchemillahq/sylve/internal/downloadstorage"
+	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/metrics"
 
+	"golang.org/x/sync/singleflight"
 	"gorm.io/gorm"
 )
 
@@ -33,6 +35,8 @@ type Service struct {
 	DB                        *gorm.DB
 	TelemetryDB               *gorm.DB
 	GZFS                      *gzfs.Client
+	PoolDeviceDisks           diskServiceInterfaces.PoolDeviceInspector
+	poolDeviceRunner          gzfs.Runner
 	Libvirt                   libvirtServiceInterfaces.LibvirtServiceInterface
 	syncMutex                 *sync.Mutex
 	poolTelemetryMutex        sync.Mutex
@@ -42,6 +46,7 @@ type Service struct {
 	cacheInvalidationMutex    sync.Mutex
 	cacheInvalidationSequence uint64
 	pendingCacheInvalidations map[string]uint64
+	liveReads                 singleflight.Group
 	OnDatasetsDeleted         func(context.Context, []string) error
 	StorageTopologyGuard      func(context.Context, ...string) (func(), error)
 	ReleasePool               func(pool string)

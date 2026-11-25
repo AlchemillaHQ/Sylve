@@ -38,6 +38,11 @@ export function parsePoolActionError(error: APIResponse): string {
 			if (errorText.startsWith('pool ') && errorText.endsWith('is in use and cannot be deleted')) {
 				return 'Pool is in use by a VM or Jail';
 			}
+
+			const iscsi = errorText.match(/volume_(\S+)_shared_over_iscsi_by_(\S+)/);
+			if (iscsi) {
+				return `The iSCSI target ${iscsi[2]} shares the volume ${iscsi[1]} on this pool`;
+			}
 		}
 	}
 

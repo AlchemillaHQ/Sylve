@@ -128,6 +128,22 @@
 		}, delay);
 	}
 
+	let quietRefresh = false;
+
+	export async function refreshQuietly() {
+		if (!table || !tableInitialized || quietRefresh || table.getSelectedRows().length > 0) return;
+		const current = table;
+		const showLoader = current.options.dataLoader;
+		quietRefresh = true;
+		current.options.dataLoader = false;
+		try {
+			await current.setPage(current.getPage() || 1).catch(() => undefined);
+		} finally {
+			current.options.dataLoader = showLoader;
+			quietRefresh = false;
+		}
+	}
+
 	function updateParentActiveRows() {
 		if (tableInitialized) {
 			parentActiveRow = table?.getSelectedRows().map((r) => r.getData() as Row) || [];
@@ -213,6 +229,10 @@
 	}
 
 	onMount(() => {
+		const savedSort = `tabulator-${name}-sort`;
+		if (initialSort?.length && localStorage.getItem(savedSort) === '[]') {
+			localStorage.removeItem(savedSort);
+		}
 		if (tableComponent) {
 			table = new Tabulator(tableComponent, {
 				index,

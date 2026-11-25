@@ -80,6 +80,12 @@ type Consumer struct {
 	ProviderRef string `xml:"provider,attr"`
 	Mode        string `xml:"mode"`
 	Config      Config `xml:"config,omitempty"`
+
+	ProviderLink Reference `xml:"provider"`
+}
+
+type Reference struct {
+	Ref string `xml:"ref,attr"`
 }
 
 type DiskInfo struct {

@@ -28,6 +28,7 @@ type diskMutationHandlerStub struct {
 	operation string
 	device    string
 	sizes     []uint64
+	types     []string
 	calls     int
 	err       error
 }
@@ -48,7 +49,8 @@ func (s *diskMutationHandlerStub) InitializeGPTContext(_ context.Context, device
 	return s.record("initialize", device, nil)
 }
 
-func (s *diskMutationHandlerStub) CreatePartitionsContext(_ context.Context, device string, sizes []uint64) error {
+func (s *diskMutationHandlerStub) CreatePartitionsContext(_ context.Context, device string, sizes []uint64, types []string) error {
+	s.types = append([]string(nil), types...)
 	return s.record("create", device, sizes)
 }
 
@@ -77,11 +79,13 @@ func TestDiskMutationHandlers(t *testing.T) {
 		wantOperation string
 		wantDevice    string
 		wantSizes     []uint64
+		wantTypes     []string
 		wantMessage   string
 	}{
 		{name: "clear partition table", method: http.MethodDelete, path: "/disk/nda0/partition-table", wantStatus: http.StatusOK, wantOperation: "clear", wantDevice: "nda0", wantMessage: "partition_table_cleared"},
 		{name: "initialize GPT", method: http.MethodPost, path: "/disk/nda0/partition-table", wantStatus: http.StatusOK, wantOperation: "initialize", wantDevice: "nda0", wantMessage: "gpt_initialized"},
 		{name: "create partitions", method: http.MethodPost, path: "/disk/nda0/partitions", body: []byte(`{"sizes":[1048576,2097152]}`), wantStatus: http.StatusCreated, wantOperation: "create", wantDevice: "nda0", wantSizes: []uint64{1048576, 2097152}, wantMessage: "partitions_created"},
+		{name: "create typed partitions", method: http.MethodPost, path: "/disk/nda0/partitions", body: []byte(`{"sizes":[1048576,2097152],"types":["freebsd-swap","freebsd-zfs"]}`), wantStatus: http.StatusCreated, wantOperation: "create", wantDevice: "nda0", wantSizes: []uint64{1048576, 2097152}, wantTypes: []string{"freebsd-swap", "freebsd-zfs"}, wantMessage: "partitions_created"},
 		{name: "delete partition", method: http.MethodDelete, path: "/disk/partitions/nda0p1", wantStatus: http.StatusOK, wantOperation: "delete", wantDevice: "nda0p1", wantMessage: "partition_deleted"},
 	}
 
@@ -92,8 +96,8 @@ func TestDiskMutationHandlers(t *testing.T) {
 			if response.Code != tt.wantStatus {
 				t.Fatalf("status = %d; want %d; body = %s", response.Code, tt.wantStatus, response.Body.String())
 			}
-			if service.calls != 1 || service.operation != tt.wantOperation || service.device != tt.wantDevice || !reflect.DeepEqual(service.sizes, tt.wantSizes) {
-				t.Fatalf("service call = operation %q device %q sizes %v calls %d", service.operation, service.device, service.sizes, service.calls)
+			if service.calls != 1 || service.operation != tt.wantOperation || service.device != tt.wantDevice || !reflect.DeepEqual(service.sizes, tt.wantSizes) || !reflect.DeepEqual(service.types, tt.wantTypes) {
+				t.Fatalf("service call = operation %q device %q sizes %v types %v calls %d", service.operation, service.device, service.sizes, service.types, service.calls)
 			}
 			body := testutil.DecodeJSONResponse[internal.APIResponse[any]](t, response)
 			if body.Status != "success" || body.Message != tt.wantMessage || body.Error != "" {

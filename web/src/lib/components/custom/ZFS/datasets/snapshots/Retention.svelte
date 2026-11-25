@@ -6,7 +6,13 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { cronToHuman } from '$lib/utils/time';
 	import { modifyPeriodicSnapshot } from '$lib/api/zfs/datasets';
-	import { handleAPIError } from '$lib/utils/http';
+	import { getAPIErrorText, handleAPIError } from '$lib/utils/http';
+	import {
+		presetToSchedule,
+		scheduleToPreset,
+		snapshotScheduleLabel,
+		snapshotSchedulePresets
+	} from '$lib/utils/zfs/snapshot';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
@@ -39,27 +45,28 @@
 		const hasSimple = Boolean(source?.keepLast || source?.maxAgeDays);
 		const retentionType = hasGFS ? 'gfs' : hasSimple ? 'simple' : 'none';
 
+		const interval = source?.interval ?? 0;
+		const cronExpr = source?.cronExpr ?? '';
+		const preset = scheduleToPreset(interval, cronExpr);
+		const legacy = !preset && !cronExpr && interval > 0 ? String(interval) : '';
+
 		return {
 			interval: {
 				open: false,
-				value: source?.cronExpr ? 'cronExpr' : 'minutes',
+				value: cronExpr && !preset ? 'cronExpr' : 'minutes',
 				data: [
 					{ value: 'minutes', label: 'Simple' },
 					{ value: 'cronExpr', label: 'Cron Expression' }
 				],
 				values: {
-					cron: source?.cronExpr || '',
+					cron: preset ? '' : cronExpr,
 					interval: {
 						open: false,
 						data: [
-							{ value: '60', label: 'Every Minute' },
-							{ value: '3600', label: 'Every Hour' },
-							{ value: '86400', label: 'Every Day' },
-							{ value: '604800', label: 'Every Week' },
-							{ value: '2419200', label: 'Every Month' },
-							{ value: '29030400', label: 'Every Year' }
+							...snapshotSchedulePresets,
+							...(legacy ? [{ value: legacy, label: snapshotScheduleLabel(interval, '') }] : [])
 						],
-						value: source?.interval.toString() || '86400'
+						value: preset || legacy || '86400'
 					}
 				}
 			},
@@ -130,10 +137,13 @@
 			}
 		}
 
+		const schedule = simpleSchedule
+			? presetToSchedule(properties.interval.values.interval.value)
+			: { interval: 0, cronExpr: properties.interval.values.cron.trim() };
 		const response = await modifyPeriodicSnapshot(
 			snapshotAtOpen.id,
-			simpleSchedule ? Number(properties.interval.values.interval.value) : 0,
-			simpleSchedule ? '' : properties.interval.values.cron.trim(),
+			schedule.interval,
+			schedule.cronExpr,
 			retentionType,
 			retentionType === 'simple'
 				? Number(properties.retention.values.simple.keepLast)
@@ -157,6 +167,7 @@
 		if (response.status !== 'success') {
 			handleAPIError(response);
 			toast.error('Error modifying retention policy', {
+				description: getAPIErrorText(response),
 				position: 'bottom-center'
 			});
 

@@ -10,6 +10,8 @@
 		scrollbarXClasses = '',
 		scrollbarYClasses = '',
 		fade = false,
+		fadeClasses = '',
+		viewportProps = {},
 		children,
 		...restProps
 	}: WithoutChild<ScrollAreaPrimitive.RootProps> & {
@@ -18,6 +20,8 @@
 		scrollbarYClasses?: string | undefined;
 		// Fades the bottom edge while there's more to scroll to.
 		fade?: boolean;
+		fadeClasses?: string;
+		viewportProps?: Omit<ScrollAreaPrimitive.ViewportProps, 'ref' | 'children'>;
 	} = $props();
 
 	let viewport = $state<HTMLElement | null>(null);
@@ -43,18 +47,28 @@
 	{...restProps}
 >
 	<ScrollAreaPrimitive.Viewport
+		{...viewportProps}
 		bind:ref={viewport}
 		data-slot="scroll-area-viewport"
-		class="ring-ring/10 dark:ring-ring/20 dark:outline-ring/40 outline-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] focus-visible:outline-1 focus-visible:ring-4"
-		onscroll={fade ? measure : undefined}
+		class={cn(
+			'ring-ring/10 dark:ring-ring/20 dark:outline-ring/40 outline-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] focus-visible:outline-1 focus-visible:ring-4',
+			viewportProps.class
+		)}
+		onscroll={(event) => {
+			if (fade) measure();
+			viewportProps.onscroll?.(event);
+		}}
 	>
 		{@render children?.()}
 	</ScrollAreaPrimitive.Viewport>
 	{#if fade}
 		<div
-			class="from-background pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t to-transparent transition-opacity duration-200 {more
-				? 'opacity-100'
-				: 'opacity-0'}"
+			data-slot="scroll-area-fade"
+			class={cn(
+				'from-background pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t to-transparent transition-opacity duration-200',
+				more ? 'opacity-100' : 'opacity-0',
+				fadeClasses
+			)}
 		></div>
 	{/if}
 	{#if orientation === 'vertical' || orientation === 'both'}

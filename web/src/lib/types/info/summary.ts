@@ -26,6 +26,10 @@ export const NodeSummaryHistorySchema = z.object({
 	cursors: SummaryHistoryCursorsSchema
 });
 
+export const CachedNodeSummaryHistorySchema = NodeSummaryHistorySchema.extend({
+	reconciledAt: z.number().nonnegative().default(0)
+});
+
 export type SummaryHistoryCursors = z.infer<typeof SummaryHistoryCursorsSchema>;
 export type SummaryHistoryNetworkPoint = z.infer<typeof SummaryHistoryNetworkPointSchema>;
 export type NodeSummaryHistory = z.infer<typeof NodeSummaryHistorySchema>;

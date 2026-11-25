@@ -8,6 +8,12 @@
 
 package infoServiceInterfaces
 
+type Hardware struct {
+	Vendor  string `json:"vendor,omitempty"`
+	Product string `json:"product,omitempty"`
+	Serial  string `json:"serial,omitempty"`
+}
+
 type BasicInfo struct {
 	Hostname      string `json:"hostname"`
 	OS            string `json:"os"`
@@ -21,4 +27,6 @@ type BasicInfo struct {
 	// For VM creation by users who can't read the host's CPU details.
 	Architecture Architecture `json:"architecture"`
 	MaxVCPUs     int64        `json:"maxVCPUs"`
+
+	Hardware Hardware `json:"hardware"`
 }

@@ -110,6 +110,7 @@ const NODELESS_ROUTES = [
 	'/auth/passkeys/login',
 	'/auth/logout',
 	'/auth/sse-tokens',
+	'/auth/download-tickets',
 	'/auth/preferences',
 	'/basic',
 	'/cluster',

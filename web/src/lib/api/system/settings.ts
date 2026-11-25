@@ -1,6 +1,6 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import { BasicSettingsSchema, type BasicSettings } from '$lib/types/system/settings';
-import { apiRequest, isAPIResponse } from '$lib/utils/http';
+import { apiRequest, isAPIResponse, removeCache } from '$lib/utils/http';
 import { type AvailableService } from '../../types/system/settings';
 
 export async function getBasicSettings(hostname?: string): Promise<BasicSettings | APIResponse> {
@@ -26,7 +26,11 @@ export function basicSettingsOrFallback(
 }
 
 export async function updateUsablePools(pools: string[], hostname?: string): Promise<APIResponse> {
-	return apiRequest('/system/basic-settings/pools', APIResponseSchema, 'PUT', pools, { hostname });
+	const response = await apiRequest('/system/basic-settings/pools', APIResponseSchema, 'PUT', pools, {
+		hostname
+	});
+	if (response.status === 'success') await removeCache('pool-list', hostname);
+	return response;
 }
 
 export async function setServiceEnabled(

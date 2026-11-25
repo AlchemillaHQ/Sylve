@@ -266,7 +266,7 @@ func (s *Service) DisableMissingShares(ctx context.Context) error {
 	}
 
 	for _, share := range shares {
-		dataset, err := s.GZFS.ZFS.GetByGUID(ctx, share.Dataset, false)
+		dataset, err := s.datasetByGUID(ctx, share.Dataset)
 		if err != nil {
 			return fmt.Errorf("failed_to_fetch_dataset_for_share_%s: %w", share.Name, err)
 		}
@@ -370,7 +370,7 @@ func (s *Service) SetShareEnabled(ctx context.Context, id uint, enabled bool) er
 	}
 
 	if enabled {
-		dataset, err := s.GZFS.ZFS.GetByGUID(ctx, share.Dataset, false)
+		dataset, err := s.datasetByGUID(ctx, share.Dataset)
 		if err != nil {
 			return fmt.Errorf("failed_to_fetch_dataset: %v", err)
 		}
@@ -485,7 +485,7 @@ func (s *Service) CreateShare(
 		return err
 	}
 
-	fDataset, err := s.GZFS.ZFS.GetByGUID(ctx, dataset, false)
+	fDataset, err := s.datasetByGUID(ctx, dataset)
 	if err != nil {
 		return fmt.Errorf("failed_to_fetch_dataset: %v", err)
 	}
@@ -702,7 +702,7 @@ func (s *Service) UpdateShare(
 	}
 
 	allowUnavailableDataset := !desiredEnabled && dataset == share.Dataset
-	fDataset, err := s.GZFS.ZFS.GetByGUID(ctx, dataset, false)
+	fDataset, err := s.datasetByGUID(ctx, dataset)
 	if err != nil && !allowUnavailableDataset {
 		return fmt.Errorf("failed_to_fetch_dataset: %v", err)
 	}
@@ -776,7 +776,7 @@ func (s *Service) UpdateShare(
 				return fmt.Errorf("failed_to_enforce_samba_dataset_guest_acl: %w", err)
 			}
 		} else {
-			oldDataset, oldDatasetErr := s.GZFS.ZFS.GetByGUID(ctx, previousShare.Dataset, false)
+			oldDataset, oldDatasetErr := s.datasetByGUID(ctx, previousShare.Dataset)
 			if oldDatasetErr != nil {
 				return fmt.Errorf("failed_to_fetch_previous_dataset: %v", oldDatasetErr)
 			}
@@ -912,7 +912,7 @@ func (s *Service) DeleteShare(ctx context.Context, id uint) error {
 	}
 
 	previousPrincipals := namesFromShareACLs(share)
-	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, share.Dataset, false)
+	dataset, err := s.datasetByGUID(ctx, share.Dataset)
 	if err != nil {
 		logger.L.Warn().Err(err).Int("share_id", share.ID).Msg("failed to fetch dataset while cleaning samba ACL principals")
 	} else if isSambaDatasetMounted(dataset) {

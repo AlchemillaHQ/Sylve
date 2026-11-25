@@ -37,6 +37,26 @@ type Disk struct {
 	Partitions            []Partition      `json:"partitions"`
 }
 
+type PoolDevice struct {
+	Path           string
+	Aliases        []string
+	Disk           string
+	Identity       string
+	IdentityStable bool
+	Size           uint64
+	Boot           bool
+	Swap           bool
+	Busy           bool
+	Partitioned    bool
+	Partition      bool
+	PartitionType  string
+}
+
+type PoolDeviceInspector interface {
+	LockPoolDeviceMutation() func()
+	ReadPoolDeviceInventory(context.Context) ([]PoolDevice, error)
+}
+
 type DeviceInfo struct {
 	Name     string `json:"name"`
 	InfoName string `json:"info_name"`

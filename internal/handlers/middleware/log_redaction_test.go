@@ -1090,3 +1090,18 @@ func TestIsImportantAuditGetPath(t *testing.T) {
 		}
 	}
 }
+
+func TestFileExplorerDownloadsAreAuditedWithoutBodiesOrTickets(t *testing.T) {
+	for _, path := range []string{"/api/system/file-explorer/download", "/api/system/file-explorer/archive"} {
+		if !isImportantAuditGetPath(path) || !shouldRedactAuditResponse(path) {
+			t.Fatalf("%s: audited=%t response redacted=%t; want both", path, isImportantAuditGetPath(path), shouldRedactAuditResponse(path))
+		}
+	}
+	query := sanitizeAuditQuery("/api/system/file-explorer/download", "id=%2Fetc%2Fmotd&ticket=secret-ticket")
+	if strings.Contains(query, "secret-ticket") || !strings.Contains(query, "id=%2Fetc%2Fmotd") {
+		t.Fatalf("sanitized query = %q; want the path kept and the ticket redacted", query)
+	}
+	if !isRoutineUnauditedRequest(http.MethodPost, "/api/auth/download-tickets") {
+		t.Fatal("issuing a download ticket should not create its own audit record")
+	}
+}

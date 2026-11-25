@@ -14,11 +14,26 @@ import (
 )
 
 type FileNode struct {
-	ID   string    `json:"id"`
-	Date time.Time `json:"date"`
-	Type string    `json:"type"`
-	Lazy bool      `json:"lazy,omitempty"`
-	Size int64     `json:"size,omitempty"`
+	ID        string    `json:"id"`
+	Date      time.Time `json:"date"`
+	Type      string    `json:"type" enums:"file,folder"`
+	Lazy      bool      `json:"lazy,omitempty"`
+	Size      int64     `json:"size,omitempty"`
+	Mode      string    `json:"mode,omitempty"`
+	Owner     string    `json:"owner,omitempty"`
+	Group     string    `json:"group,omitempty"`
+	Link      string    `json:"link,omitempty"`
+	Broken    bool      `json:"broken,omitempty"`
+	Special   string    `json:"special,omitempty" enums:"fifo,socket,device"`
+	Mount     string    `json:"mount,omitempty"`
+	Protected string    `json:"protected,omitempty" enums:"root,system_folder,base_system,mount_point,contains_mount_point,jail_root,sylve_data,contains_sylve_data"`
+}
+
+type FileListing struct {
+	Entries   []FileNode `json:"entries"`
+	Total     int        `json:"total"`
+	Matched   int        `json:"matched"`
+	Truncated bool       `json:"truncated"`
 }
 
 type FileTransferItem struct {

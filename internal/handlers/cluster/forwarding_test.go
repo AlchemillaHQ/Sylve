@@ -109,7 +109,7 @@ func TestForwardToPassesTheRequestAndTheAnswerThrough(t *testing.T) {
 		t.Run(http.StatusText(answer.status), func(t *testing.T) {
 			c, recorder := newClusterForwardTestContext(
 				http.MethodPost,
-				fmt.Sprintf("/api/cluster/test?case=%d&hash=browser-hash&auth=00", index),
+				fmt.Sprintf("/api/cluster/test?case=%d&hash=browser-hash&auth=00&ticket=single-use", index),
 				`{"request":true}`,
 				map[string]string{
 					"Idempotency-Key":            "operation-1",
@@ -138,7 +138,7 @@ func TestForwardToPassesTheRequestAndTheAnswerThrough(t *testing.T) {
 		t.Fatalf("forwarded to %v", *hosts)
 	}
 	if seen.URL.Path != "/api/cluster/test" || seen.URL.Query().Get("case") != "3" ||
-		seen.URL.Query().Has("hash") || seen.URL.Query().Has("auth") {
+		seen.URL.Query().Has("hash") || seen.URL.Query().Has("auth") || seen.URL.Query().Has("ticket") {
 		t.Fatalf("forwarded URL %s", seen.URL)
 	}
 	if seenBody != `{"request":true}` || seen.Header.Get("Idempotency-Key") != "operation-1" ||

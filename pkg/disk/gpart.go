@@ -113,9 +113,12 @@ func CreatePartition(device string, size uint64, ptype string) error {
 	return nil
 }
 
-func CreatePartitions(device string, sizes []uint64) error {
+func CreatePartitions(device string, sizes []uint64, types []string) error {
 	if len(sizes) == 0 {
 		return fmt.Errorf("at least one partition size is required")
+	}
+	if len(types) != 0 && len(types) != len(sizes) {
+		return fmt.Errorf("partition types must match partition sizes")
 	}
 
 	totalRequiredSize := uint64(0)
@@ -146,8 +149,13 @@ func CreatePartitions(device string, sizes []uint64) error {
 		return fmt.Errorf("disk size is too small for partitions")
 	}
 
-	for _, size := range sizes {
-		err = CreatePartition(device, size, "")
+	for index, size := range sizes {
+		ptype := ""
+		if len(types) != 0 {
+			ptype = types[index]
+		}
+
+		err = CreatePartition(device, size, ptype)
 
 		if err != nil {
 			return err
