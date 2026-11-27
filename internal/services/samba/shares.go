@@ -10,14 +10,15 @@ package samba
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	directoryModels "github.com/alchemillahq/sylve/internal/db/models/directoryservices"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/directoryservices"
+	"gorm.io/gorm"
 )
 
 type sambaPermissionIDs struct {
@@ -34,8 +35,8 @@ type sambaPrincipalNames struct {
 	WriteGroups []string
 }
 
-var sambaWriteConfig = func(s *Service, ctx context.Context, reload bool) error {
-	return s.WriteConfig(ctx, reload)
+var sambaWriteConfig = func(s *Service, ctx context.Context, action sambaServiceAction) error {
+	return s.writeConfig(ctx, action)
 }
 
 func uniqueUint(ids []uint) []uint {
@@ -243,14 +244,25 @@ func namesFromACLPrincipals(
 	}
 }
 
-func (s *Service) GetShares() ([]sambaModels.SambaShare, error) {
-	var shares []sambaModels.SambaShare
-	if err := s.DB.
+func (s *Service) sharesWithPrincipals() *gorm.DB {
+	return s.DB.
 		Preload("ReadOnlyUsers").
 		Preload("WriteableUsers").
 		Preload("ReadOnlyGroups").
-		Preload("WriteableGroups").
-		Find(&shares).Error; err != nil {
+		Preload("WriteableGroups")
+}
+
+func (s *Service) enabledShares() ([]sambaModels.SambaShare, error) {
+	var shares []sambaModels.SambaShare
+	if err := s.sharesWithPrincipals().Where("enabled = ?", true).Find(&shares).Error; err != nil {
+		return nil, fmt.Errorf("failed to retrieve Samba shares: %w", err)
+	}
+	return shares, nil
+}
+
+func (s *Service) GetShares() ([]sambaModels.SambaShare, error) {
+	var shares []sambaModels.SambaShare
+	if err := s.sharesWithPrincipals().Find(&shares).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_get_shares: %w", err)
 	}
 	return shares, nil
@@ -308,10 +320,7 @@ func (s *Service) DisableSharesForDatasets(ctx context.Context, guids []string) 
 	if len(guids) == 0 {
 		return nil
 	}
-	if s.Directory != nil {
-		unlock := s.Directory.LockConfigurationForCleanup()
-		defer unlock()
-	}
+	defer s.waitForDirectoryConfiguration()()
 
 	var shares []sambaModels.SambaShare
 	if err := s.DB.Where("enabled = ? AND dataset IN ?", true, guids).Find(&shares).Error; err != nil {
@@ -332,22 +341,56 @@ func (s *Service) DisableSharesForDatasets(ctx context.Context, guids []string) 
 	}
 
 	for _, share := range shares {
+		s.CancelPermissionJob(uint(share.ID))
 		logger.L.Warn().Str("share", share.Name).Str("dataset_guid", share.Dataset).
 			Msg("disabled Samba share after its dataset was deleted")
 	}
 
-	var settings models.BasicSettings
-	if err := s.DB.First(&settings).Error; err != nil {
-		return fmt.Errorf("shares_disabled_but_failed_to_get_service_settings: %w", err)
+	enabled, err := s.sambaServiceEnabled()
+	if err != nil {
+		return fmt.Errorf("shares_disabled_but_%w", err)
 	}
-	if !slices.Contains(settings.Services, models.SambaServer) {
+	if !enabled {
 		return nil
 	}
 
-	if err := sambaWriteConfig(s, ctx, true); err != nil {
+	if err := s.reloadConfig(ctx); err != nil {
 		return fmt.Errorf("shares_disabled_but_failed_to_write_samba_config: %w", err)
 	}
 	return nil
+}
+
+func (s *Service) GetShare(id uint) (sambaModels.SambaShare, error) {
+	var share sambaModels.SambaShare
+	err := s.sharesWithPrincipals().First(&share, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return share, fmt.Errorf("share_not_found")
+	}
+	if err != nil {
+		return share, fmt.Errorf("failed_to_get_share: %w", err)
+	}
+	return share, nil
+}
+
+func (s *Service) removeShareACLs(ctx context.Context, share sambaModels.SambaShare) {
+	dataset, err := s.datasetByGUID(ctx, share.Dataset)
+	if err != nil {
+		logger.L.Warn().Err(err).Int("share_id", share.ID).Msg("failed to fetch dataset while cleaning samba ACL principals")
+		return
+	}
+	if isSambaDatasetMounted(dataset) {
+		_ = s.syncSambaShareACL(dataset.Mountpoint, namesFromShareACLs(share), sambaPrincipalNames{}, false, false, false)
+	}
+}
+
+func (s *Service) shareNameTaken(name string, exceptID int) (bool, error) {
+	var count int64
+	if err := s.DB.Model(&sambaModels.SambaShare{}).
+		Where("LOWER(name) = LOWER(?) AND id != ?", name, exceptID).
+		Count(&count).Error; err != nil {
+		return false, fmt.Errorf("failed_to_check_name_conflict: %w", err)
+	}
+	return count > 0, nil
 }
 
 func (s *Service) SetShareEnabled(ctx context.Context, id uint, enabled bool) error {
@@ -356,20 +399,18 @@ func (s *Service) SetShareEnabled(ctx context.Context, id uint, enabled bool) er
 		return err
 	}
 	defer unlock()
-	var share sambaModels.SambaShare
-	if err := s.DB.
-		Preload("ReadOnlyUsers").
-		Preload("WriteableUsers").
-		Preload("ReadOnlyGroups").
-		Preload("WriteableGroups").
-		First(&share, id).Error; err != nil {
-		return fmt.Errorf("share_not_found: %w", err)
+	share, err := s.GetShare(id)
+	if err != nil {
+		return err
 	}
 	if share.Enabled == enabled {
 		return nil
 	}
 
-	if enabled {
+	if !enabled {
+		s.CancelPermissionJob(id)
+		s.removeShareACLs(ctx, share)
+	} else {
 		dataset, err := s.datasetByGUID(ctx, share.Dataset)
 		if err != nil {
 			return fmt.Errorf("failed_to_fetch_dataset: %v", err)
@@ -380,30 +421,32 @@ func (s *Service) SetShareEnabled(ctx context.Context, id uint, enabled bool) er
 		if !isSambaDatasetMounted(dataset) {
 			return fmt.Errorf("dataset_not_mounted")
 		}
-		if share.ExtraShareConfig != "" || len(share.DirectoryPermissions.Read)+len(share.DirectoryPermissions.Write) > 0 {
-			if err := s.validateShareConfig(ctx, share, dataset); err != nil {
-				return err
-			}
+		if err := s.requireShareableDataset(ctx, dataset); err != nil {
+			return err
+		}
+		candidate := share
+		candidate.Enabled = true
+		if err := s.validateShareConfig(ctx, candidate, dataset); err != nil {
+			return err
 		}
 
 		if err := s.ensureSambaDatasetACLProperties(ctx, dataset, true); err != nil {
 			return fmt.Errorf("failed_to_enforce_samba_dataset_acl_properties: %w", err)
 		}
 
-		principals := namesFromShareACLs(share)
-		if share.GuestOk {
-			if err := s.syncSambaDatasetGuestACL(dataset.Mountpoint, true, !share.ReadOnly, true); err != nil {
-				return fmt.Errorf("failed_to_enforce_samba_dataset_guest_acl: %w", err)
-			}
-		} else if err := s.syncSambaDatasetPrincipalACLs(dataset.Mountpoint, sambaPrincipalNames{}, principals, true); err != nil {
-			return fmt.Errorf("failed_to_enforce_samba_dataset_principal_acls: %w", err)
+		principals := sambaPrincipalNames{}
+		if !share.GuestOk {
+			principals = namesFromShareACLs(share)
+		}
+		if err := s.syncSambaShareACL(dataset.Mountpoint, sambaPrincipalNames{}, principals, share.GuestOk, !share.ReadOnly, true); err != nil {
+			return fmt.Errorf("failed_to_enforce_samba_dataset_acl: %w", err)
 		}
 	}
 
 	if err := s.DB.Model(&share).Update("enabled", enabled).Error; err != nil {
 		return fmt.Errorf("failed_to_update_share_enabled: %w", err)
 	}
-	return sambaWriteConfig(s, ctx, true)
+	return sambaApplyFailure(s.reloadConfig(ctx))
 }
 
 func (s *Service) CreateShare(
@@ -426,53 +469,49 @@ func (s *Service) CreateShare(
 	enabled bool,
 	extraShareConfig string,
 	directoryRequest *directoryservices.SharePermissionInput,
-) error {
+) (uint, error) {
 	unlock, err := s.lockDirectoryConfiguration()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer unlock()
 	if err := validateSambaShareInput(name, createMask, directoryMask, auditedOperations); err != nil {
-		return err
+		return 0, err
 	}
 
-	var nameConflictCount int64
-	if err := s.DB.Model(&sambaModels.SambaShare{}).
-		Where("name = ?", name).
-		Count(&nameConflictCount).Error; err != nil {
-		return fmt.Errorf("failed_to_check_name_conflict: %w", err)
-	}
-	if nameConflictCount > 0 {
-		return fmt.Errorf("share_with_name_exists")
+	if taken, err := s.shareNameTaken(name, 0); err != nil {
+		return 0, err
+	} else if taken {
+		return 0, fmt.Errorf("share_with_name_exists")
 	}
 
 	var datasetConflictCount int64
 	if err := s.DB.Model(&sambaModels.SambaShare{}).
 		Where("dataset = ?", dataset).
 		Count(&datasetConflictCount).Error; err != nil {
-		return fmt.Errorf("failed_to_check_dataset_conflict: %w", err)
+		return 0, fmt.Errorf("failed_to_check_dataset_conflict: %w", err)
 	}
 	if datasetConflictCount > 0 {
-		return fmt.Errorf("share_with_dataset_exists")
+		return 0, fmt.Errorf("share_with_dataset_exists")
 	}
 
 	normalized := normalizeSambaPermissionIDs(readUserIDs, writeUserIDs, readGroupIDs, writeGroupIDs)
 	directoryPermissions, err := s.resolveDirectoryPermissions(ctx, directoryModels.SharePermissions{}, directoryRequest)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	principalCount := normalized.principalCount() + len(directoryPermissions.Read) + len(directoryPermissions.Write)
 
 	if guestEnabled && principalCount > 0 {
-		return fmt.Errorf("guest_only_share_cannot_have_principals")
+		return 0, fmt.Errorf("guest_only_share_cannot_have_principals")
 	}
 
 	if !guestEnabled && principalCount == 0 {
-		return fmt.Errorf("no_principals_selected_and_guests_not_allowed")
+		return 0, fmt.Errorf("no_principals_selected_and_guests_not_allowed")
 	}
 
 	if err := validateExtraShareConfig(extraShareConfig); err != nil {
-		return err
+		return 0, err
 	}
 
 	readUsers, writeUsers, readGroups, writeGroups, err := s.loadUsersAndGroupsByIDs(
@@ -482,20 +521,23 @@ func (s *Service) CreateShare(
 		normalized.WriteGroupIDs,
 	)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	fDataset, err := s.datasetByGUID(ctx, dataset)
 	if err != nil {
-		return fmt.Errorf("failed_to_fetch_dataset: %v", err)
+		return 0, fmt.Errorf("failed_to_fetch_dataset: %v", err)
 	}
 
 	if fDataset == nil {
-		return fmt.Errorf("dataset_not_found")
+		return 0, fmt.Errorf("dataset_not_found")
 	}
 
 	if !isSambaDatasetMounted(fDataset) {
-		return fmt.Errorf("dataset_not_mounted")
+		return 0, fmt.Errorf("dataset_not_mounted")
+	}
+	if err := s.requireShareableDataset(ctx, fDataset); err != nil {
+		return 0, err
 	}
 
 	share := sambaModels.SambaShare{
@@ -514,88 +556,76 @@ func (s *Service) CreateShare(
 		AuditedOperations:    auditedOperations,
 		Enabled:              true,
 	}
-	if extraShareConfig != "" || len(directoryPermissions.Read)+len(directoryPermissions.Write) > 0 {
-		candidate := share
-		candidate.ReadOnlyUsers = readUsers
-		candidate.WriteableUsers = writeUsers
-		candidate.ReadOnlyGroups = readGroups
-		candidate.WriteableGroups = writeGroups
-		if err := s.validateShareConfig(ctx, candidate, fDataset); err != nil {
-			return err
+	candidate := share
+	candidate.Enabled = enabled
+	candidate.ReadOnlyUsers = readUsers
+	candidate.WriteableUsers = writeUsers
+	candidate.ReadOnlyGroups = readGroups
+	candidate.WriteableGroups = writeGroups
+	if err := s.validateShareConfig(ctx, candidate, fDataset); err != nil {
+		return 0, err
+	}
+
+	if enabled {
+		if err := s.ensureSambaDatasetACLProperties(ctx, fDataset, true); err != nil {
+			return 0, fmt.Errorf("failed_to_enforce_samba_dataset_acl_properties: %w", err)
 		}
-	}
 
-	if err := s.ensureSambaDatasetACLProperties(ctx, fDataset, true); err != nil {
-		return fmt.Errorf("failed_to_enforce_samba_dataset_acl_properties: %w", err)
-	}
-
-	desiredPrincipals := appendDirectoryACLPrincipals(namesFromACLPrincipals(readUsers, writeUsers, readGroups, writeGroups), directoryPermissions)
-	if !guestEnabled {
-		if err := s.syncSambaDatasetPrincipalACLs(
-			fDataset.Mountpoint,
-			sambaPrincipalNames{},
-			desiredPrincipals,
-			true,
-		); err != nil {
-			return fmt.Errorf("failed_to_enforce_samba_dataset_principal_acls: %w", err)
+		desiredPrincipals := sambaPrincipalNames{}
+		if !guestEnabled {
+			desiredPrincipals = appendDirectoryACLPrincipals(namesFromACLPrincipals(readUsers, writeUsers, readGroups, writeGroups), directoryPermissions)
 		}
-	}
-
-	if err := s.syncSambaDatasetGuestACL(
-		fDataset.Mountpoint,
-		guestEnabled,
-		guestWriteable,
-		true,
-	); err != nil {
-		return fmt.Errorf("failed_to_enforce_samba_dataset_guest_acl: %w", err)
+		if err := s.syncSambaShareACL(fDataset.Mountpoint, sambaPrincipalNames{}, desiredPrincipals, guestEnabled, guestWriteable, true); err != nil {
+			return 0, fmt.Errorf("failed_to_enforce_samba_dataset_acl: %w", err)
+		}
 	}
 
 	tx := s.DB.Begin()
 	if err := tx.Create(&share).Error; err != nil {
 		tx.Rollback()
-		return fmt.Errorf("failed_to_create_share: %w", err)
+		return 0, fmt.Errorf("failed_to_create_share: %w", err)
 	}
 
 	if !enabled {
 		if err := tx.Model(&share).Update("enabled", false).Error; err != nil {
 			tx.Rollback()
-			return fmt.Errorf("failed_to_set_initial_share_enabled_state: %w", err)
+			return 0, fmt.Errorf("failed_to_set_initial_share_enabled_state: %w", err)
 		}
 	}
 
 	if len(readUsers) > 0 {
 		if err := tx.Model(&share).Association("ReadOnlyUsers").Append(readUsers); err != nil {
 			tx.Rollback()
-			return fmt.Errorf("failed_to_append_read_only_users: %w", err)
+			return 0, fmt.Errorf("failed_to_append_read_only_users: %w", err)
 		}
 	}
 
 	if len(writeUsers) > 0 {
 		if err := tx.Model(&share).Association("WriteableUsers").Append(writeUsers); err != nil {
 			tx.Rollback()
-			return fmt.Errorf("failed_to_append_writeable_users: %w", err)
+			return 0, fmt.Errorf("failed_to_append_writeable_users: %w", err)
 		}
 	}
 
 	if len(readGroups) > 0 {
 		if err := tx.Model(&share).Association("ReadOnlyGroups").Append(readGroups); err != nil {
 			tx.Rollback()
-			return fmt.Errorf("failed_to_append_read_only_groups: %w", err)
+			return 0, fmt.Errorf("failed_to_append_read_only_groups: %w", err)
 		}
 	}
 
 	if len(writeGroups) > 0 {
 		if err := tx.Model(&share).Association("WriteableGroups").Append(writeGroups); err != nil {
 			tx.Rollback()
-			return fmt.Errorf("failed_to_append_writeable_groups: %w", err)
+			return 0, fmt.Errorf("failed_to_append_writeable_groups: %w", err)
 		}
 	}
 
 	if err := tx.Commit().Error; err != nil {
-		return fmt.Errorf("failed_to_commit_transaction: %w", err)
+		return 0, fmt.Errorf("failed_to_commit_transaction: %w", err)
 	}
 
-	return sambaWriteConfig(s, ctx, true)
+	return uint(share.ID), sambaApplyFailure(s.reloadConfig(ctx))
 }
 
 func (s *Service) UpdateShare(
@@ -629,14 +659,9 @@ func (s *Service) UpdateShare(
 		return err
 	}
 
-	var share sambaModels.SambaShare
-	if err := s.DB.
-		Preload("ReadOnlyUsers").
-		Preload("WriteableUsers").
-		Preload("ReadOnlyGroups").
-		Preload("WriteableGroups").
-		First(&share, id).Error; err != nil {
-		return fmt.Errorf("share_not_found: %w", err)
+	share, err := s.GetShare(id)
+	if err != nil {
+		return err
 	}
 
 	desiredEnabled := share.Enabled
@@ -648,16 +673,10 @@ func (s *Service) UpdateShare(
 		desiredExtraShareConfig = *extraShareConfig
 	}
 
-	if name != share.Name {
-		var count int64
-		if err := s.DB.Model(&sambaModels.SambaShare{}).
-			Where("name = ? AND id != ?", name, id).
-			Count(&count).Error; err != nil {
-			return fmt.Errorf("failed_to_check_name_conflict: %w", err)
-		}
-		if count > 0 {
-			return fmt.Errorf("share_with_name_exists")
-		}
+	if taken, err := s.shareNameTaken(name, share.ID); err != nil {
+		return err
+	} else if taken {
+		return fmt.Errorf("share_with_name_exists")
 	}
 
 	if dataset != share.Dataset {
@@ -719,6 +738,11 @@ func (s *Service) UpdateShare(
 		}
 		fDataset = nil
 	}
+	if fDataset != nil && desiredEnabled && (dataset != share.Dataset || !share.Enabled) {
+		if err := s.requireShareableDataset(ctx, fDataset); err != nil {
+			return err
+		}
+	}
 
 	previousShare := share
 	share.Name = name
@@ -735,18 +759,20 @@ func (s *Service) UpdateShare(
 	share.AuditRetentionDays = sambaModels.AuditRetentionDaysPointer(auditRetentionDays)
 	share.AuditedOperations = auditedOperations
 	share.Enabled = desiredEnabled
-	if previousShare.ExtraShareConfig != "" || desiredExtraShareConfig != "" || len(directoryPermissions.Read)+len(directoryPermissions.Write) > 0 {
-		candidate := share
-		candidate.ReadOnlyUsers = readUsers
-		candidate.WriteableUsers = writeUsers
-		candidate.ReadOnlyGroups = readGroups
-		candidate.WriteableGroups = writeGroups
-		if err := s.validateShareConfig(ctx, candidate, fDataset); err != nil {
-			return err
-		}
+	candidate := share
+	candidate.ReadOnlyUsers = readUsers
+	candidate.WriteableUsers = writeUsers
+	candidate.ReadOnlyGroups = readGroups
+	candidate.WriteableGroups = writeGroups
+	if err := s.validateShareConfig(ctx, candidate, fDataset); err != nil {
+		return err
 	}
 
-	if fDataset != nil {
+	if !desiredEnabled && previousShare.Enabled {
+		s.CancelPermissionJob(id)
+		s.removeShareACLs(ctx, previousShare)
+	}
+	if fDataset != nil && desiredEnabled {
 		if err := s.ensureSambaDatasetACLProperties(ctx, fDataset, true); err != nil {
 			return fmt.Errorf("failed_to_enforce_samba_dataset_acl_properties: %w", err)
 		}
@@ -758,65 +784,21 @@ func (s *Service) UpdateShare(
 		}
 
 		if dataset == previousShare.Dataset {
-			if err := s.syncSambaDatasetPrincipalACLs(
-				fDataset.Mountpoint,
-				previousPrincipals,
-				desiredPrincipals,
-				true,
-			); err != nil {
-				return fmt.Errorf("failed_to_enforce_samba_dataset_principal_acls: %w", err)
-			}
-
-			if err := s.syncSambaDatasetGuestACL(
-				fDataset.Mountpoint,
-				guestEnabled,
-				guestWriteable,
-				true,
-			); err != nil {
-				return fmt.Errorf("failed_to_enforce_samba_dataset_guest_acl: %w", err)
+			if err := s.syncSambaShareACL(fDataset.Mountpoint, previousPrincipals, desiredPrincipals, guestEnabled, guestWriteable, true); err != nil {
+				return fmt.Errorf("failed_to_enforce_samba_dataset_acl: %w", err)
 			}
 		} else {
 			oldDataset, oldDatasetErr := s.datasetByGUID(ctx, previousShare.Dataset)
 			if oldDatasetErr != nil {
 				return fmt.Errorf("failed_to_fetch_previous_dataset: %v", oldDatasetErr)
 			}
-
 			if isSambaDatasetMounted(oldDataset) {
-				if err := s.syncSambaDatasetPrincipalACLs(
-					oldDataset.Mountpoint,
-					previousPrincipals,
-					sambaPrincipalNames{},
-					true,
-				); err != nil {
-					return fmt.Errorf("failed_to_cleanup_previous_samba_dataset_principal_acls: %w", err)
-				}
-
-				if err := s.syncSambaDatasetGuestACL(
-					oldDataset.Mountpoint,
-					false,
-					false,
-					true,
-				); err != nil {
-					return fmt.Errorf("failed_to_cleanup_previous_samba_dataset_guest_acl: %w", err)
+				if err := s.syncSambaShareACL(oldDataset.Mountpoint, previousPrincipals, sambaPrincipalNames{}, false, false, true); err != nil {
+					return fmt.Errorf("failed_to_cleanup_previous_samba_dataset_acl: %w", err)
 				}
 			}
-
-			if err := s.syncSambaDatasetPrincipalACLs(
-				fDataset.Mountpoint,
-				sambaPrincipalNames{},
-				desiredPrincipals,
-				true,
-			); err != nil {
-				return fmt.Errorf("failed_to_enforce_samba_dataset_principal_acls: %w", err)
-			}
-
-			if err := s.syncSambaDatasetGuestACL(
-				fDataset.Mountpoint,
-				guestEnabled,
-				guestWriteable,
-				true,
-			); err != nil {
-				return fmt.Errorf("failed_to_enforce_samba_dataset_guest_acl: %w", err)
+			if err := s.syncSambaShareACL(fDataset.Mountpoint, sambaPrincipalNames{}, desiredPrincipals, guestEnabled, guestWriteable, true); err != nil {
+				return fmt.Errorf("failed_to_enforce_samba_dataset_acl: %w", err)
 			}
 		}
 	}
@@ -880,9 +862,7 @@ func (s *Service) UpdateShare(
 		return fmt.Errorf("failed_to_commit_transaction: %w", err)
 	}
 
-	if err := sambaWriteConfig(s, ctx, true); err != nil {
-		return err
-	}
+	applyErr := sambaApplyFailure(s.reloadConfig(ctx))
 
 	if s.auditDB().Migrator().HasTable(&sambaModels.SambaAuditLog{}) {
 		if err := s.auditDB().Model(&sambaModels.SambaAuditLog{}).
@@ -892,7 +872,7 @@ func (s *Service) UpdateShare(
 		}
 	}
 
-	return nil
+	return applyErr
 }
 
 func (s *Service) DeleteShare(ctx context.Context, id uint) error {
@@ -901,24 +881,12 @@ func (s *Service) DeleteShare(ctx context.Context, id uint) error {
 		return err
 	}
 	defer unlock()
-	var share sambaModels.SambaShare
-	if err := s.DB.
-		Preload("ReadOnlyUsers").
-		Preload("WriteableUsers").
-		Preload("ReadOnlyGroups").
-		Preload("WriteableGroups").
-		First(&share, id).Error; err != nil {
-		return fmt.Errorf("share_not_found: %w", err)
-	}
-
-	previousPrincipals := namesFromShareACLs(share)
-	dataset, err := s.datasetByGUID(ctx, share.Dataset)
+	share, err := s.GetShare(id)
 	if err != nil {
-		logger.L.Warn().Err(err).Int("share_id", share.ID).Msg("failed to fetch dataset while cleaning samba ACL principals")
-	} else if isSambaDatasetMounted(dataset) {
-		_ = s.syncSambaDatasetPrincipalACLs(dataset.Mountpoint, previousPrincipals, sambaPrincipalNames{}, false)
-		_ = s.syncSambaDatasetGuestACL(dataset.Mountpoint, false, false, false)
+		return err
 	}
+	s.forgetPermissionJob(id)
+	s.removeShareACLs(ctx, share)
 
 	tx := s.DB.Begin()
 
@@ -951,5 +919,5 @@ func (s *Service) DeleteShare(ctx context.Context, id uint) error {
 		return fmt.Errorf("failed_to_commit_transaction: %w", err)
 	}
 
-	return sambaWriteConfig(s, ctx, true)
+	return sambaApplyFailure(s.reloadConfig(ctx))
 }

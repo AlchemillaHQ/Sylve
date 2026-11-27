@@ -13,6 +13,7 @@ import (
 	"time"
 
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+	sambaServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/samba"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
@@ -55,7 +56,7 @@ func TestGetAuditLogsReadsFromTelemetryDB(t *testing.T) {
 		TelemetryDB: telemetryDB,
 	}
 
-	resp, err := svc.GetAuditLogs(1, 100, "id", "ASC")
+	resp, err := svc.GetAuditLogs(sambaServiceInterfaces.AuditLogQuery{Page: 1, Size: 100, SortField: "id", SortDir: "ASC"})
 	if err != nil {
 		t.Fatalf("GetAuditLogs returned error: %v", err)
 	}

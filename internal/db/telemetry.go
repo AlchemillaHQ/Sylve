@@ -201,6 +201,7 @@ func prepareTelemetryDatabase(path string, ormConfig *gorm.Config) (*gorm.DB, *s
 
 	if err := telemetryDB.AutoMigrate(
 		&sambaModels.SambaAuditLog{},
+		&sambaModels.SambaAuditCursor{},
 		&infoModels.CPU{},
 		&infoModels.AuditRecord{},
 		&infoModels.RAM{},

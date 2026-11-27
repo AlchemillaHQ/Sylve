@@ -48,6 +48,7 @@ type ZfsServiceInterface interface {
 	FlashVolume(ctx context.Context, guid string, uuid string) error
 
 	GetDatasets(ctx context.Context, t gzfs.DatasetType) ([]*gzfs.Dataset, error)
+	CachedDatasets(ctx context.Context, t gzfs.DatasetType) ([]*gzfs.Dataset, error)
 	DatasetByGUID(ctx context.Context, guid string) (*gzfs.Dataset, error)
 	GetSnapshotSummaries(ctx context.Context) ([]SnapshotSummary, error)
 	BulkDeleteDataset(ctx context.Context, targets []DatasetDeletionTarget) error

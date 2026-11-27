@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
@@ -26,13 +27,18 @@ import (
 	"gorm.io/gorm"
 )
 
-var auditLogPath = "/var/log/samba4/audit.log"
+var (
+	auditLogPath        = "/var/log/samba4/audit.log"
+	auditReadChunkBytes = 8 << 20
+)
 
 const (
 	auditBatchSize            = 500
 	auditLogPrefix            = "sylve-smb-al|"
 	auditDefaultRetentionDays = sambaModels.DefaultAuditRetentionDays
 	auditPruneBatchSize       = 5000
+	maxAuditReadPasses        = 64
+	MaxAuditLogPageSize       = 500
 )
 
 func (s *Service) ParseAuditLogs() error {
@@ -50,7 +56,7 @@ func (s *Service) ParseAuditLogs() error {
 			return fmt.Errorf("failed to stat open audit log: %w", statErr)
 		}
 		if !os.SameFile(openInfo, pathInfo) {
-			if err := s.parseOpenAuditFile(); err != nil {
+			if err := s.drainOpenAuditFile(); err != nil {
 				return err
 			}
 			if err := s.auditFile.Close(); err != nil {
@@ -62,19 +68,73 @@ func (s *Service) ParseAuditLogs() error {
 	}
 
 	if s.auditFile == nil {
-		s.auditFile, err = os.Open(auditLogPath)
+		file, err := os.Open(auditLogPath)
 		if err != nil {
 			return fmt.Errorf("failed to open audit log: %w", err)
 		}
+		offset := int64(0)
+		if !s.auditCursorLoaded {
+			info, err := file.Stat()
+			if err == nil {
+				offset, err = s.loadAuditCursor(info)
+			}
+			if err != nil {
+				file.Close()
+				return fmt.Errorf("failed to load audit log position: %w", err)
+			}
+			s.auditCursorLoaded = true
+		}
+		s.auditFile = file
+		s.auditFileOffset = offset
 	}
 
-	return s.parseOpenAuditFile()
+	return s.drainOpenAuditFile()
 }
 
-func (s *Service) parseOpenAuditFile() error {
+func (s *Service) drainOpenAuditFile() error {
+	for range maxAuditReadPasses {
+		more, err := s.parseOpenAuditFile()
+		if err != nil || !more {
+			return err
+		}
+	}
+	return nil
+}
+
+func auditFileIdentity(info os.FileInfo) (int64, int64) {
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+		return int64(stat.Dev), int64(stat.Ino)
+	}
+	return 0, 0
+}
+
+func (s *Service) loadAuditCursor(info os.FileInfo) (int64, error) {
+	db := s.auditDB()
+	var cursor sambaModels.SambaAuditCursor
+	if err := db.Limit(1).Find(&cursor).Error; err != nil {
+		return 0, err
+	}
+	if cursor.ID != 0 {
+		device, inode := auditFileIdentity(info)
+		if cursor.Device == device && cursor.Inode == inode && cursor.Offset <= info.Size() {
+			return cursor.Offset, nil
+		}
+		return 0, nil
+	}
+	var imported int64
+	if err := db.Model(&sambaModels.SambaAuditLog{}).Limit(1).Count(&imported).Error; err != nil {
+		return 0, err
+	}
+	if imported > 0 {
+		return info.Size(), nil
+	}
+	return 0, nil
+}
+
+func (s *Service) parseOpenAuditFile() (bool, error) {
 	info, err := s.auditFile.Stat()
 	if err != nil {
-		return fmt.Errorf("failed to stat audit log: %w", err)
+		return false, fmt.Errorf("failed to stat audit log: %w", err)
 	}
 	if info.Size() < s.auditFileOffset {
 		s.auditFileOffset = 0
@@ -83,26 +143,37 @@ func (s *Service) parseOpenAuditFile() error {
 	if _, err := s.auditFile.Seek(s.auditFileOffset, io.SeekStart); err != nil {
 		s.auditFileOffset = 0
 		if _, seekErr := s.auditFile.Seek(0, io.SeekStart); seekErr != nil {
-			return fmt.Errorf("failed to rewind audit log: %w", seekErr)
+			return false, fmt.Errorf("failed to rewind audit log: %w", seekErr)
 		}
 	}
 
 	startOffset, err := s.auditFile.Seek(0, io.SeekCurrent)
 	if err != nil {
-		return fmt.Errorf("failed to determine audit log offset: %w", err)
+		return false, fmt.Errorf("failed to determine audit log offset: %w", err)
 	}
 
-	newData, err := io.ReadAll(s.auditFile)
+	newData, err := io.ReadAll(io.LimitReader(s.auditFile, int64(auditReadChunkBytes)))
 	if err != nil {
-		return fmt.Errorf("failed to read audit log: %w", err)
+		return false, fmt.Errorf("failed to read audit log: %w", err)
 	}
+	full := len(newData) == auditReadChunkBytes
+	device, inode := auditFileIdentity(info)
 
 	if len(newData) == 0 {
-		return nil
+		return false, nil
 	}
 	completeEnd := bytes.LastIndexByte(newData, '\n') + 1
 	if completeEnd == 0 {
-		return nil
+		if !full {
+			return false, nil
+		}
+		completeEnd = len(newData)
+		if err := s.insertAuditEntries(nil, 0, 0, auditCursor(device, inode, startOffset+int64(completeEnd))); err != nil {
+			_, _ = s.auditFile.Seek(startOffset, io.SeekStart)
+			return false, err
+		}
+		s.auditFileOffset = startOffset + int64(completeEnd)
+		return true, nil
 	}
 	newData = newData[:completeEnd]
 
@@ -177,9 +248,10 @@ func (s *Service) parseOpenAuditFile() error {
 		lastEntry = len(entries) - 1
 	}
 
-	if err := s.insertAuditEntries(entries, repeatedEntryID, previousRepeats); err != nil {
+	cursor := auditCursor(device, inode, startOffset+int64(completeEnd))
+	if err := s.insertAuditEntries(entries, repeatedEntryID, previousRepeats, cursor); err != nil {
 		_, _ = s.auditFile.Seek(startOffset, io.SeekStart)
-		return err
+		return false, err
 	}
 	if lastEntry >= 0 {
 		s.lastAuditLogID = entries[lastEntry].ID
@@ -187,8 +259,12 @@ func (s *Service) parseOpenAuditFile() error {
 		s.lastAuditLogID = previousEntryID
 	}
 
-	s.auditFileOffset = startOffset + int64(completeEnd)
-	return nil
+	s.auditFileOffset = cursor.Offset
+	return full, nil
+}
+
+func auditCursor(device, inode, offset int64) sambaModels.SambaAuditCursor {
+	return sambaModels.SambaAuditCursor{ID: 1, Device: device, Inode: inode, Offset: offset}
 }
 
 func (s *Service) auditShareMetadata() map[string]sambaModels.SambaShare {
@@ -207,10 +283,12 @@ func (s *Service) auditShareMetadata() map[string]sambaModels.SambaShare {
 	return result
 }
 
-func (s *Service) insertAuditEntries(entries []sambaModels.SambaAuditLog, repeatedEntryID int, repeated uint32) error {
-	if len(entries) == 0 && (repeatedEntryID == 0 || repeated == 0) {
-		return nil
-	}
+func (s *Service) insertAuditEntries(
+	entries []sambaModels.SambaAuditLog,
+	repeatedEntryID int,
+	repeated uint32,
+	cursor sambaModels.SambaAuditCursor,
+) error {
 	var err error
 	for attempt := 0; attempt < 3; attempt++ {
 		err = s.auditDB().Transaction(func(tx *gorm.DB) error {
@@ -221,10 +299,12 @@ func (s *Service) insertAuditEntries(entries []sambaModels.SambaAuditLog, repeat
 					return err
 				}
 			}
-			if len(entries) == 0 {
-				return nil
+			if len(entries) > 0 {
+				if err := tx.CreateInBatches(&entries, auditBatchSize).Error; err != nil {
+					return err
+				}
 			}
-			return tx.CreateInBatches(&entries, auditBatchSize).Error
+			return tx.Save(&cursor).Error
 		})
 		if err == nil {
 			return nil
@@ -235,7 +315,27 @@ func (s *Service) insertAuditEntries(entries []sambaModels.SambaAuditLog, repeat
 }
 
 func auditEntryKey(entry sambaModels.SambaAuditLog) string {
-	return strings.Join([]string{strconv.FormatUint(uint64(entry.ShareID), 10), entry.Share, entry.User, entry.Client, entry.IP, entry.Action, entry.Result, entry.Path, entry.Target, entry.ObjectType, entry.Disposition}, "\x00")
+	return strings.Join([]string{strconv.FormatInt(entry.CreatedAt.Unix(), 10), strconv.FormatUint(uint64(entry.ShareID), 10), entry.Share, entry.User, entry.Client, entry.IP, entry.Action, entry.Result, entry.Path, entry.Target, entry.ObjectType, entry.Disposition}, "\x00")
+}
+
+func parseSyslogTime(line []byte, now time.Time) (time.Time, bool) {
+	if len(line) >= 15 && line[0] >= 'A' && line[0] <= 'Z' {
+		parsed, err := time.ParseInLocation("Jan _2 15:04:05", string(line[:15]), now.Location())
+		if err != nil {
+			return time.Time{}, false
+		}
+		stamp := time.Date(now.Year(), parsed.Month(), parsed.Day(), parsed.Hour(), parsed.Minute(), parsed.Second(), 0, now.Location())
+		if stamp.After(now.Add(24 * time.Hour)) {
+			stamp = stamp.AddDate(-1, 0, 0)
+		}
+		return stamp, true
+	}
+	if space := bytes.IndexByte(line, ' '); space > 0 {
+		if parsed, err := time.Parse(time.RFC3339Nano, string(line[:space])); err == nil {
+			return parsed.In(now.Location()), true
+		}
+	}
+	return time.Time{}, false
 }
 
 func parseSyslogRepeat(line []byte) (int, bool) {
@@ -360,6 +460,9 @@ func (s *Service) parseAuditLine(line []byte) (sambaModels.SambaAuditLog, bool) 
 		entry.Folder = filepath.Base(entry.Path)
 	}
 
+	if stamp, ok := parseSyslogTime(line, time.Now()); ok {
+		entry.CreatedAt = stamp
+	}
 	return entry, true
 }
 
@@ -372,23 +475,56 @@ func (s *Service) pruneStaleMkdirs() {
 	}
 }
 
-func (s *Service) GetAuditLogs(
-	page int,
-	size int,
-	sortField, sortDir string,
-) (*sambaServiceInterfaces.AuditLogsResponse, error) {
+var auditSearchColumns = []string{"path", "target", "user", "share", "client", "ip"}
+
+func auditLikePattern(value string) string {
+	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(value))
+	return "%" + escaped + "%"
+}
+
+func filterAuditLogs(db *gorm.DB, query sambaServiceInterfaces.AuditLogQuery) *gorm.DB {
+	if share := strings.TrimSpace(query.Share); share != "" {
+		db = db.Where("share = ?", share)
+	}
+	if user := strings.TrimSpace(query.User); user != "" {
+		db = db.Where(`LOWER(user) LIKE ? ESCAPE '\'`, auditLikePattern(user))
+	}
+	if len(query.Actions) > 0 {
+		db = db.Where("action IN ?", query.Actions)
+	}
+	if search := strings.TrimSpace(query.Search); search != "" {
+		pattern := auditLikePattern(search)
+		clauses := make([]string, len(auditSearchColumns))
+		args := make([]any, len(auditSearchColumns))
+		for i, column := range auditSearchColumns {
+			clauses[i] = "LOWER(" + column + `) LIKE ? ESCAPE '\'`
+			args[i] = pattern
+		}
+		db = db.Where("("+strings.Join(clauses, " OR ")+")", args...)
+	}
+	if query.From != nil {
+		db = db.Where("created_at >= ?", *query.From)
+	}
+	if query.To != nil {
+		db = db.Where("created_at <= ?", *query.To)
+	}
+	return db
+}
+
+func (s *Service) GetAuditLogs(query sambaServiceInterfaces.AuditLogQuery) (*sambaServiceInterfaces.AuditLogsResponse, error) {
 	auditDB := s.auditDB()
 
+	page, size, sortField, sortDir := query.Page, query.Size, query.SortField, query.SortDir
 	if size <= 0 {
 		size = 100
 	}
+	size = min(size, MaxAuditLogPageSize)
 	if page <= 0 {
 		page = 1
 	}
 
 	var total int64
-	if err := auditDB.
-		Model(&sambaModels.SambaAuditLog{}).
+	if err := filterAuditLogs(auditDB.Model(&sambaModels.SambaAuditLog{}), query).
 		Count(&total).Error; err != nil {
 		return nil, fmt.Errorf("failed to count audit logs: %w", err)
 	}
@@ -429,7 +565,7 @@ func (s *Service) GetAuditLogs(
 	offset := (page - 1) * size
 
 	var logs []sambaModels.SambaAuditLog
-	if err := auditDB.
+	if err := filterAuditLogs(auditDB, query).
 		Order(orderExpr).
 		Offset(offset).
 		Limit(size).
@@ -439,11 +575,17 @@ func (s *Service) GetAuditLogs(
 
 	return &sambaServiceInterfaces.AuditLogsResponse{
 		LastPage: lastPage,
+		Total:    total,
 		Data:     logs,
 	}, nil
 }
 
-func (s *Service) WatchAuditLogs(ctx context.Context) {
+func ValidAuditOperation(operation string) bool {
+	_, ok := allowedSambaAuditOperations[operation]
+	return ok
+}
+
+func (s *Service) watchAuditLogs(ctx context.Context) {
 	auditLogDir := filepath.Dir(auditLogPath)
 	if err := os.MkdirAll(auditLogDir, 0755); err != nil {
 		logger.L.Error().Msgf("Failed to create audit log directory: %v", err)

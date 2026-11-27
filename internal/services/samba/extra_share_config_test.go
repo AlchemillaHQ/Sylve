@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -21,6 +22,8 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 )
+
+const stubShareACL = "            owner@:rwxp--aARWcCos:-------:allow\n         everyone@:rwxpDdaARWc--s:fd-----:allow\n"
 
 func stubExtraShareCommands(t *testing.T, validate func(string) error) *[]string {
 	t.Helper()
@@ -46,12 +49,15 @@ func stubExtraShareCommands(t *testing.T, validate func(string) error) *[]string
 			}
 			return "", validate(string(data))
 		}
+		if command == "/bin/getfacl" {
+			return stubShareACL, nil
+		}
 		if command != "/bin/setfacl" {
 			t.Fatalf("unexpected command %q", command)
 		}
 		return "", nil
 	}
-	sambaWriteConfig = func(*Service, context.Context, bool) error { return nil }
+	sambaWriteConfig = func(*Service, context.Context, sambaServiceAction) error { return nil }
 	return &commands
 }
 
@@ -99,7 +105,7 @@ func TestShareConfigAppendsExtraConfigVerbatimWithinShare(t *testing.T) {
 				{Name: "tank/first", GUID: "guid-first", Mountpoint: "/mnt/first"},
 				{Name: "tank/second", GUID: "guid-second", Mountpoint: "/mnt/second"},
 			})
-			config, err := svc.ShareConfig(context.Background())
+			config, err := svc.enabledShareConfig(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -152,7 +158,7 @@ func TestCreateSharePersistsExtraConfigAndKeepsManagedACLs(t *testing.T) {
 		{Name: "tank/existing", GUID: "guid-existing", Mountpoint: "/mnt/existing"},
 	})
 	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/documents", "", "", nil)
-	if err := svc.CreateShare(context.Background(), "documents", "guid-documents", nil, nil, []uint{group.ID}, nil, false, false, "0664", "2775", false, 0, false, 70, nil, true, raw, nil); err != nil {
+	if _, err := svc.CreateShare(context.Background(), "documents", "guid-documents", nil, nil, []uint{group.ID}, nil, false, false, "0664", "2775", false, 0, false, 70, nil, true, raw, nil); err != nil {
 		t.Fatal(err)
 	}
 	var share sambaModels.SambaShare
@@ -162,7 +168,7 @@ func TestCreateSharePersistsExtraConfigAndKeepsManagedACLs(t *testing.T) {
 	if share.ExtraShareConfig != raw {
 		t.Fatalf("stored extra config=%q want %q", share.ExtraShareConfig, raw)
 	}
-	if len(*commands) < 2 || (*commands)[0] != sambaTestparmPath || (*commands)[1] != "/bin/setfacl" {
+	if len(*commands) < 2 || (*commands)[0] != sambaTestparmPath || !slices.Contains((*commands)[1:], "/bin/setfacl") {
 		t.Fatalf("expected validation before managed ACL updates, got %v", *commands)
 	}
 }
@@ -197,7 +203,7 @@ func TestRejectedExtraConfigDoesNotPersistOrChangeACLs(t *testing.T) {
 			var err error
 			switch operation {
 			case "create":
-				err = svc.CreateShare(context.Background(), share.Name, share.Dataset, nil, nil, nil, nil, true, false, "0664", "2775", false, 0, false, 70, nil, false, raw, nil)
+				_, err = svc.CreateShare(context.Background(), share.Name, share.Dataset, nil, nil, nil, nil, true, false, "0664", "2775", false, 0, false, 70, nil, false, raw, nil)
 			case "enable":
 				err = svc.SetShareEnabled(context.Background(), uint(share.ID), true)
 			default:
@@ -263,7 +269,7 @@ func TestUpdateSharePreservesAndClearsExtraConfig(t *testing.T) {
 
 func TestExtraShareConfigDoesNotBypassManagedAccessValidation(t *testing.T) {
 	svc, _ := newSambaServiceWithMockRunner(t)
-	err := svc.CreateShare(context.Background(), "documents", "guid-documents", nil, nil, nil, nil,
+	_, err := svc.CreateShare(context.Background(), "documents", "guid-documents", nil, nil, nil, nil,
 		false, false, "0664", "2775", false, 0, false, 70, nil, true, `valid users = "@EXAMPLE\Share Users"`, nil)
 	if err == nil || err.Error() != "no_principals_selected_and_guests_not_allowed" {
 		t.Fatalf("extra config bypassed managed principal requirement: %v", err)

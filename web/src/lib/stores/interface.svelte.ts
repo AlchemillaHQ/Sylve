@@ -29,6 +29,9 @@ export const zenRoutes = [
 	'/[node]/storage/zfs/datasets/volumes',
 	'/[node]/storage/zfs/datasets/snapshots',
 	'/[node]/storage/explorer',
+	'/[node]/storage/samba/shares',
+	'/[node]/storage/samba/settings',
+	'/[node]/storage/samba/audit-logs',
 	'/datacenter/summary'
 ];
 

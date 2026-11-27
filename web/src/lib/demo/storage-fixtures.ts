@@ -120,6 +120,10 @@ type DemoFileEntry = {
 type DemoSambaAuditRow = {
 	id: number;
 	share: string;
+	user: string;
+	client: string;
+	ip: string;
+	result: string;
 	action: string;
 	path: string;
 	target: string;
@@ -1233,8 +1237,16 @@ function seedStorageState(hostname: string): DemoStorageState {
 				dataset: apps.guid,
 				enabled: true,
 				permissions: {
-					read: { users: [users[1]], groups: [groups[0]], directory: [] },
-					write: { users: [users[1]], groups: [groups[0]], directory: [demoDirectoryPrincipals[2]] }
+					read: {
+						users: [],
+						groups: [{ id: groups[1].id, name: groups[1].name }],
+						directory: []
+					},
+					write: {
+						users: [{ id: users[3].id, username: users[3].username }],
+						groups: [{ id: groups[0].id, name: groups[0].name }],
+						directory: [demoDirectoryPrincipals[2]]
+					}
 				},
 				guest: { enabled: false, writeable: false },
 				createMask: '0664',
@@ -1246,7 +1258,9 @@ function seedStorageState(hostname: string): DemoStorageState {
 				auditedOperations: ['create_file', 'mkdirat', 'renameat', 'unlinkat'],
 				extraShareConfig: '',
 				createdAt,
-				updatedAt
+				updatedAt,
+				datasetName: '',
+				mountpoint: ''
 			},
 			{
 				id: 2,
@@ -1254,26 +1268,32 @@ function seedStorageState(hostname: string): DemoStorageState {
 				dataset: mediaDataset.guid,
 				enabled: true,
 				permissions: {
-					read: { users: [users[2]], groups: [groups[1]], directory: [] },
-					write: { users: [users[2]], groups: [groups[1]], directory: [] }
+					read: { users: [], groups: [], directory: [] },
+					write: { users: [], groups: [], directory: [] }
 				},
 				guest: { enabled: true, writeable: false },
 				createMask: '0664',
 				directoryMask: '0775',
 				timeMachine: true,
-				timeMachineMaxSize: 500 * GIB,
+				timeMachineMaxSize: 500,
 				auditEnabled: true,
 				auditRetentionDays: 70,
 				auditedOperations: ['create_file', 'renameat', 'unlinkat'],
 				extraShareConfig: '',
 				createdAt,
-				updatedAt
+				updatedAt,
+				datasetName: '',
+				mountpoint: ''
 			}
 		],
 		sambaAuditRows: [
 			{
 				id: 1,
 				share: 'apps',
+				user: 'deploy',
+				client: 'build-01',
+				ip: '192.0.2.24',
+				result: 'ok',
 				action: 'create_file',
 				path: '/atlas/apps/releases/0.3.0.txt',
 				target: '',
@@ -1282,6 +1302,10 @@ function seedStorageState(hostname: string): DemoStorageState {
 			{
 				id: 2,
 				share: 'apps',
+				user: 'deploy',
+				client: 'build-01',
+				ip: '192.0.2.24',
+				result: 'ok',
 				action: 'renameat',
 				path: '/atlas/apps/releases/candidate.txt',
 				target: '/atlas/apps/releases/0.3.0.txt',
@@ -1289,15 +1313,60 @@ function seedStorageState(hostname: string): DemoStorageState {
 			},
 			{
 				id: 3,
+				share: 'apps',
+				user: 'deploy',
+				client: 'build-01',
+				ip: '192.0.2.24',
+				result: 'ok',
+				action: 'write',
+				path: '/atlas/apps/releases/candidate.txt',
+				target: '',
+				occurrences: 3,
+				createdAt: '2026-08-14T11:31:40.000Z'
+			},
+			{
+				id: 4,
+				share: 'apps',
+				user: 'deploy',
+				client: 'build-01',
+				ip: '192.0.2.24',
+				result: 'ok',
+				action: 'connect',
+				path: '/atlas/apps',
+				target: '',
+				createdAt: '2026-08-14T11:30:02.000Z'
+			},
+			{
+				id: 5,
 				share: 'media',
+				user: 'nobody',
+				client: 'living-room',
+				ip: '192.0.2.41',
+				result: 'ok',
 				action: 'mkdirat',
 				path: '/atlas/media/library/documentaries',
 				target: '',
 				createdAt: '2026-08-14T10:48:22.000Z'
 			},
 			{
-				id: 4,
+				id: 6,
 				share: 'media',
+				user: 'nobody',
+				client: 'living-room',
+				ip: '192.0.2.41',
+				result: 'fail',
+				action: 'unlinkat',
+				path: '/atlas/media/library/locked.mkv',
+				target: '',
+				createdAt: '2026-08-14T10:47:51.000Z'
+			},
+			{
+				id: 7,
+				share: 'media',
+				user: 'nobody',
+				client: 'living-room',
+				ip: '192.0.2.41',
+				result: 'ok',
 				action: 'unlinkat',
 				path: '/atlas/media/incoming/duplicate.mkv',
 				target: '',
@@ -1997,7 +2066,107 @@ function buildSambaShare(
 		auditedOperations: stringArray(body, 'auditedOperations'),
 		extraShareConfig: stringValue(body, 'extraShareConfig', existing?.extraShareConfig ?? ''),
 		createdAt: existing?.createdAt ?? new Date().toISOString(),
-		updatedAt: new Date().toISOString()
+		updatedAt: new Date().toISOString(),
+		datasetName: '',
+		mountpoint: '',
+		permissionsJob: existing?.permissionsJob
+	};
+}
+
+const DEMO_SAMBA_SYSTEM_PATHS = [
+	'/bin',
+	'/boot',
+	'/lib',
+	'/libexec',
+	'/rescue',
+	'/sbin',
+	'/usr',
+	'/etc',
+	'/var',
+	'/tmp',
+	'/dev',
+	'/proc',
+	'/root',
+	'/compat'
+];
+const DEMO_SAMBA_RESERVED_NAMES = new Set(['global', 'homes', 'printers', 'print$', 'ipc$']);
+
+function pathWithin(path: string, root: string): boolean {
+	return root === '/' ? path.startsWith('/') : path === root || path.startsWith(`${root}/`);
+}
+
+function demoShareBlock(state: DemoStorageState, dataset: DemoDataset): string {
+	if (/^[^/@]+\/ROOT(\/|$)/.test(dataset.name)) return 'boot_environment';
+	if (/^[^/@]+\/sylve(\/|$)/.test(dataset.name)) return 'sylve_data';
+	const mountpoint = dataset.mountpoint;
+	if (!mountpoint.startsWith('/')) return '';
+	if (mountpoint === '/') return 'root';
+	if (pathWithin(mountpoint, '/usr/home') || mountpoint.startsWith('/usr/local/')) return '';
+	if (DEMO_SAMBA_SYSTEM_PATHS.some((root) => pathWithin(mountpoint, root))) return 'system_path';
+	const protectedRoots = state.datasets
+		.filter((item) => /^[^/@]+\/(sylve|ROOT)(\/|$)/.test(item.name))
+		.map((item) => item.mountpoint)
+		.filter((path) => path.startsWith('/'));
+	return protectedRoots.some((root) => pathWithin(root, mountpoint))
+		? 'contains_protected_data'
+		: '';
+}
+
+function sambaShareView(state: DemoStorageState, share: SambaShare): SambaShare {
+	const dataset = state.datasets.find((item) => item.guid === share.dataset);
+	const block = dataset ? demoShareBlock(state, dataset) : '';
+	return {
+		...share,
+		datasetName: dataset?.name ?? '',
+		mountpoint: dataset?.mountpoint ?? '',
+		state: !share.enabled
+			? 'disabled'
+			: !dataset
+				? 'dataset_missing'
+				: dataset.properties.mounted === 'yes'
+					? 'active'
+					: 'dataset_unmounted',
+		...(block ? { datasetBlock: block } : {})
+	};
+}
+
+function demoShareConflict(
+	state: DemoStorageState,
+	body: Record<string, unknown>,
+	id?: number
+): { error: string; status: number } | null {
+	const name = stringValue(body, 'name', '').trim().toLowerCase();
+	if (DEMO_SAMBA_RESERVED_NAMES.has(name)) return { error: 'share_name_reserved', status: 400 };
+	const others = state.sambaShares.filter((share) => share.id !== id);
+	if (others.some((share) => share.name.toLowerCase() === name))
+		return { error: 'share_with_name_exists', status: 409 };
+	const dataset = stringValue(body, 'dataset', '');
+	if (others.some((share) => share.dataset === dataset))
+		return { error: 'share_with_dataset_exists', status: 409 };
+	return null;
+}
+
+function demoPermissionJob(body: Record<string, unknown>, share: SambaShare): void {
+	if (!booleanValue(body, 'applyToExisting', false)) return;
+	const now = Date.now();
+	if (!share.enabled) {
+		const at = new Date(now).toISOString();
+		share.permissionsJob = {
+			state: 'failed',
+			processed: 0,
+			failed: 0,
+			startedAt: at,
+			finishedAt: at,
+			error: 'share_disabled'
+		};
+		return;
+	}
+	share.permissionsJob = {
+		state: 'completed',
+		processed: 1284,
+		failed: 0,
+		startedAt: new Date(now - 3_000).toISOString(),
+		finishedAt: new Date(now).toISOString()
 	};
 }
 
@@ -3289,58 +3458,191 @@ export function handleDemoStorageRequest<T = unknown>(
 			advertiseMdns: booleanValue(body, 'advertiseMdns', state.sambaConfig.advertiseMdns),
 			extraGlobalConfig: stringValue(body, 'extraGlobalConfig', state.sambaConfig.extraGlobalConfig)
 		};
-		return mutationSuccess('samba_config_updated') as DemoStorageResponse<T>;
+		return success(state.sambaConfig, 'samba_global_config_updated') as DemoStorageResponse<T>;
 	}
 	if (path === '/samba/shares' && method === 'GET') {
-		return success(state.sambaShares) as DemoStorageResponse<T>;
+		return success(
+			state.sambaShares.map((share) => sambaShareView(state, share)),
+			'shares_retrieved'
+		) as DemoStorageResponse<T>;
 	}
 	if (path === '/samba/shares' && method === 'POST') {
+		const conflict = demoShareConflict(state, body);
+		if (conflict)
+			return failure(
+				'failed_to_create_share',
+				conflict.error,
+				conflict.status
+			) as DemoStorageResponse<T>;
 		const share = buildSambaShare(state, nextID(state.sambaShares), body);
+		demoPermissionJob(body, share);
 		state.sambaShares.push(share);
-		return mutationSuccess('samba_share_created', 201) as DemoStorageResponse<T>;
+		return success(sambaShareView(state, share), 'share_created', 201) as DemoStorageResponse<T>;
+	}
+	if (path === '/samba/status' && method === 'GET') {
+		const running = state.services.includes('samba-server');
+		const share = running ? state.sambaShares.find((item) => item.enabled) : undefined;
+		const session = '3184588419';
+		return success({
+			serviceEnabled: running,
+			running,
+			version: '4.23.13',
+			sessions: share
+				? [
+						{
+							id: session,
+							pid: '8123',
+							username: 'deploy',
+							group: 'operators',
+							remoteMachine: '192.0.2.24',
+							hostname: 'ipv4:192.0.2.24:51234',
+							dialect: 'SMB3_11',
+							encryption: 'AES-128-GCM partial',
+							signing: 'AES-128-GMAC partial'
+						}
+					]
+				: [],
+			connections: share
+				? [
+						{
+							share: share.name,
+							sessionId: session,
+							pid: '8123',
+							machine: '192.0.2.24',
+							connectedAt: new Date(Date.now() - 42 * 60_000).toISOString(),
+							encryption: 'AES-128-GCM full',
+							signing: 'AES-128-GMAC full'
+						}
+					]
+				: [],
+			openFiles: share ? 3 : 0
+		}) as DemoStorageResponse<T>;
+	}
+	if (path === '/samba/principals' && method === 'GET') {
+		return success({
+			users: state.users
+				.filter((user) => user.source === 'pam')
+				.map((user) => ({ id: user.id, username: user.username, sambaAccount: true })),
+			groups: state.groups.map((group) => ({ id: group.id, name: group.name }))
+		}) as DemoStorageResponse<T>;
+	}
+	if (path === '/samba/datasets' && method === 'GET') {
+		return success(
+			state.datasets
+				.filter((item) => item.type === 'FILESYSTEM')
+				.map((item) => {
+					const owner = state.sambaShares.find((share) => share.dataset === item.guid);
+					const block = demoShareBlock(state, item);
+					return {
+						guid: item.guid,
+						name: item.name,
+						mountpoint: item.mountpoint,
+						mounted: item.properties.mounted === 'yes',
+						...(owner ? { sharedBy: { id: owner.id, name: owner.name } } : {}),
+						...(block ? { block } : {})
+					};
+				})
+				.sort((left, right) => left.name.localeCompare(right.name))
+		) as DemoStorageResponse<T>;
+	}
+	match = path.match(/^\/samba\/shares\/(\d+)\/permissions-job$/);
+	if (match && method === 'DELETE') {
+		return failure(
+			'permissions_job_not_running',
+			'permissions_job_not_running'
+		) as DemoStorageResponse<T>;
 	}
 	match = path.match(/^\/samba\/shares\/(\d+)\/enabled$/);
 	if (match && method === 'PUT') {
 		const id = Number(match[1]);
 		const share = state.sambaShares.find((item) => item.id === id);
 		if (!share)
-			return failure(
-				'samba_share_not_found',
-				`Share ${id} was not found`
-			) as DemoStorageResponse<T>;
+			return failure('failed_to_set_share_enabled', 'share_not_found') as DemoStorageResponse<T>;
 		share.enabled = booleanValue(body, 'enabled', share.enabled);
 		share.updatedAt = new Date().toISOString();
-		return mutationSuccess('samba_share_state_updated') as DemoStorageResponse<T>;
+		return success(sambaShareView(state, share), 'share_state_updated') as DemoStorageResponse<T>;
 	}
 	match = path.match(/^\/samba\/shares\/(\d+)$/);
 	if (match && method === 'PUT') {
 		const id = Number(match[1]);
 		const index = state.sambaShares.findIndex((item) => item.id === id);
 		if (index < 0)
+			return failure('failed_to_update_share', 'share_not_found') as DemoStorageResponse<T>;
+		const conflict = demoShareConflict(state, body, id);
+		if (conflict)
 			return failure(
-				'samba_share_not_found',
-				`Share ${id} was not found`
+				'failed_to_update_share',
+				conflict.error,
+				conflict.status
 			) as DemoStorageResponse<T>;
-		state.sambaShares[index] = buildSambaShare(state, id, body, state.sambaShares[index]);
-		return mutationSuccess('samba_share_updated') as DemoStorageResponse<T>;
+		const share = buildSambaShare(state, id, body, state.sambaShares[index]);
+		demoPermissionJob(body, share);
+		state.sambaShares[index] = share;
+		return success(sambaShareView(state, share), 'share_updated') as DemoStorageResponse<T>;
 	}
 	if (match && method === 'DELETE') {
 		const id = Number(match[1]);
 		const index = state.sambaShares.findIndex((item) => item.id === id);
 		if (index < 0)
-			return failure(
-				'samba_share_not_found',
-				`Share ${id} was not found`
-			) as DemoStorageResponse<T>;
+			return failure('failed_to_delete_share', 'share_not_found') as DemoStorageResponse<T>;
 		state.sambaShares.splice(index, 1);
-		return mutationSuccess('samba_share_deleted') as DemoStorageResponse<T>;
+		return mutationSuccess('share_deleted') as DemoStorageResponse<T>;
 	}
 	if (path === '/samba/audit-logs' && method === 'GET') {
-		const search = (parsed.searchParams.get('search') ?? '').toLowerCase();
+		const params = parsed.searchParams;
+		const search = (params.get('q') ?? '').trim().toLowerCase();
+		const share = params.get('share') ?? '';
+		const user = (params.get('user') ?? '').trim().toLowerCase();
+		const actions = (params.get('action') ?? '').split(',').filter(Boolean);
+		const from = params.get('from') ? Date.parse(params.get('from')!) : NaN;
+		const to = params.get('to') ? Date.parse(params.get('to')!) : NaN;
+		const sortKeys: Record<string, keyof DemoSambaAuditRow> = {
+			id: 'id',
+			action: 'action',
+			share: 'share',
+			user: 'user',
+			client: 'client',
+			ip: 'ip',
+			path: 'path',
+			target: 'target',
+			occurrences: 'occurrences',
+			created_at: 'createdAt',
+			createdat: 'createdAt'
+		};
+		const requested = sortKeys[(params.get('sort[0][field]') ?? '').toLowerCase()];
+		const sortKey = requested ?? 'id';
+		const descending = requested
+			? (params.get('sort[0][dir]') ?? '').toUpperCase() === 'DESC'
+			: true;
 		const rows = state.sambaAuditRows
-			.filter((row) => !search || Object.values(row).join(' ').toLowerCase().includes(search))
-			.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
-		return success(paginated(rows, parsed)) as DemoStorageResponse<T>;
+			.map((row) => ({ ...row, occurrences: row.occurrences ?? 1 }))
+			.filter((row) => !share || row.share === share)
+			.filter((row) => !user || row.user.toLowerCase().includes(user))
+			.filter((row) => actions.length === 0 || actions.includes(row.action))
+			.filter(
+				(row) =>
+					!search ||
+					[row.path, row.target, row.user, row.share, row.client, row.ip].some((value) =>
+						value.toLowerCase().includes(search)
+					)
+			)
+			.filter((row) => Number.isNaN(from) || Date.parse(row.createdAt) >= from)
+			.filter((row) => Number.isNaN(to) || Date.parse(row.createdAt) <= to)
+			.sort((left, right) => {
+				const order = String(left[sortKey] ?? '').localeCompare(
+					String(right[sortKey] ?? ''),
+					undefined,
+					{ numeric: true }
+				);
+				return descending ? -order : order;
+			});
+		const page = Math.max(1, Number(params.get('page') || 1));
+		const size = Math.max(1, Math.min(500, Number(params.get('size') || 100)));
+		return success({
+			last_page: Math.ceil(rows.length / size),
+			total: rows.length,
+			data: rows.slice((page - 1) * size, page * size)
+		}) as DemoStorageResponse<T>;
 	}
 
 	if (path === '/iscsi/targets' && method === 'GET') {

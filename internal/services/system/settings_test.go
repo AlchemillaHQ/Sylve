@@ -26,6 +26,7 @@ import (
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
+	"github.com/alchemillahq/sylve/internal/services/directoryservices"
 	"github.com/alchemillahq/sylve/internal/services/nfs"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
@@ -728,5 +729,66 @@ func TestContainersToggleReappliesTheFirewall(t *testing.T) {
 	}
 	if !reflect.DeepEqual(applied, []bool{true, false}) {
 		t.Fatal("the firewall's container rules must follow the service, once per change", applied)
+	}
+}
+
+func TestSetServiceEnabledSambaAppliesRuntimeStateAndProtectsDirectoryMembership(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{})
+	if err := db.Create(&models.BasicSettings{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	var applied []bool
+	directoryJoined := false
+	rebuilds := 0
+	service := &Service{
+		DB:          db,
+		MdnsRebuild: func() error { rebuilds++; return nil },
+		SambaServiceStateApply: func(_ context.Context, enabled bool) error {
+			applied = append(applied, enabled)
+			return nil
+		},
+		SambaServiceStopCheck: func() error {
+			if directoryJoined {
+				return errors.New("samba_required_by_active_directory")
+			}
+			return nil
+		},
+	}
+
+	if changed, err := service.SetServiceEnabled(t.Context(), models.SambaServer, true, nil); err != nil || !changed {
+		t.Fatalf("enabling Samba returned changed=%t err=%v", changed, err)
+	}
+	directoryJoined = true
+	changed, err := service.SetServiceEnabled(t.Context(), models.SambaServer, false, nil)
+	if changed || ClassifySettingsError(err) != SettingsErrorConflict || SettingsErrorCode(err) != "samba_required_by_active_directory" {
+		t.Fatalf("disabling Samba while joined returned changed=%t err=%v; want a conflict", changed, err)
+	}
+	var current models.BasicSettings
+	if err := db.First(&current).Error; err != nil || !hasService(current.Services, models.SambaServer) {
+		t.Fatalf("a refused disable changed the saved services: %v %v", current.Services, err)
+	}
+	directoryJoined = false
+	if changed, err := service.SetServiceEnabled(t.Context(), models.SambaServer, false, nil); err != nil || !changed {
+		t.Fatalf("disabling Samba returned changed=%t err=%v", changed, err)
+	}
+	if len(applied) != 2 || !applied[0] || applied[1] {
+		t.Fatalf("runtime applies = %v; want enable then disable", applied)
+	}
+	if rebuilds != 2 {
+		t.Fatalf("mDNS was rebuilt %d times; want once per Samba change so its adverts follow the service", rebuilds)
+	}
+
+	service.SambaServiceStateApply = func(_ context.Context, enabled bool) error {
+		if enabled {
+			return fmt.Errorf("%w: roll back the interrupted directory services restore before starting Samba", directoryservices.ErrConflict)
+		}
+		return nil
+	}
+	changed, err = service.SetServiceEnabled(t.Context(), models.SambaServer, true, nil)
+	if changed || ClassifySettingsError(err) != SettingsErrorConflict || SettingsErrorCode(err) != "directory_restore_pending" {
+		t.Fatalf("enabling Samba during a directory restore returned changed=%t err=%v; want a conflict", changed, err)
+	}
+	if err := db.First(&current).Error; err != nil || hasService(current.Services, models.SambaServer) {
+		t.Fatalf("a refused enable left Samba saved as enabled: %v %v", current.Services, err)
 	}
 }

@@ -241,7 +241,7 @@ func TestShareConfigGuestOnlyDoesNotEmitUserLists(t *testing.T) {
 	})
 	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/public", "", "", nil)
 
-	cfg, err := svc.ShareConfig(ctx)
+	cfg, err := svc.enabledShareConfig(ctx)
 	if err != nil {
 		t.Fatalf("ShareConfig failed: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestShareConfigAuthenticatedEmitsAccessLists(t *testing.T) {
 	})
 	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/secure", "", "", nil)
 
-	cfg, err := svc.ShareConfig(ctx)
+	cfg, err := svc.enabledShareConfig(ctx)
 	if err != nil {
 		t.Fatalf("ShareConfig failed: %v", err)
 	}
@@ -341,7 +341,7 @@ func TestShareConfigBestEffortWhenACLPropertySetFails(t *testing.T) {
 	})
 	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/public", "", "failed", errors.New("set failed"))
 
-	cfg, err := svc.ShareConfig(ctx)
+	cfg, err := svc.enabledShareConfig(ctx)
 	if err != nil {
 		t.Fatalf("ShareConfig should not fail when ACL property set fails in best-effort mode: %v", err)
 	}
@@ -379,7 +379,7 @@ func TestShareConfigAppleExtensionsDoNotConvertAppleDoubleFiles(t *testing.T) {
 	})
 	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/backups", "", "", nil)
 
-	cfg, err := svc.ShareConfig(ctx)
+	cfg, err := svc.enabledShareConfig(ctx)
 	if err != nil {
 		t.Fatalf("ShareConfig failed: %v", err)
 	}
@@ -408,7 +408,7 @@ func TestShareConfigUsesSyslogForFullAudit(t *testing.T) {
 	addDatasetLookupMocks(t, runner, []mockDataset{{Name: "tank/audited", GUID: "guid-audited", Mountpoint: "/mnt/audited"}})
 	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/audited", "", "", nil)
 
-	cfg, err := svc.ShareConfig(context.Background())
+	cfg, err := svc.enabledShareConfig(context.Background())
 	if err != nil {
 		t.Fatalf("ShareConfig failed: %v", err)
 	}
@@ -429,7 +429,7 @@ func TestShareConfigUsesSyslogForFullAudit(t *testing.T) {
 func TestCreateShareRejectsGuestOnlyWithPrincipals(t *testing.T) {
 	svc, _ := newSambaServiceWithMockRunner(t)
 
-	err := svc.CreateShare(
+	_, err := svc.CreateShare(
 		context.Background(),
 		"public",
 		"guid-public",
@@ -504,6 +504,7 @@ func TestUpdateShareRejectsGuestOnlyWithPrincipals(t *testing.T) {
 
 func TestCreateShareFailsWhenACLPropertyEnforcementFails(t *testing.T) {
 	svc, runner := newSambaServiceWithMockRunner(t)
+	stubTestparm(t)
 	ctx := context.Background()
 
 	addDatasetLookupMocks(t, runner, []mockDataset{
@@ -511,7 +512,7 @@ func TestCreateShareFailsWhenACLPropertyEnforcementFails(t *testing.T) {
 	})
 	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/public", "", "failed", errors.New("set failed"))
 
-	err := svc.CreateShare(
+	_, err := svc.CreateShare(
 		ctx,
 		"public",
 		"guid-public",
@@ -553,7 +554,7 @@ func TestCreateShareWriteWinsForOverlappingGroupPermissions(t *testing.T) {
 	})
 
 	originalWriteConfig := sambaWriteConfig
-	sambaWriteConfig = func(_ *Service, _ context.Context, _ bool) error {
+	sambaWriteConfig = func(_ *Service, _ context.Context, _ sambaServiceAction) error {
 		return nil
 	}
 	t.Cleanup(func() {
@@ -570,7 +571,7 @@ func TestCreateShareWriteWinsForOverlappingGroupPermissions(t *testing.T) {
 	})
 	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/public", "", "", nil)
 
-	err := svc.CreateShare(
+	_, err := svc.CreateShare(
 		ctx,
 		"public",
 		"guid-public",
@@ -684,7 +685,7 @@ func TestWriteConfigValidatesBeforeReplacingActiveConfig(t *testing.T) {
 	}
 
 	err := svc.WriteConfig(context.Background(), false)
-	if err == nil || !strings.Contains(err.Error(), "configuration validation failed") {
+	if !errors.Is(err, errSambaConfigRejected) || !strings.Contains(err.Error(), "invalid parameter") {
 		t.Fatalf("expected testparm validation error, got %v", err)
 	}
 	if wroteActiveConfig {
@@ -748,4 +749,23 @@ func TestWriteConfigValidatesAndWritesExtraGlobalConfig(t *testing.T) {
 	if !strings.Contains(writtenConfig, settings.ExtraGlobalConfig) {
 		t.Fatalf("written Samba config omitted extra global config:\n%s", writtenConfig)
 	}
+}
+
+func stubTestparm(t *testing.T) {
+	t.Helper()
+	original := sambaRunCommand
+	t.Cleanup(func() { sambaRunCommand = original })
+	sambaRunCommand = func(command string, args ...string) (string, error) {
+		if command == sambaTestparmPath {
+			return "", nil
+		}
+		return original(command, args...)
+	}
+}
+
+func TestMain(m *testing.M) {
+	sambaControlCommand = func(command string, args ...string) (string, error) {
+		panic("a test reached the host's smbcontrol: " + command + " " + strings.Join(args, " "))
+	}
+	os.Exit(m.Run())
 }

@@ -907,6 +907,19 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_samba_ShareDataset:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_samba.ShareDataset'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zfs_PoolScrubRunView:
     properties:
       data:
@@ -2071,6 +2084,28 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_samba_SambaPrincipals:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_samba.SambaPrincipals'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_samba_SambaStatus:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_samba.SambaStatus'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_system_TunablesResponse:
     properties:
       data:
@@ -2438,6 +2473,17 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/internal_handlers_notifications.NotificationListResponse'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_samba_SambaShareResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers_samba.SambaShareResponse'
       error:
         type: string
       message:
@@ -8378,6 +8424,8 @@ definitions:
         type: array
       last_page:
         type: integer
+      total:
+        type: integer
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_system.FileListing:
     properties:
@@ -10124,6 +10172,129 @@ definitions:
       pushover:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_notifications.PushoverTransportConfigUpdate'
       type:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_samba.SambaConnection:
+    properties:
+      connectedAt:
+        type: string
+      encryption:
+        type: string
+      machine:
+        type: string
+      pid:
+        type: string
+      sessionId:
+        type: string
+      share:
+        type: string
+      signing:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_samba.SambaPrincipalGroup:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_samba.SambaPrincipalUser:
+    properties:
+      id:
+        type: integer
+      sambaAccount:
+        type: boolean
+      username:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_samba.SambaPrincipals:
+    properties:
+      groups:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_samba.SambaPrincipalGroup'
+        type: array
+      users:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_samba.SambaPrincipalUser'
+        type: array
+    type: object
+  github_com_alchemillahq_sylve_internal_services_samba.SambaSession:
+    properties:
+      dialect:
+        type: string
+      encryption:
+        type: string
+      group:
+        type: string
+      hostname:
+        type: string
+      id:
+        type: string
+      pid:
+        type: string
+      remoteMachine:
+        type: string
+      signing:
+        type: string
+      username:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_samba.SambaStatus:
+    properties:
+      connections:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_samba.SambaConnection'
+        type: array
+      error:
+        type: string
+      openFiles:
+        type: integer
+      running:
+        type: boolean
+      serviceEnabled:
+        type: boolean
+      sessions:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_samba.SambaSession'
+        type: array
+      version:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_samba.ShareDataset:
+    properties:
+      block:
+        type: string
+      guid:
+        type: string
+      mounted:
+        type: boolean
+      mountpoint:
+        type: string
+      name:
+        type: string
+      sharedBy:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_samba.ShareReference'
+    type: object
+  github_com_alchemillahq_sylve_internal_services_samba.SharePermissionJob:
+    properties:
+      error:
+        type: string
+      failed:
+        type: integer
+      finishedAt:
+        type: string
+      processed:
+        type: integer
+      startedAt:
+        type: string
+      state:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_samba.ShareReference:
+    properties:
+      id:
+        type: integer
+      name:
         type: string
     type: object
   github_com_alchemillahq_sylve_internal_services_system.TunablesResponse:
@@ -12154,6 +12325,8 @@ definitions:
     type: object
   internal_handlers_samba.CreateSambaShareRequest:
     properties:
+      applyToExisting:
+        type: boolean
       auditEnabled:
         type: boolean
       auditRetentionDays:
@@ -12290,6 +12463,10 @@ definitions:
         type: string
       dataset:
         type: string
+      datasetBlock:
+        type: string
+      datasetName:
+        type: string
       directoryMask:
         type: string
       enabled:
@@ -12300,10 +12477,16 @@ definitions:
         $ref: '#/definitions/internal_handlers_samba.SambaGuestResponse'
       id:
         type: integer
+      mountpoint:
+        type: string
       name:
         type: string
       permissions:
         $ref: '#/definitions/internal_handlers_samba.SambaPermissionsResponse'
+      permissionsJob:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_samba.SharePermissionJob'
+      state:
+        type: string
       timeMachine:
         type: boolean
       timeMachineMaxSize:
@@ -12318,6 +12501,8 @@ definitions:
     type: object
   internal_handlers_samba.UpdateSambaShareRequest:
     properties:
+      applyToExisting:
+        type: boolean
       auditEnabled:
         type: boolean
       auditRetentionDays:
@@ -27059,7 +27244,7 @@ paths:
     get:
       consumes:
       - application/json
-      description: Retrieve paginated Samba audit logs
+      description: Retrieve paginated Samba audit log entries, newest first unless sorted. createdAt is when the event happened, taken from its syslog timestamp. total counts the entries that match the filters.
       parameters:
       - default: 1
         description: Page number
@@ -27068,8 +27253,9 @@ paths:
         name: page
         type: integer
       - default: 100
-        description: Page size
+        description: Page size, at most 500
         in: query
+        maximum: 500
         minimum: 1
         name: size
         type: integer
@@ -27096,6 +27282,30 @@ paths:
         in: query
         name: sort[0][dir]
         type: string
+      - description: Exact share name
+        in: query
+        name: share
+        type: string
+      - description: Case-insensitive part of the user name
+        in: query
+        name: user
+        type: string
+      - description: "Comma-separated operations: connect, disconnect, create_file, mkdirat, unlinkat, renameat, openat, close, read, write"
+        in: query
+        name: action
+        type: string
+      - description: Case-insensitive text in the path, rename target, user, share, client name or IP address
+        in: query
+        name: q
+        type: string
+      - description: Earliest event time (RFC 3339)
+        in: query
+        name: from
+        type: string
+      - description: Latest event time (RFC 3339)
+        in: query
+        name: to
+        type: string
       produces:
       - application/json
       responses:
@@ -27103,6 +27313,10 @@ paths:
           description: Success
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_samba_AuditLogsResponse'
+        "400":
+          description: Invalid filter (invalid_audit_log_filter)
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "500":
           description: Internal Server Error
           schema:
@@ -27116,7 +27330,7 @@ paths:
     get:
       consumes:
       - application/json
-      description: Retrieve the Samba global configuration settings
+      description: Retrieve the Samba global configuration settings. Returns 404 with message samba_not_initialized when the Samba service has never been enabled on this node.
       produces:
       - application/json
       responses:
@@ -27124,6 +27338,10 @@ paths:
           description: Success
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_samba_SambaSettings'
+        "404":
+          description: Samba not initialized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "500":
           description: Internal Server Error
           schema:
@@ -27136,7 +27354,7 @@ paths:
     put:
       consumes:
       - application/json
-      description: Update the Samba global configuration settings
+      description: Validate and save the Samba global configuration, then rewrite smb4.conf and restart Samba, which disconnects connected clients. Samba is only restarted when the Samba service is enabled in Sylve. The complete configuration is checked with testparm before anything is saved, and a rejection returns 400; unknown interface names and a server string ending in a backslash are also rejected. Omitted booleans are saved as false. If the change was saved but Samba could not apply it, the response is 500 with message samba_apply_failed.
       parameters:
       - description: Samba global configuration
         in: body
@@ -27148,15 +27366,19 @@ paths:
       - application/json
       responses:
         "200":
-          description: Success
+          description: Saved settings
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_samba_SambaSettings'
         "400":
           description: Bad Request
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "403":
           description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Samba not initialized
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "409":
@@ -27168,7 +27390,7 @@ paths:
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "500":
-          description: Internal Server Error
+          description: Internal Server Error, or saved but not applied (samba_apply_failed)
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
       security:
@@ -27176,11 +27398,65 @@ paths:
       summary: Update Samba global configuration
       tags:
       - Samba
+  /samba/datasets:
+    get:
+      description: "List every ZFS filesystem with its mount state, the share already using it (sharedBy), and why it cannot be shared (block: root, system_path, boot_environment, sylve_data or contains_protected_data). Datasets with a block are refused when creating a share or moving one to them."
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_samba_ShareDataset'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List datasets for Samba shares
+      tags:
+      - Samba
+  /samba/principals:
+    get:
+      description: List the PAM users and groups that can be given access to shares. sambaAccount tells whether a user has a Samba password and can sign in over SMB; it is null when the Samba account list could not be read.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_samba_SambaPrincipals'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List Samba share principals
+      tags:
+      - Samba
   /samba/shares:
     get:
       consumes:
       - application/json
-      description: Retrieve all configured Samba shares
+      description: Retrieve all configured Samba shares with their dataset name and mountpoint, their state (active, disabled, dataset_missing or dataset_unmounted), datasetBlock when the share uses a dataset that could no longer be shared, and the progress of any job applying access to existing files (permissionsJob).
       produces:
       - application/json
       responses:
@@ -27200,7 +27476,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a Samba share with the specified settings
+      description: Create a Samba share on a mounted ZFS filesystem. Share names must be 1 to 80 characters without control characters, backslashes, slashes, colons, asterisks, question marks, double quotes, angle brackets, pipes, square brackets or commas, must not be global, homes, printers, print$ or ipc$, and must be unique ignoring case. System datasets, boot environments, Sylve data and datasets containing them are refused with dataset_not_shareable and a reason. The share's ACL entries are set on the dataset's top folder and Samba reloads its configuration without disconnecting clients. With applyToExisting, a background job also applies the access to the files and folders already in the dataset, without crossing into other datasets; its progress appears in permissionsJob. If the change was saved but Samba could not apply it, the response is 500 with message samba_apply_failed, with the saved share as data.
       parameters:
       - description: Samba share settings
         in: body
@@ -27212,9 +27488,9 @@ paths:
       - application/json
       responses:
         "201":
-          description: Created
+          description: Created share
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_samba_SambaShareResponse'
         "400":
           description: Bad Request
           schema:
@@ -27240,7 +27516,7 @@ paths:
     delete:
       consumes:
       - application/json
-      description: Delete an existing Samba share by ID
+      description: Delete a Samba share. The dataset and its files are kept; the share's ACL entries are removed from the dataset's top folder and a running access job is stopped. If the change was saved but Samba could not apply it, the response is 500 with message samba_apply_failed (the share is deleted).
       parameters:
       - description: Share ID
         in: path
@@ -27262,6 +27538,10 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Another Samba or directory services change is in progress
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "500":
           description: Internal Server Error
           schema:
@@ -27274,7 +27554,7 @@ paths:
     put:
       consumes:
       - application/json
-      description: Update an existing Samba share with the specified settings
+      description: Update a Samba share. Omitted enabled and extraShareConfig keep their current values; other omitted fields are reset. Share names must be 1 to 80 characters without control characters, backslashes, slashes, colons, asterisks, question marks, double quotes, angle brackets, pipes, square brackets or commas, must not be global, homes, printers, print$ or ipc$, and must be unique ignoring case. System datasets, boot environments, Sylve data and datasets containing them are refused with dataset_not_shareable and a reason. Disabling removes the share's ACL entries from the dataset's top folder and stops a running access job. With applyToExisting, the background job applies the new access to existing files and folders and removes users and groups that lost access; guest access that is turned off is only removed from the top folder. If the change was saved but Samba could not apply it, the response is 500 with message samba_apply_failed, with the saved share as data.
       parameters:
       - description: Share ID
         in: path
@@ -27291,9 +27571,9 @@ paths:
       - application/json
       responses:
         "200":
-          description: Success
+          description: Updated share
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_samba_SambaShareResponse'
         "400":
           description: Bad Request
           schema:
@@ -27323,7 +27603,7 @@ paths:
     put:
       consumes:
       - application/json
-      description: Set whether a Samba share is included in the active configuration
+      description: Set whether a Samba share is included in the active configuration. Enabling checks the dataset again and refuses datasets that cannot be shared; disabling removes the share's ACL entries from the dataset's top folder and stops a running access job. If the change was saved but Samba could not apply it, the response is 500 with message samba_apply_failed.
       parameters:
       - description: Share ID
         in: path
@@ -27340,15 +27620,19 @@ paths:
       - application/json
       responses:
         "200":
-          description: Success
+          description: Updated share
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_samba_SambaShareResponse'
         "400":
           description: Bad Request
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Another Samba or directory services change is in progress
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "413":
@@ -27362,6 +27646,70 @@ paths:
       security:
       - BearerAuth: []
       summary: Enable or disable a Samba share
+      tags:
+      - Samba
+  /samba/shares/{id}/permissions-job:
+    delete:
+      description: Cancel the background job started by applyToExisting. Items already processed keep their new permissions.
+      parameters:
+      - description: Share ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Cancelled
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Invalid share ID
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: No job is running for this share
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Stop applying share access to existing files
+      tags:
+      - Samba
+  /samba/status:
+    get:
+      description: Report whether the Samba service is enabled in Sylve and running, its version, and its current sessions, share connections and number of open files as reported by smbstatus. When smbstatus fails while Samba runs, error explains why and the lists are empty.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_samba_SambaStatus'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get Samba status
       tags:
       - Samba
   /system/basic-settings:

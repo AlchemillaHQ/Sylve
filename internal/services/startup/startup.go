@@ -33,6 +33,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/directoryservices"
 	"github.com/alchemillahq/sylve/internal/services/nfs"
+	"github.com/alchemillahq/sylve/pkg/system"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"gorm.io/gorm"
@@ -60,6 +61,7 @@ type Service struct {
 	Containers interface {
 		Startup(context.Context) error
 	}
+	daemonCtx context.Context
 }
 
 type BootstrapStartupApplier interface {
@@ -150,21 +152,59 @@ func (s *Service) startSamba(ctx, dCtx context.Context, enabled bool) {
 	if !enabled || (s.Directory != nil && s.Directory.RecoveryPending()) {
 		return
 	}
-	if err := s.InitSamba(ctx); err != nil {
-		logger.L.Error().Err(err).Msg("failed to initialize Samba; continuing startup")
-	} else {
-		// FreeBSD's Samba rc script applies one* actions to every member
-		// daemon, including winbindd, regardless of its rc.conf enable flag.
-		if err := ensureServiceStarted("samba_server"); err != nil {
-			logger.L.Error().Err(err).Msg("unable to start samba server")
-		} else if output, err := utils.RunCommand("/usr/sbin/service", "samba_server", "onereload"); err != nil {
-			logger.L.Warn().Err(err).Str("output", strings.TrimSpace(output)).Msg("unable to reload samba server configuration")
-		}
+	if err := s.bringUpSamba(ctx); err != nil {
+		logger.L.Error().Err(err).Msg("failed to start Samba; continuing startup")
 	}
-	go s.Samba.WatchAuditLogs(dCtx)
+	s.Samba.StartAuditWatcher(dCtx)
+}
+
+func (s *Service) bringUpSamba(ctx context.Context) error {
+	if err := s.InitSamba(ctx); err != nil {
+		return fmt.Errorf("samba_initialization_failed: %w", err)
+	}
+	// FreeBSD's Samba rc script applies one* actions to every member
+	// daemon, including winbindd, regardless of its rc.conf enable flag.
+	if err := ensureServiceStarted("samba_server"); err != nil {
+		return fmt.Errorf("samba_service_start_failed: %w", err)
+	}
+	if output, err := utils.RunCommand("/usr/sbin/service", "samba_server", "onereload"); err != nil {
+		logger.L.Warn().Err(err).Str("output", strings.TrimSpace(output)).Msg("unable to reload samba server configuration")
+	}
+	return nil
+}
+
+func (s *Service) ApplySambaServiceState(ctx context.Context, enabled bool) error {
+	if !enabled {
+		if err := s.Samba.EnsureCanStop(); err != nil {
+			return err
+		}
+		if !system.IsServiceRunning("samba_server") {
+			return nil
+		}
+		if output, err := utils.RunCommand("/usr/sbin/service", "samba_server", "onestop"); err != nil {
+			return fmt.Errorf("samba_service_stop_failed: %w: %s", err, strings.TrimSpace(output))
+		}
+		return nil
+	}
+	if s.Directory != nil && s.Directory.RecoveryPending() {
+		return fmt.Errorf("%w: roll back the interrupted directory services restore before starting Samba", directoryservices.ErrConflict)
+	}
+	if err := s.CheckSambaSyslogConfig(models.BasicSettings{Services: []models.AvailableService{models.SambaServer}}); err != nil {
+		return fmt.Errorf("samba_syslog_setup_failed: %w", err)
+	}
+	if err := s.bringUpSamba(ctx); err != nil {
+		return err
+	}
+	watcherCtx := s.daemonCtx
+	if watcherCtx == nil {
+		watcherCtx = context.Background()
+	}
+	s.Samba.StartAuditWatcher(watcherCtx)
+	return nil
 }
 
 func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface, ctx context.Context, dCtx context.Context) error {
+	s.daemonCtx = dCtx
 	if err := s.InitKeys(authService); err != nil {
 		return err
 	}

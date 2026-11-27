@@ -272,6 +272,8 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	startupService.Bootstrap = bootstrapService
 	startupService.Directory = directoryService
 	startupService.NFS = nfsService
+	sysSvc.SambaServiceStateApply = startupService.ApplySambaServiceState
+	sysSvc.SambaServiceStopCheck = sambaSvc.EnsureCanStop
 	containerService, err := container.NewContainerService(db, gzfs)
 	if err != nil {
 		logger.L.Fatal().Err(err).Msg("failed to initialize container service")

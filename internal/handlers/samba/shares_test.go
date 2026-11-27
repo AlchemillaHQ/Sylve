@@ -10,6 +10,7 @@ package sambaHandlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -358,5 +359,48 @@ func TestUpdateShareRejectsInvalidPathID(t *testing.T) {
 	}
 	if resp.Message != "invalid_share_id" {
 		t.Fatalf("expected invalid_share_id, got %q", resp.Message)
+	}
+}
+
+func TestUpdateShareRequestKeepsOmittedEnabledUnset(t *testing.T) {
+	var omitted UpdateSambaShareRequest
+	if err := json.Unmarshal([]byte(`{"name":"docs","dataset":"guid"}`), &omitted); err != nil {
+		t.Fatal(err)
+	}
+	if omitted.Enabled != nil {
+		t.Fatalf("an omitted enabled decoded as %v; it must stay unset so the share keeps its state", *omitted.Enabled)
+	}
+	var disabled UpdateSambaShareRequest
+	if err := json.Unmarshal([]byte(`{"name":"docs","dataset":"guid","enabled":false}`), &disabled); err != nil {
+		t.Fatal(err)
+	}
+	if disabled.Enabled == nil || *disabled.Enabled {
+		t.Fatal("an explicit enabled=false was lost")
+	}
+}
+
+func TestSambaShareServiceErrorStatusMapsNewShareRules(t *testing.T) {
+	for err, want := range map[error]int{
+		&samba.DatasetNotShareableError{Reason: samba.ShareDatasetSystemPath}: http.StatusBadRequest,
+		errors.New("share_name_reserved"):                                     http.StatusBadRequest,
+		errors.New("share_name_too_long"):                                     http.StatusBadRequest,
+		fmt.Errorf("%w: reload failed", samba.ErrSambaApplyFailed):            http.StatusInternalServerError,
+		errors.New("share_not_found"):                                         http.StatusNotFound,
+		errors.New("failed_to_get_share: disk I/O error"):                     http.StatusInternalServerError,
+	} {
+		if got := sambaShareServiceErrorStatus(err); got != want {
+			t.Errorf("%v mapped to %d; want %d", err, got, want)
+		}
+	}
+}
+
+func TestGetAuditLogsRejectsInvalidFilters(t *testing.T) {
+	router := gin.New()
+	router.GET("/samba/audit-logs", GetAuditLogs(&samba.Service{}))
+	for _, query := range []string{"action=format_disk", "from=yesterday", "to=2026-13-01T00:00:00Z"} {
+		rr := performSambaJSONRequest(t, router, http.MethodGet, "/samba/audit-logs?"+query, nil)
+		if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "invalid_audit_log_filter") {
+			t.Errorf("%s returned %d %s; want 400 invalid_audit_log_filter", query, rr.Code, rr.Body.String())
+		}
 	}
 }

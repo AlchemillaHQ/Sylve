@@ -346,8 +346,12 @@ func RegisterRoutes(r *gin.Engine,
 		samba.PUT("/shares/:id", sambaHandlers.UpdateShare(sambaService))
 		samba.PUT("/shares/:id/enabled", sambaHandlers.SetShareEnabled(sambaService))
 		samba.DELETE("/shares/:id", sambaHandlers.DeleteShare(sambaService))
+		samba.DELETE("/shares/:id/permissions-job", sambaHandlers.CancelSharePermissionJob(sambaService))
 
 		samba.GET("/audit-logs", sambaHandlers.GetAuditLogs(sambaService))
+		samba.GET("/status", sambaHandlers.GetStatus(sambaService))
+		samba.GET("/principals", sambaHandlers.GetPrincipals(sambaService))
+		samba.GET("/datasets", sambaHandlers.GetShareDatasets(sambaService))
 	}
 
 	if directoryService := sambaService.Directory; directoryService != nil {

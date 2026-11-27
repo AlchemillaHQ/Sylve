@@ -22,7 +22,8 @@ export function isDatacenterScope(pathname: string): boolean {
 export function getNodeNavigation(
 	node: string,
 	hostPath: string,
-	explorer: boolean
+	explorer: boolean,
+	samba: boolean
 ): NavigationItem[] {
 	const host: Need = ['Sys.Audit', hostPath];
 	const audit: Need = ['Sys.Audit', '/'];
@@ -93,7 +94,35 @@ export function getNodeNavigation(
 			icon: 'icon-[mdi--folder-network]',
 			need: host,
 			children: [
-				preview('shares-smb', 'SMB', 'icon-[material-symbols--smb-share]'),
+				...(samba
+					? [
+							{
+								id: 'shares-samba',
+								label: 'Samba',
+								icon: 'icon-[material-symbols--smb-share]',
+								children: [
+									{
+										id: 'shares-samba-shares',
+										label: 'Shares',
+										icon: 'icon-[mdi--folder-network]',
+										href: `/${node}/storage/samba/shares`
+									},
+									{
+										id: 'shares-samba-audit-log',
+										label: 'Audit Log',
+										icon: 'icon-[mdi--text-box-search-outline]',
+										href: `/${node}/storage/samba/audit-logs`
+									},
+									{
+										id: 'shares-samba-settings',
+										label: 'Settings',
+										icon: 'icon-[mdi--cog-outline]',
+										href: `/${node}/storage/samba/settings`
+									}
+								]
+							}
+						]
+					: []),
 				preview('shares-nfs', 'NFS', 'icon-[mdi--folder-network]'),
 				preview('shares-iscsi', 'iSCSI', 'icon-[carbon--block-storage-alt]')
 			]

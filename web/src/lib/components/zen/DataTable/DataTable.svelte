@@ -40,6 +40,8 @@ under sponsorship from the FreeBSD Foundation.
 		sorting?: SortingState;
 		searchText?: string;
 		pageOffset?: number;
+		pageSize?: number;
+		serverRowCount?: number;
 		pageResetKey?: unknown;
 		initialPageSize?: number;
 		pageSizeOptions?: number[];
@@ -51,6 +53,7 @@ under sponsorship from the FreeBSD Foundation.
 		fullWidthSearch?: boolean;
 		emptyMessage?: string;
 		heading?: Snippet;
+		filters?: Snippet;
 		preserveHeightOnFilter?: boolean;
 		columnWidths?: Record<string, string>;
 		columnClasses?: Record<string, string>;
@@ -72,6 +75,8 @@ under sponsorship from the FreeBSD Foundation.
 		sorting = $bindable([]),
 		searchText = $bindable(''),
 		pageOffset = $bindable(0),
+		pageSize = $bindable(0),
+		serverRowCount,
 		pageResetKey,
 		initialPageSize = 10,
 		pageSizeOptions = [10, 20, 50],
@@ -83,6 +88,7 @@ under sponsorship from the FreeBSD Foundation.
 		fullWidthSearch = false,
 		emptyMessage = 'No data yet.',
 		heading,
+		filters,
 		preserveHeightOnFilter = false,
 		columnWidths,
 		columnClasses,
@@ -115,6 +121,18 @@ under sponsorship from the FreeBSD Foundation.
 		get globalFilterFn() {
 			return globalFilterFn ?? 'includesString';
 		},
+		get manualPagination() {
+			return serverRowCount !== undefined;
+		},
+		get manualSorting() {
+			return serverRowCount !== undefined;
+		},
+		get manualFiltering() {
+			return serverRowCount !== undefined;
+		},
+		get rowCount() {
+			return serverRowCount;
+		},
 		autoResetPageIndex: false,
 		initialState: {
 			sorting: initialSorting,
@@ -137,11 +155,12 @@ under sponsorship from the FreeBSD Foundation.
 		sorting = table.atoms.sorting.get();
 		searchText = query;
 		pageOffset = pagination.pageIndex * pagination.pageSize;
+		pageSize = pagination.pageSize;
 	});
 	watch([() => table.atoms.sorting.get(), () => pageResetKey], () => table.setPageIndex(0), {
 		lazy: true
 	});
-	let filteredCount = $derived(table.getFilteredRowModel().rows.length);
+	let filteredCount = $derived(serverRowCount ?? table.getFilteredRowModel().rows.length);
 	$effect(() => {
 		const last = Math.max(0, Math.ceil(filteredCount / pagination.pageSize) - 1);
 		if (pagination.pageIndex > last) table.setPageIndex(last);
@@ -158,7 +177,7 @@ under sponsorship from the FreeBSD Foundation.
 		}
 		if (!value) unfilteredHeight = undefined;
 		table.setGlobalFilter(value);
-		table.setPageIndex(0);
+		if (serverRowCount === undefined) table.setPageIndex(0);
 	}
 
 	$effect(() => {
@@ -288,6 +307,9 @@ under sponsorship from the FreeBSD Foundation.
 			</div>
 		{/if}
 	</div>
+	{#if filters}
+		<div class="mb-3 min-w-0">{@render filters()}</div>
+	{/if}
 
 	{#if grid && gridItem}
 		{#if pageRows.length > 0}

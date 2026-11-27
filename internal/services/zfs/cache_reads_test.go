@@ -269,3 +269,42 @@ func TestConcurrentStaleReadsShareResultsSafely(t *testing.T) {
 		t.Fatalf("live lists = %d", lists)
 	}
 }
+
+func TestCachedDatasetsUseTheCacheAndOnlyUsablePools(t *testing.T) {
+	runner := &liveSnapshotRunner{names: []string{"tank/live"}}
+	service := newCacheReadService(t, runner)
+	if err := service.DB.AutoMigrate(&models.BasicSettings{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.DB.Create(&models.BasicSettings{Pools: []string{"tank"}}).Error; err != nil {
+		t.Fatal(err)
+	}
+	service.listHostPools = func(context.Context) ([]*gzfs.ZPool, error) {
+		return []*gzfs.ZPool{{Name: "tank"}, {Name: "other"}}, nil
+	}
+	encoded, err := MsgpackEncode([]*gzfs.Dataset{
+		{Name: "tank/cached", Pool: "tank", Type: gzfs.DatasetTypeFilesystem},
+		{Name: "other/cached", Pool: "other", Type: gzfs.DatasetTypeFilesystem},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetValue(datasetCacheKey(gzfs.DatasetTypeFilesystem), encoded, 60); err != nil {
+		t.Fatal(err)
+	}
+
+	datasets, err := service.CachedDatasets(t.Context(), gzfs.DatasetTypeFilesystem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(datasets) != 1 || datasets[0].Name != "tank/cached" || runner.listCount() != 0 {
+		t.Fatalf("CachedDatasets = %v after %d lists; want only the usable cached dataset and no zfs list", datasets, runner.listCount())
+	}
+
+	if err := db.InvalidateZFSCache(service.DB, db.ZFSCacheKindGenericDataset); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CachedDatasets(t.Context(), gzfs.DatasetTypeFilesystem); err != nil || runner.listCount() != 1 {
+		t.Fatalf("a stale cache was not read live: %v after %d lists", err, runner.listCount())
+	}
+}

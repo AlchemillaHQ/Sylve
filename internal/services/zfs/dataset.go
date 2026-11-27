@@ -149,7 +149,18 @@ func (s *Service) GetDatasets(ctx context.Context, t gzfs.DatasetType) ([]*gzfs.
 	if err != nil {
 		return nil, err
 	}
+	return s.usablePoolDatasets(ctx, datasets)
+}
 
+func (s *Service) CachedDatasets(ctx context.Context, t gzfs.DatasetType) ([]*gzfs.Dataset, error) {
+	datasets, err := s.datasetsForRead(ctx, t)
+	if err != nil {
+		return nil, err
+	}
+	return s.usablePoolDatasets(ctx, datasets)
+}
+
+func (s *Service) usablePoolDatasets(ctx context.Context, datasets []*gzfs.Dataset) ([]*gzfs.Dataset, error) {
 	pools, err := s.GetUsablePools(ctx)
 	if err != nil {
 		return nil, err

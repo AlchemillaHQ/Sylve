@@ -17,7 +17,7 @@ under sponsorship from the FreeBSD Foundation.
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { setInterface } from '$lib/stores/interface.svelte';
 	import { isSuperuser, nodePath, visibleItems } from '$lib/stores/permissions.svelte';
-	import { resolveNodeHostname } from '$lib/utils/enabled-services';
+	import { getEnabledServicesForHostname, resolveNodeHostname } from '$lib/utils/enabled-services';
 	import Navigation from './Navigation.svelte';
 	import { getDatacenterNavigation, getNodeNavigation, isDatacenterScope } from './sitemap';
 
@@ -32,7 +32,12 @@ under sponsorship from the FreeBSD Foundation.
 		visibleItems(
 			datacenter
 				? getDatacenterNavigation()
-				: getNodeNavigation(node, nodePath(node), isSuperuser())
+				: getNodeNavigation(
+						node,
+						nodePath(node),
+						isSuperuser(),
+						getEnabledServicesForHostname(node).includes('samba-server')
+					)
 		)
 	);
 

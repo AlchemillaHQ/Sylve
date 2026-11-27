@@ -46,6 +46,8 @@ type Service struct {
 	achMutex                sync.Mutex
 	serviceSettingsMutex    sync.Mutex
 	dhcpServiceStateApply   func(bool) error
+	SambaServiceStateApply  func(context.Context, bool) error
+	SambaServiceStopCheck   func() error
 	GZFS                    *gzfs.Client
 	DiskService             diskServiceInterfaces.DiskServiceInterface
 	diskSmartConfigMu       sync.RWMutex

@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/db/models"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/network/interfaceref"
@@ -84,17 +85,9 @@ var allowedSambaAuditOperations = map[string]struct{}{
 	"write":       {},
 }
 
-func isMissingACLEntryRemovalError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	return strings.Contains(err.Error(), "cannot remove non-existent ACL entry")
-}
-
 func validateSambaShareInput(name, createMask, directoryMask string, auditedOperations []string) error {
-	if name == "" || strings.TrimSpace(name) == "" || strings.ContainsAny(name, "\r\n[]") {
-		return fmt.Errorf("invalid_share_name")
+	if err := validateSambaShareName(name); err != nil {
+		return err
 	}
 
 	validMask := func(mask string) bool {
@@ -117,7 +110,7 @@ func validateSambaShareInput(name, createMask, directoryMask string, auditedOper
 	}
 
 	for _, operation := range auditedOperations {
-		if _, allowed := allowedSambaAuditOperations[operation]; !allowed {
+		if !ValidAuditOperation(operation) {
 			return fmt.Errorf("invalid_audit_operation: %s", operation)
 		}
 	}
@@ -137,9 +130,14 @@ func validateExtraShareConfig(config string) error {
 	return nil
 }
 
+var ErrSambaNotInitialized = errors.New("samba_not_initialized")
+
 func (s *Service) GetGlobalConfig() (sambaModels.SambaSettings, error) {
 	var settings sambaModels.SambaSettings
 	if err := s.DB.First(&settings).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sambaModels.SambaSettings{}, ErrSambaNotInitialized
+		}
 		return sambaModels.SambaSettings{}, fmt.Errorf("failed to retrieve Samba settings: %w", err)
 	}
 	return settings, nil
@@ -181,36 +179,29 @@ func (s *Service) SetGlobalConfig(
 		return invalidGlobalConfig("invalid workgroup name: %s", workgroup)
 	}
 
-	if !utils.IsValidServerString(serverString) || strings.ContainsAny(serverString, "\r\n\x00") {
+	if !utils.IsValidServerString(serverString) || strings.ContainsAny(serverString, "\r\n\x00") ||
+		strings.HasSuffix(serverString, `\`) {
 		return invalidGlobalConfig("invalid server string: %s", serverString)
 	}
 
-	interfacesList := strings.Split(interfaces, ",")
-	interfacesList = utils.RemoveDuplicates(interfacesList)
-
-	for _, eIface := range interfacesList {
-		eIface = strings.TrimSpace(eIface)
-		_, err := sambaGetInterface(eIface)
-		if err != nil && !strings.Contains(err.Error(), "not found") {
-			return invalidGlobalConfig("invalid interface '%s': %v", eIface, err)
-		} else if err != nil && strings.Contains(err.Error(), "not found") {
-			logger.L.Warn().Str("interface", eIface).Msg("Interface not found, continuing without it")
-			interfacesList = utils.RemoveStringFromSlice(interfacesList, eIface)
-		}
-	}
-
-	if len(interfacesList) > 0 {
-		interfaces = strings.Join(interfacesList, ",")
-	} else {
-		interfaces = "lo0"
-	}
-
-	interfaceNames := make([]string, 0, len(interfacesList))
-	for _, name := range interfacesList {
-		if name = strings.TrimSpace(name); name != "" {
+	interfaceNames := make([]string, 0, 4)
+	for _, name := range strings.Split(interfaces, ",") {
+		if name = strings.TrimSpace(name); name != "" && !slices.Contains(interfaceNames, name) {
 			interfaceNames = append(interfaceNames, name)
 		}
 	}
+	for _, name := range interfaceNames {
+		if _, err := sambaGetInterface(name); err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				return invalidGlobalConfig("unknown interface: %s", name)
+			}
+			return invalidGlobalConfig("invalid interface '%s': %v", name, err)
+		}
+	}
+	if len(interfaceNames) == 0 {
+		interfaceNames = []string{"lo0"}
+	}
+	interfaces = strings.Join(interfaceNames, ",")
 	if err := interfaceref.RejectFilteredStandardBridgeInterfaces(s.DB, interfaceNames...); err != nil {
 		if errors.Is(err, interfaceref.ErrFilteredStandardSwitchL2Only) {
 			return invalidGlobalConfig(
@@ -224,6 +215,9 @@ func (s *Service) SetGlobalConfig(
 		return s.DB.Transaction(func(tx *gorm.DB) error {
 			var settings sambaModels.SambaSettings
 			if err := tx.First(&settings).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrSambaNotInitialized
+				}
 				return fmt.Errorf("failed to retrieve Samba settings: %w", err)
 			}
 
@@ -254,11 +248,19 @@ func (s *Service) SetGlobalConfig(
 			}
 
 			transactionalService := &Service{
-				DB:        tx,
-				GZFS:      s.GZFS,
-				Directory: s.Directory,
+				DB:                tx,
+				ZFS:               s.ZFS,
+				GZFS:              s.GZFS,
+				Directory:         s.Directory,
+				directoryOverride: s.directoryOverride,
 			}
-			return sambaWriteConfig(transactionalService, ctx, true)
+			if _, err := sambaRenderConfig(transactionalService, ctx); err != nil {
+				if errors.Is(err, errSambaConfigRejected) {
+					return invalidGlobalConfig("%v", err)
+				}
+				return err
+			}
+			return nil
 		})
 	}
 
@@ -270,13 +272,20 @@ func (s *Service) SetGlobalConfig(
 		return err
 	}
 
+	if err := sambaWriteConfig(s, ctx, sambaRestartService); err != nil {
+		return sambaApplyFailure(err)
+	}
 	if s.OnConfigChange != nil {
 		if err := s.OnConfigChange(); err != nil {
-			return fmt.Errorf("mdns rebuild failed after samba config change: %w", err)
+			return sambaApplyFailure(fmt.Errorf("mdns rebuild failed after samba config change: %w", err))
 		}
 	}
 
 	return nil
+}
+
+var sambaRenderConfig = func(s *Service, ctx context.Context) (string, error) {
+	return s.renderConfig(ctx, false)
 }
 
 func (s *Service) hasGuestOnlyShares() (bool, error) {
@@ -292,6 +301,20 @@ func isSambaDatasetMounted(dataset *gzfs.Dataset) bool {
 	return dataset != nil && dataset.Type == gzfs.DatasetTypeFilesystem &&
 		dataset.Mountpoint != "" && dataset.Mountpoint != "-" &&
 		dataset.Properties["mounted"].Value == "yes"
+}
+
+func sambaACLPropertyChanges(dataset *gzfs.Dataset) []string {
+	var changes []string
+	for _, property := range [][2]string{
+		{"acltype", sambaACLType},
+		{"aclmode", sambaACLMode},
+		{"aclinherit", sambaACLInherit},
+	} {
+		if current, ok := dataset.Properties[property[0]]; !ok || current.Value != property[1] {
+			changes = append(changes, property[0], property[1])
+		}
+	}
+	return changes
 }
 
 func (s *Service) ensureSambaDatasetACLProperties(
@@ -319,12 +342,11 @@ func (s *Service) ensureSambaDatasetACLProperties(
 		return nil
 	}
 
-	if err := dataset.SetProperties(
-		ctx,
-		"acltype", sambaACLType,
-		"aclmode", sambaACLMode,
-		"aclinherit", sambaACLInherit,
-	); err != nil {
+	changes := sambaACLPropertyChanges(dataset)
+	if len(changes) == 0 {
+		return nil
+	}
+	if err := dataset.SetProperties(ctx, changes...); err != nil {
 		wrapped := fmt.Errorf("failed_to_set_samba_acl_properties_for_dataset_%s: %w", dataset.Name, err)
 		if strict {
 			return wrapped
@@ -404,177 +426,6 @@ func mergePrincipalNames(lists ...[]string) []string {
 	return uniquePrincipalNames(merged)
 }
 
-func (s *Service) syncSambaDatasetPrincipalACLs(
-	mountpoint string,
-	previous sambaPrincipalNames,
-	desired sambaPrincipalNames,
-	strict bool,
-) error {
-	if mountpoint == "" || mountpoint == "-" {
-		err := fmt.Errorf("dataset_not_mounted")
-		if strict {
-			return err
-		}
-
-		logger.L.Warn().Err(err).Str("mountpoint", mountpoint).Msg("failed_to_enforce_samba_dataset_principal_acls")
-		return nil
-	}
-
-	previous = normalizeSambaPrincipalNames(previous)
-	desired = normalizeSambaPrincipalNames(desired)
-
-	removeACL := func(principalType string, principalName string, permissionSet string) {
-		entry := fmt.Sprintf("%s:%s:%s:fd:allow", principalType, principalName, permissionSet)
-
-		if _, err := sambaRunCommand("/bin/setfacl", "-x", entry, mountpoint); err != nil {
-			if isMissingACLEntryRemovalError(err) {
-				return
-			}
-
-			logger.L.Warn().
-				Err(err).
-				Str("principal", principalName).
-				Str("principal_type", principalType).
-				Str("permission_set", permissionSet).
-				Str("mountpoint", mountpoint).
-				Msg("failed_to_remove_samba_dataset_principal_acl_entry")
-		}
-	}
-
-	addACL := func(principalType string, principalName string, permissionSet string) error {
-		entry := fmt.Sprintf("%s:%s:%s:fd:allow", principalType, principalName, permissionSet)
-
-		_, err := sambaRunCommand("/bin/setfacl", "-m", entry, mountpoint)
-		if err != nil {
-			wrapped := fmt.Errorf(
-				"failed_to_set_acl_for_%s_%s_on_%s: %w",
-				principalType,
-				principalName,
-				mountpoint,
-				err,
-			)
-			if strict {
-				return wrapped
-			}
-
-			logger.L.Warn().
-				Err(wrapped).
-				Str("principal", principalName).
-				Str("principal_type", principalType).
-				Str("permission_set", permissionSet).
-				Str("mountpoint", mountpoint).
-				Msg("failed_to_enforce_samba_dataset_principal_acls")
-		}
-
-		return nil
-	}
-
-	targetUsers := mergePrincipalNames(previous.ReadUsers, previous.WriteUsers, desired.ReadUsers, desired.WriteUsers)
-	targetGroups := mergePrincipalNames(previous.ReadGroups, previous.WriteGroups, desired.ReadGroups, desired.WriteGroups)
-
-	for _, user := range targetUsers {
-		removeACL("u", user, legacyReadPerm)
-		removeACL("u", user, readACLPerm)
-		removeACL("u", user, writeACLPerm)
-	}
-
-	for _, group := range targetGroups {
-		removeACL("g", group, legacyReadPerm)
-		removeACL("g", group, readACLPerm)
-		removeACL("g", group, writeACLPerm)
-	}
-
-	for _, user := range desired.ReadUsers {
-		if err := addACL("u", user, readACLPerm); err != nil {
-			return err
-		}
-	}
-
-	for _, user := range desired.WriteUsers {
-		if err := addACL("u", user, writeACLPerm); err != nil {
-			return err
-		}
-	}
-
-	for _, group := range desired.ReadGroups {
-		if err := addACL("g", group, readACLPerm); err != nil {
-			return err
-		}
-	}
-
-	for _, group := range desired.WriteGroups {
-		if err := addACL("g", group, writeACLPerm); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (s *Service) syncSambaDatasetGuestACL(
-	mountpoint string,
-	guestEnabled bool,
-	guestWriteable bool,
-	strict bool,
-) error {
-	if mountpoint == "" || mountpoint == "-" {
-		err := fmt.Errorf("dataset_not_mounted")
-		if strict {
-			return err
-		}
-
-		logger.L.Warn().Err(err).Str("mountpoint", mountpoint).Msg("failed_to_enforce_samba_dataset_guest_acl")
-		return nil
-	}
-
-	removeACL := func(permissionSet string) {
-		entry := fmt.Sprintf("%s:%s:fd:allow", guestACEName, permissionSet)
-		if _, err := sambaRunCommand("/bin/setfacl", "-x", entry, mountpoint); err != nil {
-			if isMissingACLEntryRemovalError(err) {
-				return
-			}
-
-			logger.L.Warn().
-				Err(err).
-				Str("permission_set", permissionSet).
-				Str("mountpoint", mountpoint).
-				Msg("failed_to_remove_samba_dataset_guest_acl_entry")
-		}
-	}
-
-	addACL := func(permissionSet string) error {
-		entry := fmt.Sprintf("%s:%s:fd:allow", guestACEName, permissionSet)
-		_, err := sambaRunCommand("/bin/setfacl", "-m", entry, mountpoint)
-		if err != nil {
-			wrapped := fmt.Errorf("failed_to_set_guest_acl_for_%s_on_%s: %w", permissionSet, mountpoint, err)
-			if strict {
-				return wrapped
-			}
-
-			logger.L.Warn().
-				Err(wrapped).
-				Str("permission_set", permissionSet).
-				Str("mountpoint", mountpoint).
-				Msg("failed_to_enforce_samba_dataset_guest_acl")
-		}
-		return nil
-	}
-
-	removeACL(legacyReadPerm)
-	removeACL(readACLPerm)
-	removeACL(writeACLPerm)
-
-	if !guestEnabled {
-		return nil
-	}
-
-	if guestWriteable {
-		return addACL(writeACLPerm)
-	}
-
-	return addACL(readACLPerm)
-}
-
 func (s *Service) GlobalConfig() (string, error) {
 	settings, err := s.GetGlobalConfig()
 	if err != nil {
@@ -641,20 +492,6 @@ func globalConfig(settings sambaModels.SambaSettings, hasGuestShares bool, direc
 	config += directoryConfig
 
 	return config
-}
-
-func (s *Service) ShareConfig(ctx context.Context) (string, error) {
-	shares := []sambaModels.SambaShare{}
-	if err := s.DB.
-		Preload("ReadOnlyUsers").
-		Preload("WriteableUsers").
-		Preload("ReadOnlyGroups").
-		Preload("WriteableGroups").
-		Where("enabled = ?", true).
-		Find(&shares).Error; err != nil {
-		return "", fmt.Errorf("failed to retrieve Samba shares: %w", err)
-	}
-	return s.shareConfig(ctx, shares, true, nil)
 }
 
 func (s *Service) shareConfig(ctx context.Context, shares []sambaModels.SambaShare, enforceACLs bool, datasets map[string]*gzfs.Dataset) (string, error) {
@@ -735,13 +572,9 @@ func (s *Service) shareConfig(ctx context.Context, shares []sambaModels.SambaSha
 
 		guestWriteable := share.GuestOk && !share.ReadOnly
 		if enforceACLs && share.GuestOk {
-			// Best-effort during config generation to avoid breaking Samba reload.
-			_ = s.syncSambaDatasetPrincipalACLs(dataset.Mountpoint, aclPrincipals, sambaPrincipalNames{}, false)
-			_ = s.syncSambaDatasetGuestACL(dataset.Mountpoint, true, guestWriteable, false)
+			_ = s.syncSambaShareACL(dataset.Mountpoint, aclPrincipals, sambaPrincipalNames{}, true, guestWriteable, false)
 		} else if enforceACLs {
-			// Best-effort during config generation to avoid breaking Samba reload.
-			_ = s.syncSambaDatasetGuestACL(dataset.Mountpoint, false, false, false)
-			_ = s.syncSambaDatasetPrincipalACLs(dataset.Mountpoint, sambaPrincipalNames{}, aclPrincipals, false)
+			_ = s.syncSambaShareACL(dataset.Mountpoint, sambaPrincipalNames{}, aclPrincipals, false, false, false)
 		}
 
 		readUsers := principals.ReadUsers
@@ -908,32 +741,125 @@ func inspectSambaConfig(config string) (string, error) {
 
 	output, err := sambaRunCommand(sambaTestparmPath, "-s", temporaryPath)
 	if err != nil {
-		return "", fmt.Errorf("Samba configuration validation failed: %w: %s", err, output)
+		if detail := strings.TrimSpace(output); detail != "" {
+			return "", fmt.Errorf("%w: %s", errSambaConfigRejected, detail)
+		}
+		return "", fmt.Errorf("%w: %v", errSambaConfigRejected, err)
 	}
 
 	return output, nil
 }
 
-func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
+var errSambaConfigRejected = errors.New("samba_config_rejected")
+
+func (s *Service) renderConfig(ctx context.Context, enforceACLs bool) (string, error) {
 	if s.Directory != nil && s.Directory.RecoveryPending() {
-		return fmt.Errorf("%w: roll back the interrupted directory services restore before changing Samba configuration", directoryservices.ErrConflict)
+		return "", fmt.Errorf("%w: roll back the interrupted directory services restore before changing Samba configuration", directoryservices.ErrConflict)
 	}
 	gCfg, err := s.GlobalConfig()
 	if err != nil {
-		return err
+		return "", err
 	}
-
 	if gCfg == "" {
-		return fmt.Errorf("global configuration is empty")
+		return "", fmt.Errorf("global configuration is empty")
 	}
 
-	shareCfg, err := s.ShareConfig(ctx)
+	shares, err := s.enabledShares()
 	if err != nil {
-		return fmt.Errorf("failed to get share configuration: %w", err)
+		return "", err
+	}
+	shareCfg, err := s.shareConfig(ctx, shares, enforceACLs, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to get share configuration: %w", err)
 	}
 
 	fullConfig := gCfg + "\n" + shareCfg
 	if err := validateSambaConfig(fullConfig); err != nil {
+		return "", err
+	}
+	return fullConfig, nil
+}
+
+type sambaServiceAction int
+
+const (
+	sambaKeepService sambaServiceAction = iota
+	sambaReloadService
+	sambaRestartService
+)
+
+var (
+	sambaServiceRunning = sambaSmbdResponds
+	sambaServiceCommand = system.ServiceAction
+	sambaReloadDaemons  = reloadSambaDaemons
+)
+
+func (s *Service) sambaServiceEnabled() (bool, error) {
+	var settings models.BasicSettings
+	if err := s.DB.First(&settings).Error; err != nil {
+		return false, fmt.Errorf("failed_to_get_service_settings: %w", err)
+	}
+	return slices.Contains(settings.Services, models.SambaServer), nil
+}
+
+func (s *Service) applySambaService(action sambaServiceAction) error {
+	if action == sambaKeepService {
+		return nil
+	}
+	enabled, err := s.sambaServiceEnabled()
+	if err != nil || !enabled {
+		return err
+	}
+	command := "onerestart"
+	if action == sambaReloadService {
+		command = "onestart"
+		if sambaServiceRunning() {
+			err := sambaReloadDaemons()
+			if err == nil {
+				return nil
+			}
+			logger.L.Warn().Err(err).Msg("samba_reload_message_failed")
+			command = "onereload"
+		}
+	}
+	if err := sambaServiceCommand("samba_server", command); err != nil {
+		return fmt.Errorf("samba_service_%s_failed: %w", strings.TrimPrefix(command, "one"), err)
+	}
+	return nil
+}
+
+func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
+	action := sambaKeepService
+	if reload {
+		action = sambaRestartService
+	}
+	if err := s.writeConfig(ctx, action); err != nil {
+		return err
+	}
+	s.announceConfigChange()
+	return nil
+}
+
+func (s *Service) reloadConfig(ctx context.Context) error {
+	if err := sambaWriteConfig(s, ctx, sambaReloadService); err != nil {
+		return err
+	}
+	s.announceConfigChange()
+	return nil
+}
+
+func (s *Service) announceConfigChange() {
+	if s.OnConfigChange == nil {
+		return
+	}
+	if err := s.OnConfigChange(); err != nil {
+		logger.L.Warn().Err(err).Msg("mdns rebuild failed after samba config change")
+	}
+}
+
+func (s *Service) writeConfig(ctx context.Context, action sambaServiceAction) error {
+	fullConfig, err := s.renderConfig(ctx, true)
+	if err != nil {
 		return err
 	}
 
@@ -941,17 +867,5 @@ func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
 		return fmt.Errorf("failed to write Samba configuration to %s: %w", sambaConfigFilePath, err)
 	}
 
-	if reload {
-		if err := system.ServiceAction("samba_server", "onerestart"); err != nil {
-			return fmt.Errorf("failed to restart Samba service: %w", err)
-		}
-	}
-
-	if s.OnConfigChange != nil {
-		if err := s.OnConfigChange(); err != nil {
-			logger.L.Warn().Err(err).Msg("mdns rebuild failed after samba config change")
-		}
-	}
-
-	return nil
+	return s.applySambaService(action)
 }

@@ -24,6 +24,7 @@ import (
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
 	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/directoryservices"
 	iscsiService "github.com/alchemillahq/sylve/internal/services/iscsi"
 	"github.com/alchemillahq/sylve/internal/services/nfs"
 	"github.com/alchemillahq/sylve/pkg/pkg"
@@ -286,6 +287,17 @@ func (s *Service) applyServiceRuntimeState(
 		if s.MdnsRebuild != nil {
 			return s.MdnsRebuild()
 		}
+	case models.SambaServer:
+		if s.SambaServiceStateApply != nil {
+			if err := s.SambaServiceStateApply(ctx, enabled); err != nil {
+				return err
+			}
+		}
+		if s.MdnsRebuild != nil {
+			if err := s.MdnsRebuild(); err != nil {
+				logger.L.Warn().Err(err).Msg("mdns rebuild failed after samba service change")
+			}
+		}
 	case models.Firewall, models.WireGuard, models.ISCSI:
 		if externalApply == nil {
 			return fmt.Errorf("network_service_runtime_unavailable")
@@ -340,6 +352,11 @@ func (s *Service) SetServiceEnabled(
 	if currentlyEnabled == enabled {
 		return false, nil
 	}
+	if service == models.SambaServer && !enabled && s.SambaServiceStopCheck != nil {
+		if err := s.SambaServiceStopCheck(); err != nil {
+			return false, newSettingsError(SettingsErrorConflict, "samba_required_by_active_directory", string(service), err)
+		}
+	}
 
 	previousServices := append([]models.AvailableService(nil), basicSettings.Services...)
 	basicSettings.Services = servicesWithState(basicSettings.Services, service, enabled)
@@ -356,8 +373,11 @@ func (s *Service) SetServiceEnabled(
 			runtimeRollbackErr = s.applyServiceRuntimeState(ctx, service, currentlyEnabled, externalApply)
 		}
 
-		return false, newSettingsError(SettingsErrorInternal, "service_runtime_update_failed", string(service),
-			errors.Join(applyErr, persistRollbackErr, runtimeRollbackErr))
+		kind, code := SettingsErrorInternal, "service_runtime_update_failed"
+		if errors.Is(applyErr, directoryservices.ErrConflict) {
+			kind, code = SettingsErrorConflict, "directory_restore_pending"
+		}
+		return false, newSettingsError(kind, code, string(service), errors.Join(applyErr, persistRollbackErr, runtimeRollbackErr))
 	}
 
 	return true, nil

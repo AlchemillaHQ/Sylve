@@ -59,6 +59,14 @@ type SambaAuditLog struct {
 	CreatedAt     time.Time `json:"createdAt" gorm:"autoCreateTime;index:idx_samba_audit_created;index:idx_samba_audit_share_created,priority:2;index:idx_samba_audit_user_created,priority:2;index:idx_samba_audit_action_created,priority:2;index:idx_samba_audit_retention_created,priority:2"`
 }
 
+type SambaAuditCursor struct {
+	ID        uint `gorm:"primaryKey"`
+	Device    int64
+	Inode     int64
+	Offset    int64
+	UpdatedAt time.Time
+}
+
 const DefaultAuditRetentionDays uint32 = 70
 
 func AuditRetentionDaysPointer(days uint32) *uint32 {

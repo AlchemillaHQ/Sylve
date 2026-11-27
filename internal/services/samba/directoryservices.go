@@ -27,6 +27,13 @@ func (s *Service) lockDirectoryConfiguration() (func(), error) {
 	return s.Directory.LockConfiguration()
 }
 
+func (s *Service) waitForDirectoryConfiguration() func() {
+	if s.Directory == nil {
+		return func() {}
+	}
+	return s.Directory.LockConfigurationForCleanup()
+}
+
 func (s *Service) directorySettings() (directoryModels.ActiveDirectory, error) {
 	if s.directoryOverride != nil {
 		return *s.directoryOverride, nil

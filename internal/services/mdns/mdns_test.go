@@ -45,6 +45,7 @@ type fakeResponder struct {
 	stopped   chan struct{}
 	closed    chan struct{}
 	readyErr  error
+	exit      chan struct{}
 	startOnce sync.Once
 	stopOnce  sync.Once
 	closeOnce sync.Once
@@ -83,7 +84,11 @@ func (r *fakeResponder) respond(ctx context.Context, ready chan<- error) error {
 	if ready != nil {
 		ready <- nil
 	}
-	<-ctx.Done()
+	select {
+	case <-ctx.Done():
+	case <-r.exit:
+		return errors.New("responder exited")
+	}
 	r.stopOnce.Do(func() { close(r.stopped) })
 	return ctx.Err()
 }
@@ -1009,5 +1014,59 @@ func TestMDNSInterfaceReferenceDatabaseFailureIsNotInvalidInput(t *testing.T) {
 	}
 	if errors.Is(err, ErrInvalidSettings) {
 		t.Fatalf("database validation failure was misclassified as invalid settings: %v", err)
+	}
+}
+
+func TestRebuildKeepsTheRunningResponderWhenNothingChanged(t *testing.T) {
+	initial := newFakeResponder()
+	changed := newFakeResponder()
+	fixture := newMDNSMutationFixture(t, initial, changed)
+
+	if err := fixture.service.Rebuild(); err != nil {
+		t.Fatalf("an unchanged rebuild failed: %v", err)
+	}
+	if fixture.service.responder != initial {
+		t.Fatal("an unchanged rebuild replaced the running responder")
+	}
+	select {
+	case <-initial.stopped:
+		t.Fatal("an unchanged rebuild stopped the running responder")
+	default:
+	}
+
+	if err := fixture.db.Model(&mdnsModels.MdnsRecord{}).
+		Where("id = ?", fixture.records[0].ID).
+		Update("port", 632).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.service.Rebuild(); err != nil {
+		t.Fatalf("a changed rebuild failed: %v", err)
+	}
+	waitForSignal(t, changed.started, "replacement responder startup")
+	if fixture.service.responder != changed {
+		t.Fatal("a changed record did not republish")
+	}
+}
+
+func TestRebuildRestartsAResponderThatExited(t *testing.T) {
+	initial := newFakeResponder()
+	initial.exit = make(chan struct{})
+	replacement := newFakeResponder()
+	fixture := newMDNSMutationFixture(t, initial, replacement)
+
+	close(initial.exit)
+	deadline := time.Now().Add(2 * time.Second)
+	for !fixture.service.responderExited.Load() {
+		if time.Now().After(deadline) {
+			t.Fatal("the responder exit was not noticed")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := fixture.service.Rebuild(); err != nil {
+		t.Fatalf("rebuild after an exit failed: %v", err)
+	}
+	waitForSignal(t, replacement.started, "replacement responder startup")
+	if fixture.service.responder != replacement {
+		t.Fatal("an exited responder was not replaced")
 	}
 }

@@ -22,6 +22,7 @@ import (
 	authModels "github.com/alchemillahq/sylve/internal/db/models"
 	directoryModels "github.com/alchemillahq/sylve/internal/db/models/directoryservices"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/directoryservices"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 
@@ -62,11 +63,12 @@ type CreateSambaShareRequest struct {
 	AuditRetentionDays *uint32                 `json:"auditRetentionDays"`
 	AuditedOperations  []string                `json:"auditedOperations"`
 	ExtraShareConfig   string                  `json:"extraShareConfig"`
+	ApplyToExisting    bool                    `json:"applyToExisting"`
 }
 
 type UpdateSambaShareRequest struct {
 	Name               string                  `json:"name"`
-	Enabled            bool                    `json:"enabled"`
+	Enabled            *bool                   `json:"enabled"`
 	Dataset            string                  `json:"dataset"`
 	Permissions        SambaPermissionsRequest `json:"permissions"`
 	Guest              SambaGuestRequest       `json:"guest"`
@@ -78,6 +80,7 @@ type UpdateSambaShareRequest struct {
 	AuditRetentionDays *uint32                 `json:"auditRetentionDays"`
 	AuditedOperations  []string                `json:"auditedOperations"`
 	ExtraShareConfig   *string                 `json:"extraShareConfig"`
+	ApplyToExisting    bool                    `json:"applyToExisting"`
 }
 
 type SambaPrincipalUserResponse struct {
@@ -107,22 +110,47 @@ type SambaGuestResponse struct {
 }
 
 type SambaShareResponse struct {
-	ID                 int                      `json:"id"`
-	Name               string                   `json:"name"`
-	Dataset            string                   `json:"dataset"`
-	Enabled            bool                     `json:"enabled"`
-	Permissions        SambaPermissionsResponse `json:"permissions"`
-	Guest              SambaGuestResponse       `json:"guest"`
-	CreateMask         string                   `json:"createMask"`
-	DirectoryMask      string                   `json:"directoryMask"`
-	TimeMachine        bool                     `json:"timeMachine"`
-	TimeMachineMaxSize uint64                   `json:"timeMachineMaxSize"`
-	AuditEnabled       bool                     `json:"auditEnabled"`
-	AuditRetentionDays uint32                   `json:"auditRetentionDays"`
-	AuditedOperations  []string                 `json:"auditedOperations"`
-	ExtraShareConfig   string                   `json:"extraShareConfig"`
-	CreatedAt          string                   `json:"createdAt"`
-	UpdatedAt          string                   `json:"updatedAt"`
+	ID                 int                       `json:"id"`
+	Name               string                    `json:"name"`
+	Dataset            string                    `json:"dataset"`
+	Enabled            bool                      `json:"enabled"`
+	Permissions        SambaPermissionsResponse  `json:"permissions"`
+	Guest              SambaGuestResponse        `json:"guest"`
+	CreateMask         string                    `json:"createMask"`
+	DirectoryMask      string                    `json:"directoryMask"`
+	TimeMachine        bool                      `json:"timeMachine"`
+	TimeMachineMaxSize uint64                    `json:"timeMachineMaxSize"`
+	AuditEnabled       bool                      `json:"auditEnabled"`
+	AuditRetentionDays uint32                    `json:"auditRetentionDays"`
+	AuditedOperations  []string                  `json:"auditedOperations"`
+	ExtraShareConfig   string                    `json:"extraShareConfig"`
+	CreatedAt          string                    `json:"createdAt"`
+	UpdatedAt          string                    `json:"updatedAt"`
+	DatasetName        string                    `json:"datasetName"`
+	Mountpoint         string                    `json:"mountpoint"`
+	State              string                    `json:"state,omitempty"`
+	DatasetBlock       string                    `json:"datasetBlock,omitempty"`
+	PermissionsJob     *samba.SharePermissionJob `json:"permissionsJob,omitempty"`
+}
+
+func shareResponses(c *gin.Context, smbService *samba.Service, shares []sambaModels.SambaShare) []SambaShareResponse {
+	states, err := smbService.ShareStates(c.Request.Context(), shares)
+	if err != nil {
+		logger.L.Warn().Err(err).Msg("failed to resolve Samba share datasets")
+	}
+	mapped := make([]SambaShareResponse, 0, len(shares))
+	for _, share := range shares {
+		response := mapShareResponse(share)
+		if state, ok := states[share.ID]; ok {
+			response.DatasetName = state.DatasetName
+			response.Mountpoint = state.Mountpoint
+			response.State = state.State
+			response.DatasetBlock = state.Block
+		}
+		response.PermissionsJob = smbService.PermissionJob(uint(share.ID))
+		mapped = append(mapped, response)
+	}
+	return mapped
 }
 
 func strictJSONBind(c *gin.Context, dst any) error {
@@ -238,7 +266,8 @@ func sambaShareServiceErrorStatus(err error) int {
 	if err == nil {
 		return http.StatusOK
 	}
-	if errors.Is(err, samba.ErrInvalidShareConfig) || errors.Is(err, directoryservices.ErrInvalid) {
+	if errors.Is(err, samba.ErrInvalidShareConfig) || errors.Is(err, directoryservices.ErrInvalid) ||
+		errors.Is(err, samba.ErrDatasetNotShareable) {
 		return http.StatusBadRequest
 	}
 	if errors.Is(err, directoryservices.ErrUnavailable) {
@@ -258,6 +287,8 @@ func sambaShareServiceErrorStatus(err error) int {
 	case msg == "guest_only_share_cannot_have_principals",
 		msg == "no_principals_selected_and_guests_not_allowed",
 		msg == "invalid_share_name",
+		msg == "share_name_reserved",
+		msg == "share_name_too_long",
 		msg == "invalid_create_mask",
 		msg == "invalid_directory_mask",
 		msg == "dataset_not_found",
@@ -274,7 +305,7 @@ func sambaShareServiceErrorStatus(err error) int {
 }
 
 // @Summary Get Samba shares
-// @Description Retrieve all configured Samba shares
+// @Description Retrieve all configured Samba shares with their dataset name and mountpoint, their state (active, disabled, dataset_missing or dataset_unmounted), datasetBlock when the share uses a dataset that could no longer be shared, and the progress of any job applying access to existing files (permissionsJob).
 // @Tags Samba
 // @Accept json
 // @Produce json
@@ -295,10 +326,7 @@ func GetShares(smbService *samba.Service) gin.HandlerFunc {
 			return
 		}
 
-		mapped := make([]SambaShareResponse, 0, len(shares))
-		for _, share := range shares {
-			mapped = append(mapped, mapShareResponse(share))
-		}
+		mapped := shareResponses(c, smbService, shares)
 
 		c.JSON(http.StatusOK, internal.APIResponse[[]SambaShareResponse]{
 			Status:  "success",
@@ -310,13 +338,13 @@ func GetShares(smbService *samba.Service) gin.HandlerFunc {
 }
 
 // @Summary Create a Samba share
-// @Description Create a Samba share with the specified settings
+// @Description Create a Samba share on a mounted ZFS filesystem. Share names must be 1 to 80 characters without control characters, backslashes, slashes, colons, asterisks, question marks, double quotes, angle brackets, pipes, square brackets or commas, must not be global, homes, printers, print$ or ipc$, and must be unique ignoring case. System datasets, boot environments, Sylve data and datasets containing them are refused with dataset_not_shareable and a reason. The share's ACL entries are set on the dataset's top folder and Samba reloads its configuration without disconnecting clients. With applyToExisting, a background job also applies the access to the files and folders already in the dataset, without crossing into other datasets; its progress appears in permissionsJob. If the change was saved but Samba could not apply it, the response is 500 with message samba_apply_failed, with the saved share as data.
 // @Tags Samba
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param request body CreateSambaShareRequest true "Samba share settings"
-// @Success 201 {object} internal.APIResponse[any] "Created"
+// @Success 201 {object} internal.APIResponse[SambaShareResponse] "Created share"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 409 {object} internal.APIResponse[any] "Conflict"
 // @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
@@ -359,7 +387,7 @@ func CreateShare(smbService *samba.Service) gin.HandlerFunc {
 		}
 
 		ctx := c.Request.Context()
-		if err := smbService.CreateShare(
+		id, err := smbService.CreateShare(
 			ctx,
 			request.Name,
 			request.Dataset,
@@ -379,34 +407,74 @@ func CreateShare(smbService *samba.Service) gin.HandlerFunc {
 			enabled,
 			request.ExtraShareConfig,
 			directoryPermissionRequest(request.Permissions),
-		); err != nil {
-			c.JSON(sambaShareServiceErrorStatus(err), internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_create_share",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		)
+		if request.ApplyToExisting {
+			startShareAccessJob(c, smbService, id, nil, err)
+		}
+		if err != nil {
+			sambaShareFailure(c, smbService, "failed_to_create_share", id, err)
 			return
 		}
+		sambaShareSaved(c, smbService, http.StatusCreated, "share_created", id)
+	}
+}
 
-		c.JSON(http.StatusCreated, internal.APIResponse[any]{
-			Status:  "success",
-			Message: "Samba share created successfully",
-			Error:   "",
-			Data:    nil,
-		})
+func sambaShareFailure(c *gin.Context, smbService *samba.Service, message string, id uint, err error) {
+	var data any
+	if errors.Is(err, samba.ErrSambaApplyFailed) {
+		message = samba.ErrSambaApplyFailed.Error()
+		if id != 0 {
+			if share, loadErr := smbService.GetShare(id); loadErr == nil {
+				data = shareResponses(c, smbService, []sambaModels.SambaShare{share})[0]
+			}
+		}
+	}
+	c.JSON(sambaShareServiceErrorStatus(err), internal.APIResponse[any]{
+		Status:  "error",
+		Message: message,
+		Error:   err.Error(),
+		Data:    data,
+	})
+}
+
+func sambaShareSaved(c *gin.Context, smbService *samba.Service, status int, message string, id uint) {
+	response := internal.APIResponse[*SambaShareResponse]{Status: "success", Message: message}
+	if share, err := smbService.GetShare(id); err != nil {
+		logger.L.Warn().Err(err).Uint("share_id", id).Msg("could not read back the saved Samba share")
+	} else {
+		mapped := shareResponses(c, smbService, []sambaModels.SambaShare{share})[0]
+		response.Data = &mapped
+	}
+	c.JSON(status, response)
+}
+
+func parseShareID(c *gin.Context) (uint, bool) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{Status: "error", Message: "invalid_share_id", Error: err.Error()})
+		return 0, false
+	}
+	return uint(id), true
+}
+
+func startShareAccessJob(c *gin.Context, smbService *samba.Service, id uint, previous *sambaModels.SambaShare, err error) {
+	if id == 0 || (err != nil && !errors.Is(err, samba.ErrSambaApplyFailed)) {
+		return
+	}
+	if jobErr := smbService.ApplyShareAccessToExisting(c.Request.Context(), id, previous); jobErr != nil {
+		logger.L.Warn().Err(jobErr).Uint("share_id", id).Msg("could not apply Samba share access to existing files")
 	}
 }
 
 // @Summary Update a Samba share
-// @Description Update an existing Samba share with the specified settings
+// @Description Update a Samba share. Omitted enabled and extraShareConfig keep their current values; other omitted fields are reset. Share names must be 1 to 80 characters without control characters, backslashes, slashes, colons, asterisks, question marks, double quotes, angle brackets, pipes, square brackets or commas, must not be global, homes, printers, print$ or ipc$, and must be unique ignoring case. System datasets, boot environments, Sylve data and datasets containing them are refused with dataset_not_shareable and a reason. Disabling removes the share's ACL entries from the dataset's top folder and stops a running access job. With applyToExisting, the background job applies the new access to existing files and folders and removes users and groups that lost access; guest access that is turned off is only removed from the top folder. If the change was saved but Samba could not apply it, the response is 500 with message samba_apply_failed, with the saved share as data.
 // @Tags Samba
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param id path uint true "Share ID"
 // @Param request body UpdateSambaShareRequest true "Samba share settings"
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Success 200 {object} internal.APIResponse[SambaShareResponse] "Updated share"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 409 {object} internal.APIResponse[any] "Conflict"
@@ -415,14 +483,8 @@ func CreateShare(smbService *samba.Service) gin.HandlerFunc {
 // @Router /samba/shares/{id} [put]
 func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id, err := strconv.ParseUint(c.Param("id"), 10, 32)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_share_id",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		id, ok := parseShareID(c)
+		if !ok {
 			return
 		}
 
@@ -455,10 +517,16 @@ func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
 			request.AuditedOperations = []string{}
 		}
 
+		var previous *sambaModels.SambaShare
+		if request.ApplyToExisting {
+			if share, err := smbService.GetShare(id); err == nil {
+				previous = &share
+			}
+		}
 		ctx := c.Request.Context()
-		if err := smbService.UpdateShare(
+		err := smbService.UpdateShare(
 			ctx,
-			uint(id),
+			id,
 			request.Name,
 			request.Dataset,
 			request.Permissions.Read.UserIDs,
@@ -474,47 +542,40 @@ func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
 			auditEnabled,
 			auditRetentionDays,
 			request.AuditedOperations,
-			&request.Enabled,
+			request.Enabled,
 			request.ExtraShareConfig,
 			directoryPermissionRequest(request.Permissions),
-		); err != nil {
-			c.JSON(sambaShareServiceErrorStatus(err), internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_update_share",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		)
+		if request.ApplyToExisting {
+			startShareAccessJob(c, smbService, id, previous, err)
+		}
+		if err != nil {
+			sambaShareFailure(c, smbService, "failed_to_update_share", id, err)
 			return
 		}
-
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
-			Status:  "success",
-			Message: "Samba share updated successfully",
-			Error:   "",
-			Data:    nil,
-		})
+		sambaShareSaved(c, smbService, http.StatusOK, "share_updated", id)
 	}
 }
 
 // @Summary Enable or disable a Samba share
-// @Description Set whether a Samba share is included in the active configuration
+// @Description Set whether a Samba share is included in the active configuration. Enabling checks the dataset again and refuses datasets that cannot be shared; disabling removes the share's ACL entries from the dataset's top folder and stops a running access job. If the change was saved but Samba could not apply it, the response is 500 with message samba_apply_failed.
 // @Tags Samba
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param id path uint true "Share ID"
 // @Param request body SetSambaShareEnabledRequest true "Enabled state"
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Success 200 {object} internal.APIResponse[SambaShareResponse] "Updated share"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Another Samba or directory services change is in progress"
 // @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /samba/shares/{id}/enabled [put]
 func SetShareEnabled(smbService *samba.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id, err := strconv.ParseUint(c.Param("id"), 10, 32)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{Status: "error", Message: "invalid_share_id", Error: err.Error()})
+		id, ok := parseShareID(c)
+		if !ok {
 			return
 		}
 
@@ -524,17 +585,16 @@ func SetShareEnabled(smbService *samba.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := smbService.SetShareEnabled(c.Request.Context(), uint(id), request.Enabled); err != nil {
-			c.JSON(sambaShareServiceErrorStatus(err), internal.APIResponse[any]{Status: "error", Message: "failed_to_set_share_enabled", Error: err.Error()})
+		if err := smbService.SetShareEnabled(c.Request.Context(), id, request.Enabled); err != nil {
+			sambaShareFailure(c, smbService, "failed_to_set_share_enabled", id, err)
 			return
 		}
-
-		c.JSON(http.StatusOK, internal.APIResponse[any]{Status: "success", Message: "Samba share state updated"})
+		sambaShareSaved(c, smbService, http.StatusOK, "share_state_updated", id)
 	}
 }
 
 // @Summary Delete a Samba share
-// @Description Delete an existing Samba share by ID
+// @Description Delete a Samba share. The dataset and its files are kept; the share's ACL entries are removed from the dataset's top folder and a running access job is stopped. If the change was saved but Samba could not apply it, the response is 500 with message samba_apply_failed (the share is deleted).
 // @Tags Samba
 // @Accept json
 // @Produce json
@@ -543,37 +603,25 @@ func SetShareEnabled(smbService *samba.Service) gin.HandlerFunc {
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Another Samba or directory services change is in progress"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /samba/shares/{id} [delete]
 func DeleteShare(smbService *samba.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id := c.Param("id")
-
-		idInt, err := strconv.ParseUint(id, 10, 32)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_share_id",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		id, ok := parseShareID(c)
+		if !ok {
 			return
 		}
 
 		ctx := c.Request.Context()
-		if err := smbService.DeleteShare(ctx, uint(idInt)); err != nil {
-			c.JSON(sambaShareServiceErrorStatus(err), internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_delete_share",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if err := smbService.DeleteShare(ctx, id); err != nil {
+			sambaShareFailure(c, smbService, "failed_to_delete_share", 0, err)
 			return
 		}
 
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
-			Message: "Samba share deleted successfully",
+			Message: "share_deleted",
 			Error:   "",
 			Data:    nil,
 		})

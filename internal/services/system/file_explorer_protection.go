@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal/config"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"golang.org/x/sys/unix"
 )
 
@@ -58,12 +59,7 @@ type fileExplorerProtection struct {
 	enclosing  map[string]string
 }
 
-var (
-	fileExplorerBaseSystemTrees      = []string{"/bin", "/boot", "/lib", "/libexec", "/rescue", "/sbin", "/usr"}
-	fileExplorerBaseSystemExceptions = []string{"/usr/local", "/usr/home"}
-	fileExplorerSylveDataset         = regexp.MustCompile(`^[^/@]+/sylve(/|$)`)
-	fileExplorerJailDataset          = regexp.MustCompile(`^[^/@]+/sylve/jails/[0-9]+$`)
-)
+var fileExplorerJailDataset = regexp.MustCompile(`^[^/@]+/sylve/jails/[0-9]+$`)
 
 func newFileExplorerProtection(mounts []fileExplorerMount, dataPath string) *fileExplorerProtection {
 	protection := &fileExplorerProtection{
@@ -80,7 +76,7 @@ func newFileExplorerProtection(mounts []fileExplorerMount, dataPath string) *fil
 		}
 		path := filepath.Clean(mount.Path)
 		protection.mounts[path] = mount.Source
-		if mount.Type == "zfs" && fileExplorerSylveDataset.MatchString(mount.Source) {
+		if mount.Type == "zfs" && utils.IsSylveDataset(mount.Source) {
 			protection.sylveRoots = append(protection.sylveRoots, path)
 			if fileExplorerJailDataset.MatchString(mount.Source) {
 				protection.jailRoots[path] = struct{}{}
@@ -107,27 +103,6 @@ func newFileExplorerProtection(mounts []fileExplorerMount, dataPath string) *fil
 	return protection
 }
 
-func fileExplorerCleanPathWithin(path, root string) bool {
-	if root == string(filepath.Separator) {
-		return strings.HasPrefix(path, root)
-	}
-	return path == root || strings.HasPrefix(path, root+string(filepath.Separator))
-}
-
-func fileExplorerBaseSystemPath(path string) bool {
-	for _, exception := range fileExplorerBaseSystemExceptions {
-		if path != exception && fileExplorerCleanPathWithin(path, exception) {
-			return false
-		}
-	}
-	for _, tree := range fileExplorerBaseSystemTrees {
-		if fileExplorerCleanPathWithin(path, tree) {
-			return true
-		}
-	}
-	return false
-}
-
 func (p *fileExplorerProtection) reason(path string) string {
 	path = filepath.Clean(path)
 	if path == string(filepath.Separator) {
@@ -145,8 +120,8 @@ func (p *fileExplorerProtection) reason(path string) string {
 
 	insideJail := false
 	for root := range p.jailRoots {
-		if fileExplorerCleanPathWithin(path, root) {
-			if fileExplorerCleanPathWithin(path, root+"/.sylve") {
+		if utils.CleanPathWithin(path, root) {
+			if utils.CleanPathWithin(path, root+"/.sylve") {
 				return FileExplorerProtectedSylveData
 			}
 			insideJail = true
@@ -155,12 +130,12 @@ func (p *fileExplorerProtection) reason(path string) string {
 	}
 	if !insideJail {
 		for _, root := range p.sylveRoots {
-			if fileExplorerCleanPathWithin(path, root) {
+			if utils.CleanPathWithin(path, root) {
 				return FileExplorerProtectedSylveData
 			}
 		}
 	}
-	if fileExplorerBaseSystemPath(path) {
+	if utils.IsBaseSystemPath(path) {
 		return FileExplorerProtectedBaseSystem
 	}
 	return p.enclosing[path]

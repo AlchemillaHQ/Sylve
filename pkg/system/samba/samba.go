@@ -30,6 +30,20 @@ func SambaUserExists(name string) (bool, error) {
 	return strings.TrimSpace(out) != "", nil
 }
 
+func ListSambaUsers() ([]string, error) {
+	out, err := runCommand("/usr/local/bin/pdbedit", "-L")
+	if err != nil {
+		return nil, fmt.Errorf("pdbedit list failed: %v: %s", err, out)
+	}
+	var names []string
+	for _, line := range strings.Split(out, "\n") {
+		if name, _, _ := strings.Cut(strings.TrimSpace(line), ":"); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names, nil
+}
+
 func CreateSambaUser(name, password string) error {
 	exists, err := unixUserExists(name)
 	if err != nil {

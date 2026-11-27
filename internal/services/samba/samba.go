@@ -10,8 +10,11 @@ package samba
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/alchemillahq/gzfs"
@@ -39,11 +42,34 @@ type Service struct {
 
 	interfaceReferenceCoordinator *interfaceref.Coordinator
 
-	auditFileOffset int64
-	auditFileMu     sync.Mutex
-	auditFile       *os.File
-	lastAuditLogID  int
-	recentMkdirs    map[string]time.Time
+	auditFileOffset     int64
+	auditFileMu         sync.Mutex
+	auditFile           *os.File
+	lastAuditLogID      int
+	recentMkdirs        map[string]time.Time
+	auditCursorLoaded   bool
+	auditWatcherStarted atomic.Bool
+	permissionJobsOnce  sync.Once
+	permissionJobs      *permissionJobs
+}
+
+var ErrRequiredByDirectory = errors.New("samba_required_by_active_directory")
+
+func (s *Service) StartAuditWatcher(ctx context.Context) {
+	if s.auditWatcherStarted.CompareAndSwap(false, true) {
+		go s.watchAuditLogs(ctx)
+	}
+}
+
+func (s *Service) EnsureCanStop() error {
+	ad, err := s.directorySettings()
+	if err != nil {
+		return fmt.Errorf("failed_to_read_directory_settings: %w", err)
+	}
+	if ad.Enabled || ad.Joined || ad.MembershipPending != "" {
+		return ErrRequiredByDirectory
+	}
+	return nil
 }
 
 func NewSambaService(

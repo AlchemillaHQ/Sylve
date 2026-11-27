@@ -118,7 +118,7 @@ func TestParseAuditLogsRetainsIncompleteLine(t *testing.T) {
 	if err := os.WriteFile(auditLogPath, []byte(prefix), 0600); err != nil {
 		t.Fatalf("write incomplete audit line: %v", err)
 	}
-	dbConn := testutil.NewSQLiteTestDB(t, &sambaModels.SambaShare{}, &sambaModels.SambaAuditLog{})
+	dbConn := testutil.NewSQLiteTestDB(t, &sambaModels.SambaShare{}, &sambaModels.SambaAuditLog{}, &sambaModels.SambaAuditCursor{})
 	service := &Service{DB: dbConn, recentMkdirs: make(map[string]time.Time)}
 	if err := service.ParseAuditLogs(); err != nil {
 		t.Fatalf("parse incomplete audit line: %v", err)
@@ -154,7 +154,7 @@ func TestParseAuditLogsHandlesRotationAndAggregatesRepeats(t *testing.T) {
 	previousPath := auditLogPath
 	auditLogPath = filepath.Join(t.TempDir(), "audit.log")
 	t.Cleanup(func() { auditLogPath = previousPath })
-	dbConn := testutil.NewSQLiteTestDB(t, &sambaModels.SambaShare{}, &sambaModels.SambaAuditLog{})
+	dbConn := testutil.NewSQLiteTestDB(t, &sambaModels.SambaShare{}, &sambaModels.SambaAuditLog{}, &sambaModels.SambaAuditCursor{})
 	service := &Service{DB: dbConn, recentMkdirs: make(map[string]time.Time)}
 	line := "Aug 19 12:00:00 host smbd_audit[42]: sylve-smb-al|alice|192.0.2.5|client|documents|/documents|write|ok|4096|0|/documents/file.txt\n"
 	if err := os.WriteFile(auditLogPath, []byte(line), 0600); err != nil {
@@ -200,7 +200,7 @@ func TestParseAuditLogsStoresCreatesButSkipsOpenProbes(t *testing.T) {
 	previousPath := auditLogPath
 	auditLogPath = filepath.Join(t.TempDir(), "audit.log")
 	t.Cleanup(func() { auditLogPath = previousPath })
-	dbConn := testutil.NewSQLiteTestDB(t, &sambaModels.SambaShare{}, &sambaModels.SambaAuditLog{})
+	dbConn := testutil.NewSQLiteTestDB(t, &sambaModels.SambaShare{}, &sambaModels.SambaAuditLog{}, &sambaModels.SambaAuditCursor{})
 	share := sambaModels.SambaShare{
 		Name:               "fruit",
 		Dataset:            "fruit-guid",
@@ -230,7 +230,7 @@ func TestParseAuditLogsStoresCreatesButSkipsOpenProbes(t *testing.T) {
 }
 
 func TestPruneAuditLogsHonorsPerRowRetentionAndForever(t *testing.T) {
-	dbConn := testutil.NewSQLiteTestDB(t, &sambaModels.SambaAuditLog{})
+	dbConn := testutil.NewSQLiteTestDB(t, &sambaModels.SambaAuditLog{}, &sambaModels.SambaAuditCursor{})
 	now := time.Now().UTC()
 	logs := []sambaModels.SambaAuditLog{
 		{Share: "expired", RetentionDays: sambaModels.AuditRetentionDaysPointer(70), CreatedAt: now.AddDate(0, 0, -71)},

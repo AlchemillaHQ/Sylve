@@ -91,11 +91,12 @@ func TestDomainOnlyShareEmitsSIDsAndNumericACLs(t *testing.T) {
 		commands = append(commands, path+" "+strings.Join(args, " "))
 		return "", nil
 	}
-	if err := s.syncSambaDatasetPrincipalACLs("/mnt/share", sambaPrincipalNames{}, namesFromShareACLs(share), true); err != nil {
+	if err := s.syncSambaShareACL("/mnt/share", sambaPrincipalNames{}, namesFromShareACLs(share), false, false, true); err != nil {
 		t.Fatal(err)
 	}
 	text = strings.Join(commands, "\n")
-	if !strings.Contains(text, "-m u:1001100:"+readACLPerm) || !strings.Contains(text, "-m g:1002100:"+writeACLPerm) || strings.Contains(text, "EXAMPLE") {
+	if !strings.Contains(text, "/bin/setfacl -m ") || !strings.Contains(text, "u:1001100:"+readACLPerm+":fd:allow") ||
+		!strings.Contains(text, "g:1002100:"+writeACLPerm+":fd:allow") || strings.Contains(text, "EXAMPLE") {
 		t.Fatalf("domain ACLs are not numeric:\n%s", text)
 	}
 }
@@ -319,9 +320,8 @@ func TestMappingGlobalRejectionRollsBackSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sambaWriteConfig = func(candidate *Service, _ context.Context, _ bool) error {
-		_, err := candidate.GlobalConfig()
-		return err
+	sambaRenderConfig = func(candidate *Service, _ context.Context) (string, error) {
+		return candidate.GlobalConfig()
 	}
 	extra := "winbind separator = +"
 	if err := s.SetGlobalConfig(context.Background(), "UTF-8", "WORKGROUP", "Changed", "lo0", false, false, false, &extra); !errors.Is(err, ErrInvalidGlobalConfig) {
@@ -416,7 +416,7 @@ func TestDeletedDatasetCleanupWaitsForMembershipAndPreservesIdentities(t *testin
 	}
 	oldWrite := sambaWriteConfig
 	t.Cleanup(func() { sambaWriteConfig = oldWrite })
-	sambaWriteConfig = func(*Service, context.Context, bool) error { return nil }
+	sambaWriteConfig = func(*Service, context.Context, sambaServiceAction) error { return nil }
 	unlock, err := s.Directory.LockConfiguration()
 	if err != nil {
 		t.Fatal(err)
@@ -490,5 +490,28 @@ func TestMemberConfigWithInstalledTestparm(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestApplyingShareAccessWaitsForADirectoryChange(t *testing.T) {
+	s, _ := newSambaServiceWithMockRunner(t)
+	s.Directory = directoryservices.NewService(s.DB)
+	unlock, err := s.Directory.LockConfiguration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- s.ApplyShareAccessToExisting(context.Background(), 99, nil) }()
+	select {
+	case err := <-done:
+		unlock()
+		t.Fatalf("starting an access job raced a directory change: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	unlock()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("starting an access job never resumed after the directory change")
 	}
 }

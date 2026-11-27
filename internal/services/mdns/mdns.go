@@ -14,9 +14,11 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -50,6 +52,7 @@ type Service struct {
 	cancelFunc       context.CancelFunc
 	wg               sync.WaitGroup
 	activeState      *mdnsActivationState
+	responderExited  atomic.Bool
 
 	interfaceReferenceCoordinator *interfaceref.Coordinator
 }
@@ -101,6 +104,9 @@ func (s *Service) rebuildLocked() error {
 	next, err := s.loadActivationState(s.DB)
 	if err != nil {
 		return err
+	}
+	if s.activeState != nil && reflect.DeepEqual(*s.activeState, next) && s.publishedLocked(next) {
+		return nil
 	}
 
 	changed, err := s.activateStateLocked(next)
@@ -329,6 +335,13 @@ func buildMdnsServices(
 	return services, nil
 }
 
+func (s *Service) publishedLocked(state mdnsActivationState) bool {
+	if !state.enabled || len(state.records) == 0 {
+		return !s.hasResponderLocked()
+	}
+	return s.responder != nil && !s.responderExited.Load()
+}
+
 func (s *Service) hasResponderLocked() bool {
 	return s.responder != nil || s.cancelFunc != nil || len(s.handles) > 0
 }
@@ -367,9 +380,11 @@ func (s *Service) publishLocked(
 	ctx, cancel := context.WithCancel(context.Background())
 	ready := make(chan error, 1)
 
+	s.responderExited.Store(false)
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
+		defer s.responderExited.Store(true)
 		var respondErr error
 		if readyResponder, ok := rp.(responderWithReadiness); ok {
 			respondErr = readyResponder.RespondReady(ctx, ready)

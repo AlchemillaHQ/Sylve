@@ -11,6 +11,7 @@ package samba
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -35,11 +36,15 @@ func stubGlobalConfigDependencies(t *testing.T) *int {
 
 	writeCalls := 0
 	originalWriteConfig := sambaWriteConfig
-	sambaWriteConfig = func(*Service, context.Context, bool) error {
+	sambaWriteConfig = func(*Service, context.Context, sambaServiceAction) error {
 		writeCalls++
 		return nil
 	}
 	t.Cleanup(func() { sambaWriteConfig = originalWriteConfig })
+
+	originalRenderConfig := sambaRenderConfig
+	sambaRenderConfig = func(*Service, context.Context) (string, error) { return "", nil }
+	t.Cleanup(func() { sambaRenderConfig = originalRenderConfig })
 
 	return &writeCalls
 }
@@ -338,13 +343,13 @@ func TestSetGlobalConfigRollsBackWhenMdnsEnableFails(t *testing.T) {
 	}
 }
 
-func TestSetGlobalConfigRollsBackWhenConfigWriteFails(t *testing.T) {
+func TestSetGlobalConfigRollsBackWhenConfigValidationFails(t *testing.T) {
 	stubGlobalConfigDependencies(t)
 	service, _ := newAppleMdnsTestService(t, false, []models.AvailableService{models.SambaServer})
 	const existing = "vfs mkdir use tmp name = no"
 	setExtraGlobalConfigValue(t, service, existing)
-	sambaWriteConfig = func(*Service, context.Context, bool) error {
-		return errors.New("testparm failed")
+	sambaRenderConfig = func(*Service, context.Context) (string, error) {
+		return "", fmt.Errorf("%w: Unknown parameter encountered", errSambaConfigRejected)
 	}
 
 	replacement := "workgroup = SHOULD_ROLL_BACK"
@@ -358,8 +363,8 @@ func TestSetGlobalConfigRollsBackWhenConfigWriteFails(t *testing.T) {
 		true,
 		true,
 		&replacement,
-	); err == nil {
-		t.Fatal("expected Samba config write failure")
+	); !errors.Is(err, ErrInvalidGlobalConfig) {
+		t.Fatalf("a testparm rejection returned %v; want %v", err, ErrInvalidGlobalConfig)
 	}
 
 	if appleExtensionsEnabled(t, service) {
@@ -437,5 +442,49 @@ func TestSetGlobalConfigRejectsFilteredStandardSwitchBaseInterface(t *testing.T)
 	}
 	if persisted.Interfaces != "lo0" {
 		t.Fatalf("filtered switch base was persisted as Samba interface %q", persisted.Interfaces)
+	}
+}
+
+func TestSetGlobalConfigKeepsSettingsWhenApplyFailsAfterSaving(t *testing.T) {
+	stubGlobalConfigDependencies(t)
+	service, _ := newAppleMdnsTestService(t, false, []models.AvailableService{models.SambaServer})
+	var actions []sambaServiceAction
+	sambaWriteConfig = func(_ *Service, _ context.Context, action sambaServiceAction) error {
+		actions = append(actions, action)
+		return errors.New("onerestart failed")
+	}
+
+	err := service.SetGlobalConfig(context.Background(), "UTF-8", "WORKGROUP", "Sylve SMB Server", "lo0", true, true, true, nil)
+	if !errors.Is(err, ErrSambaApplyFailed) {
+		t.Fatalf("SetGlobalConfig returned %v; want %v", err, ErrSambaApplyFailed)
+	}
+	if !appleExtensionsEnabled(t, service) {
+		t.Fatal("the saved settings were rolled back after Samba failed to restart")
+	}
+	if len(actions) != 1 || actions[0] != sambaRestartService {
+		t.Fatalf("apply actions = %v; want one restart", actions)
+	}
+}
+
+func TestSetGlobalConfigRejectsUnsafeServerStringAndUnknownInterfaces(t *testing.T) {
+	stubGlobalConfigDependencies(t)
+	service, _ := newAppleMdnsTestService(t, false, []models.AvailableService{models.SambaServer})
+	sambaGetInterface = func(name string) (*iface.Interface, error) {
+		if name == "missing0" {
+			return nil, errors.New("interface missing0 not found")
+		}
+		return nil, nil
+	}
+	for name, call := range map[string]func() error{
+		"server string ending in a backslash": func() error {
+			return service.SetGlobalConfig(context.Background(), "UTF-8", "WORKGROUP", `Files\`, "lo0", true, false, false, nil)
+		},
+		"unknown interface": func() error {
+			return service.SetGlobalConfig(context.Background(), "UTF-8", "WORKGROUP", "Files", "lo0,missing0", true, false, false, nil)
+		},
+	} {
+		if err := call(); !errors.Is(err, ErrInvalidGlobalConfig) {
+			t.Errorf("%s returned %v; want %v", name, err, ErrInvalidGlobalConfig)
+		}
 	}
 }

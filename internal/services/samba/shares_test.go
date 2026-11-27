@@ -83,7 +83,7 @@ func TestShareConfigOmitsDisabledShareWithoutLookingUpDataset(t *testing.T) {
 		t.Fatalf("failed disabling share: %v", err)
 	}
 
-	cfg, err := svc.ShareConfig(context.Background())
+	cfg, err := svc.enabledShareConfig(context.Background())
 	if err != nil {
 		t.Fatalf("ShareConfig failed for disabled missing share: %v", err)
 	}
@@ -108,14 +108,14 @@ func TestShareConfigSkipsUnmountedDataset(t *testing.T) {
 	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/mounted", "", "", nil)
 	originalRun := sambaRunCommand
 	sambaRunCommand = func(command string, args ...string) (string, error) {
-		if command != "/bin/setfacl" || args[len(args)-1] != "/mnt/mounted" {
+		if (command != "/bin/setfacl" && command != "/bin/getfacl") || args[len(args)-1] != "/mnt/mounted" {
 			t.Fatalf("unexpected command for unavailable share: %s %v", command, args)
 		}
 		return "", nil
 	}
 	t.Cleanup(func() { sambaRunCommand = originalRun })
 
-	config, err := svc.ShareConfig(context.Background())
+	config, err := svc.enabledShareConfig(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestShareMutationsRejectUnmountedDataset(t *testing.T) {
 			var err error
 			switch operation {
 			case "create":
-				err = svc.CreateShare(context.Background(), share.Name, share.Dataset, nil, nil, nil, nil, true, false, "0664", "2775", false, 0, false, 70, nil, true, "", nil)
+				_, err = svc.CreateShare(context.Background(), share.Name, share.Dataset, nil, nil, nil, nil, true, false, "0664", "2775", false, 0, false, 70, nil, true, "", nil)
 			case "update":
 				err = svc.UpdateShare(context.Background(), uint(share.ID), share.Name, share.Dataset, nil, nil, nil, nil, true, false, "0664", "2775", false, 0, false, 70, nil, nil, nil, nil)
 			case "enable":
@@ -179,6 +179,7 @@ func TestShareMutationsRejectUnmountedDataset(t *testing.T) {
 
 func TestUpdateShareCanDisableShareWithMissingDataset(t *testing.T) {
 	svc, runner := newSambaServiceWithMockRunner(t)
+	stubTestparm(t)
 	share := sambaModels.SambaShare{
 		Name: "missing", Dataset: "guid-missing", Enabled: true,
 		GuestOk: true, ReadOnly: true, CreateMask: "0664", DirectoryMask: "2775",
@@ -189,7 +190,7 @@ func TestUpdateShareCanDisableShareWithMissingDataset(t *testing.T) {
 	addDatasetLookupMocks(t, runner, nil)
 
 	originalWriteConfig := sambaWriteConfig
-	sambaWriteConfig = func(*Service, context.Context, bool) error { return nil }
+	sambaWriteConfig = func(*Service, context.Context, sambaServiceAction) error { return nil }
 	t.Cleanup(func() { sambaWriteConfig = originalWriteConfig })
 
 	enabled := false
@@ -222,7 +223,7 @@ func TestCreateShareReturnsDatasetConflictBeforeDBDuplicate(t *testing.T) {
 
 	svc := &Service{DB: dbConn}
 
-	err := svc.CreateShare(
+	_, err := svc.CreateShare(
 		context.Background(),
 		"share-two",
 		"dataset-guid-1",
@@ -249,4 +250,12 @@ func TestCreateShareReturnsDatasetConflictBeforeDBDuplicate(t *testing.T) {
 	if err.Error() != "share_with_dataset_exists" {
 		t.Fatalf("expected share_with_dataset_exists, got %q", err.Error())
 	}
+}
+
+func (s *Service) enabledShareConfig(ctx context.Context) (string, error) {
+	shares, err := s.enabledShares()
+	if err != nil {
+		return "", err
+	}
+	return s.shareConfig(ctx, shares, true, nil)
 }
