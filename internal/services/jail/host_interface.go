@@ -11,6 +11,7 @@ package jail
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
@@ -90,13 +91,25 @@ func (s *Service) keepAvailableHostInterfaceNetworks(
 	return kept, warnings
 }
 
+var jailDyingIDs = func(s *Service, ctID uint) ([]int, error) {
+	return s.DyingJailIDs(ctID)
+}
+
 func (s *Service) ensureJailHostInterfacesReady(jail jailModels.Jail) error {
 	for _, network := range jail.Networks {
-		if isHostInterfaceNetwork(network) {
-			if err := s.ensureHostInterfaceEligible(network.HostInterface); err != nil {
-				return err
+		if !isHostInterfaceNetwork(network) {
+			continue
+		}
+		err := s.ensureHostInterfaceEligible(network.HostInterface)
+		if err == nil {
+			continue
+		}
+		if strings.HasPrefix(err.Error(), "host_interface_not_found") {
+			if jids, dyingErr := jailDyingIDs(s, jail.CTID); dyingErr == nil && len(jids) > 0 {
+				return fmt.Errorf("host_interface_held_by_dying_jail: %s", network.HostInterface)
 			}
 		}
+		return err
 	}
 	return nil
 }

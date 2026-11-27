@@ -305,8 +305,10 @@ func TestValidateJailAdditionalOptionsRejectsSylveNetworkLines(t *testing.T) {
 		"vnet;":                         "jail_network_option_not_allowed",
 		"  vnet.interface += \"ixl0\";": "jail_network_option_not_allowed",
 		"enforce_statfs = 2;\r\nip4=inherit;\r\n": "jail_network_option_not_allowed",
-		"ip6=disable;":           "jail_network_option_not_allowed",
-		jailAdditionalOptionsEnd: "reserved_jail_option_marker",
+		"ip6=disable;": "jail_network_option_not_allowed",
+		`exec.prestop += "/sbin/ifconfig ixl0 -vnet aaaeb || true";`: "jail_network_option_not_allowed",
+		`exec.prestop += "/sbin/ifconfig igb1 -vnet axaxb";`:         "",
+		jailAdditionalOptionsEnd:                                     "reserved_jail_option_marker",
 	} {
 		err := validateJailAdditionalOptions(options)
 		if want == "" && err != nil {

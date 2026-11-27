@@ -65,6 +65,7 @@ func TestSyncNetworkRendersHostInterfaceAttachment(t *testing.T) {
 			for _, line := range []string{
 				"vnet;",
 				`vnet.interface += "ixl0.10";`,
+				fmt.Sprintf(`exec.prestop += "/sbin/ifconfig ixl0.10 -vnet %s || true";`, hash),
 				fmt.Sprintf(`vnet.interface += "%s";`, lanEpairB),
 			} {
 				if got := strings.Count(config, line); got != 1 {
@@ -152,6 +153,92 @@ func TestSyncNetworkHostInterfaceOnlyJailIsVNET(t *testing.T) {
 	}
 	if len(names) != 0 {
 		t.Fatalf("host interface network produced epairs %v", names)
+	}
+}
+
+func TestHostInterfaceReleaseRunsAfterUserPreStopHook(t *testing.T) {
+	fixture := newJailNetworkSyncFixture(t, jailModels.JailTypeFreeBSD, 7305)
+	fixture.addHostInterfaceNetwork(t, jailModels.Network{Name: "wan", HostInterface: "ixl0"})
+	release := jailHostInterfaceReleaseLine("ixl0", fixture.service.GetCTIDHash(fixture.jail.CTID))
+	userHook := `exec.prestop += "/sylve/jails/7305/scripts/pre-stop.sh";`
+	order := func(config string) {
+		t.Helper()
+		if got := strings.Count(config, release); got != 1 {
+			t.Fatalf("release line count = %d, want 1:\n%s", got, config)
+		}
+		if got := strings.Count(config, userHook); got != 1 {
+			t.Fatalf("user pre-stop line count = %d, want 1:\n%s", got, config)
+		}
+		if strings.Index(config, userHook) > strings.Index(config, release) {
+			t.Fatalf("interface is released before the user's pre-stop hook runs:\n%s", config)
+		}
+	}
+
+	if err := fixture.service.SyncNetwork(fixture.jail.CTID, fixture.jail); err != nil {
+		t.Fatalf("sync host interface: %v", err)
+	}
+	config, err := fixture.service.GetJailConfig(fixture.jail.CTID)
+	if err != nil {
+		t.Fatalf("read jail config: %v", err)
+	}
+	preStop := hookEditTarget{
+		phase: jailModels.JailHookPhasePreStop, execKey: "exec.prestop",
+		execPath: "/sylve/jails/7305/scripts/pre-stop.sh",
+	}
+	config, err = reconcileJailLifecycleConfig(config, jailModels.JailTypeFreeBSD, []hookEditTarget{preStop},
+		map[jailModels.JailHookPhase]bool{jailModels.JailHookPhasePreStop: true})
+	if err != nil {
+		t.Fatalf("wire user pre-stop hook: %v", err)
+	}
+	order(config)
+
+	if err := fixture.service.SaveJailConfig(fixture.jail.CTID, config); err != nil {
+		t.Fatalf("save jail config: %v", err)
+	}
+	if err := fixture.service.SyncNetwork(fixture.jail.CTID, fixture.jail); err != nil {
+		t.Fatalf("resync host interface: %v", err)
+	}
+	if config, err = fixture.service.GetJailConfig(fixture.jail.CTID); err != nil {
+		t.Fatalf("reread jail config: %v", err)
+	}
+	order(config)
+
+	fixture.jail.Networks = nil
+	if err := fixture.service.SyncNetwork(fixture.jail.CTID, fixture.jail); err != nil {
+		t.Fatalf("sync without host interface: %v", err)
+	}
+	if config, err = fixture.service.GetJailConfig(fixture.jail.CTID); err != nil {
+		t.Fatalf("read jail config: %v", err)
+	}
+	if strings.Contains(config, "-vnet") || !strings.Contains(config, userHook) {
+		t.Fatalf("release line should go with the interface and leave the user hook alone:\n%s", config)
+	}
+}
+
+func TestEnsureJailHostInterfacesReadyReportsDyingJail(t *testing.T) {
+	svc, _, _ := newJailNetworkValidationService(t)
+	jail := jailModels.Jail{CTID: 9309, Networks: []jailModels.Network{
+		{Name: "wan", SwitchType: networkAttachment.SwitchTypeHostInterface, HostInterface: "igb1"},
+	}}
+	original := jailDyingIDs
+	t.Cleanup(func() { jailDyingIDs = original })
+
+	for _, test := range []struct {
+		dying []int
+		want  string
+	}{
+		{dying: []int{5}, want: "host_interface_held_by_dying_jail: igb1"},
+		{dying: nil, want: "host_interface_not_found: igb1"},
+	} {
+		jailDyingIDs = func(_ *Service, ctID uint) ([]int, error) {
+			if ctID != 9309 {
+				t.Fatalf("dying lookup for CTID %d, want 9309", ctID)
+			}
+			return test.dying, nil
+		}
+		if err := svc.ensureJailHostInterfacesReady(jail); err == nil || err.Error() != test.want {
+			t.Fatalf("dying=%v: error = %v, want %s", test.dying, err, test.want)
+		}
 	}
 }
 

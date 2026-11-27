@@ -118,7 +118,7 @@ A host interface gives the jail exclusive use of a NIC, VLAN, or lagg interface 
 
 Only host administrators can add a host interface or change which interface a network uses. Other users with network permission on the jail can still edit its addressing.
 
-When the jail starts, the interface is moved into the jail and disappears from the host. When the jail stops, it returns to the host. Inside a FreeBSD jail the interface keeps its name, so `ixl0.10` is configured through `ifconfig_ixl0_10` in the jail's `rc.conf`.
+When the jail starts, the interface is moved into the jail and disappears from the host. When the jail stops, Sylve returns it to the host right after the jail's own pre-stop hook runs, so it is available again immediately even if the jail takes a while to disappear completely. Inside a FreeBSD jail the interface keeps its name, so `ixl0.10` is configured through `ifconfig_ixl0_10` in the jail's `rc.conf`.
 
 The interface list marks interfaces that cannot be used, with the reason. An interface is not eligible when it:
 
@@ -128,7 +128,7 @@ The interface list marks interfaces that cannot be used, with the reason. An int
 - Has Host IP configuration or is referenced by a static route, firewall rule, dynamic DNS entry, mDNS, Samba, WireGuard, or container NAT.
 - Is already used by another jail.
 
-Sylve checks these conditions again every time the jail starts, and refuses to start it if the interface is no longer eligible.
+Sylve checks these conditions again every time the jail starts, and refuses to start it if the interface is no longer eligible. If the interface is still held by a previous instance of the jail that has not finished shutting down, for example after an emergency stop, the start fails with `host_interface_held_by_dying_jail`. Wait a minute and start the jail again.
 
 ### Configure the interface yourself
 

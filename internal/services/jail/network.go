@@ -15,6 +15,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -383,9 +384,21 @@ func replaceJailNetworkRCConfBlock(content, ctidHash string, lines []string) str
 	return result.String()
 }
 
+var jailHostInterfaceReleasePattern = regexp.MustCompile(
+	`^exec\.prestop \+= "/sbin/ifconfig [A-Za-z0-9_.]+ -vnet [A-Za-z0-9_]+ \|\| true";$`,
+)
+
+// jail(8) only returns vnet.interface interfaces when the jail's vnet is torn
+// down, which a dying jail (e.g. TIME_WAIT sockets) delays, so release them
+// while the jail is still alive. Appended last, it runs after user pre-stop hooks.
+func jailHostInterfaceReleaseLine(hostInterface, jailName string) string {
+	return fmt.Sprintf("exec.prestop += \"/sbin/ifconfig %s -vnet %s || true\";", hostInterface, jailName)
+}
+
 func isJailNetworkConfigLine(trimmed string) bool {
 	return trimmed == "vnet;" || strings.HasPrefix(trimmed, "vnet.interface") ||
-		strings.HasPrefix(trimmed, "ip4=") || strings.HasPrefix(trimmed, "ip6=")
+		strings.HasPrefix(trimmed, "ip4=") || strings.HasPrefix(trimmed, "ip6=") ||
+		jailHostInterfaceReleasePattern.MatchString(trimmed)
 }
 
 func removeJailNetworkConfigLines(lines []string) []string {
@@ -1357,7 +1370,11 @@ func (s *Service) SyncNetwork(ctID uint, jail jailModels.Jail) error {
 		jailCfgBuilder.WriteString(fmt.Sprintf("\texec.prestart += \"%s\";\n", preStartPath))
 		for _, network := range jail.Networks {
 			if isHostInterfaceNetwork(network) {
+				if !networkAttachment.ValidHostInterfaceName(network.HostInterface) {
+					return fmt.Errorf("invalid_host_interface_name: %q", network.HostInterface)
+				}
 				jailCfgBuilder.WriteString(fmt.Sprintf("\tvnet.interface += \"%s\";\n", network.HostInterface))
+				jailCfgBuilder.WriteString("\t" + jailHostInterfaceReleaseLine(network.HostInterface, ctidHash) + "\n")
 			} else if network.SwitchID > 0 {
 				jailCfgBuilder.WriteString(fmt.Sprintf("\tvnet.interface += \"%s_net%db\";\n", ctidHash, network.ID))
 			}
