@@ -227,6 +227,7 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	sysSvc := systemService.(*system.Service)
 	sysSvc.NFS = nfsService
 	zfsSvc.StorageTopologyGuard = nfsService.GuardStorageMutation
+	nfsService.DatasetCache = zfsSvc
 
 	interfaceReferenceCoordinator := interfaceref.NewCoordinator()
 	networkService.(*network.Service).SetInterfaceReferenceCoordinator(interfaceReferenceCoordinator)

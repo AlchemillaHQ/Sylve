@@ -17,7 +17,8 @@ under sponsorship from the FreeBSD Foundation.
 	import { isRequestCancellation } from '$lib/utils/http';
 	import { onDestroy, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { errorCode, shareDeleteError } from './samba';
+	import { errorCode } from '../shared';
+	import { shareDeleteError } from './samba';
 
 	let {
 		hostname,

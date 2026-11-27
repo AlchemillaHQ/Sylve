@@ -22,12 +22,19 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	nfsModels "github.com/alchemillahq/sylve/internal/db/models/nfs"
+	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/sharerules"
 	"gorm.io/gorm"
 )
+
+type DatasetCache interface {
+	CachedDatasets(ctx context.Context, datasetType gzfs.DatasetType) ([]*gzfs.Dataset, error)
+}
 
 type Service struct {
 	DB            *gorm.DB
 	KerberosState func(context.Context, string) (string, error)
+	DatasetCache  DatasetCache
 
 	mutationMu      sync.Mutex
 	topologyMu      sync.Mutex
@@ -223,7 +230,7 @@ func (s *Service) saveShare(ctx context.Context, id uint, input nfsModels.NFSSha
 		}
 		share = shares[index]
 	} else if len(shares) >= maxShares {
-		return share, nil, conflict("dataset", "At most 256 NFS share rules can be saved.")
+		return share, nil, conflict("dataset", "too_many_shares", "At most 256 NFS share rules can be saved.")
 	}
 	if id != 0 && reflect.DeepEqual(input, share.NFSShareConfig) {
 		return share, nil, nil
@@ -237,7 +244,7 @@ func (s *Service) saveShare(ctx context.Context, id uint, input nfsModels.NFSSha
 			return share, nil, err
 		}
 		dataset := findDataset(datasets, input.Dataset)
-		if err := s.checkDataset(dataset, policy.pools); err != nil {
+		if err := s.checkShareable(dataset, sharerules.ProtectedRoots(datasets, sharerules.DataPath()), policy.pools); err != nil {
 			return share, nil, err
 		}
 		share.DatasetName, share.Mountpoint = dataset.Name, dataset.Mountpoint
@@ -327,6 +334,48 @@ func (s *Service) DeleteShare(ctx context.Context, id uint) error {
 	return s.reconcilePolicy(ctx, policy, nil)
 }
 
+type ShareView struct {
+	nfsModels.NFSShare
+	State        string `json:"state,omitempty"`
+	DatasetBlock string `json:"datasetBlock,omitempty"`
+}
+
+func (s *Service) ShareViews(ctx context.Context) ([]ShareView, error) {
+	shares, err := s.GetShares(ctx)
+	if err != nil {
+		return nil, err
+	}
+	views := make([]ShareView, len(shares))
+	for i, share := range shares {
+		views[i] = ShareView{NFSShare: share}
+	}
+	if s.DatasetCache == nil {
+		return views, nil
+	}
+	datasets, err := s.DatasetCache.CachedDatasets(ctx, gzfs.DatasetTypeFilesystem)
+	if err != nil {
+		logger.L.Warn().Err(err).Msg("nfs_share_state_unavailable")
+		return views, nil
+	}
+	byGUID := make(map[string]*gzfs.Dataset, len(datasets))
+	for _, dataset := range datasets {
+		if dataset != nil {
+			byGUID[dataset.GUID] = dataset
+		}
+	}
+	roots := sharerules.ProtectedRoots(datasets, sharerules.DataPath())
+	for i := range views {
+		view := &views[i]
+		dataset := byGUID[view.Dataset]
+		if dataset != nil {
+			view.DatasetName, view.Mountpoint = dataset.Name, dataset.Mountpoint
+			view.DatasetBlock = sharerules.DatasetBlock(dataset, roots)
+		}
+		view.State = sharerules.State(view.Enabled, dataset, dataset != nil && dataset.IsMounted())
+	}
+	return views, nil
+}
+
 func (s *Service) DisableSharesForDatasets(ctx context.Context, guids []string) error {
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
@@ -376,12 +425,19 @@ func findDataset(datasets []*gzfs.Dataset, guid string) *gzfs.Dataset {
 	return nil
 }
 
+func (s *Service) checkShareable(dataset *gzfs.Dataset, protectedRoots []string, pools []string) error {
+	if block := sharerules.DatasetBlock(dataset, protectedRoots); block != "" {
+		return notShareable(block)
+	}
+	return s.checkDataset(dataset, pools)
+}
+
 func (s *Service) checkDataset(dataset *gzfs.Dataset, pools []string) error {
 	if err := datasetEligible(dataset, pools); err != nil {
 		return err
 	}
 	if err := s.verifyMount(dataset.Mountpoint, dataset.Name); err != nil {
-		return conflict("dataset", "The mountpoint is not mounted directly from the selected ZFS filesystem.")
+		return conflict("dataset", "dataset_mount_mismatch", "The mountpoint is not mounted directly from the selected ZFS filesystem.")
 	}
 	return nil
 }
@@ -392,6 +448,8 @@ type DatasetOption struct {
 	Mountpoint string `json:"mountpoint"`
 	Available  bool   `json:"available"`
 	Reason     string `json:"reason"`
+	Code       string `json:"code,omitempty"`
+	Block      string `json:"block,omitempty"`
 }
 
 func (s *Service) GetDatasets(ctx context.Context) ([]DatasetOption, error) {
@@ -414,21 +472,26 @@ func (s *Service) GetDatasets(ctx context.Context) ([]DatasetOption, error) {
 	for _, share := range shares {
 		referenced[share.Dataset] = true
 	}
+	roots := sharerules.ProtectedRoots(datasets, sharerules.DataPath())
 	options := make([]DatasetOption, 0)
 	for _, dataset := range datasets {
-		err := s.checkDataset(dataset, basic.Pools)
-		if err != nil && !referenced[dataset.GUID] {
+		if !slices.Contains(basic.Pools, dataset.Pool) && !referenced[dataset.GUID] {
 			continue
 		}
+		err := s.checkShareable(dataset, roots, basic.Pools)
 		option := DatasetOption{GUID: dataset.GUID, Name: dataset.Name, Mountpoint: dataset.Mountpoint, Available: err == nil}
 		if err != nil {
 			option.Reason = err.Error()
+		}
+		var detail *ValidationError
+		if errors.As(err, &detail) {
+			option.Code, option.Block = detail.Code, detail.Block
 		}
 		options = append(options, option)
 		delete(referenced, dataset.GUID)
 	}
 	for guid := range referenced {
-		options = append(options, DatasetOption{GUID: guid, Name: guid, Reason: "The saved dataset is unavailable."})
+		options = append(options, DatasetOption{GUID: guid, Name: guid, Reason: "The saved dataset is unavailable.", Code: "dataset_missing"})
 	}
 	slices.SortFunc(options, func(a, b DatasetOption) int { return strings.Compare(a.Name, b.Name) })
 	return options, nil

@@ -660,6 +660,19 @@ definitions:
       status:
         type: string
     type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_jail_HostInterfaceTarget
+  : properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.HostInterfaceTarget'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_jail_SimpleList
   : properties:
       data:
@@ -803,8 +816,8 @@ definitions:
       status:
         type: string
     type: object
-  github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_zfs_SnapshotSummary:
-    properties:
+  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_zfs_SnapshotSummary
+  : properties:
       data:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.SnapshotSummary'
@@ -894,11 +907,24 @@ definitions:
       status:
         type: string
     type: object
-  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zelta_BackupTargetDatasetInfo
-  : properties:
+  github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_nfs_DatasetOption:
+    properties:
       data:
         items:
-          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.BackupTargetDatasetInfo'
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_nfs.DatasetOption'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_nfs_ShareView:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_nfs.ShareView'
         type: array
       error:
         type: string
@@ -912,6 +938,19 @@ definitions:
       data:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_samba.ShareDataset'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zelta_BackupTargetDatasetInfo
+  : properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.BackupTargetDatasetInfo'
         type: array
       error:
         type: string
@@ -1307,6 +1346,17 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.WireGuardServer'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_nfs_NFSConfig:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_nfs.NFSConfig'
       error:
         type: string
       message:
@@ -1765,6 +1815,17 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_system_FileListing:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_system.FileListing'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_utilities_CloudInitTemplateIdentity
   : properties:
       data:
@@ -1857,17 +1918,6 @@ definitions:
   : properties:
       data:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.SimpleZFSDiskUsage'
-      error:
-        type: string
-      message:
-        type: string
-      status:
-        type: string
-    type: object
-  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_system_FileListing:
-    properties:
-      data:
-        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_system.FileListing'
       error:
         type: string
       message:
@@ -2055,6 +2105,28 @@ definitions:
   : properties:
       data:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_libvirt.VMSnapshotRollbackResult'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_nfs_Preview:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_nfs.Preview'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_nfs_Status:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_nfs.Status'
       error:
         type: string
       message:
@@ -2440,6 +2512,17 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/internal_handlers_network.ListSwitchResponse'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers_nfs.MutationResult'
       error:
         type: string
       message:
@@ -4051,6 +4134,11 @@ definitions:
         type: boolean
       dhcp:
         type: boolean
+      hostInterface:
+        description: |-
+          Declared last: GORM's SQLite migrator rebuilds the table from its old
+          schema when it alters an earlier column, dropping columns added before.
+        type: string
       id:
         type: integer
       ipv4GwId:
@@ -4873,6 +4961,81 @@ definitions:
       wireguardServerId:
         type: integer
     type: object
+  github_com_alchemillahq_sylve_internal_db_models_nfs.ExportedFilesystem:
+    properties:
+      guid:
+        type: string
+      mountpoint:
+        type: string
+      name:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_nfs.NFSConfig:
+    properties:
+      allowNonroot:
+        type: boolean
+      bindAddresses:
+        items:
+          type: string
+        type: array
+      kerberosPrincipal:
+        type: string
+      maxThreads:
+        type: integer
+      minThreads:
+        type: integer
+      mountdPort:
+        type: integer
+      numericIds:
+        type: boolean
+      protocol:
+        type: string
+      udp:
+        type: boolean
+      v4MaxVersion:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_nfs.NFSShare:
+    properties:
+      allDirs:
+        type: boolean
+      clients:
+        items:
+          type: string
+        type: array
+      createdAt:
+        type: string
+      dataset:
+        type: string
+      datasetName:
+        type: string
+      description:
+        type: string
+      enabled:
+        type: boolean
+      everyone:
+        type: boolean
+      id:
+        type: integer
+      mapallGroup:
+        type: string
+      mapallUser:
+        type: string
+      maprootGroup:
+        type: string
+      maprootUser:
+        type: string
+      mountpoint:
+        type: string
+      readOnly:
+        type: boolean
+      security:
+        items:
+          type: string
+        type: array
+      updatedAt:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal_db_models_samba.SambaAuditLog:
     properties:
       action:
@@ -5069,10 +5232,12 @@ definitions:
     enum:
     - staged
     - completed
+    - receiving
     type: string
     x-enum-varnames:
     - UploadStatusStaged
     - UploadStatusCompleted
+    - UploadStatusReceiving
   github_com_alchemillahq_sylve_internal_db_models_vm.Network:
     properties:
       attachment:
@@ -6625,6 +6790,8 @@ definitions:
         type: string
       devFSDisabled:
         type: boolean
+      hardware:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_info.Hardware'
       hostname:
         type: string
       loadAverage:
@@ -6677,10 +6844,21 @@ definitions:
         type: integer
       sockets:
         type: integer
+      temperature:
+        type: number
       threadsPerCore:
         type: integer
       usage:
         type: number
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_info.Hardware:
+    properties:
+      product:
+        type: string
+      serial:
+        type: string
+      vendor:
+        type: string
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_info.HistoricalNetworkInterface:
     properties:
@@ -6720,6 +6898,8 @@ definitions:
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_info.RAMInfo:
     properties:
+      arc:
+        type: integer
       free:
         type: integer
       total:
@@ -6779,6 +6959,8 @@ definitions:
         type: boolean
       dhcp:
         type: boolean
+      hostInterface:
+        type: string
       ip4:
         type: integer
       ip4Raw:
@@ -6809,7 +6991,6 @@ definitions:
         $ref: '#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy'
     required:
     - name
-    - switchName
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_jail.BootstrapCreateResult:
     properties:
@@ -6982,6 +7163,8 @@ definitions:
         type: boolean
       dhcp:
         type: boolean
+      hostInterface:
+        type: string
       ip4:
         type: integer
       ip4Raw:
@@ -7085,6 +7268,19 @@ definitions:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.HookPhase'
       stop:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.HookPhase'
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_jail.HostInterfaceTarget:
+    properties:
+      eligible:
+        type: boolean
+      interface:
+        type: string
+      jailCtId:
+        type: integer
+      jailName:
+        type: string
+      reason:
+        type: string
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_jail.JailHardwareResult:
     properties:
@@ -8656,6 +8852,32 @@ definitions:
       uType:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_utilities.DownloadUType'
     type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_zfs.AttachDevice:
+    properties:
+      device:
+        maxLength: 1024
+        minLength: 1
+        type: string
+      expectedMemberGuids:
+        items:
+          type: string
+        maxItems: 4096
+        type: array
+      expectedNewIdentity:
+        maxLength: 1024
+        type: string
+      expectedParentGuid:
+        maxLength: 20
+        type: string
+      new:
+        maxLength: 1024
+        minLength: 1
+        type: string
+    required:
+    - device
+    - expectedMemberGuids
+    - new
+    type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_zfs.BulkDeletePeriodicSnapshotsRequest:
     properties:
       ids:
@@ -9043,15 +9265,27 @@ definitions:
     - RaidTypeRaidZ3
   github_com_alchemillahq_sylve_internal_interfaces_services_zfs.ReplaceDevice:
     properties:
+      expectedMemberGuids:
+        items:
+          type: string
+        maxItems: 4096
+        type: array
+      expectedNewIdentity:
+        maxLength: 1024
+        type: string
+      expectedParentGuid:
+        maxLength: 20
+        type: string
       new:
-        maxLength: 24
+        maxLength: 1024
         minLength: 1
         type: string
       old:
-        maxLength: 24
+        maxLength: 1024
         minLength: 1
         type: string
     required:
+    - expectedMemberGuids
     - new
     - old
     type: object
@@ -9914,6 +10148,110 @@ definitions:
     - clientIPs
     - name
     type: object
+  github_com_alchemillahq_sylve_internal_services_nfs.DatasetOption:
+    properties:
+      available:
+        type: boolean
+      block:
+        type: string
+      code:
+        type: string
+      guid:
+        type: string
+      mountpoint:
+        type: string
+      name:
+        type: string
+      reason:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_nfs.Preview:
+    properties:
+      exports:
+        type: string
+      warnings:
+        items:
+          type: string
+        type: array
+    type: object
+  github_com_alchemillahq_sylve_internal_services_nfs.ShareView:
+    properties:
+      allDirs:
+        type: boolean
+      clients:
+        items:
+          type: string
+        type: array
+      createdAt:
+        type: string
+      dataset:
+        type: string
+      datasetBlock:
+        type: string
+      datasetName:
+        type: string
+      description:
+        type: string
+      enabled:
+        type: boolean
+      everyone:
+        type: boolean
+      id:
+        type: integer
+      mapallGroup:
+        type: string
+      mapallUser:
+        type: string
+      maprootGroup:
+        type: string
+      maprootUser:
+        type: string
+      mountpoint:
+        type: string
+      readOnly:
+        type: boolean
+      security:
+        items:
+          type: string
+        type: array
+      state:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_nfs.Status:
+    properties:
+      appliedExports:
+        type: integer
+      applyStatus:
+        type: string
+      checkedAt:
+        type: string
+      configVersion:
+        type: string
+      desiredExports:
+        type: integer
+      enabled:
+        type: boolean
+      filesystems:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_nfs.ExportedFilesystem'
+        type: array
+      lastError:
+        type: string
+      managed:
+        type: boolean
+      message:
+        type: string
+      policyVerified:
+        type: boolean
+      running:
+        type: boolean
+      runtimeAvailable:
+        type: boolean
+      sharesVersion:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal_services_notifications.DiscordTransportConfigUpdate:
     properties:
       webhookUrl:
@@ -10625,6 +10963,8 @@ definitions:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_pkg_network_iface.IPv6'
         type: array
+      laggPort:
+        type: boolean
       maxaddr:
         type: integer
       media:
@@ -11735,8 +12075,6 @@ definitions:
         minItems: 1
         type: array
       types:
-        description: Optional gpart type per size, e.g. freebsd-swap. Omit it to create
-          freebsd-zfs partitions.
         items:
           type: string
         maxItems: 128
@@ -12303,6 +12641,83 @@ definitions:
         type: boolean
     required:
     - private
+    type: object
+  internal_handlers_nfs.ApplyRequest:
+    properties:
+      confirm:
+        type: boolean
+    type: object
+  internal_handlers_nfs.ConfigRequest:
+    properties:
+      allowNonroot:
+        type: boolean
+      bindAddresses:
+        items:
+          type: string
+        type: array
+      kerberosPrincipal:
+        type: string
+      maxThreads:
+        type: integer
+      minThreads:
+        type: integer
+      mountdPort:
+        type: integer
+      numericIds:
+        type: boolean
+      protocol:
+        type: string
+      udp:
+        type: boolean
+      v4MaxVersion:
+        type: string
+    type: object
+  internal_handlers_nfs.MutationResult:
+    properties:
+      applied:
+        type: boolean
+      applyStatus:
+        type: string
+      saved:
+        type: boolean
+      share:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_nfs.NFSShare'
+    type: object
+  internal_handlers_nfs.ShareEnabledRequest:
+    properties:
+      enabled:
+        type: boolean
+    type: object
+  internal_handlers_nfs.ShareRequest:
+    properties:
+      allDirs:
+        type: boolean
+      clients:
+        items:
+          type: string
+        type: array
+      dataset:
+        type: string
+      description:
+        type: string
+      enabled:
+        type: boolean
+      everyone:
+        type: boolean
+      mapallGroup:
+        type: string
+      mapallUser:
+        type: string
+      maprootGroup:
+        type: string
+      maprootUser:
+        type: string
+      readOnly:
+        type: boolean
+      security:
+        items:
+          type: string
+        type: array
     type: object
   internal_handlers_notifications.NotificationCountResponse:
     properties:
@@ -12943,9 +13358,23 @@ definitions:
   internal_handlers_zfs.DetachRequest:
     properties:
       device:
+        maxLength: 1024
+        minLength: 1
+        type: string
+      expectedMemberGuids:
+        items:
+          type: string
+        maxItems: 4096
+        type: array
+      expectedNewIdentity:
+        maxLength: 1024
+        type: string
+      expectedParentGuid:
+        maxLength: 20
         type: string
     required:
     - device
+    - expectedMemberGuids
     type: object
   internal_handlers_zfs.EditFilesystemRequest:
     properties:
@@ -13149,7 +13578,13 @@ paths:
     post:
       consumes:
       - application/json
-      description: Issue a single-use ticket, valid for one minute, that authenticates one GET of /system/file-explorer/download (kind file) or /system/file-explorer/archive (kind archive) for exactly the given id, or for exactly the given ids in that order (kind archive, up to 512). Pass it as the ticket query parameter so no login token appears in the URL. Tickets are kept on the node that issues them, so send the download through that node, using /nodes/{node}/... for another cluster member.
+      description: Issue a single-use ticket, valid for one minute, that authenticates
+        one GET of /system/file-explorer/download (kind file) or /system/file-explorer/archive
+        (kind archive) for exactly the given id, or for exactly the given ids in that
+        order (kind archive, up to 512). Pass it as the ticket query parameter so
+        no login token appears in the URL. Tickets are kept on the node that issues
+        them, so send the download through that node, using /nodes/{node}/... for
+        another cluster member.
       parameters:
       - description: Download ticket request
         in: body
@@ -21485,6 +21920,45 @@ paths:
       summary: Edit a Jail's name
       tags:
       - Jail
+  /jail/{ctid}/network/host-interfaces:
+    get:
+      description: List host interfaces that can be moved into a vnet jail, with the
+        reason when one is not eligible and the jail that already uses it
+      parameters:
+      - description: Jail CTID
+        in: path
+        minimum: 1
+        name: ctid
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_jail_HostInterfaceTarget'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List host interfaces for jail networks
+      tags:
+      - Jail
   /jail/{ctid}/network/inheritance:
     put:
       consumes:
@@ -26512,6 +26986,506 @@ paths:
       summary: Update WireGuard server peer
       tags:
       - Network
+  /nfs/apply:
+    post:
+      consumes:
+      - application/json
+      description: Apply the saved NFS settings and share rules again, restarting
+        the NFS daemons, which interrupts connected clients; confirm must be true.
+        If the apply fails, the response is 202 with message nfs_configuration_saved_apply_pending
+        and the error.
+      parameters:
+      - description: Confirmation
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_nfs.ApplyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Applied
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult'
+        "202":
+          description: Apply pending
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "413":
+          description: Payload Too Large
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Apply NFS configuration
+      tags:
+      - NFS
+  /nfs/config:
+    get:
+      description: Return the saved NFS server settings. Before NFS is configured,
+        the defaults are NFSv3, a maximum NFSv4 version of 4.2, automatic threads
+        and all interfaces.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_nfs_NFSConfig'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get NFS settings
+      tags:
+      - NFS
+    put:
+      consumes:
+      - application/json
+      description: Validate and save the NFS server settings; every field is required.
+        protocol is v3, v4 or v3v4 and v4MaxVersion is 4.0, 4.1 or 4.2. udp needs
+        NFSv3. Thread bounds are both 0 for automatic, or 1 to 256 with the minimum
+        not above the maximum. bindAddresses takes at most 32 local unicast addresses;
+        empty means all interfaces. When NFS is enabled, the NFS daemons restart,
+        which interrupts connected clients. Validation failures carry field, code
+        and message as data. If the change was saved but could not be applied, the
+        response is 202 with message nfs_configuration_saved_apply_pending and the
+        error.
+      parameters:
+      - description: NFS settings
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_nfs.ConfigRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Saved
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult'
+        "202":
+          description: Saved, apply pending
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "413":
+          description: Payload Too Large
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Update NFS settings
+      tags:
+      - NFS
+  /nfs/datasets:
+    get:
+      description: List the filesystems in Sylve's usable pools for the share editor,
+        plus any dataset a share refers to. available is false for datasets new shares
+        cannot use, with reason and code, and block for refused datasets. A saved
+        dataset that no longer exists has code dataset_missing.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_nfs_DatasetOption'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List datasets for NFS shares
+      tags:
+      - NFS
+  /nfs/preview:
+    get:
+      description: Render the exports file the saved rules would produce, without
+        applying it. A 409 response explains why the rules cannot be exported.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_nfs_Preview'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Preview NFS exports
+      tags:
+      - NFS
+  /nfs/shares:
+    get:
+      description: List the NFS share rules ordered by ID. Each rule reports its dataset's
+        current name and mountpoint, a state of active, disabled, dataset_missing
+        or dataset_unmounted, and datasetBlock when new shares refuse its dataset.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_nfs_ShareView'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List NFS shares
+      tags:
+      - NFS
+    post:
+      consumes:
+      - application/json
+      description: Create an NFS share rule for a ZFS filesystem given by its GUID.
+        enabled, readOnly and everyone are required. clients takes IPv4 or IPv6 addresses
+        and CIDRs, at most 64, and must be empty when everyone is set. security takes
+        sys, krb5, krb5i and krb5p and defaults to sys. A maproot or mapall group
+        needs the matching user, and maproot and mapall cannot be combined. The root
+        file system, system paths, boot environments, Sylve data and datasets containing
+        them are refused with code dataset_not_shareable and a block. Enabled rules
+        on the same dataset must not overlap. Saving an enabled share restarts the
+        NFS daemons. Validation failures carry field, code and message as data. If
+        the change was saved but could not be applied, the response is 202 with message
+        nfs_configuration_saved_apply_pending and the error.
+      parameters:
+      - description: NFS share
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_nfs.ShareRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult'
+        "202":
+          description: Saved, apply pending
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "413":
+          description: Payload Too Large
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Create an NFS share
+      tags:
+      - NFS
+  /nfs/shares/{id}:
+    delete:
+      description: Delete an NFS share rule and apply the remaining rules. If the
+        change was saved but could not be applied, the response is 202 with message
+        nfs_configuration_saved_apply_pending and the error.
+      parameters:
+      - description: Share ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Deleted
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult'
+        "202":
+          description: Deleted, apply pending
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete an NFS share
+      tags:
+      - NFS
+    put:
+      consumes:
+      - application/json
+      description: Replace an NFS share rule. As well as the fields create requires,
+        maprootUser, maprootGroup, mapallUser, mapallGroup, allDirs and security are
+        required. The dataset is checked like create when the rule is enabled and
+        its access changes, or when its dataset changes. Changing only the description
+        does not restart the NFS daemons. Validation failures carry field, code and
+        message as data. If the change was saved but could not be applied, the response
+        is 202 with message nfs_configuration_saved_apply_pending and the error.
+      parameters:
+      - description: Share ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: NFS share
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_nfs.ShareRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult'
+        "202":
+          description: Saved, apply pending
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "413":
+          description: Payload Too Large
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Update an NFS share
+      tags:
+      - NFS
+  /nfs/shares/{id}/enabled:
+    put:
+      consumes:
+      - application/json
+      description: Enable or disable an NFS share rule. Enabling checks the dataset
+        like create; disabling never needs the dataset. Validation failures carry
+        field, code and message as data. If the change was saved but could not be
+        applied, the response is 202 with message nfs_configuration_saved_apply_pending
+        and the error.
+      parameters:
+      - description: Share ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Enabled state
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_nfs.ShareEnabledRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult'
+        "202":
+          description: Saved, apply pending
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "413":
+          description: Payload Too Large
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Enable or disable an NFS share
+      tags:
+      - NFS
+  /nfs/status:
+    get:
+      description: Report whether NFS is enabled in Sylve and managed by it, the apply
+        status (stopped, pending, applying, starting, applied or idle), the number
+        of enabled rules and exported filesystems, the last apply error and when the
+        runtime was last checked. sharesVersion and configVersion change whenever
+        the saved shares or settings change.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_nfs_Status'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get NFS status
+      tags:
+      - NFS
   /notifications:
     get:
       description: List active or all notifications using bounded offset pagination
@@ -27244,7 +28218,9 @@ paths:
     get:
       consumes:
       - application/json
-      description: Retrieve paginated Samba audit log entries, newest first unless sorted. createdAt is when the event happened, taken from its syslog timestamp. total counts the entries that match the filters.
+      description: Retrieve paginated Samba audit log entries, newest first unless
+        sorted. createdAt is when the event happened, taken from its syslog timestamp.
+        total counts the entries that match the filters.
       parameters:
       - default: 1
         description: Page number
@@ -27290,11 +28266,13 @@ paths:
         in: query
         name: user
         type: string
-      - description: "Comma-separated operations: connect, disconnect, create_file, mkdirat, unlinkat, renameat, openat, close, read, write"
+      - description: 'Comma-separated operations: connect, disconnect, create_file,
+          mkdirat, unlinkat, renameat, openat, close, read, write'
         in: query
         name: action
         type: string
-      - description: Case-insensitive text in the path, rename target, user, share, client name or IP address
+      - description: Case-insensitive text in the path, rename target, user, share,
+          client name or IP address
         in: query
         name: q
         type: string
@@ -27330,7 +28308,9 @@ paths:
     get:
       consumes:
       - application/json
-      description: Retrieve the Samba global configuration settings. Returns 404 with message samba_not_initialized when the Samba service has never been enabled on this node.
+      description: Retrieve the Samba global configuration settings. Returns 404 with
+        message samba_not_initialized when the Samba service has never been enabled
+        on this node.
       produces:
       - application/json
       responses:
@@ -27354,7 +28334,13 @@ paths:
     put:
       consumes:
       - application/json
-      description: Validate and save the Samba global configuration, then rewrite smb4.conf and restart Samba, which disconnects connected clients. Samba is only restarted when the Samba service is enabled in Sylve. The complete configuration is checked with testparm before anything is saved, and a rejection returns 400; unknown interface names and a server string ending in a backslash are also rejected. Omitted booleans are saved as false. If the change was saved but Samba could not apply it, the response is 500 with message samba_apply_failed.
+      description: Validate and save the Samba global configuration, then rewrite
+        smb4.conf and restart Samba, which disconnects connected clients. Samba is
+        only restarted when the Samba service is enabled in Sylve. The complete configuration
+        is checked with testparm before anything is saved, and a rejection returns
+        400; unknown interface names and a server string ending in a backslash are
+        also rejected. Omitted booleans are saved as false. If the change was saved
+        but Samba could not apply it, the response is 500 with message samba_apply_failed.
       parameters:
       - description: Samba global configuration
         in: body
@@ -27400,7 +28386,10 @@ paths:
       - Samba
   /samba/datasets:
     get:
-      description: "List every ZFS filesystem with its mount state, the share already using it (sharedBy), and why it cannot be shared (block: root, system_path, boot_environment, sylve_data or contains_protected_data). Datasets with a block are refused when creating a share or moving one to them."
+      description: 'List every ZFS filesystem with its mount state, the share already
+        using it (sharedBy), and why it cannot be shared (block: root, system_path,
+        boot_environment, sylve_data or contains_protected_data). Datasets with a
+        block are refused when creating a share or moving one to them.'
       produces:
       - application/json
       responses:
@@ -27427,7 +28416,9 @@ paths:
       - Samba
   /samba/principals:
     get:
-      description: List the PAM users and groups that can be given access to shares. sambaAccount tells whether a user has a Samba password and can sign in over SMB; it is null when the Samba account list could not be read.
+      description: List the PAM users and groups that can be given access to shares.
+        sambaAccount tells whether a user has a Samba password and can sign in over
+        SMB; it is null when the Samba account list could not be read.
       produces:
       - application/json
       responses:
@@ -27456,7 +28447,10 @@ paths:
     get:
       consumes:
       - application/json
-      description: Retrieve all configured Samba shares with their dataset name and mountpoint, their state (active, disabled, dataset_missing or dataset_unmounted), datasetBlock when the share uses a dataset that could no longer be shared, and the progress of any job applying access to existing files (permissionsJob).
+      description: Retrieve all configured Samba shares with their dataset name and
+        mountpoint, their state (active, disabled, dataset_missing or dataset_unmounted),
+        datasetBlock when the share uses a dataset that could no longer be shared,
+        and the progress of any job applying access to existing files (permissionsJob).
       produces:
       - application/json
       responses:
@@ -27476,7 +28470,18 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a Samba share on a mounted ZFS filesystem. Share names must be 1 to 80 characters without control characters, backslashes, slashes, colons, asterisks, question marks, double quotes, angle brackets, pipes, square brackets or commas, must not be global, homes, printers, print$ or ipc$, and must be unique ignoring case. System datasets, boot environments, Sylve data and datasets containing them are refused with dataset_not_shareable and a reason. The share's ACL entries are set on the dataset's top folder and Samba reloads its configuration without disconnecting clients. With applyToExisting, a background job also applies the access to the files and folders already in the dataset, without crossing into other datasets; its progress appears in permissionsJob. If the change was saved but Samba could not apply it, the response is 500 with message samba_apply_failed, with the saved share as data.
+      description: Create a Samba share on a mounted ZFS filesystem. Share names must
+        be 1 to 80 characters without control characters, backslashes, slashes, colons,
+        asterisks, question marks, double quotes, angle brackets, pipes, square brackets
+        or commas, must not be global, homes, printers, print$ or ipc$, and must be
+        unique ignoring case. System datasets, boot environments, Sylve data and datasets
+        containing them are refused with dataset_not_shareable and a reason. The share's
+        ACL entries are set on the dataset's top folder and Samba reloads its configuration
+        without disconnecting clients. With applyToExisting, a background job also
+        applies the access to the files and folders already in the dataset, without
+        crossing into other datasets; its progress appears in permissionsJob. If the
+        change was saved but Samba could not apply it, the response is 500 with message
+        samba_apply_failed, with the saved share as data.
       parameters:
       - description: Samba share settings
         in: body
@@ -27516,7 +28521,10 @@ paths:
     delete:
       consumes:
       - application/json
-      description: Delete a Samba share. The dataset and its files are kept; the share's ACL entries are removed from the dataset's top folder and a running access job is stopped. If the change was saved but Samba could not apply it, the response is 500 with message samba_apply_failed (the share is deleted).
+      description: Delete a Samba share. The dataset and its files are kept; the share's
+        ACL entries are removed from the dataset's top folder and a running access
+        job is stopped. If the change was saved but Samba could not apply it, the
+        response is 500 with message samba_apply_failed (the share is deleted).
       parameters:
       - description: Share ID
         in: path
@@ -27554,7 +28562,19 @@ paths:
     put:
       consumes:
       - application/json
-      description: Update a Samba share. Omitted enabled and extraShareConfig keep their current values; other omitted fields are reset. Share names must be 1 to 80 characters without control characters, backslashes, slashes, colons, asterisks, question marks, double quotes, angle brackets, pipes, square brackets or commas, must not be global, homes, printers, print$ or ipc$, and must be unique ignoring case. System datasets, boot environments, Sylve data and datasets containing them are refused with dataset_not_shareable and a reason. Disabling removes the share's ACL entries from the dataset's top folder and stops a running access job. With applyToExisting, the background job applies the new access to existing files and folders and removes users and groups that lost access; guest access that is turned off is only removed from the top folder. If the change was saved but Samba could not apply it, the response is 500 with message samba_apply_failed, with the saved share as data.
+      description: Update a Samba share. Omitted enabled and extraShareConfig keep
+        their current values; other omitted fields are reset. Share names must be
+        1 to 80 characters without control characters, backslashes, slashes, colons,
+        asterisks, question marks, double quotes, angle brackets, pipes, square brackets
+        or commas, must not be global, homes, printers, print$ or ipc$, and must be
+        unique ignoring case. System datasets, boot environments, Sylve data and datasets
+        containing them are refused with dataset_not_shareable and a reason. Disabling
+        removes the share's ACL entries from the dataset's top folder and stops a
+        running access job. With applyToExisting, the background job applies the new
+        access to existing files and folders and removes users and groups that lost
+        access; guest access that is turned off is only removed from the top folder.
+        If the change was saved but Samba could not apply it, the response is 500
+        with message samba_apply_failed, with the saved share as data.
       parameters:
       - description: Share ID
         in: path
@@ -27603,7 +28623,11 @@ paths:
     put:
       consumes:
       - application/json
-      description: Set whether a Samba share is included in the active configuration. Enabling checks the dataset again and refuses datasets that cannot be shared; disabling removes the share's ACL entries from the dataset's top folder and stops a running access job. If the change was saved but Samba could not apply it, the response is 500 with message samba_apply_failed.
+      description: Set whether a Samba share is included in the active configuration.
+        Enabling checks the dataset again and refuses datasets that cannot be shared;
+        disabling removes the share's ACL entries from the dataset's top folder and
+        stops a running access job. If the change was saved but Samba could not apply
+        it, the response is 500 with message samba_apply_failed.
       parameters:
       - description: Share ID
         in: path
@@ -27650,7 +28674,8 @@ paths:
       - Samba
   /samba/shares/{id}/permissions-job:
     delete:
-      description: Cancel the background job started by applyToExisting. Items already processed keep their new permissions.
+      description: Cancel the background job started by applyToExisting. Items already
+        processed keep their new permissions.
       parameters:
       - description: Share ID
         in: path
@@ -27687,7 +28712,10 @@ paths:
       - Samba
   /samba/status:
     get:
-      description: Report whether the Samba service is enabled in Sylve and running, its version, and its current sessions, share connections and number of open files as reported by smbstatus. When smbstatus fails while Samba runs, error explains why and the lists are empty.
+      description: Report whether the Samba service is enabled in Sylve and running,
+        its version, and its current sessions, share connections and number of open
+        files as reported by smbstatus. When smbstatus fails while Samba runs, error
+        explains why and the lists are empty.
       produces:
       - application/json
       responses:
@@ -27848,7 +28876,11 @@ paths:
       - System
   /system/file-explorer:
     get:
-      description: "List the direct entries in an absolute directory path. Symbolic links report their target in link and take the type of what they point to; broken links are marked broken. Entries include their mode, owner and group, the file system mounted there (mount), and why delete, rename and move refuse them (protected)."
+      description: List the direct entries in an absolute directory path. Symbolic
+        links report their target in link and take the type of what they point to;
+        broken links are marked broken. Entries include their mode, owner and group,
+        the file system mounted there (mount), and why delete, rename and move refuse
+        them (protected).
       parameters:
       - description: Absolute directory path; defaults to /
         in: query
@@ -27944,7 +28976,15 @@ paths:
       - System
   /system/file-explorer/archive:
     get:
-      description: Stream a zip archive, built while it downloads. With one id, the id must be a folder and the archive holds that folder and everything inside it. With 2 to 512 ids, all in the same folder, the archive holds those items at its top level and is named after the folder and the item count, like "photos - 3 items.zip". Symbolic links are stored as links, not followed. FIFOs, sockets, devices and unreadable items are skipped and listed in SYLVE-SKIPPED.txt inside the archive, next to the archived items. Browsers authenticate with a ticket from POST /auth/download-tickets (kind archive) issued for the same ids in the same order.
+      description: Stream a zip archive, built while it downloads. With one id, the
+        id must be a folder and the archive holds that folder and everything inside
+        it. With 2 to 512 ids, all in the same folder, the archive holds those items
+        at its top level and is named after the folder and the item count, like "photos
+        - 3 items.zip". Symbolic links are stored as links, not followed. FIFOs, sockets,
+        devices and unreadable items are skipped and listed in SYLVE-SKIPPED.txt inside
+        the archive, next to the archived items. Browsers authenticate with a ticket
+        from POST /auth/download-tickets (kind archive) issued for the same ids in
+        the same order.
       parameters:
       - collectionFormat: multi
         description: Absolute path; repeat for several items in one folder
@@ -27966,7 +29006,8 @@ paths:
           schema:
             type: file
         "400":
-          description: Invalid path, a single id that is not a folder, or more than 512 ids
+          description: Invalid path, a single id that is not a folder, or more than
+            512 ids
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "401":
@@ -27998,7 +29039,18 @@ paths:
     post:
       consumes:
       - application/json
-      description: "Copy or move up to 512 regular files, folders, or symbolic links without overwriting existing entries; an existing destination directory receives the source basename. Copies keep owner, group, mode, modification time, ACLs, user extended attributes and file flags, and files hard-linked to each other stay hard-linked within one request. Moving a protected path (/, top-level entries, the base system, mount points and anything containing one, jail roots and Sylve data) is refused with 403 and data {path, reason}. If a move across file systems copies everything but cannot remove all of the source, the copy is kept and file_explorer_move_incomplete is returned. Closing the request cancels a copy in progress: the partly copied item is removed and file_explorer_cancelled is returned. If a batch stops part-way, data.completed lists the sources already copied or moved."
+      description: 'Copy or move up to 512 regular files, folders, or symbolic links
+        without overwriting existing entries; an existing destination directory receives
+        the source basename. Copies keep owner, group, mode, modification time, ACLs,
+        user extended attributes and file flags, and files hard-linked to each other
+        stay hard-linked within one request. Moving a protected path (/, top-level
+        entries, the base system, mount points and anything containing one, jail roots
+        and Sylve data) is refused with 403 and data {path, reason}. If a move across
+        file systems copies everything but cannot remove all of the source, the copy
+        is kept and file_explorer_move_incomplete is returned. Closing the request
+        cancels a copy in progress: the partly copied item is removed and file_explorer_cancelled
+        is returned. If a batch stops part-way, data.completed lists the sources already
+        copied or moved.'
       parameters:
       - description: Copy or move files or folders request
         in: body
@@ -28022,7 +29074,8 @@ paths:
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "403":
-          description: Administrator access or filesystem permission required, or a protected path
+          description: Administrator access or filesystem permission required, or
+            a protected path
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "404":
@@ -28030,7 +29083,8 @@ paths:
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "409":
-          description: Destination exists, batch paths conflict, restore is in progress, or the request was cancelled
+          description: Destination exists, batch paths conflict, restore is in progress,
+            or the request was cancelled
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "413":
@@ -28054,7 +29108,15 @@ paths:
     post:
       consumes:
       - application/json
-      description: "Delete one or more files, folders, or symbolic links after validating the complete bounded request. Protected paths (/, top-level entries, the base system, mount points and anything containing one, jail roots and Sylve data) are refused with 403 and data {path, reason}. A refusal deletes nothing. If deleting stops part-way, data.completed lists the paths already deleted. Closing the request stops a delete in progress: whatever was not deleted yet is kept and file_explorer_cancelled is returned. Symbolic links are removed, never followed, and deleting never descends into another mounted file system; a mount found inside a folder stops the delete with 403 and reason mount_point."
+      description: 'Delete one or more files, folders, or symbolic links after validating
+        the complete bounded request. Protected paths (/, top-level entries, the base
+        system, mount points and anything containing one, jail roots and Sylve data)
+        are refused with 403 and data {path, reason}. A refusal deletes nothing. If
+        deleting stops part-way, data.completed lists the paths already deleted. Closing
+        the request stops a delete in progress: whatever was not deleted yet is kept
+        and file_explorer_cancelled is returned. Symbolic links are removed, never
+        followed, and deleting never descends into another mounted file system; a
+        mount found inside a folder stops the delete with 403 and reason mount_point.'
       parameters:
       - description: Delete files or folders request
         in: body
@@ -28078,7 +29140,8 @@ paths:
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "403":
-          description: Administrator access or filesystem permission required, or a protected path
+          description: Administrator access or filesystem permission required, or
+            a protected path
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "404":
@@ -28086,7 +29149,8 @@ paths:
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "409":
-          description: Restore is in progress, the entry is busy, or the request was cancelled
+          description: Restore is in progress, the entry is busy, or the request was
+            cancelled
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "413":
@@ -28104,7 +29168,9 @@ paths:
       - System
   /system/file-explorer/download:
     get:
-      description: Stream a regular file from an absolute system path with HTTP range support. Browsers authenticate with a single-use ticket from POST /auth/download-tickets (kind file) instead of a login token.
+      description: Stream a regular file from an absolute system path with HTTP range
+        support. Browsers authenticate with a single-use ticket from POST /auth/download-tickets
+        (kind file) instead of a login token.
       parameters:
       - description: Absolute path to the regular file
         in: query
@@ -28157,7 +29223,11 @@ paths:
       - System
   /system/file-explorer/list:
     get:
-      description: List an absolute directory path, returning at most limit entries (default 10000, maximum 50000). When q is set, only entries whose names contain it (case-insensitive) are returned. total counts every entry, matched counts the entries that match q, and truncated is set when matched exceeds limit; the returned entries are then the first by folders first and name.
+      description: List an absolute directory path, returning at most limit entries
+        (default 10000, maximum 50000). When q is set, only entries whose names contain
+        it (case-insensitive) are returned. total counts every entry, matched counts
+        the entries that match q, and truncated is set when matched exceeds limit;
+        the returned entries are then the first by folders first and name.
       parameters:
       - description: Absolute directory path; defaults to /
         in: query
@@ -28207,7 +29277,10 @@ paths:
     post:
       consumes:
       - application/json
-      description: "Rename a file, folder, or symbolic link without overwriting an existing entry. Protected paths (/, top-level entries, the base system, mount points and anything containing one, jail roots and Sylve data) are refused with 403 and data {path, reason}."
+      description: Rename a file, folder, or symbolic link without overwriting an
+        existing entry. Protected paths (/, top-level entries, the base system, mount
+        points and anything containing one, jail roots and Sylve data) are refused
+        with 403 and data {path, reason}.
       parameters:
       - description: Rename file or folder request
         in: body
@@ -28231,7 +29304,8 @@ paths:
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "403":
-          description: "Administrator access or filesystem permission required, or a protected path"
+          description: Administrator access or filesystem permission required, or
+            a protected path
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "404":
@@ -28259,7 +29333,8 @@ paths:
     delete:
       consumes:
       - application/json
-      description: Delete the unchanged file associated with a short-lived, server-issued FilePond upload identity
+      description: Delete the unchanged file associated with a short-lived, server-issued
+        FilePond upload identity
       parameters:
       - description: Upload revert request
         in: body
@@ -28310,7 +29385,10 @@ paths:
     post:
       consumes:
       - multipart/form-data
-      description: Upload exactly one file to an absolute destination folder through FilePond without overwriting an existing entry. The uploaded file gets mode 0644. Error responses carry data {code, retryable, limitBytes}, and server failures report only the code.
+      description: Upload exactly one file to an absolute destination folder through
+        FilePond without overwriting an existing entry. The uploaded file gets mode
+        0644. Error responses carry data {code, retryable, limitBytes}, and server
+        failures report only the code.
       parameters:
       - description: Destination folder path (e.g. /zroot/share)
         in: query
@@ -32811,7 +33889,9 @@ paths:
       - ZFS
   /zfs/datasets:
     delete:
-      description: Delete one or more ZFS datasets using exact name and GUID pairs. Returns 409 when anything being deleted is in use, including a volume an iSCSI target shares.
+      description: Delete one or more ZFS datasets using exact name and GUID pairs.
+        Returns 409 when anything being deleted is in use, including a volume an iSCSI
+        target shares.
       parameters:
       - collectionFormat: multi
         description: Exact dataset name; pair by index with each guid parameter
@@ -32932,7 +34012,8 @@ paths:
       - ZFS
   /zfs/datasets/filesystem/{guid}:
     delete:
-      description: Delete a ZFS filesystem and everything inside it. Returns 409 when anything inside it is in use, including a volume an iSCSI target shares.
+      description: Delete a ZFS filesystem and everything inside it. Returns 409 when
+        anything inside it is in use, including a volume an iSCSI target shares.
       parameters:
       - description: Filesystem GUID
         in: path
@@ -33035,7 +34116,9 @@ paths:
         in: query
         name: search
         type: string
-      - description: 'Comma-separated filters to exclude. bk_j, svms_, sjs_, ha_ and _template match Sylve snapshot kinds by snapshot name; other values exclude names containing them'
+      - description: Comma-separated filters to exclude. bk_j, svms_, sjs_, ha_ and
+          _template match Sylve snapshot kinds by snapshot name; other values exclude
+          names containing them
         in: query
         name: nameFilter
         type: string
@@ -33165,7 +34248,11 @@ paths:
     post:
       consumes:
       - application/json
-      description: 'Rollback to a ZFS snapshot. Refused with 409 for datasets Sylve manages (under <pool>/sylve; roll those back from their VM or jail), for operating-system file systems, and while the file system is used by a running VM or a container. When expectedNewer is set, it must list the GUIDs of every snapshot newer than the target, or the rollback is refused with 409.'
+      description: Rollback to a ZFS snapshot. Refused with 409 for datasets Sylve
+        manages (under <pool>/sylve; roll those back from their VM or jail), for operating-system
+        file systems, and while the file system is used by a running VM or a container.
+        When expectedNewer is set, it must list the GUIDs of every snapshot newer
+        than the target, or the rollback is refused with 409.
       parameters:
       - description: Snapshot GUID
         in: path
@@ -33417,7 +34504,8 @@ paths:
       - ZFS
   /zfs/datasets/volume/{guid}:
     delete:
-      description: Delete a ZFS volume and its snapshots. Returns 409 when a VM uses it or an iSCSI target shares it.
+      description: Delete a ZFS volume and its snapshots. Returns 409 when a VM uses
+        it or an iSCSI target shares it.
       parameters:
       - description: Volume GUID
         in: path
@@ -33451,7 +34539,9 @@ paths:
     patch:
       consumes:
       - application/json
-      description: 'Edit a ZFS volume. Properties listed in inherit are reset to their inherited value. Shrinking the volume or changing its volume mode is refused with 409 while a running VM uses it or an iSCSI target shares it.'
+      description: Edit a ZFS volume. Properties listed in inherit are reset to their
+        inherited value. Shrinking the volume or changing its volume mode is refused
+        with 409 while a running VM uses it or an iSCSI target shares it.
       parameters:
       - description: Volume GUID
         in: path
@@ -33496,7 +34586,12 @@ paths:
     post:
       consumes:
       - application/json
-      description: Write a downloaded ISO or disk image onto a ZFS volume, starting at its first byte. Disk images in formats other than raw, such as QCOW2 or VMDK, are converted to raw as they are written, and images with a backing file are refused. The image, or its virtual size for disk images, must fit in the volume. Returns 409 when the volume is in use, shared by an iSCSI target, read only or too small. The write continues if the client disconnects.
+      description: Write a downloaded ISO or disk image onto a ZFS volume, starting
+        at its first byte. Disk images in formats other than raw, such as QCOW2 or
+        VMDK, are converted to raw as they are written, and images with a backing
+        file are refused. The image, or its virtual size for disk images, must fit
+        in the volume. Returns 409 when the volume is in use, shared by an iSCSI target,
+        read only or too small. The write continues if the client disconnects.
       parameters:
       - description: Volume GUID
         in: path
@@ -33603,7 +34698,8 @@ paths:
       - ZFS
   /zfs/pools/{guid}:
     delete:
-      description: Delete a ZFS pool. Returns 409 when it holds jails, containers or datasets in use, or a volume an iSCSI target shares.
+      description: Delete a ZFS pool. Returns 409 when it holds jails, containers
+        or datasets in use, or a volume an iSCSI target shares.
       parameters:
       - description: Pool GUID
         in: path
@@ -33672,6 +34768,51 @@ paths:
       security:
       - BearerAuth: []
       summary: Edit Pool
+      tags:
+      - ZFS
+  /zfs/pools/{guid}/attach:
+    post:
+      consumes:
+      - application/json
+      description: Add a mirror member to an existing disk or mirror VDEV
+      parameters:
+      - description: Pool GUID
+        in: path
+        name: guid
+        required: true
+        type: string
+      - description: Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.AttachDevice'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Status Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Attach Device
       tags:
       - ZFS
   /zfs/pools/{guid}/detach:

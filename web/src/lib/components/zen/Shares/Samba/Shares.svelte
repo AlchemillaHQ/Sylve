@@ -46,12 +46,11 @@ under sponsorship from the FreeBSD Foundation.
 	import Delete from './Delete.svelte';
 	import Editor from './Editor.svelte';
 	import StatusStrip from './StatusStrip.svelte';
+	import { cachedStatus, datasetBlockReason } from '../shared';
 	import {
 		accessMode,
 		accessSummary,
 		connectionsByShare,
-		datasetBlockReason,
-		cachedStatus,
 		enableBlock,
 		jobSummary,
 		shareSaveError,
@@ -221,6 +220,12 @@ under sponsorship from the FreeBSD Foundation.
 
 	const helper = createColumnHelper<DataTableFeatures, SambaShare>();
 	const columns = helper.columns([
+		helper.accessor((share) => shareState(share).label, {
+			id: 'status',
+			header: 'Status',
+			enableGlobalFilter: false,
+			cell: ({ row }) => renderSnippet(statusCell, row.original)
+		}),
 		helper.accessor('name', {
 			id: 'name',
 			header: 'Name',
@@ -237,12 +242,6 @@ under sponsorship from the FreeBSD Foundation.
 			header: 'Access',
 			enableGlobalFilter: false,
 			cell: ({ row }) => renderSnippet(accessCell, row.original)
-		}),
-		helper.accessor((share) => shareState(share).label, {
-			id: 'status',
-			header: 'Status',
-			enableGlobalFilter: false,
-			cell: ({ row }) => renderSnippet(statusCell, row.original)
 		}),
 		helper.accessor((share) => connectionCount(share) ?? -1, {
 			id: 'connections',
@@ -424,8 +423,9 @@ under sponsorship from the FreeBSD Foundation.
 						></span>
 					</Tooltip.Trigger>
 					<Tooltip.Content side="top" sideOffset={6} class="max-w-64 text-left text-pretty">
-						This dataset can’t be shared anymore. {reason}. The share keeps working, but once it’s
-						disabled it can’t be enabled again.
+						This dataset can’t be shared anymore. {reason}. {share.enabled
+							? 'The share keeps working, but once it’s disabled it can’t be enabled again.'
+							: 'The share can’t be enabled again.'}
 					</Tooltip.Content>
 				</Tooltip.Root>
 			{/if}
@@ -491,12 +491,12 @@ under sponsorship from the FreeBSD Foundation.
 	</div>
 	<dl class="grid grid-cols-2 gap-3 text-xs">
 		<div class="min-w-0">
-			<dt class="text-muted-foreground">Dataset</dt>
-			<dd class="mt-1">{@render datasetCell(share)}</dd>
-		</div>
-		<div class="min-w-0">
 			<dt class="text-muted-foreground">Status</dt>
 			<dd class="mt-1">{@render statusCell(share)}</dd>
+		</div>
+		<div class="min-w-0">
+			<dt class="text-muted-foreground">Dataset</dt>
+			<dd class="mt-1">{@render datasetCell(share)}</dd>
 		</div>
 		<div class="min-w-0">
 			<dt class="text-muted-foreground">Access</dt>

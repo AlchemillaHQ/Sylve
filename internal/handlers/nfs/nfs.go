@@ -51,6 +51,14 @@ type ShareRequest struct {
 	Security     *[]string `json:"security"`
 }
 
+type ShareEnabledRequest struct {
+	Enabled *bool `json:"enabled"`
+}
+
+type ApplyRequest struct {
+	Confirm *bool `json:"confirm"`
+}
+
 type MutationResult struct {
 	Saved       bool                `json:"saved"`
 	Applied     bool                `json:"applied"`
@@ -140,6 +148,16 @@ func saved(c *gin.Context, code int, service *nfs.Service, share *nfsModels.NFSS
 	})
 }
 
+// @Summary Get NFS settings
+// @Description Return the saved NFS server settings. Before NFS is configured, the defaults are NFSv3, a maximum NFSv4 version of 4.2, automatic threads and all interfaces.
+// @Tags NFS
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[nfsModels.NFSConfig] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /nfs/config [get]
 func GetConfig(service *nfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		config, err := service.GetConfig(c.Request.Context())
@@ -151,6 +169,22 @@ func GetConfig(service *nfs.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Update NFS settings
+// @Description Validate and save the NFS server settings; every field is required. protocol is v3, v4 or v3v4 and v4MaxVersion is 4.0, 4.1 or 4.2. udp needs NFSv3. Thread bounds are both 0 for automatic, or 1 to 256 with the minimum not above the maximum. bindAddresses takes at most 32 local unicast addresses; empty means all interfaces. When NFS is enabled, the NFS daemons restart, which interrupts connected clients. Validation failures carry field, code and message as data. If the change was saved but could not be applied, the response is 202 with message nfs_configuration_saved_apply_pending and the error.
+// @Tags NFS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ConfigRequest true "NFS settings"
+// @Success 200 {object} internal.APIResponse[MutationResult] "Saved"
+// @Success 202 {object} internal.APIResponse[MutationResult] "Saved, apply pending"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /nfs/config [put]
 func SetConfig(service *nfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var request ConfigRequest
@@ -172,18 +206,70 @@ func SetConfig(service *nfs.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary List NFS shares
+// @Description List the NFS share rules ordered by ID. Each rule reports its dataset's current name and mountpoint, a state of active, disabled, dataset_missing or dataset_unmounted, and datasetBlock when new shares refuse its dataset.
+// @Tags NFS
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[[]nfs.ShareView] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /nfs/shares [get]
 func GetShares(service *nfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		shares, err := service.GetShares(c.Request.Context())
+		shares, err := service.ShareViews(c.Request.Context())
 		if err != nil {
 			writeError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, internal.APIResponse[[]nfsModels.NFSShare]{Status: "success", Data: shares})
+		c.JSON(http.StatusOK, internal.APIResponse[[]nfs.ShareView]{Status: "success", Data: shares})
 	}
 }
 
-func SaveShare(service *nfs.Service, create bool) gin.HandlerFunc {
+// @Summary Create an NFS share
+// @Description Create an NFS share rule for a ZFS filesystem given by its GUID. enabled, readOnly and everyone are required. clients takes IPv4 or IPv6 addresses and CIDRs, at most 64, and must be empty when everyone is set. security takes sys, krb5, krb5i and krb5p and defaults to sys. A maproot or mapall group needs the matching user, and maproot and mapall cannot be combined. The root file system, system paths, boot environments, Sylve data and datasets containing them are refused with code dataset_not_shareable and a block. Enabled rules on the same dataset must not overlap. Saving an enabled share restarts the NFS daemons. Validation failures carry field, code and message as data. If the change was saved but could not be applied, the response is 202 with message nfs_configuration_saved_apply_pending and the error.
+// @Tags NFS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ShareRequest true "NFS share"
+// @Success 201 {object} internal.APIResponse[MutationResult] "Created"
+// @Success 202 {object} internal.APIResponse[MutationResult] "Saved, apply pending"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /nfs/shares [post]
+func CreateShare(service *nfs.Service) gin.HandlerFunc {
+	return saveShare(service, true)
+}
+
+// @Summary Update an NFS share
+// @Description Replace an NFS share rule. As well as the fields create requires, maprootUser, maprootGroup, mapallUser, mapallGroup, allDirs and security are required. The dataset is checked like create when the rule is enabled and its access changes, or when its dataset changes. Changing only the description does not restart the NFS daemons. Validation failures carry field, code and message as data. If the change was saved but could not be applied, the response is 202 with message nfs_configuration_saved_apply_pending and the error.
+// @Tags NFS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path uint true "Share ID"
+// @Param request body ShareRequest true "NFS share"
+// @Success 200 {object} internal.APIResponse[MutationResult] "Updated"
+// @Success 202 {object} internal.APIResponse[MutationResult] "Saved, apply pending"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /nfs/shares/{id} [put]
+func UpdateShare(service *nfs.Service) gin.HandlerFunc {
+	return saveShare(service, false)
+}
+
+func saveShare(service *nfs.Service, create bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var id uint
 		if !create {
@@ -234,15 +320,31 @@ func SaveShare(service *nfs.Service, create bool) gin.HandlerFunc {
 	}
 }
 
+// @Summary Enable or disable an NFS share
+// @Description Enable or disable an NFS share rule. Enabling checks the dataset like create; disabling never needs the dataset. Validation failures carry field, code and message as data. If the change was saved but could not be applied, the response is 202 with message nfs_configuration_saved_apply_pending and the error.
+// @Tags NFS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path uint true "Share ID"
+// @Param request body ShareEnabledRequest true "Enabled state"
+// @Success 200 {object} internal.APIResponse[MutationResult] "Updated"
+// @Success 202 {object} internal.APIResponse[MutationResult] "Saved, apply pending"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /nfs/shares/{id}/enabled [put]
 func SetShareEnabled(service *nfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := pathID(c)
 		if !ok {
 			return
 		}
-		var request struct {
-			Enabled *bool `json:"enabled"`
-		}
+		var request ShareEnabledRequest
 		if !bindJSON(c, &request) {
 			return
 		}
@@ -255,6 +357,20 @@ func SetShareEnabled(service *nfs.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Delete an NFS share
+// @Description Delete an NFS share rule and apply the remaining rules. If the change was saved but could not be applied, the response is 202 with message nfs_configuration_saved_apply_pending and the error.
+// @Tags NFS
+// @Produce json
+// @Security BearerAuth
+// @Param id path uint true "Share ID"
+// @Success 200 {object} internal.APIResponse[MutationResult] "Deleted"
+// @Success 202 {object} internal.APIResponse[MutationResult] "Deleted, apply pending"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /nfs/shares/{id} [delete]
 func DeleteShare(service *nfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := pathID(c)
@@ -266,6 +382,16 @@ func DeleteShare(service *nfs.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Get NFS status
+// @Description Report whether NFS is enabled in Sylve and managed by it, the apply status (stopped, pending, applying, starting, applied or idle), the number of enabled rules and exported filesystems, the last apply error and when the runtime was last checked. sharesVersion and configVersion change whenever the saved shares or settings change.
+// @Tags NFS
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[nfs.Status] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /nfs/status [get]
 func GetStatus(service *nfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		status, err := service.GetStatus(c.Request.Context())
@@ -277,6 +403,16 @@ func GetStatus(service *nfs.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary List datasets for NFS shares
+// @Description List the filesystems in Sylve's usable pools for the share editor, plus any dataset a share refers to. available is false for datasets new shares cannot use, with reason and code, and block for refused datasets. A saved dataset that no longer exists has code dataset_missing.
+// @Tags NFS
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[[]nfs.DatasetOption] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /nfs/datasets [get]
 func GetDatasets(service *nfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		datasets, err := service.GetDatasets(c.Request.Context())
@@ -288,6 +424,17 @@ func GetDatasets(service *nfs.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Preview NFS exports
+// @Description Render the exports file the saved rules would produce, without applying it. A 409 response explains why the rules cannot be exported.
+// @Tags NFS
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[nfs.Preview] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /nfs/preview [get]
 func PreviewExports(service *nfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		preview, err := service.PreviewExports(c.Request.Context())
@@ -299,11 +446,24 @@ func PreviewExports(service *nfs.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Apply NFS configuration
+// @Description Apply the saved NFS settings and share rules again, restarting the NFS daemons, which interrupts connected clients; confirm must be true. If the apply fails, the response is 202 with message nfs_configuration_saved_apply_pending and the error.
+// @Tags NFS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ApplyRequest true "Confirmation"
+// @Success 200 {object} internal.APIResponse[MutationResult] "Applied"
+// @Success 202 {object} internal.APIResponse[MutationResult] "Apply pending"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /nfs/apply [post]
 func Apply(service *nfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var request struct {
-			Confirm *bool `json:"confirm"`
-		}
+		var request ApplyRequest
 		if !bindJSON(c, &request) {
 			return
 		}

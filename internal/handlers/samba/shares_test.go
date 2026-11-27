@@ -20,6 +20,7 @@ import (
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	"github.com/alchemillahq/sylve/internal/services/samba"
+	"github.com/alchemillahq/sylve/internal/sharerules"
 	"github.com/gin-gonic/gin"
 )
 
@@ -381,12 +382,12 @@ func TestUpdateShareRequestKeepsOmittedEnabledUnset(t *testing.T) {
 
 func TestSambaShareServiceErrorStatusMapsNewShareRules(t *testing.T) {
 	for err, want := range map[error]int{
-		&samba.DatasetNotShareableError{Reason: samba.ShareDatasetSystemPath}: http.StatusBadRequest,
-		errors.New("share_name_reserved"):                                     http.StatusBadRequest,
-		errors.New("share_name_too_long"):                                     http.StatusBadRequest,
-		fmt.Errorf("%w: reload failed", samba.ErrSambaApplyFailed):            http.StatusInternalServerError,
-		errors.New("share_not_found"):                                         http.StatusNotFound,
-		errors.New("failed_to_get_share: disk I/O error"):                     http.StatusInternalServerError,
+		&samba.DatasetNotShareableError{Reason: sharerules.BlockSystemPath}: http.StatusBadRequest,
+		errors.New("share_name_reserved"):                                   http.StatusBadRequest,
+		errors.New("share_name_too_long"):                                   http.StatusBadRequest,
+		fmt.Errorf("%w: reload failed", samba.ErrSambaApplyFailed):          http.StatusInternalServerError,
+		errors.New("share_not_found"):                                       http.StatusNotFound,
+		errors.New("failed_to_get_share: disk I/O error"):                   http.StatusInternalServerError,
 	} {
 		if got := sambaShareServiceErrorStatus(err); got != want {
 			t.Errorf("%v mapped to %d; want %d", err, got, want)

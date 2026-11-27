@@ -13764,6 +13764,65 @@
                 }
             }
         },
+        "/jail/{ctid}/network/host-interfaces": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List host interfaces that can be moved into a vnet jail, with the reason when one is not eligible and the jail that already uses it",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "List host interfaces for jail networks",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Jail CTID",
+                        "name": "ctid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_jail_HostInterfaceTarget"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/jail/{ctid}/network/inheritance": {
             "put": {
                 "security": [
@@ -20698,6 +20757,716 @@
                     },
                     "503": {
                         "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/nfs/apply": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Apply the saved NFS settings and share rules again, restarting the NFS daemons, which interrupts connected clients; confirm must be true. If the apply fails, the response is 202 with message nfs_configuration_saved_apply_pending and the error.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "NFS"
+                ],
+                "summary": "Apply NFS configuration",
+                "parameters": [
+                    {
+                        "description": "Confirmation",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_nfs.ApplyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Applied",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult"
+                        }
+                    },
+                    "202": {
+                        "description": "Apply pending",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "413": {
+                        "description": "Payload Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/nfs/config": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Return the saved NFS server settings. Before NFS is configured, the defaults are NFSv3, a maximum NFSv4 version of 4.2, automatic threads and all interfaces.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "NFS"
+                ],
+                "summary": "Get NFS settings",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_nfs_NFSConfig"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Validate and save the NFS server settings; every field is required. protocol is v3, v4 or v3v4 and v4MaxVersion is 4.0, 4.1 or 4.2. udp needs NFSv3. Thread bounds are both 0 for automatic, or 1 to 256 with the minimum not above the maximum. bindAddresses takes at most 32 local unicast addresses; empty means all interfaces. When NFS is enabled, the NFS daemons restart, which interrupts connected clients. Validation failures carry field, code and message as data. If the change was saved but could not be applied, the response is 202 with message nfs_configuration_saved_apply_pending and the error.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "NFS"
+                ],
+                "summary": "Update NFS settings",
+                "parameters": [
+                    {
+                        "description": "NFS settings",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_nfs.ConfigRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Saved",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult"
+                        }
+                    },
+                    "202": {
+                        "description": "Saved, apply pending",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "413": {
+                        "description": "Payload Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/nfs/datasets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List the filesystems in Sylve's usable pools for the share editor, plus any dataset a share refers to. available is false for datasets new shares cannot use, with reason and code, and block for refused datasets. A saved dataset that no longer exists has code dataset_missing.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "NFS"
+                ],
+                "summary": "List datasets for NFS shares",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_nfs_DatasetOption"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/nfs/preview": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Render the exports file the saved rules would produce, without applying it. A 409 response explains why the rules cannot be exported.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "NFS"
+                ],
+                "summary": "Preview NFS exports",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_nfs_Preview"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/nfs/shares": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List the NFS share rules ordered by ID. Each rule reports its dataset's current name and mountpoint, a state of active, disabled, dataset_missing or dataset_unmounted, and datasetBlock when new shares refuse its dataset.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "NFS"
+                ],
+                "summary": "List NFS shares",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_nfs_ShareView"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create an NFS share rule for a ZFS filesystem given by its GUID. enabled, readOnly and everyone are required. clients takes IPv4 or IPv6 addresses and CIDRs, at most 64, and must be empty when everyone is set. security takes sys, krb5, krb5i and krb5p and defaults to sys. A maproot or mapall group needs the matching user, and maproot and mapall cannot be combined. The root file system, system paths, boot environments, Sylve data and datasets containing them are refused with code dataset_not_shareable and a block. Enabled rules on the same dataset must not overlap. Saving an enabled share restarts the NFS daemons. Validation failures carry field, code and message as data. If the change was saved but could not be applied, the response is 202 with message nfs_configuration_saved_apply_pending and the error.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "NFS"
+                ],
+                "summary": "Create an NFS share",
+                "parameters": [
+                    {
+                        "description": "NFS share",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_nfs.ShareRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult"
+                        }
+                    },
+                    "202": {
+                        "description": "Saved, apply pending",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "413": {
+                        "description": "Payload Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/nfs/shares/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Replace an NFS share rule. As well as the fields create requires, maprootUser, maprootGroup, mapallUser, mapallGroup, allDirs and security are required. The dataset is checked like create when the rule is enabled and its access changes, or when its dataset changes. Changing only the description does not restart the NFS daemons. Validation failures carry field, code and message as data. If the change was saved but could not be applied, the response is 202 with message nfs_configuration_saved_apply_pending and the error.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "NFS"
+                ],
+                "summary": "Update an NFS share",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Share ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "NFS share",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_nfs.ShareRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult"
+                        }
+                    },
+                    "202": {
+                        "description": "Saved, apply pending",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "413": {
+                        "description": "Payload Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete an NFS share rule and apply the remaining rules. If the change was saved but could not be applied, the response is 202 with message nfs_configuration_saved_apply_pending and the error.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "NFS"
+                ],
+                "summary": "Delete an NFS share",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Share ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deleted",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult"
+                        }
+                    },
+                    "202": {
+                        "description": "Deleted, apply pending",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/nfs/shares/{id}/enabled": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Enable or disable an NFS share rule. Enabling checks the dataset like create; disabling never needs the dataset. Validation failures carry field, code and message as data. If the change was saved but could not be applied, the response is 202 with message nfs_configuration_saved_apply_pending and the error.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "NFS"
+                ],
+                "summary": "Enable or disable an NFS share",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Share ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Enabled state",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_nfs.ShareEnabledRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult"
+                        }
+                    },
+                    "202": {
+                        "description": "Saved, apply pending",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "413": {
+                        "description": "Payload Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/nfs/status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Report whether NFS is enabled in Sylve and managed by it, the apply status (stopped, pending, applying, starting, applied or idle), the number of enabled rules and exported filesystems, the last apply error and when the runtime was last checked. sharesVersion and configVersion change whenever the saved shares or settings change.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "NFS"
+                ],
+                "summary": "Get NFS status",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_nfs_Status"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -31055,7 +31824,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Rollback to a ZFS snapshot. Refused with 409 for datasets Sylve manages (under <pool>/sylve; roll those back from their VM or jail), for operating-system file systems, and while the file system is used by a running VM or a container. When expectedNewer is set, it must list the GUIDs of every snapshot newer than the target, or the rollback is refused with 409.",
+                "description": "Rollback to a ZFS snapshot. Refused with 409 for datasets Sylve manages (under \u003cpool\u003e/sylve; roll those back from their VM or jail), for operating-system file systems, and while the file system is used by a running VM or a container. When expectedNewer is set, it must list the GUIDs of every snapshot newer than the target, or the rollback is refused with 409.",
                 "consumes": [
                     "application/json"
                 ],
@@ -31848,6 +32617,76 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/zfs/pools/{guid}/attach": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Add a mirror member to an existing disk or mirror VDEV",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZFS"
+                ],
+                "summary": "Attach Device",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Pool GUID",
+                        "name": "guid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.AttachDevice"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Status Unavailable",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -33180,6 +34019,26 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_jail_HostInterfaceTarget": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.HostInterfaceTarget"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_jail_SimpleList": {
             "type": "object",
             "properties": {
@@ -33527,6 +34386,46 @@
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_dynamicdns.EntryView"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_nfs_DatasetOption": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_nfs.DatasetOption"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_nfs_ShareView": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_nfs.ShareView"
                     }
                 },
                 "error": {
@@ -34176,6 +35075,23 @@
             "properties": {
                 "data": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.WireGuardServer"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_nfs_NFSConfig": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_nfs.NFSConfig"
                 },
                 "error": {
                     "type": "string"
@@ -35344,6 +36260,40 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_nfs_Preview": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_nfs.Preview"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_nfs_Status": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_nfs.Status"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_notifications_RuleConfigView": {
             "type": "object",
             "properties": {
@@ -35927,6 +36877,23 @@
             "properties": {
                 "data": {
                     "$ref": "#/definitions/internal_handlers_network.ListSwitchResponse"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_nfs_MutationResult": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers_nfs.MutationResult"
                 },
                 "error": {
                     "type": "string"
@@ -38341,6 +39308,10 @@
                 "dhcp": {
                     "type": "boolean"
                 },
+                "hostInterface": {
+                    "description": "Declared last: GORM's SQLite migrator rebuilds the table from its old\nschema when it alters an earlier column, dropping columns added before.",
+                    "type": "string"
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -39566,6 +40537,120 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_db_models_nfs.ExportedFilesystem": {
+            "type": "object",
+            "properties": {
+                "guid": {
+                    "type": "string"
+                },
+                "mountpoint": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_nfs.NFSConfig": {
+            "type": "object",
+            "properties": {
+                "allowNonroot": {
+                    "type": "boolean"
+                },
+                "bindAddresses": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "kerberosPrincipal": {
+                    "type": "string"
+                },
+                "maxThreads": {
+                    "type": "integer"
+                },
+                "minThreads": {
+                    "type": "integer"
+                },
+                "mountdPort": {
+                    "type": "integer"
+                },
+                "numericIds": {
+                    "type": "boolean"
+                },
+                "protocol": {
+                    "type": "string"
+                },
+                "udp": {
+                    "type": "boolean"
+                },
+                "v4MaxVersion": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_nfs.NFSShare": {
+            "type": "object",
+            "properties": {
+                "allDirs": {
+                    "type": "boolean"
+                },
+                "clients": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "dataset": {
+                    "type": "string"
+                },
+                "datasetName": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "everyone": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "mapallGroup": {
+                    "type": "string"
+                },
+                "mapallUser": {
+                    "type": "string"
+                },
+                "maprootGroup": {
+                    "type": "string"
+                },
+                "maprootUser": {
+                    "type": "string"
+                },
+                "mountpoint": {
+                    "type": "string"
+                },
+                "readOnly": {
+                    "type": "boolean"
+                },
+                "security": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_db_models_samba.SambaAuditLog": {
             "type": "object",
             "properties": {
@@ -39854,11 +40939,13 @@
             "type": "string",
             "enum": [
                 "staged",
-                "completed"
+                "completed",
+                "receiving"
             ],
             "x-enum-varnames": [
                 "UploadStatusStaged",
-                "UploadStatusCompleted"
+                "UploadStatusCompleted",
+                "UploadStatusReceiving"
             ]
         },
         "github_com_alchemillahq_sylve_internal_db_models_vm.Network": {
@@ -42163,6 +43250,9 @@
                 "devFSDisabled": {
                     "type": "boolean"
                 },
+                "hardware": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_info.Hardware"
+                },
                 "hostname": {
                     "type": "string"
                 },
@@ -42242,11 +43332,28 @@
                 "sockets": {
                     "type": "integer"
                 },
+                "temperature": {
+                    "type": "number"
+                },
                 "threadsPerCore": {
                     "type": "integer"
                 },
                 "usage": {
                     "type": "number"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_info.Hardware": {
+            "type": "object",
+            "properties": {
+                "product": {
+                    "type": "string"
+                },
+                "serial": {
+                    "type": "string"
+                },
+                "vendor": {
+                    "type": "string"
                 }
             }
         },
@@ -42308,6 +43415,9 @@
         "github_com_alchemillahq_sylve_internal_interfaces_services_info.RAMInfo": {
             "type": "object",
             "properties": {
+                "arc": {
+                    "type": "integer"
+                },
                 "free": {
                     "type": "integer"
                 },
@@ -42393,8 +43503,7 @@
         "github_com_alchemillahq_sylve_internal_interfaces_services_jail.AddJailNetworkRequest": {
             "type": "object",
             "required": [
-                "name",
-                "switchName"
+                "name"
             ],
             "properties": {
                 "defaultGateway": {
@@ -42402,6 +43511,9 @@
                 },
                 "dhcp": {
                     "type": "boolean"
+                },
+                "hostInterface": {
+                    "type": "string"
                 },
                 "ip4": {
                     "type": "integer"
@@ -42704,6 +43816,9 @@
                 "dhcp": {
                     "type": "boolean"
                 },
+                "hostInterface": {
+                    "type": "string"
+                },
                 "ip4": {
                     "type": "integer"
                 },
@@ -42861,6 +43976,26 @@
                 },
                 "stop": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.HookPhase"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_jail.HostInterfaceTarget": {
+            "type": "object",
+            "properties": {
+                "eligible": {
+                    "type": "boolean"
+                },
+                "interface": {
+                    "type": "string"
+                },
+                "jailCtId": {
+                    "type": "integer"
+                },
+                "jailName": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
                 }
             }
         },
@@ -45185,6 +46320,41 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.AttachDevice": {
+            "type": "object",
+            "required": [
+                "device",
+                "expectedMemberGuids",
+                "new"
+            ],
+            "properties": {
+                "device": {
+                    "type": "string",
+                    "maxLength": 1024,
+                    "minLength": 1
+                },
+                "expectedMemberGuids": {
+                    "type": "array",
+                    "maxItems": 4096,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "expectedNewIdentity": {
+                    "type": "string",
+                    "maxLength": 1024
+                },
+                "expectedParentGuid": {
+                    "type": "string",
+                    "maxLength": 20
+                },
+                "new": {
+                    "type": "string",
+                    "maxLength": 1024,
+                    "minLength": 1
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.BulkDeletePeriodicSnapshotsRequest": {
             "type": "object",
             "required": [
@@ -45767,18 +46937,34 @@
         "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.ReplaceDevice": {
             "type": "object",
             "required": [
+                "expectedMemberGuids",
                 "new",
                 "old"
             ],
             "properties": {
+                "expectedMemberGuids": {
+                    "type": "array",
+                    "maxItems": 4096,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "expectedNewIdentity": {
+                    "type": "string",
+                    "maxLength": 1024
+                },
+                "expectedParentGuid": {
+                    "type": "string",
+                    "maxLength": 20
+                },
                 "new": {
                     "type": "string",
-                    "maxLength": 24,
+                    "maxLength": 1024,
                     "minLength": 1
                 },
                 "old": {
                     "type": "string",
-                    "maxLength": 24,
+                    "maxLength": 1024,
                     "minLength": 1
                 }
             }
@@ -47072,6 +48258,164 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_services_nfs.DatasetOption": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "type": "boolean"
+                },
+                "block": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "guid": {
+                    "type": "string"
+                },
+                "mountpoint": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_nfs.Preview": {
+            "type": "object",
+            "properties": {
+                "exports": {
+                    "type": "string"
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_nfs.ShareView": {
+            "type": "object",
+            "properties": {
+                "allDirs": {
+                    "type": "boolean"
+                },
+                "clients": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "dataset": {
+                    "type": "string"
+                },
+                "datasetBlock": {
+                    "type": "string"
+                },
+                "datasetName": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "everyone": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "mapallGroup": {
+                    "type": "string"
+                },
+                "mapallUser": {
+                    "type": "string"
+                },
+                "maprootGroup": {
+                    "type": "string"
+                },
+                "maprootUser": {
+                    "type": "string"
+                },
+                "mountpoint": {
+                    "type": "string"
+                },
+                "readOnly": {
+                    "type": "boolean"
+                },
+                "security": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "state": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_nfs.Status": {
+            "type": "object",
+            "properties": {
+                "appliedExports": {
+                    "type": "integer"
+                },
+                "applyStatus": {
+                    "type": "string"
+                },
+                "checkedAt": {
+                    "type": "string"
+                },
+                "configVersion": {
+                    "type": "string"
+                },
+                "desiredExports": {
+                    "type": "integer"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "filesystems": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_nfs.ExportedFilesystem"
+                    }
+                },
+                "lastError": {
+                    "type": "string"
+                },
+                "managed": {
+                    "type": "boolean"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "policyVerified": {
+                    "type": "boolean"
+                },
+                "running": {
+                    "type": "boolean"
+                },
+                "runtimeAvailable": {
+                    "type": "boolean"
+                },
+                "sharesVersion": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_services_notifications.DiscordTransportConfigUpdate": {
             "type": "object",
             "properties": {
@@ -48153,6 +49497,9 @@
                     "items": {
                         "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_network_iface.IPv6"
                     }
+                },
+                "laggPort": {
+                    "type": "boolean"
                 },
                 "maxaddr": {
                     "type": "integer"
@@ -49810,7 +51157,6 @@
                     }
                 },
                 "types": {
-                    "description": "Optional gpart type per size, e.g. freebsd-swap. Omit it to create freebsd-zfs partitions.",
                     "type": "array",
                     "maxItems": 128,
                     "items": {
@@ -50657,6 +52003,124 @@
                 },
                 "vlanFiltering": {
                     "type": "boolean"
+                }
+            }
+        },
+        "internal_handlers_nfs.ApplyRequest": {
+            "type": "object",
+            "properties": {
+                "confirm": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_handlers_nfs.ConfigRequest": {
+            "type": "object",
+            "properties": {
+                "allowNonroot": {
+                    "type": "boolean"
+                },
+                "bindAddresses": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "kerberosPrincipal": {
+                    "type": "string"
+                },
+                "maxThreads": {
+                    "type": "integer"
+                },
+                "minThreads": {
+                    "type": "integer"
+                },
+                "mountdPort": {
+                    "type": "integer"
+                },
+                "numericIds": {
+                    "type": "boolean"
+                },
+                "protocol": {
+                    "type": "string"
+                },
+                "udp": {
+                    "type": "boolean"
+                },
+                "v4MaxVersion": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handlers_nfs.MutationResult": {
+            "type": "object",
+            "properties": {
+                "applied": {
+                    "type": "boolean"
+                },
+                "applyStatus": {
+                    "type": "string"
+                },
+                "saved": {
+                    "type": "boolean"
+                },
+                "share": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_nfs.NFSShare"
+                }
+            }
+        },
+        "internal_handlers_nfs.ShareEnabledRequest": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_handlers_nfs.ShareRequest": {
+            "type": "object",
+            "properties": {
+                "allDirs": {
+                    "type": "boolean"
+                },
+                "clients": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "dataset": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "everyone": {
+                    "type": "boolean"
+                },
+                "mapallGroup": {
+                    "type": "string"
+                },
+                "mapallUser": {
+                    "type": "string"
+                },
+                "maprootGroup": {
+                    "type": "string"
+                },
+                "maprootUser": {
+                    "type": "string"
+                },
+                "readOnly": {
+                    "type": "boolean"
+                },
+                "security": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -51639,11 +53103,29 @@
         "internal_handlers_zfs.DetachRequest": {
             "type": "object",
             "required": [
-                "device"
+                "device",
+                "expectedMemberGuids"
             ],
             "properties": {
                 "device": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 1024,
+                    "minLength": 1
+                },
+                "expectedMemberGuids": {
+                    "type": "array",
+                    "maxItems": 4096,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "expectedNewIdentity": {
+                    "type": "string",
+                    "maxLength": 1024
+                },
+                "expectedParentGuid": {
+                    "type": "string",
+                    "maxLength": 20
                 }
             }
         },

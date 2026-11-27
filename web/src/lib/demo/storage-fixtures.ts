@@ -15,6 +15,7 @@ import type { ISCSIInitiator } from '$lib/types/iscsi/initiator';
 import type { ISCSITarget } from '$lib/types/iscsi/target';
 import type { SambaConfig } from '$lib/types/samba/config';
 import type { SambaShare } from '$lib/types/samba/shares';
+import type { NFSConfig, NFSShare } from '$lib/types/nfs';
 import { demoDirectoryPrincipals } from './directory-fixtures';
 import type { AvailableService } from '$lib/types/system/settings';
 
@@ -147,6 +148,8 @@ type DemoStorageState = {
 	sambaConfig: SambaConfig;
 	sambaShares: SambaShare[];
 	sambaAuditRows: DemoSambaAuditRow[];
+	nfsConfig: NFSConfig;
+	nfsShares: NFSShare[];
 	users: User[];
 	groups: Group[];
 	passkeys: Record<number, Passkey[]>;
@@ -167,6 +170,7 @@ const defaultServices: AvailableService[] = [
 	'jails',
 	'dhcp-server',
 	'samba-server',
+	'nfs',
 	'wol-server',
 	'firewall',
 	'wireguard',
@@ -1011,6 +1015,7 @@ function seedStorageState(hostname: string): DemoStorageState {
 	const postgresVolume = datasets.find((item) => item.name === 'atlas/volumes/postgres')!;
 	const apps = datasets.find((item) => item.name === 'atlas/apps')!;
 	const mediaDataset = datasets.find((item) => item.name === 'atlas/media')!;
+	const backups = datasets.find((item) => item.name === 'vault/backups')!;
 	const iscsiTargetName = `iqn.2026-04.io.sylve:${hostname}.postgres`;
 	const smartTests = Object.fromEntries(
 		disks
@@ -1205,7 +1210,7 @@ function seedStorageState(hostname: string): DemoStorageState {
 			},
 			{
 				id: 2,
-				guid: datasets.find((item) => item.name === 'vault/backups')!.guid,
+				guid: backups.guid,
 				prefix: 'daily',
 				recursive: false,
 				interval: 86400,
@@ -1230,6 +1235,77 @@ function seedStorageState(hostname: string): DemoStorageState {
 			advertiseMdns: true,
 			extraGlobalConfig: ''
 		},
+		nfsConfig: {
+			protocol: 'v3v4',
+			v4MaxVersion: '4.2',
+			numericIds: false,
+			udp: false,
+			allowNonroot: false,
+			bindAddresses: [],
+			mountdPort: 0,
+			minThreads: 0,
+			maxThreads: 0,
+			kerberosPrincipal: ''
+		},
+		nfsShares: [
+			{
+				id: 1,
+				dataset: mediaDataset.guid,
+				description: 'Media library for the living room players',
+				enabled: true,
+				readOnly: true,
+				everyone: false,
+				clients: ['192.168.1.0/24'],
+				maprootUser: '',
+				maprootGroup: '',
+				mapallUser: '',
+				mapallGroup: '',
+				allDirs: false,
+				security: ['sys'],
+				datasetName: mediaDataset.name,
+				mountpoint: mediaDataset.mountpoint,
+				createdAt,
+				updatedAt
+			},
+			{
+				id: 2,
+				dataset: backups.guid,
+				description: 'Nightly backups from the build servers',
+				enabled: true,
+				readOnly: false,
+				everyone: false,
+				clients: ['10.0.20.11', '10.0.20.12', '10.0.20.13'],
+				maprootUser: '',
+				maprootGroup: '',
+				mapallUser: 'nobody',
+				mapallGroup: 'nogroup',
+				allDirs: true,
+				security: ['sys'],
+				datasetName: backups.name,
+				mountpoint: backups.mountpoint,
+				createdAt,
+				updatedAt
+			},
+			{
+				id: 3,
+				dataset: apps.guid,
+				description: '',
+				enabled: false,
+				readOnly: true,
+				everyone: true,
+				clients: [],
+				maprootUser: '',
+				maprootGroup: '',
+				mapallUser: '',
+				mapallGroup: '',
+				allDirs: false,
+				security: ['sys'],
+				datasetName: apps.name,
+				mountpoint: apps.mountpoint,
+				createdAt,
+				updatedAt
+			}
+		],
 		sambaShares: [
 			{
 				id: 1,
@@ -2112,13 +2188,21 @@ function demoShareBlock(state: DemoStorageState, dataset: DemoDataset): string {
 		: '';
 }
 
-function sambaShareView(state: DemoStorageState, share: SambaShare): SambaShare {
+function demoHash(text: string): string {
+	let hash = 5381;
+	for (let i = 0; i < text.length; i++) hash = ((hash << 5) + hash + text.charCodeAt(i)) >>> 0;
+	return hash.toString(16);
+}
+
+function demoShareView<
+	T extends { dataset: string; enabled: boolean; datasetName: string; mountpoint: string }
+>(state: DemoStorageState, share: T, keepSaved: boolean): T {
 	const dataset = state.datasets.find((item) => item.guid === share.dataset);
 	const block = dataset ? demoShareBlock(state, dataset) : '';
 	return {
 		...share,
-		datasetName: dataset?.name ?? '',
-		mountpoint: dataset?.mountpoint ?? '',
+		datasetName: dataset?.name ?? (keepSaved ? share.datasetName : ''),
+		mountpoint: dataset?.mountpoint ?? (keepSaved ? share.mountpoint : ''),
 		state: !share.enabled
 			? 'disabled'
 			: !dataset
@@ -2128,6 +2212,253 @@ function sambaShareView(state: DemoStorageState, share: SambaShare): SambaShare 
 					: 'dataset_unmounted',
 		...(block ? { datasetBlock: block } : {})
 	};
+}
+
+function nfsShareView(state: DemoStorageState, share: NFSShare): NFSShare {
+	return demoShareView(state, share, true);
+}
+
+const NFS_BLOCK_REASONS: Record<string, string> = {
+	root: 'The root file system cannot be exported.',
+	system_path: 'Datasets mounted on system paths cannot be exported.',
+	boot_environment: 'Boot environments cannot be exported.',
+	sylve_data: 'Sylve-managed datasets cannot be exported.',
+	contains_protected_data:
+		'Datasets containing Sylve data or a boot environment cannot be exported.'
+};
+const NFS_PREVIEW_WARNINGS = [
+	'Preview only: no host changes were made.',
+	'AUTH_SYS trusts client-supplied numeric identities; filesystem permissions are not changed.'
+];
+const NFS_SECURITY: NFSShare['security'] = ['sys', 'krb5', 'krb5i', 'krb5p'];
+
+function nfsDatasetIssue(
+	state: DemoStorageState,
+	dataset: DemoDataset | undefined,
+	lenient = false
+): { code: string; block?: string; reason: string } | null {
+	if (!dataset) {
+		return { code: 'dataset_missing', reason: 'The selected dataset is unavailable.' };
+	}
+	if (!state.usablePools.includes(dataset.pool)) {
+		return {
+			code: 'dataset_not_in_usable_pool',
+			reason: "Select a filesystem in one of Sylve's usable pools."
+		};
+	}
+	const block = demoShareBlock(state, dataset);
+	if (block && (!lenient || block === 'boot_environment' || block === 'sylve_data')) {
+		return { code: 'dataset_not_shareable', block, reason: NFS_BLOCK_REASONS[block] };
+	}
+	if (!dataset.mountpoint.startsWith('/')) {
+		return { code: 'invalid_mountpoint', reason: 'The dataset has no usable mountpoint.' };
+	}
+	if (dataset.properties.mounted !== 'yes') {
+		return {
+			code: 'dataset_not_mounted',
+			reason: 'The selected filesystem must be unlocked and mounted.'
+		};
+	}
+	return null;
+}
+
+function nfsPlanIssue(
+	state: DemoStorageState
+): { code: string; block?: string; message: string } | null {
+	for (const share of [...state.nfsShares].sort((left, right) => left.id - right.id)) {
+		if (!share.enabled) continue;
+		const dataset = state.datasets.find((item) => item.guid === share.dataset);
+		const issue = nfsDatasetIssue(state, dataset, true);
+		const label = dataset?.name || share.datasetName;
+		if (issue) {
+			return {
+				...issue,
+				message: `${label ? `Share of ${label}` : `Share ${share.id}`}: ${issue.reason}`
+			};
+		}
+	}
+	return null;
+}
+
+function nfsStatus(state: DemoStorageState) {
+	const enabled = state.services.includes('nfs');
+	const active = state.nfsShares.filter((share) => share.enabled);
+	const problem = enabled ? nfsPlanIssue(state) : null;
+	const filesystems =
+		enabled && !problem
+			? [...new Set(active.map((share) => share.dataset))]
+					.map((guid) => state.datasets.find((item) => item.guid === guid))
+					.filter((item): item is DemoDataset => Boolean(item))
+					.map((item) => ({ guid: item.guid, name: item.name, mountpoint: item.mountpoint }))
+			: [];
+	return {
+		enabled,
+		runtimeAvailable: true,
+		applyStatus: !enabled
+			? 'stopped'
+			: problem
+				? 'pending'
+				: filesystems.length
+					? 'applied'
+					: 'idle',
+		desiredExports: active.length,
+		message: enabled
+			? 'NFS health is sampled by the runtime monitor; client access policy is not independently verified.'
+			: 'NFS is disabled in Sylve. Host NFS configuration and services are left alone.',
+		managed: enabled,
+		running: enabled ? filesystems.length > 0 : null,
+		appliedExports: filesystems.length,
+		policyVerified: false,
+		lastError: problem?.message ?? '',
+		checkedAt: enabled ? new Date().toISOString() : null,
+		sharesVersion: demoHash(JSON.stringify(state.nfsShares)),
+		configVersion: demoHash(JSON.stringify(state.nfsConfig)),
+		filesystems
+	};
+}
+
+function nfsMutation(state: DemoStorageState, status = 200, share?: NFSShare): DemoStorageResponse {
+	const current = nfsStatus(state);
+	const result = {
+		saved: true,
+		applied: current.managed && ['applied', 'idle'].includes(current.applyStatus),
+		applyStatus: current.applyStatus,
+		...(share ? { share } : {})
+	};
+	if (!current.lastError) return success(result, 'nfs_configuration_saved', status);
+	const message = 'nfs_configuration_saved_apply_pending';
+	return {
+		status: 202,
+		data: { status: 'success', message, error: `${message}: ${current.lastError}`, data: result },
+		headers: { 'content-type': 'application/json' },
+		ok: true
+	};
+}
+
+function nfsValidation(
+	field: string,
+	code: string,
+	message: string,
+	status = 400,
+	block?: string
+): DemoStorageResponse {
+	return {
+		status,
+		data: {
+			status: 'error',
+			message,
+			error: message,
+			data: { field, code, message, ...(block ? { block } : {}) }
+		},
+		headers: { 'content-type': 'application/json' },
+		ok: false
+	};
+}
+
+function nfsShareFromBody(body: Record<string, unknown>, previous?: NFSShare): NFSShare {
+	const requested = stringArray(body, 'security');
+	const security = NFS_SECURITY.filter((flavor) => requested.includes(flavor));
+	return {
+		id: previous?.id ?? 0,
+		dataset: stringValue(body, 'dataset', previous?.dataset ?? ''),
+		description: stringValue(body, 'description').trim(),
+		enabled: booleanValue(body, 'enabled', true),
+		readOnly: booleanValue(body, 'readOnly', true),
+		everyone: booleanValue(body, 'everyone', false),
+		clients: booleanValue(body, 'everyone', false) ? [] : stringArray(body, 'clients'),
+		maprootUser: stringValue(body, 'maprootUser').trim(),
+		maprootGroup: stringValue(body, 'maprootGroup').trim(),
+		mapallUser: stringValue(body, 'mapallUser').trim(),
+		mapallGroup: stringValue(body, 'mapallGroup').trim(),
+		allDirs: booleanValue(body, 'allDirs', false),
+		security: security.length ? security : ['sys'],
+		datasetName: previous?.datasetName ?? '',
+		mountpoint: previous?.mountpoint ?? '',
+		createdAt: previous?.createdAt ?? new Date().toISOString(),
+		updatedAt: new Date().toISOString()
+	};
+}
+
+function nfsShareProblem(
+	state: DemoStorageState,
+	share: NFSShare,
+	previous?: NFSShare
+): DemoStorageResponse | null {
+	if (!share.dataset) {
+		return nfsValidation('dataset', 'invalid_dataset', 'Select a ZFS filesystem by its GUID.');
+	}
+	if (!share.everyone && share.clients.length === 0) {
+		return nfsValidation(
+			'clients',
+			'clients_required',
+			'Specify at least one client, or explicitly select Everyone.'
+		);
+	}
+	if (share.maprootUser && share.mapallUser) {
+		return nfsValidation(
+			'mapallUser',
+			'maproot_with_mapall',
+			'Maproot and Mapall cannot be combined.'
+		);
+	}
+	const checked =
+		!previous ||
+		share.dataset !== previous.dataset ||
+		(share.enabled &&
+			JSON.stringify({ ...share, description: '', updatedAt: '' }) !==
+				JSON.stringify({ ...previous, description: '', updatedAt: '' }));
+	if (!checked) return null;
+	const dataset = state.datasets.find((item) => item.guid === share.dataset);
+	const issue = nfsDatasetIssue(state, dataset);
+	return issue ? nfsValidation('dataset', issue.code, issue.reason, 409, issue.block) : null;
+}
+
+function nfsExports(state: DemoStorageState): string {
+	const marker = "# === This file is automatically generated by Sylve, don't edit! ===";
+	const active = state.nfsShares
+		.filter((share) => share.enabled)
+		.map((share) => ({
+			share,
+			dataset: state.datasets.find((item) => item.guid === share.dataset)
+		}))
+		.filter((entry): entry is { share: NFSShare; dataset: DemoDataset } => Boolean(entry.dataset))
+		.sort(
+			(left, right) =>
+				left.dataset.mountpoint.localeCompare(right.dataset.mountpoint) ||
+				left.share.id - right.share.id
+		);
+	if (!active.length) return `${marker}\n`;
+	const lines = [marker, ''];
+	if (state.nfsConfig.protocol !== 'v3') {
+		const flavors = NFS_SECURITY.filter((flavor) =>
+			active.some(({ share }) => share.security.includes(flavor))
+		);
+		lines.push(`V4: / -sec=${flavors.join(':')}`, '');
+	}
+	for (const { share, dataset } of active) {
+		const options = [`-sec=${share.security.join(':')}`];
+		if (share.mapallUser)
+			options.push(
+				`-mapall=${share.mapallUser}${share.mapallGroup ? ':' + share.mapallGroup : ''}`
+			);
+		else if (share.maprootUser)
+			options.push(
+				`-maproot=${share.maprootUser}${share.maprootGroup ? ':' + share.maprootGroup : ''}`
+			);
+		if (share.allDirs) options.push('-alldirs');
+		if (share.readOnly) options.push('-ro');
+		lines.push(`# Share ${share.id}`);
+		for (const client of share.everyone ? [''] : share.clients) {
+			const target = client.includes('/') ? `-network=${client}` : client;
+			lines.push([dataset.mountpoint, ...options, target].filter(Boolean).join(' '));
+		}
+		lines.push('');
+	}
+	return lines.join('\n') + '\n';
+}
+
+function sambaShareView(state: DemoStorageState, share: SambaShare): SambaShare {
+	return demoShareView(state, share, false);
 }
 
 function demoShareConflict(
@@ -2252,6 +2583,9 @@ function removeDataset(state: DemoStorageState, guid: string): boolean {
 	);
 	state.periodicSnapshots = state.periodicSnapshots.filter((item) => item.guid !== guid);
 	state.sambaShares = state.sambaShares.filter((share) => share.dataset !== guid);
+	for (const share of state.nfsShares) {
+		if (!state.datasets.some((item) => item.guid === share.dataset)) share.enabled = false;
+	}
 	for (const iscsiTarget of state.iscsiTargets) {
 		iscsiTarget.luns = iscsiTarget.luns.filter((lun) => lun.zvol !== target.name);
 	}
@@ -3018,6 +3352,9 @@ export function handleDemoStorageRequest<T = unknown>(
 		state.sambaShares = state.sambaShares.filter((share) =>
 			state.datasets.some((item) => item.guid === share.dataset)
 		);
+		for (const share of state.nfsShares) {
+			if (!state.datasets.some((item) => item.guid === share.dataset)) share.enabled = false;
+		}
 		updateDiskUsage(state);
 		return mutationSuccess('pool_deleted') as DemoStorageResponse<T>;
 	}
@@ -3643,6 +3980,178 @@ export function handleDemoStorageRequest<T = unknown>(
 			total: rows.length,
 			data: rows.slice((page - 1) * size, page * size)
 		}) as DemoStorageResponse<T>;
+	}
+
+	if (path === '/nfs/config' && method === 'GET') {
+		return success(state.nfsConfig) as DemoStorageResponse<T>;
+	}
+	if (path === '/nfs/config' && method === 'PUT') {
+		const protocol = stringValue(
+			body,
+			'protocol',
+			state.nfsConfig.protocol
+		) as NFSConfig['protocol'];
+		const udp = booleanValue(body, 'udp', false);
+		if (udp && protocol === 'v4') {
+			return nfsValidation(
+				'udp',
+				'udp_requires_nfsv3',
+				'UDP is only available with NFSv3.'
+			) as DemoStorageResponse<T>;
+		}
+		const minThreads = numberValue(body, 'minThreads', 0);
+		const maxThreads = numberValue(body, 'maxThreads', 0);
+		if (
+			(minThreads || maxThreads) &&
+			(minThreads < 1 || maxThreads > 256 || minThreads > maxThreads)
+		) {
+			return nfsValidation(
+				'minThreads',
+				'invalid_thread_range',
+				'Set both thread bounds between 1 and 256, or use 0 for automatic.'
+			) as DemoStorageResponse<T>;
+		}
+		state.nfsConfig = {
+			protocol,
+			v4MaxVersion: stringValue(
+				body,
+				'v4MaxVersion',
+				state.nfsConfig.v4MaxVersion
+			) as NFSConfig['v4MaxVersion'],
+			numericIds: booleanValue(body, 'numericIds', false),
+			udp,
+			allowNonroot: booleanValue(body, 'allowNonroot', false),
+			bindAddresses: stringArray(body, 'bindAddresses'),
+			mountdPort: numberValue(body, 'mountdPort', 0),
+			minThreads,
+			maxThreads,
+			kerberosPrincipal: stringValue(body, 'kerberosPrincipal').trim()
+		};
+		return nfsMutation(state) as DemoStorageResponse<T>;
+	}
+	if (path === '/nfs/shares' && method === 'GET') {
+		return success(
+			state.nfsShares.map((share) => nfsShareView(state, share))
+		) as DemoStorageResponse<T>;
+	}
+	if (path === '/nfs/shares' && method === 'POST') {
+		const share = nfsShareFromBody(body);
+		const problem = nfsShareProblem(state, share);
+		if (problem) return problem as DemoStorageResponse<T>;
+		share.id = nextID(state.nfsShares);
+		const view = nfsShareView(state, share);
+		const saved = { ...share, datasetName: view.datasetName, mountpoint: view.mountpoint };
+		state.nfsShares.push(saved);
+		return nfsMutation(state, 201, saved) as DemoStorageResponse<T>;
+	}
+	if (path === '/nfs/datasets' && method === 'GET') {
+		const referenced = new Set(state.nfsShares.map((share) => share.dataset));
+		const options = state.datasets
+			.filter(
+				(item) =>
+					item.type === 'FILESYSTEM' &&
+					(state.usablePools.includes(item.pool) || referenced.has(item.guid))
+			)
+			.map((item) => {
+				referenced.delete(item.guid);
+				const issue = nfsDatasetIssue(state, item);
+				return {
+					guid: item.guid,
+					name: item.name,
+					mountpoint: item.mountpoint,
+					available: !issue,
+					reason: issue?.reason ?? '',
+					...(issue ? { code: issue.code } : {}),
+					...(issue?.block ? { block: issue.block } : {})
+				};
+			});
+		for (const guid of referenced) {
+			options.push({
+				guid,
+				name: guid,
+				mountpoint: '',
+				available: false,
+				reason: 'The saved dataset is unavailable.',
+				code: 'dataset_missing'
+			});
+		}
+		return success(
+			options.sort((left, right) => left.name.localeCompare(right.name))
+		) as DemoStorageResponse<T>;
+	}
+	if (path === '/nfs/status' && method === 'GET') {
+		return success(nfsStatus(state)) as DemoStorageResponse<T>;
+	}
+	if (path === '/nfs/preview' && method === 'GET') {
+		const problem = nfsPlanIssue(state);
+		if (problem) {
+			return nfsValidation(
+				'dataset',
+				problem.code,
+				problem.message,
+				409,
+				problem.block
+			) as DemoStorageResponse<T>;
+		}
+		const warnings = state.nfsShares.some((share) => share.enabled)
+			? NFS_PREVIEW_WARNINGS
+			: [...NFS_PREVIEW_WARNINGS, 'No shares are enabled.'];
+		return success({ exports: nfsExports(state), warnings }) as DemoStorageResponse<T>;
+	}
+	if (path === '/nfs/apply' && method === 'POST') {
+		if (!booleanValue(body, 'confirm', false)) {
+			return failure(
+				'invalid_nfs_configuration',
+				'invalid_nfs_configuration',
+				400
+			) as DemoStorageResponse<T>;
+		}
+		return nfsMutation(state) as DemoStorageResponse<T>;
+	}
+	match = path.match(/^\/nfs\/shares\/(\d+)\/enabled$/);
+	if (match && method === 'PUT') {
+		const share = state.nfsShares.find((item) => item.id === Number(match![1]));
+		if (!share)
+			return failure('nfs_share_not_found', 'nfs_share_not_found') as DemoStorageResponse<T>;
+		const enabled = booleanValue(body, 'enabled', share.enabled);
+		if (enabled && !share.enabled) {
+			const issue = nfsDatasetIssue(
+				state,
+				state.datasets.find((item) => item.guid === share.dataset)
+			);
+			if (issue)
+				return nfsValidation(
+					'dataset',
+					issue.code,
+					issue.reason,
+					409,
+					issue.block
+				) as DemoStorageResponse<T>;
+		}
+		share.enabled = enabled;
+		share.updatedAt = new Date().toISOString();
+		return nfsMutation(state) as DemoStorageResponse<T>;
+	}
+	match = path.match(/^\/nfs\/shares\/(\d+)$/);
+	if (match && method === 'PUT') {
+		const index = state.nfsShares.findIndex((item) => item.id === Number(match![1]));
+		if (index < 0)
+			return failure('nfs_share_not_found', 'nfs_share_not_found') as DemoStorageResponse<T>;
+		const previous = state.nfsShares[index];
+		const share = nfsShareFromBody(body, previous);
+		const problem = nfsShareProblem(state, share, previous);
+		if (problem) return problem as DemoStorageResponse<T>;
+		const view = nfsShareView(state, share);
+		const saved = { ...share, datasetName: view.datasetName, mountpoint: view.mountpoint };
+		state.nfsShares[index] = saved;
+		return nfsMutation(state, 200, saved) as DemoStorageResponse<T>;
+	}
+	if (match && method === 'DELETE') {
+		const index = state.nfsShares.findIndex((item) => item.id === Number(match![1]));
+		if (index < 0)
+			return failure('nfs_share_not_found', 'nfs_share_not_found') as DemoStorageResponse<T>;
+		state.nfsShares.splice(index, 1);
+		return nfsMutation(state) as DemoStorageResponse<T>;
 	}
 
 	if (path === '/iscsi/targets' && method === 'GET') {

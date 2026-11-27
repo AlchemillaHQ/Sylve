@@ -194,6 +194,7 @@ func (s *Service) applyPolicy(ctx context.Context, policy savedPolicy, known []*
 	if err != nil {
 		return fail(err)
 	}
+	s.refreshShareLocations(ctx, policy.shares, plan.filesystems)
 	config := policy.config
 	if err := s.driver.Publish(ctx, plan.Exports); err != nil {
 		return fail(err)
@@ -273,10 +274,10 @@ func (s *Service) failClosed(ctx context.Context, state *nfsModels.NFSRuntime, c
 // changes. An empty target set acquires the fence without checking exports.
 // Lock order: system settings / ZFS sync -> topologyMu -> mutationMu.
 func (s *Service) GuardStorageMutation(ctx context.Context, targets ...string) (func(), error) {
-	// Storage callers may already hold a pool lease. Never wait for another
+	// Storage callers may already hold a pool lease. Only wait briefly for another
 	// storage operation holding this fence and waiting for that same lease.
-	if !s.topologyMu.TryLock() {
-		return nil, conflict("dataset", "NFS or another storage topology change is in progress; retry after it finishes.")
+	if err := s.lockTopologyBriefly(ctx); err != nil {
+		return nil, err
 	}
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
@@ -285,6 +286,44 @@ func (s *Service) GuardStorageMutation(ctx context.Context, targets ...string) (
 		return nil, err
 	}
 	return s.topologyMu.Unlock, nil
+}
+
+var storageGuardWait = 2 * time.Second
+
+const storageGuardPoll = 25 * time.Millisecond
+
+func (s *Service) refreshShareLocations(ctx context.Context, shares []nfsModels.NFSShare, filesystems []nfsModels.ExportedFilesystem) {
+	byGUID := make(map[string]nfsModels.ExportedFilesystem, len(filesystems))
+	for _, filesystem := range filesystems {
+		byGUID[filesystem.GUID] = filesystem
+	}
+	for _, share := range shares {
+		filesystem, ok := byGUID[share.Dataset]
+		if !ok || (share.DatasetName == filesystem.Name && share.Mountpoint == filesystem.Mountpoint) {
+			continue
+		}
+		if err := s.DB.WithContext(ctx).Model(&nfsModels.NFSShare{}).Where("id = ?", share.ID).
+			UpdateColumns(map[string]any{"dataset_name": filesystem.Name, "mountpoint": filesystem.Mountpoint}).Error; err != nil {
+			logger.L.Warn().Err(err).Uint("share_id", share.ID).Msg("nfs_share_location_refresh_failed")
+		}
+	}
+}
+
+func (s *Service) lockTopologyBriefly(ctx context.Context) error {
+	deadline := time.Now().Add(storageGuardWait)
+	for {
+		if s.topologyMu.TryLock() {
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return conflict("dataset", "storage_busy", "NFS or another storage topology change is in progress; retry after it finishes.")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(storageGuardPoll):
+		}
+	}
 }
 
 func (s *Service) requireStorageUnused(ctx context.Context, targets []string) error {
@@ -320,7 +359,7 @@ func (s *Service) requireStorageUnused(ctx context.Context, targets []string) er
 		}
 		for _, filesystem := range filesystems {
 			if storageTargetsOverlap(target, filesystem.Name) || storageTargetsOverlap(target, filesystem.Mountpoint) {
-				return conflict("dataset", "Disable the affected NFS shares and successfully withdraw their exports before changing this storage.")
+				return conflict("dataset", "storage_in_use", "Disable the affected NFS shares and successfully withdraw their exports before changing this storage.")
 			}
 		}
 	}

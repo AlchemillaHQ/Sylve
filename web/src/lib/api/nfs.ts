@@ -1,5 +1,5 @@
 import { z } from 'zod/v4';
-import { APIResponseSchema } from '$lib/types/common';
+import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
 	NFSConfigSchema,
 	NFSDatasetSchema,
@@ -7,7 +7,10 @@ import {
 	NFSShareSchema,
 	NFSStatusSchema,
 	type NFSConfig,
-	type NFSShareInput
+	type NFSDataset,
+	type NFSShare,
+	type NFSShareInput,
+	type NFSStatus
 } from '$lib/types/nfs';
 import { apiRequestData, apiRequestResult, type NodeAPIDataRequestOptions } from '$lib/utils/http';
 
@@ -37,6 +40,28 @@ export const getNFSDatasets = (options?: NodeAPIDataRequestOptions) =>
 	apiRequestData(`${root}/datasets`, z.array(NFSDatasetSchema), 'GET', undefined, options);
 export const getNFSStatus = (options?: NodeAPIDataRequestOptions) =>
 	apiRequestData(`${root}/status`, NFSStatusSchema, 'GET', undefined, options);
+export const setNFSShareEnabled = (
+	id: number,
+	enabled: boolean,
+	options?: NodeAPIDataRequestOptions
+) =>
+	apiRequestResult(`${root}/shares/${id}/enabled`, APIResponseSchema, 'PUT', { enabled }, options);
+export const getNFSConfigResult = (
+	options: NodeAPIDataRequestOptions
+): Promise<NFSConfig | APIResponse> =>
+	apiRequestResult(`${root}/config`, NFSConfigSchema, 'GET', undefined, options);
+export const getNFSSharesResult = (
+	options: NodeAPIDataRequestOptions
+): Promise<NFSShare[] | APIResponse> =>
+	apiRequestResult(`${root}/shares`, z.array(NFSShareSchema), 'GET', undefined, options);
+export const getNFSDatasetsResult = (
+	options: NodeAPIDataRequestOptions
+): Promise<NFSDataset[] | APIResponse> =>
+	apiRequestResult(`${root}/datasets`, z.array(NFSDatasetSchema), 'GET', undefined, options);
+export const getNFSStatusResult = (
+	options: NodeAPIDataRequestOptions
+): Promise<NFSStatus | APIResponse> =>
+	apiRequestResult(`${root}/status`, NFSStatusSchema, 'GET', undefined, options);
 export const getNFSPreview = (options?: NodeAPIDataRequestOptions) =>
 	apiRequestResult(`${root}/preview`, NFSPreviewSchema, 'GET', undefined, options);
 export const applyNFS = (options?: NodeAPIDataRequestOptions) =>

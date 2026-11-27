@@ -10,7 +10,7 @@ under sponsorship from the FreeBSD Foundation.
 
 <script lang="ts">
 	import type { SambaStatus } from '$lib/types/samba/shares';
-	import { plural } from './samba';
+	import { plural } from '../shared';
 
 	let {
 		status,

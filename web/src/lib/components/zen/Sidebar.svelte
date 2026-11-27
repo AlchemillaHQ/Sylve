@@ -28,18 +28,19 @@ under sponsorship from the FreeBSD Foundation.
 		resolveNodeHostname(page.url.pathname) || storage.hostname || storage.localHostname || ''
 	);
 	let datacenter = $derived(isDatacenterScope(page.url.pathname));
-	let items = $derived(
-		visibleItems(
-			datacenter
-				? getDatacenterNavigation()
-				: getNodeNavigation(
-						node,
-						nodePath(node),
-						isSuperuser(),
-						getEnabledServicesForHostname(node).includes('samba-server')
-					)
-		)
-	);
+	let items = $derived.by(() => {
+		if (datacenter) return visibleItems(getDatacenterNavigation());
+		const services = getEnabledServicesForHostname(node);
+		return visibleItems(
+			getNodeNavigation(
+				node,
+				nodePath(node),
+				isSuperuser(),
+				services.includes('samba-server'),
+				services.includes('nfs')
+			)
+		);
+	});
 
 	afterNavigate(() => sidebar.setOpenMobile(false));
 </script>

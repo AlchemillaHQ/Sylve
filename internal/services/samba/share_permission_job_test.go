@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/alchemillahq/sylve/internal/sharerules"
 )
 
 type setfaclCall struct {
@@ -195,10 +197,10 @@ func TestApplyShareAccessRefusesProtectedDatasets(t *testing.T) {
 	captureSetfacl(t, func(call setfaclCall) { t.Errorf("a refused job ran setfacl: %+v", call) })
 
 	err := svc.ApplyShareAccessToExisting(context.Background(), uint(share), nil)
-	if err == nil || !strings.Contains(err.Error(), ShareDatasetContainsProtected) {
+	if err == nil || !strings.Contains(err.Error(), sharerules.BlockContainsProtected) {
 		t.Fatalf("ApplyShareAccessToExisting returned %v; want a refusal", err)
 	}
-	if job := svc.PermissionJob(uint(share)); job == nil || job.State != PermissionJobFailed || !strings.Contains(job.Error, ShareDatasetContainsProtected) {
+	if job := svc.PermissionJob(uint(share)); job == nil || job.State != PermissionJobFailed || !strings.Contains(job.Error, sharerules.BlockContainsProtected) {
 		t.Fatalf("job = %+v; want a failed job explaining the refusal", job)
 	}
 }

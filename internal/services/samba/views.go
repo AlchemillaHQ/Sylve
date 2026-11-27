@@ -19,15 +19,11 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+	"github.com/alchemillahq/sylve/internal/sharerules"
 	sambaSystem "github.com/alchemillahq/sylve/pkg/system/samba"
 )
 
 const (
-	ShareStateActive           = "active"
-	ShareStateDisabled         = "disabled"
-	ShareStateDatasetMissing   = "dataset_missing"
-	ShareStateDatasetUnmounted = "dataset_unmounted"
-
 	sambaStatusPath = "/usr/local/bin/smbstatus"
 	sambaSmbdPath   = "/usr/local/sbin/smbd"
 )
@@ -263,7 +259,7 @@ func (s *Service) ShareDatasets(ctx context.Context) ([]ShareDataset, error) {
 	for _, share := range shares {
 		sharedBy[share.Dataset] = &ShareReference{ID: share.ID, Name: share.Name}
 	}
-	roots := protectedShareRoots(datasets, sambaDataPath())
+	roots := sharerules.ProtectedRoots(datasets, sharerules.DataPath())
 	result := make([]ShareDataset, 0, len(datasets))
 	for _, dataset := range datasets {
 		if dataset == nil {
@@ -275,7 +271,7 @@ func (s *Service) ShareDatasets(ctx context.Context) ([]ShareDataset, error) {
 			Mountpoint: dataset.Mountpoint,
 			Mounted:    isSambaDatasetMounted(dataset),
 			SharedBy:   sharedBy[dataset.GUID],
-			Block:      shareDatasetBlock(dataset, roots),
+			Block:      sharerules.DatasetBlock(dataset, roots),
 		})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
@@ -293,22 +289,14 @@ func (s *Service) ShareStates(ctx context.Context, shares []sambaModels.SambaSha
 			byGUID[dataset.GUID] = dataset
 		}
 	}
-	roots := protectedShareRoots(datasets, sambaDataPath())
+	roots := sharerules.ProtectedRoots(datasets, sharerules.DataPath())
 	states := make(map[int]ShareState, len(shares))
 	for _, share := range shares {
 		dataset := byGUID[share.Dataset]
-		state := ShareState{State: ShareStateActive}
+		state := ShareState{State: sharerules.State(share.Enabled, dataset, isSambaDatasetMounted(dataset))}
 		if dataset != nil {
 			state.DatasetName, state.Mountpoint = dataset.Name, dataset.Mountpoint
-			state.Block = shareDatasetBlock(dataset, roots)
-		}
-		switch {
-		case !share.Enabled:
-			state.State = ShareStateDisabled
-		case dataset == nil:
-			state.State = ShareStateDatasetMissing
-		case !isSambaDatasetMounted(dataset):
-			state.State = ShareStateDatasetUnmounted
+			state.Block = sharerules.DatasetBlock(dataset, roots)
 		}
 		states[share.ID] = state
 	}

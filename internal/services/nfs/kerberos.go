@@ -34,10 +34,10 @@ func kerberosPolicy(config nfsModels.NFSConfig, shares []nfsModels.NFSShare) (bo
 		return false, nil
 	}
 	if config.NumericIDs && config.Protocol != "v3" {
-		return true, conflict("numericIds", "Disable numeric NFSv4 IDs before using Kerberos.")
+		return true, conflict("numericIds", "kerberos_requires_names", "Disable numeric NFSv4 IDs before using Kerberos.")
 	}
 	if config.KerberosPrincipal == "" {
-		return true, conflict("kerberosPrincipal", "Select an installed NFS service principal.")
+		return true, conflict("kerberosPrincipal", "kerberos_principal_required", "Select an installed NFS service principal.")
 	}
 	return true, nil
 }
@@ -48,14 +48,14 @@ func (s *Service) kerberosState(ctx context.Context, config nfsModels.NFSConfig,
 		return "", err
 	}
 	if s.KerberosState == nil {
-		return "", conflict("kerberosPrincipal", "Directory Services is unavailable.")
+		return "", conflict("kerberosPrincipal", "directory_services_unavailable", "Directory Services is unavailable.")
 	}
 	state, err := s.KerberosState(ctx, config.KerberosPrincipal)
 	if err != nil {
-		return "", conflict("kerberosPrincipal", err.Error())
+		return "", conflict("kerberosPrincipal", "kerberos_credentials_error", err.Error())
 	}
 	if state == "" {
-		return "", conflict("kerberosPrincipal", "Installed NFS service credentials are unavailable.")
+		return "", conflict("kerberosPrincipal", "kerberos_credentials_unavailable", "Installed NFS service credentials are unavailable.")
 	}
 	return state, nil
 }

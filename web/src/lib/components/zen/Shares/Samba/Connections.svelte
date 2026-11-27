@@ -14,7 +14,7 @@ under sponsorship from the FreeBSD Foundation.
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { SambaStatus } from '$lib/types/samba/shares';
 	import { dateToAgo } from '$lib/utils/time';
-	import { plural } from './samba';
+	import { plural } from '../shared';
 
 	let { status, onClose }: { status: SambaStatus; onClose: () => void } = $props();
 

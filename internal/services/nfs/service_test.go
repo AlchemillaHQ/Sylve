@@ -23,6 +23,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	nfsModels "github.com/alchemillahq/sylve/internal/db/models/nfs"
+	"github.com/alchemillahq/sylve/internal/sharerules"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
@@ -328,8 +329,17 @@ func TestDatasetOptionsRetainUnavailableSavedReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	options, err := service.GetDatasets(t.Context())
-	if err != nil || len(options) != 2 || !options[1].Available || options[0].GUID != "3" || options[0].Reason == "" {
+	if err != nil || len(options) != 3 {
 		t.Fatalf("dataset options %#v: %v", options, err)
+	}
+	if missing := options[0]; missing.GUID != "3" || missing.Available || missing.Code != "dataset_missing" || missing.Reason == "" {
+		t.Fatalf("missing saved dataset = %#v", missing)
+	}
+	if boot := options[1]; boot.Name != "tank/ROOT/default" || boot.Available || boot.Code != "dataset_not_shareable" || boot.Block != sharerules.BlockBootEnvironment {
+		t.Fatalf("boot environment = %#v; want it listed as unavailable with its reason", boot)
+	}
+	if data := options[2]; data.Name != "tank/data" || !data.Available || data.Code != "" {
+		t.Fatalf("eligible dataset = %#v", data)
 	}
 }
 

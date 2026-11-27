@@ -11,6 +11,7 @@ package nfs
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -125,7 +126,11 @@ func (s *Service) buildExportPlan(ctx context.Context, policy savedPolicy, known
 		}
 		dataset := byGUID[share.Dataset]
 		if err := s.checkDataset(dataset, policy.pools); err != nil {
-			return exportPlan{}, conflict("dataset", fmt.Sprintf("Share %d: %s", share.ID, err))
+			var detail *ValidationError
+			if errors.As(err, &detail) {
+				return exportPlan{}, &ValidationError{Field: "dataset", Code: detail.Code, Block: detail.Block, Message: shareLabel(share, dataset) + ": " + detail.Message, kind: ErrConflict}
+			}
+			return exportPlan{}, conflict("dataset", "share_dataset_unavailable", fmt.Sprintf("%s: %s", shareLabel(share, dataset), err))
 		}
 		resolved[share.Dataset] = dataset
 	}
@@ -140,7 +145,7 @@ func (s *Service) buildExportPlan(ctx context.Context, policy savedPolicy, known
 	slices.SortFunc(mounts, func(a, b nfsModels.ExportedFilesystem) int { return strings.Compare(a.Name, b.Name) })
 	exports := renderExports(config.Protocol, enabled, resolved, mappings)
 	if len(exports) > 1024*1024 {
-		return exportPlan{}, conflict("dataset", "Generated NFS exports exceed 1 MiB.")
+		return exportPlan{}, conflict("dataset", "exports_too_large", "Generated NFS exports exceed 1 MiB.")
 	}
 	return exportPlan{Preview: Preview{Exports: exports, Warnings: warnings}, filesystems: mounts, mappings: identities, kerberosHash: kerberosHash}, nil
 }
@@ -157,6 +162,16 @@ func exportsPath(path string) string {
 		}
 	}
 	return out.String()
+}
+
+func shareLabel(share nfsModels.NFSShare, dataset *gzfs.Dataset) string {
+	switch {
+	case dataset != nil && dataset.Name != "":
+		return "Share of " + dataset.Name
+	case share.DatasetName != "":
+		return "Share of " + share.DatasetName
+	}
+	return fmt.Sprintf("Share %d", share.ID)
 }
 
 func clientSuffix(client string) string {

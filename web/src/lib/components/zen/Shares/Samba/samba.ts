@@ -15,7 +15,8 @@ import type {
 	ShareDataset,
 	SharePermissionJob
 } from '$lib/types/samba/shares';
-import { getAPIErrorText, isAPIResponse } from '$lib/utils/http';
+import { getAPIErrorText } from '$lib/utils/http';
+import { blockedDatasetReason, datasetBlockReason, errorCode, plural } from '../shared';
 
 export type SharesData = {
 	hostname: string;
@@ -24,10 +25,6 @@ export type SharesData = {
 	status: SambaStatus | APIResponse | null;
 	statusFresh: boolean;
 };
-
-export function cachedStatus(status: SambaStatus | APIResponse | null): SambaStatus | undefined {
-	return status && !isAPIResponse(status) ? status : undefined;
-}
 
 export type AccessMode = 'signed-in' | 'guest-read' | 'guest-write';
 
@@ -58,19 +55,6 @@ export const AUDIT_OPERATIONS = [
 
 export function auditOperationLabel(value: string): string {
 	return AUDIT_OPERATIONS.find((operation) => operation.value === value)?.label ?? value;
-}
-
-const DATASET_BLOCKS: Record<string, string> = {
-	root: 'It’s the root file system',
-	system_path: 'It’s mounted on a system path',
-	boot_environment: 'It’s a boot environment',
-	sylve_data: 'It holds Sylve’s own data',
-	contains_protected_data: 'It contains Sylve’s data or a boot environment'
-};
-
-export function datasetBlockReason(code: string | undefined): string {
-	if (!code) return '';
-	return DATASET_BLOCKS[code] ?? 'It can’t be shared';
 }
 
 export function datasetChoiceBlock(dataset: ShareDataset, shareId: number | undefined): string {
@@ -151,20 +135,12 @@ export function jobSummary(job: SharePermissionJob | undefined, now: number): Jo
 export function enableBlock(share: SambaShare): string {
 	if (share.enabled) return '';
 	if (!share.datasetName) return 'Its dataset no longer exists';
-	if (share.datasetBlock) {
-		const reason = datasetBlockReason(share.datasetBlock);
-		return `Its dataset can’t be shared: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`;
-	}
-	return '';
+	return share.datasetBlock ? blockedDatasetReason(share.datasetBlock, 'shared') : '';
 }
 
 export function accessMode(share: Pick<SambaShare, 'guest'>): AccessMode {
 	if (!share.guest.enabled) return 'signed-in';
 	return share.guest.writeable ? 'guest-write' : 'guest-read';
-}
-
-export function plural(count: number, word: string): string {
-	return `${count} ${word}${count === 1 ? '' : 's'}`;
 }
 
 export function accessSummary(share: SambaShare): string {
@@ -226,10 +202,6 @@ export function extraConfigProblem(config: string): string {
 
 const DIRECTORY_BUSY =
 	'Another Samba or Active Directory change is in progress. Try again in a moment.';
-
-export function errorCode(response: Pick<APIResponse, 'error'>): string {
-	return typeof response.error === 'string' ? response.error.trim() : '';
-}
 
 const SAVE_ERRORS: Record<string, string> = {
 	share_with_name_exists: 'Another share uses this name.',

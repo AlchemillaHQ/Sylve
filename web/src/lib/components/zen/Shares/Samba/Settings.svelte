@@ -43,12 +43,11 @@ under sponsorship from the FreeBSD Foundation.
 	import { toast } from 'svelte-sonner';
 	import Connections from './Connections.svelte';
 	import InterfacePicker from './InterfacePicker.svelte';
+	import { cachedStatus, plural } from '../shared';
 	import {
-		cachedStatus,
 		charsetProblem,
 		configSaveError,
 		globalConfigProblem,
-		plural,
 		serverStringProblem,
 		workgroupProblem
 	} from './samba';

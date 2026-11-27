@@ -14,6 +14,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+	"github.com/alchemillahq/sylve/internal/sharerules"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
@@ -47,44 +48,6 @@ func TestValidateSambaShareName(t *testing.T) {
 	}
 }
 
-func TestShareDatasetBlockRefusesSystemAndSylveData(t *testing.T) {
-	datasets := []*gzfs.Dataset{
-		{Name: "zroot/ROOT/default", Mountpoint: "/"},
-		{Name: "zroot/sylve", Mountpoint: "/zroot/sylve"},
-		{Name: "zroot/sylve/virtual-machines", Mountpoint: "none"},
-		{Name: "tank/data", Mountpoint: "/tank/data"},
-	}
-	roots := protectedShareRoots(datasets, "/srv/apps/sylve-data")
-	for _, root := range []string{"/", "/zroot/sylve", "/srv/apps/sylve-data"} {
-		if !slices.Contains(roots, root) {
-			t.Fatalf("protected roots %v are missing %s", roots, root)
-		}
-	}
-
-	for _, tc := range []struct {
-		name, mountpoint, want string
-	}{
-		{"zroot/ROOT/default", "/", ShareDatasetBootEnvironment},
-		{"tank/rootfs", "/", ShareDatasetRoot},
-		{"zroot/var/log", "/var/log", ShareDatasetSystemPath},
-		{"zroot/usr/src", "/usr/src", ShareDatasetSystemPath},
-		{"zroot/tmp", "/tmp", ShareDatasetSystemPath},
-		{"zroot/sylve/jails", "/zroot/sylve/jails", ShareDatasetSylveData},
-		{"zroot", "/zroot", ShareDatasetContainsProtected},
-		{"tank/apps", "/srv/apps", ShareDatasetContainsProtected},
-		{"zroot/usr/home", "/usr/home", ""},
-		{"zroot/home", "/home", ""},
-		{"tank/data", "/tank/data", ""},
-		{"tank", "/tank", ""},
-		{"tank/legacy", "legacy", ""},
-	} {
-		got := shareDatasetBlock(&gzfs.Dataset{Name: tc.name, Mountpoint: tc.mountpoint}, roots)
-		if got != tc.want {
-			t.Errorf("%s at %s: got %q, want %q", tc.name, tc.mountpoint, got, tc.want)
-		}
-	}
-}
-
 func TestCreateShareRefusesDatasetsContainingSylveData(t *testing.T) {
 	svc, runner := newSambaServiceWithMockRunner(t)
 	addDatasetLookupMocks(t, runner, []mockDataset{
@@ -95,8 +58,8 @@ func TestCreateShareRefusesDatasetsContainingSylveData(t *testing.T) {
 
 	_, err := svc.CreateShare(context.Background(), "everything", "guid-tank", nil, nil, nil, nil, true, true, "0664", "2775", false, 0, false, 70, nil, true, "", nil)
 	var blocked *DatasetNotShareableError
-	if !errors.As(err, &blocked) || blocked.Reason != ShareDatasetContainsProtected {
-		t.Fatalf("CreateShare returned %v; want dataset_not_shareable: %s", err, ShareDatasetContainsProtected)
+	if !errors.As(err, &blocked) || blocked.Reason != sharerules.BlockContainsProtected {
+		t.Fatalf("CreateShare returned %v; want dataset_not_shareable: %s", err, sharerules.BlockContainsProtected)
 	}
 	if len(*commands) != 0 {
 		t.Fatalf("a refused share ran commands: %v", *commands)

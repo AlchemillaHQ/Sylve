@@ -11,6 +11,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+	"github.com/alchemillahq/sylve/internal/sharerules"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
@@ -138,7 +139,7 @@ func TestShareDatasetsAndStatesExplainEachShare(t *testing.T) {
 	for _, dataset := range datasets {
 		byName[dataset.Name] = dataset
 	}
-	if byName["tank"].Block != ShareDatasetContainsProtected || byName["tank/sylve"].Block != ShareDatasetSylveData || byName["tank/data"].Block != "" {
+	if byName["tank"].Block != sharerules.BlockContainsProtected || byName["tank/sylve"].Block != sharerules.BlockSylveData || byName["tank/data"].Block != "" {
 		t.Fatalf("blocks = %+v", byName)
 	}
 	if byName["tank/data"].SharedBy == nil || byName["tank/data"].SharedBy.ID != active || !byName["tank/data"].Mounted || byName["tank/offline"].Mounted {
@@ -153,12 +154,12 @@ func TestShareDatasetsAndStatesExplainEachShare(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for id, want := range map[int]string{active: ShareStateActive, unmounted: ShareStateDatasetUnmounted, missing: ShareStateDatasetMissing, disabled: ShareStateDisabled} {
+	for id, want := range map[int]string{active: sharerules.StateActive, unmounted: sharerules.StateDatasetUnmounted, missing: sharerules.StateDatasetMissing, disabled: sharerules.StateDisabled} {
 		if states[id].State != want {
 			t.Errorf("share %d state = %q; want %q", id, states[id].State, want)
 		}
 	}
-	if states[active].DatasetName != "tank/data" || states[active].Mountpoint != "/tank/data" || states[disabled].Block != ShareDatasetContainsProtected {
+	if states[active].DatasetName != "tank/data" || states[active].Mountpoint != "/tank/data" || states[disabled].Block != sharerules.BlockContainsProtected {
 		t.Fatalf("states = %+v", states)
 	}
 }

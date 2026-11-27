@@ -80,7 +80,8 @@ function stateFor(hostname: string): State {
 					name: 'AD_MACHINE_ACCOUNT',
 					principals: [
 						`${hostname.toUpperCase()}$@EXAMPLE.COM`,
-						`cifs/${hostname}.example.com@EXAMPLE.COM`
+						`cifs/${hostname}.example.com@EXAMPLE.COM`,
+						`nfs/${hostname}.example.com@EXAMPLE.COM`
 					],
 					managed: true,
 					updatedAt: new Date().toISOString()

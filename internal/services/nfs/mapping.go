@@ -109,7 +109,7 @@ func (s *Service) resolveMappings(ctx context.Context, shares []nfsModels.NFSSha
 			var err error
 			credential, err = s.resolveMapping(ctx, user, group)
 			if err != nil {
-				return nil, nil, conflict(mode+"User", err.Error())
+				return nil, nil, conflict(mode+"User", "mapping_unresolved", err.Error())
 			}
 			credentials[key] = credential
 		}

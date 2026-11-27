@@ -35,7 +35,9 @@ export const NFSShareSchema = NFSShareInputSchema.extend({
 	mountpoint: z.string().default(''),
 	id: z.number(),
 	createdAt: z.string(),
-	updatedAt: z.string()
+	updatedAt: z.string(),
+	state: z.string().optional(),
+	datasetBlock: z.string().optional()
 });
 export type NFSShare = z.infer<typeof NFSShareSchema>;
 
@@ -44,7 +46,9 @@ export const NFSDatasetSchema = z.object({
 	name: z.string(),
 	mountpoint: z.string(),
 	available: z.boolean(),
-	reason: z.string()
+	reason: z.string(),
+	code: z.string().optional(),
+	block: z.string().optional()
 });
 export type NFSDataset = z.infer<typeof NFSDatasetSchema>;
 
@@ -87,7 +91,12 @@ export const NFSPreviewSchema = z.object({
 });
 export type NFSPreview = z.infer<typeof NFSPreviewSchema>;
 
-export const NFSValidationErrorSchema = z.object({ field: z.string(), message: z.string() });
+export const NFSValidationErrorSchema = z.object({
+	field: z.string(),
+	message: z.string(),
+	code: z.string().default(''),
+	block: z.string().optional()
+});
 
 export const NFSMutationSchema = z.object({
 	saved: z.boolean(),

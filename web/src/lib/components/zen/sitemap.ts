@@ -23,7 +23,8 @@ export function getNodeNavigation(
 	node: string,
 	hostPath: string,
 	explorer: boolean,
-	samba: boolean
+	samba: boolean,
+	nfs: boolean
 ): NavigationItem[] {
 	const host: Need = ['Sys.Audit', hostPath];
 	const audit: Need = ['Sys.Audit', '/'];
@@ -123,7 +124,29 @@ export function getNodeNavigation(
 							}
 						]
 					: []),
-				preview('shares-nfs', 'NFS', 'icon-[mdi--folder-network]'),
+				...(nfs
+					? [
+							{
+								id: 'shares-nfs',
+								label: 'NFS',
+								icon: 'icon-[mdi--folder-network]',
+								children: [
+									{
+										id: 'shares-nfs-shares',
+										label: 'Shares',
+										icon: 'icon-[mdi--folder-network]',
+										href: `/${node}/storage/nfs/shares`
+									},
+									{
+										id: 'shares-nfs-settings',
+										label: 'Settings',
+										icon: 'icon-[mdi--cog-outline]',
+										href: `/${node}/storage/nfs/settings`
+									}
+								]
+							}
+						]
+					: []),
 				preview('shares-iscsi', 'iSCSI', 'icon-[carbon--block-storage-alt]')
 			]
 		},
